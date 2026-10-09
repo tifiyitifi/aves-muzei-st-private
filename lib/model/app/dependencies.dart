@@ -158,6 +158,10 @@ class Dependencies {
     ..._googleMobileServices,
   ];
 
+  static const List<Dependency> _flutterPluginsCustomOnly = [
+    ..._googleMobileServices,
+  ];
+
   static const List<Dependency> _flutterPluginsLibreOnly = [];
 
   static const List<Dependency> _flutterPluginsPlayOnly = [
@@ -174,6 +178,7 @@ class Dependencies {
     if (flavor == AppFlavor.izzy) ..._flutterPluginsIzzyOnly,
     if (flavor == AppFlavor.libre) ..._flutterPluginsLibreOnly,
     if (flavor == AppFlavor.play) ..._flutterPluginsPlayOnly,
+    if (flavor == AppFlavor.custom) ..._flutterPluginsCustomOnly,
   ];
 
   static const List<Dependency> flutterPackages = [

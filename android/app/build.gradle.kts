@@ -111,6 +111,14 @@ android {
             dimension = "store"
             applicationIdSuffix = ".libre"
         }
+
+        create("custom") {
+            // private fork build
+            // same feature set as `play`, but without Crashlytics, and with a distinct application id
+            // so it can be installed alongside the stock Aves
+            dimension = "store"
+            applicationIdSuffix = ".custom"
+        }
     }
 
     buildFeatures {

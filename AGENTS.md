@@ -11,7 +11,7 @@ Aves — a Flutter/Android gallery and metadata explorer app. This is an applica
 ## Toolchain and setup
 
 - Flutter is pinned via the `.flutter` git submodule and invoked through `./flutterw` (passsy/flutter_wrapper). The pinned version lives in `pubspec.yaml` (`flutter:` under `environment`) and `.metadata`.
-- The submodule is often uninitialized. Run `git submodule update --init` before building. A system-wide `flutter` of a different version will not match.
+- `.flutter` is uninitialized on a fresh clone; `./flutterw` auto-runs `git submodule update --init` (needs network). Running a system-wide `flutter` directly uses the wrong pinned version.
 - `./flutterw` and every `scripts/*.sh` are POSIX shell scripts; there is no `.bat`/`.ps1` wrapper, so run them from a bash-like shell on Windows.
 - `android/settings.gradle.kts` requires `android/local.properties` containing `flutter.sdk` (created by Flutter tooling).
 - Signed builds need `android/key.properties` copied from `android/key_template.properties` (also holds `googleApiKey`). Without it, release signing is skipped.
@@ -42,7 +42,7 @@ Order matters: `pub get` → `gen-l10n` → `analyze`/`test`/build.
 - Single test name: `./flutterw test --plain-name "some test"`
 - Run: `./flutterw run -t lib/main_play.dart --flavor play`
 - Profile build (what CI uses to type-check Android): `./flutterw build apk --profile -t lib/main_play.dart --flavor play`
-- Screenshots: `./flutterw drive --flavor play -t test_driver/driver_screenshots.dart --profile`, then `scripts/screenshot_post_process.sh` (needs ImageMagick 6).
+- Screenshots: `./flutterw drive --flavor play -t test_driver/driver_screenshots.dart --profile` (needs a connected device/emulator), then `scripts/screenshot_post_process.sh` (needs ImageMagick 6).
 
 CI (`quality-check.yml`) runs exactly: `pub get`, `gen-l10n`, `analyze`, `test`.
 
@@ -57,7 +57,7 @@ From the comment in `pubspec.yaml`, in order: bump `version:` in `pubspec.yaml`,
 
 ## Testing
 
-- Unit/widget tests live in `test/`; integration driver tests in `test_driver/`.
+- Unit/widget tests live in `test/` (run with `./flutterw test`); integration driver tests live in `test_driver/` and run via `./flutterw drive` on a connected device/emulator (they are not picked up by `flutter test`).
 - Tests that need platform services must call `setUpAllServices()` / `setUpServices()` from `test/common.dart`, which registers in-memory fakes (SharedPreferences, media/db/storage services). Don't hit real platform channels.
 - `test/common.dart` forces a POSIX `p.Context` so path tests behave the same on Windows.
 

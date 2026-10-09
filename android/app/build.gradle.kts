@@ -10,6 +10,16 @@ plugins {
 
 val packageName = "deckers.thibault.aves"
 
+// Build number (versionCode) is maintained in `android/version.properties`
+// and auto-incremented by `.githooks/pre-commit`, so that every machine and CI
+// build of a given commit shares the same, monotonically increasing build number.
+val buildNumberProperties = Properties()
+val buildNumberFile: File = rootProject.file("version.properties")
+if (buildNumberFile.exists()) {
+    buildNumberFile.inputStream().use { buildNumberProperties.load(it) }
+}
+val buildVersionCode: Int = buildNumberProperties.getProperty("versionCode")?.toIntOrNull() ?: flutter.versionCode
+
 // Keys
 
 val keystoreProperties = Properties()
@@ -63,7 +73,7 @@ android {
         applicationId = packageName
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
+        versionCode = buildVersionCode
         versionName = flutter.versionName
         manifestPlaceholders["googleApiKey"] = keystoreProperties["googleApiKey"] ?: "NONE"
         multiDexEnabled = true
@@ -86,6 +96,15 @@ android {
                 storeFile = file(storeFilePath)
                 storePassword = keystoreProperties["storePassword"] as String
             }
+        }
+
+        // Shared debug keystore, committed to the repository, so that `debug`/`profile`
+        // builds have the same signature on every machine (and can update each other).
+        create("sharedDebug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 
@@ -129,10 +148,12 @@ android {
     buildTypes {
         getByName("debug") {
             applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("sharedDebug")
         }
 
         getByName("profile") {
             applicationIdSuffix = ".profile"
+            signingConfig = signingConfigs.getByName("sharedDebug")
         }
 
         getByName("release") {

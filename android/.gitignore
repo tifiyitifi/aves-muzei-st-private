@@ -14,3 +14,6 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+# the shared debug keystore is intentionally committed so that debug/profile
+# builds have the same signature on every machine
+!app/debug.keystore

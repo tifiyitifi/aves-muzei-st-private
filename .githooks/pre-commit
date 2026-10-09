@@ -1,0 +1,30 @@
+#!/bin/sh
+# Auto-increment the Android build number on every commit, so that each commit maps
+# to a strictly increasing versionCode (see `android/version.properties`).
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+file="android/version.properties"
+[ -f "$file" ] || exit 0
+
+cr=$(printf '\r')
+code=""
+while IFS= read -r line || [ -n "$line" ]; do
+  line=${line%"$cr"}
+  case "$line" in
+    versionCode=*) code=${line#versionCode=} ;;
+  esac
+done < "$file"
+
+case "$code" in
+  '' | *[!0-9]*)
+    echo "pre-commit: could not read a numeric versionCode from '$file'" >&2
+    exit 1
+    ;;
+esac
+
+code=$((code + 1))
+printf 'versionCode=%s\n' "$code" > "$file"
+
+git add "$file"

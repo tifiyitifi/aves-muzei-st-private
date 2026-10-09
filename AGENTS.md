@@ -15,18 +15,20 @@ Aves — a Flutter/Android gallery and metadata explorer app. This is an applica
 - `./flutterw` and every `scripts/*.sh` are POSIX shell scripts; there is no `.bat`/`.ps1` wrapper, so run them from a bash-like shell on Windows.
 - `android/settings.gradle.kts` requires `android/local.properties` containing `flutter.sdk` (created by Flutter tooling).
 - Signed builds need `android/key.properties` copied from `android/key_template.properties` (also holds `googleApiKey`). Without it, release signing is skipped.
+- Debug/profile builds are signed with the shared keystore committed at `android/app/debug.keystore` (alias `androiddebugkey`, password `android`), so builds from different machines share one signature and can update each other.
+- The Android `versionCode` is kept in `android/version.properties` and auto-incremented by `.githooks/pre-commit`; enable the hook once per clone with `git config core.hooksPath .githooks` (the build falls back to the pubspec build number if the file is missing).
 - JDK 21 is required; Gradle downloads Temurin via the foojay toolchain resolver if absent.
 
 ## Flavors (read this before any build/run)
 
-There are three flavors: `play`, `izzy`, `libre`. Flavor dependencies are set by swapping the root manifest, not by conditionals:
+There are four flavors: `play`, `izzy`, `libre`, `custom` (the last is the private fork build with a distinct application id and no Crashlytics). Flavor dependencies are set by swapping the root manifest, not by conditionals:
 
 - `scripts/apply_flavor_<flavor>.sh` copies `flavors/pubspec_<flavor>.yaml` and `.lock` over the root `pubspec.yaml`/`pubspec.lock`, then runs `pub get --enforce-lockfile`.
-- Always apply the matching flavor before `pub get`/`run`/`build`. Entrypoints: `lib/main_play.dart`, `lib/main_izzy.dart`, `lib/main_libre.dart` (plus `lib/main_play_test_editor.dart` for intent debugging).
+- Always apply the matching flavor before `pub get`/`run`/`build`. Entrypoints: `lib/main_play.dart`, `lib/main_izzy.dart`, `lib/main_libre.dart`, `lib/main_custom.dart` (plus `lib/main_play_test_editor.dart` for intent debugging).
 - Applying a flavor overwrites tracked root files, so `git diff` will show them; don't commit flavor swaps by accident.
 - Platform backends are swapped by choosing different workspace members that share the same Dart package name:
-  - `aves_services_google` (play, izzy) vs `aves_services_none` (libre) → imported as `aves_services_platform`.
-  - `aves_report_crashlytics` (play) vs `aves_report_console` (izzy, libre) → imported as `aves_report_platform`.
+  - `aves_services_google` (play, izzy, custom) vs `aves_services_none` (libre) → imported as `aves_services_platform`.
+  - `aves_report_crashlytics` (play) vs `aves_report_console` (izzy, libre, custom) → imported as `aves_report_platform`.
   - Video uses `aves_video_mpv`; `aves_video_exo` exists but is commented out in every flavor.
 - The committed root `pubspec.yaml` is the `play` variant; `pubspec.lock` may not match `flavors/pubspec_play.lock`.
 

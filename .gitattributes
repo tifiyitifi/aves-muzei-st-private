@@ -1,0 +1,4 @@
+# Keep the git hooks and the build number file LF on every platform,
+# so the pre-commit hook works the same on Windows and Unix.
+.githooks/* text eol=lf
+android/version.properties text eol=lf

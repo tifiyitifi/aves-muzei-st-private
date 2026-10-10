@@ -28,3 +28,10 @@ code=$((code + 1))
 printf 'versionCode=%s\n' "$code" > "$file"
 
 git add "$file"
+
+# Keep every pubspec's build number (`version: X.Y.Z+N`) in lockstep with the
+# versionCode just written, so the two can never drift. Single source of truth
+# is `android/version.properties`; never hand-edit the `+N` part.
+sh scripts/sync-version-code.sh
+git add pubspec.yaml
+git add flavors/pubspec_*.yaml

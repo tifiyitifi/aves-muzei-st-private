@@ -11,6 +11,9 @@ permissions: read-all
 jobs:
   release_github:
     name: GitHub release
+    # Upstream-only. The fork ships through build-custom-apk.yml; guard disables
+    # this Play-oriented pipeline so it can never run against the fork.
+    if: github.repository == 'deckerst/aves'
     runs-on: ubuntu-latest
     permissions:
       attestations: write
@@ -117,6 +120,7 @@ jobs:
 
   release_play:
     name: Play Store beta release
+    if: github.repository == 'deckerst/aves' # upstream-only, see release_github
     needs: [ release_github ]
     runs-on: ubuntu-latest
     steps:

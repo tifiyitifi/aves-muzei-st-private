@@ -2,9 +2,9 @@ name: Quality check
 
 on:
   push:
-    branches: [ "develop", "main" ]
+    branches: [ "develop", "main", "muzei-dev", "release" ]
   pull_request:
-    branches: [ "develop", "main" ]
+    branches: [ "develop", "main", "muzei-dev", "release" ]
     types: [ opened, synchronize, reopened ]
   schedule:
     - cron: '17 8 * * 3'

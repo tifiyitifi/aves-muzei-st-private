@@ -120,6 +120,15 @@ From the comment in `pubspec.yaml`, in order: bump `version:` in `pubspec.yaml`,
 - The `+N` build number is derived from `android/version.properties` and is rewritten by `scripts/sync-version-code.sh` (called by `.githooks/pre-commit`, covering the root pubspec **and** every `flavors/pubspec_*.yaml`). **Never hand-edit `+N`** — only the `X.Y.Z` marketing version is manual.
 - Release tags are `v<X.Y.Z>` (the `+N` part is dropped).
 
+## Releases
+
+Fork releases are produced from the **`release`** branch: pushing it triggers `build-custom-apk.yml`, whose `release` job auto-tags `v<X.Y.Z>`, extracts the matching `CHANGELOG.md` section (`scripts/extract_log.py`), and publishes a GitHub Release with the signed `custom` APK and `SHA256SUMS.txt`.
+
+- A release is created **only when `X.Y.Z` is bumped** — the tag check is idempotent, so ordinary pushes to `release` only build.
+- `versionCode` must increase per release for Android to upgrade. That bump happens on a **normal commit** (`.githooks/pre-commit`). AI commits skip the hook, so ensure every release includes a normal version-bump commit.
+- Release procedure: bump `X.Y.Z` in `pubspec.yaml` → add a `## ...[vX.Y.Z]` section to `CHANGELOG.md` → commit (hook enabled) → update `release` from `muzei-dev` → push `release`.
+- The upstream `release.yml` is guarded to run only in `deckerst/aves`; the fork never uses it.
+
 ## AI session conventions
 
 - Reply in the user's language (Chinese / English / mixed).

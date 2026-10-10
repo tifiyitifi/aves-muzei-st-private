@@ -84,7 +84,7 @@ New fork-only features must reuse the existing stack, not introduce a parallel o
 - **State:** keep `provider` + `ChangeNotifier`. Expose feature state as a `ChangeNotifier` (or an immutable value held by one) and read shared state via `context.select`/`context.watch` (`Settings`, `CollectionSource`, `CollectionLens`, ...). **Do not add a second global-state library.**
 - **Widgets:** `HookWidget` (`flutter_hooks`) is allowed for feature-local ephemeral state and controllers; keep `StatefulWidget` where a custom `State` lifecycle is needed. Do not retrofit existing/upstream widgets to hooks.
 - **Services:** register platform-facing services with `get_it`, as the rest of the app does.
-- **Models:** hand-written immutable classes + `equatable` (matching aves), with manual `copyWith`/`==`/`hashCode`, unless a feature genuinely benefits from codegen models.
+- **Models:** for **new feature** value/DTO/state models use `freezed` (+ `json_serializable` when serialized); codegen is already in the toolchain, and it removes hand-written `copyWith`/`==`/`hashCode`. Keep **entities / mutable identity-based models** (e.g. `AvesEntry`) and upstream models (`lib/model`, `aves_model`) hand-written + `equatable`; do not convert them. Use plain Dart `enum`s, and map Drift row classes to feature models via adapters (never expose Drift types to the UI).
 - **Dependencies:** prefer reusing existing packages; every new dependency must also land in the flavor manifests (see Flavors).
 
 ## Persistence & database

@@ -10,6 +10,7 @@ import 'package:aves/features/drift_db/dynamic_albums/dynamic_album_store.dart';
 import 'package:aves/features/drift_db/entries/entry_store.dart';
 import 'package:aves/features/drift_db/favourites/favourite_store.dart';
 import 'package:aves/features/drift_db/migration/legacy_import.dart';
+import 'package:aves/features/drift_db/migration/legacy_import_progress.dart';
 import 'package:aves/features/drift_db/trash/trash_store.dart';
 import 'package:aves/features/drift_db/vaults/vault_store.dart';
 import 'package:aves/features/drift_db/video_playback/video_playback_store.dart';
@@ -55,7 +56,7 @@ class DriftLocalMediaDb implements LocalMediaDb {
   late final VideoPlaybackStore _videoPlayback;
   late final DebugStore _debug;
   late final AppMetaStore _appMeta;
-  bool _initialized = false;
+  Future<void>? _initFuture;
 
   @override
   int get nextId => ++_lastId;
@@ -64,16 +65,15 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<String> get path async => pContext.join(await sqflite.getDatabasesPath(), dbFileName);
 
   @override
-  Future<void> init() async {
-    if (_initialized) return;
+  Future<void> init() => _initFuture ??= _initialize();
 
+  Future<void> _initialize() async {
     final injected = _injectedDatabase;
     if (injected != null) {
       _db = injected;
       await _db.customSelect('SELECT 1').get();
       _wireStores();
       _lastId = await _entries.maxId();
-      _initialized = true;
       return;
     }
 
@@ -87,10 +87,17 @@ class DriftLocalMediaDb implements LocalMediaDb {
     await _db.customSelect('SELECT 1').get();
     _wireStores();
 
-    await LegacyImport(_db, _appMeta).runIfNeeded(legacyPath: legacyPath);
+    try {
+      await LegacyImport(_db, _appMeta).runIfNeeded(
+        legacyPath: legacyPath,
+        onProgress: (progress) => legacyImportProgress.value = progress,
+      );
+    } finally {
+      // Never leave a stale indicator if the import fails.
+      legacyImportProgress.value = null;
+    }
 
     _lastId = await _entries.maxId();
-    _initialized = true;
   }
 
   void _wireStores() {
@@ -118,7 +125,7 @@ class DriftLocalMediaDb implements LocalMediaDb {
     debugPrint('$runtimeType reset');
     await _db.close();
     await sqflite.deleteDatabase(await path);
-    _initialized = false;
+    _initFuture = null;
     await init();
   }
 

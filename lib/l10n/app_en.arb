@@ -90,6 +90,20 @@
   "sourceStateLocatingCountries": "Locating countries",
   "sourceStateLocatingPlaces": "Locating places",
 
+  "dbImportTitle": "Importing media library",
+  "dbImportPreparing": "Preparing…",
+  "dbImportProgress": "{copied} / {total}",
+  "@dbImportProgress": {
+    "placeholders": {
+      "copied": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+
   "chipActionDelete": "Delete",
   "chipActionRemove": "Remove",
   "chipActionShowCollection": "Show in Collection",

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/locale/intl.dart';
 import 'package:aves/model/app/intent.dart';
@@ -94,7 +95,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
             error: _setupError!.$1,
             stack: _setupError!.$2,
           )
-        : null,
+        : const LegacyImportIndicator(),
   );
 
   Future<void> _setup() async {

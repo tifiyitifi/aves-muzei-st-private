@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/drift_db/migration/legacy_import.dart';
+import 'package:aves/features/drift_db/migration/legacy_import_progress.dart';
+import 'package:aves/features/drift_db/migration/legacy_import_state_store.dart';
 import 'package:aves/model/db/db_sqflite_schema.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:drift/native.dart';
@@ -31,7 +33,7 @@ void main() {
     if (tempDir.existsSync()) await tempDir.delete(recursive: true);
   });
 
-  Future<void> seedLegacy() async {
+  Future<void> seedLegacy({int entryCount = 1}) async {
     final legacy = await databaseFactory.openDatabase(
       legacyPath,
       options: OpenDatabaseOptions(
@@ -40,24 +42,26 @@ void main() {
       ),
     );
     final filterJson = StoredAlbumFilter('/album', null).toJsonString();
-    await legacy.insert('entry', {
-      'id': 1,
-      'contentId': 100,
-      'uri': 'content://1',
-      'path': '/album/1.jpg',
-      'sourceMimeType': 'image/jpeg',
-      'width': 10,
-      'height': 20,
-      'sourceRotationDegrees': 0,
-      'sizeBytes': 5,
-      'title': 'one',
-      'dateAddedSecs': 1,
-      'dateModifiedMillis': 2,
-      'sourceDateTakenMillis': 3,
-      'durationMillis': 0,
-      'trashed': 0,
-      'origin': 0,
-    });
+    for (var id = 1; id <= entryCount; id++) {
+      await legacy.insert('entry', {
+        'id': id,
+        'contentId': 100 + id,
+        'uri': 'content://$id',
+        'path': '/album/$id.jpg',
+        'sourceMimeType': 'image/jpeg',
+        'width': 10,
+        'height': 20,
+        'sourceRotationDegrees': 0,
+        'sizeBytes': 5,
+        'title': 'title$id',
+        'dateAddedSecs': 1,
+        'dateModifiedMillis': 2,
+        'sourceDateTakenMillis': 3,
+        'durationMillis': 0,
+        'trashed': 0,
+        'origin': 0,
+      });
+    }
     await legacy.insert('favourites', {'id': 1});
     await legacy.insert('metadata', {'id': 1, 'mimeType': 'image/jpeg', 'dateMillis': 3, 'flags': 0, 'rating': 4});
     await legacy.insert('dateTaken', {'id': 1, 'dateMillis': 3});
@@ -75,6 +79,8 @@ void main() {
     return rows.first.data['c'] as int? ?? 0;
   }
 
+  Future<LegacyImportStatus> status(AppDatabase db) => LegacyImportStateStore(AppMetaStore(db)).read().then((s) => s.status);
+
   test('imports every legacy table, keeps a backup, and is idempotent', () async {
     await seedLegacy();
 
@@ -84,7 +90,7 @@ void main() {
     for (final table in <String>['entry', 'favourites', 'metadata', 'dateTaken', 'covers', 'dynamicAlbums', 'vaults', 'trash', 'videoPlayback', 'debug']) {
       expect(await count(db, table), 1, reason: 'table=$table');
     }
-    expect(await count(db, 'appMeta'), 1);
+    expect(await status(db), LegacyImportStatus.done);
 
     // legacy file renamed to the rollback backup, not deleted
     expect(File(legacyPath).existsSync(), isFalse);
@@ -101,8 +107,94 @@ void main() {
     final db = AppDatabase(NativeDatabase.memory());
     await LegacyImport(db, AppMetaStore(db)).runIfNeeded(legacyPath: legacyPath);
 
-    expect(await count(db, 'appMeta'), 1);
+    expect(await status(db), LegacyImportStatus.done);
     expect(await count(db, 'entry'), 0);
+
+    await db.close();
+  });
+
+  test('resumes from the last committed chunk after an interruption', () async {
+    await seedLegacy(entryCount: 5);
+
+    final db = AppDatabase(NativeDatabase.memory());
+    final importer = LegacyImport(db, AppMetaStore(db), chunkSize: 2, staleMs: 0, pollInterval: Duration.zero);
+
+    // Fail after the first committed chunk, as a crash would.
+    var calls = 0;
+    await expectLater(
+      importer.runIfNeeded(
+        legacyPath: legacyPath,
+        onProgress: (progress) {
+          calls++;
+          if (calls >= 2) throw StateError('simulated interruption');
+        },
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    final interrupted = await LegacyImportStateStore(AppMetaStore(db)).read();
+    expect(interrupted.status, LegacyImportStatus.running);
+    expect(interrupted.copiedRows, 2);
+    expect(interrupted.totalRows, 14); // 5 entries + one row in each of the 9 other populated tables
+
+    // A new run takes over the stale state and finishes without duplicating.
+    await LegacyImport(db, AppMetaStore(db), chunkSize: 2, staleMs: 0, pollInterval: Duration.zero).runIfNeeded(legacyPath: legacyPath);
+
+    expect(await status(db), LegacyImportStatus.done);
+    expect(await count(db, 'entry'), 5);
+    expect(File(p.join(tempDir.path, LegacyImport.importedBackupFileName)).existsSync(), isTrue);
+
+    await db.close();
+  });
+
+  test('a second actor waits while another owns the import', () async {
+    await seedLegacy();
+
+    final db = AppDatabase(NativeDatabase.memory());
+    final state = LegacyImportStateStore(AppMetaStore(db));
+
+    // Simulate another actor already importing, with a fresh heartbeat.
+    await db.transaction(() async {
+      await state.takeWriteLock();
+      await state.writeClaim(owner: 'other', nowMs: DateTime.now().millisecondsSinceEpoch);
+    });
+
+    final seen = <LegacyImportProgress>[];
+    final future = LegacyImport(db, AppMetaStore(db), pollInterval: const Duration(milliseconds: 10)).runIfNeeded(
+      legacyPath: legacyPath,
+      onProgress: seen.add,
+    );
+
+    // Let this actor observe the busy state, then finish the other import.
+    await Future.delayed(const Duration(milliseconds: 50));
+    await db.transaction(() async {
+      await state.takeWriteLock();
+      await state.writeDone();
+    });
+    await future;
+
+    // The waiter never imported anything itself.
+    expect(await count(db, 'entry'), 0);
+    expect(seen, isNotEmpty);
+    expect(await status(db), LegacyImportStatus.done);
+
+    await db.close();
+  });
+
+  test('progress is monotonic and reaches the total', () async {
+    await seedLegacy(entryCount: 5);
+
+    final db = AppDatabase(NativeDatabase.memory());
+    final seen = <LegacyImportProgress>[];
+    await LegacyImport(db, AppMetaStore(db), chunkSize: 2).runIfNeeded(
+      legacyPath: legacyPath,
+      onProgress: seen.add,
+    );
+
+    final copied = seen.map((p) => p.copiedRows).toList();
+    expect(copied, equals(List.of(copied)..sort()), reason: 'progress must never go backwards');
+    expect(copied.last, seen.last.totalRows);
+    expect(seen.last.totalRows, 14);
 
     await db.close();
   });

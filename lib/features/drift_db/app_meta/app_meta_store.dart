@@ -3,22 +3,30 @@ import 'package:drift/drift.dart';
 
 /// Owns the `appMeta` table: fork-only key/value bookkeeping.
 ///
-/// Currently only the one-time legacy import flag lives here.
+/// Deliberately generic: the one-time legacy import keeps its state here (see
+/// `migration/legacy_import_state_store.dart`), so this store only knows how to
+/// read and write string values and never interprets them.
 class AppMetaStore {
-  static const _legacyImportedKey = 'legacyImported';
-
   final AppDatabase db;
 
   new(this.db);
 
-  Future<bool> isLegacyImported() async {
-    final rows = await (db.select(db.appMetaTable)..where((t) => t.key.equals(_legacyImportedKey))).get();
-    return rows.isNotEmpty && rows.first.value == 'true';
+  /// Reads the requested [keys] in one query; missing keys are simply absent.
+  Future<Map<String, String>> read(Set<String> keys) async {
+    if (keys.isEmpty) return const {};
+    final rows = await (db.select(db.appMetaTable)..where((t) => t.key.isIn(keys.toList()))).get();
+    return {
+      for (final row in rows)
+        if (row.value != null) row.key: row.value!,
+    };
   }
 
-  Future<void> markLegacyImported() async {
-    await db.into(db.appMetaTable).insertOnConflictUpdate(
-          AppMetaTableCompanion.insert(key: _legacyImportedKey, value: const Value('true')),
-        );
+  /// Upserts every entry of [values].
+  Future<void> write(Map<String, String> values) async {
+    for (final entry in values.entries) {
+      await db.into(db.appMetaTable).insertOnConflictUpdate(
+            AppMetaTableCompanion.insert(key: entry.key, value: Value(entry.value)),
+          );
+    }
   }
 }

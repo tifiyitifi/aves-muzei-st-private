@@ -66,7 +66,7 @@ class AppDatabase extends _$AppDatabase {
           // their own connection to the same file, so enable WAL and a busy
           // timeout to tolerate concurrent readers/writers.
           await customStatement('PRAGMA journal_mode = WAL');
-          await customStatement('PRAGMA busy_timeout = 5000');
+          await customStatement('PRAGMA busy_timeout = 30000');
           await customStatement('PRAGMA foreign_keys = OFF');
         },
       );

@@ -71,7 +71,7 @@ Order matters: `pub get` → codegen (if needed) → `gen-l10n` → `analyze`/`t
 
 CI (`quality-check.yml`) runs exactly: `pub get`, `gen-l10n`, `analyze`, `test`. Generated code is committed, so CI does not run codegen.
 
-CI (`build-custom-apk.yml`) builds a signed `custom`-flavor release APK on pushes/PRs to `muzei-dev`/`main`/`release` (and manual dispatch) and uploads it as an artifact. Signing secrets: `KEYSTORE`, `STORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` (optional `GOOGLE_API_KEY`). A push to the **`release`** branch additionally auto-tags `v<X.Y.Z>` (skipped when the tag already exists), extracts that section from `CHANGELOG.md` via `scripts/extract_log.py`, and publishes a GitHub Release with the APK and `SHA256SUMS.txt`. So a release is created only when `X.Y.Z` is bumped.
+CI (`build-custom-apk.yml`) builds a signed `custom`-flavor release APK on pushes/PRs to `muzei-dev`/`release` (and manual dispatch) and uploads it as an artifact. Signing secrets: `KEYSTORE`, `STORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` (optional `GOOGLE_API_KEY`). A push to the **`release`** branch additionally auto-tags `v<X.Y.Z>` (skipped when the tag already exists), extracts that section from `CHANGELOG.md` via `scripts/extract_log.py`, and publishes a GitHub Release with the APK and `SHA256SUMS.txt`. So a release is created only when `X.Y.Z` is bumped.
 
 ## Architecture & layering
 

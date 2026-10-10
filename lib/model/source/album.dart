@@ -4,12 +4,12 @@ import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
+import 'package:aves/model/source/filter_summary.dart';
 import 'package:aves/model/vaults/vaults.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/utils/android_file_utils.dart';
 import 'package:aves/view/view.dart';
 import 'package:aves_model/aves_model.dart';
-import 'package:aves_utils/aves_utils.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/widgets.dart';
 
@@ -87,7 +87,15 @@ mixin AlbumMixin on SourceBase {
   }
 
   void cleanEmptyAlbums([Set<String>? albums]) {
-    final removableAlbums = (albums ?? _directories).where(_isRemovable).toSet();
+    final filledAlbums = visibleEntries.map((entry) => entry.directory).toSet();
+    final pinnedAlbums = settings.pinnedFilters.whereType<StoredAlbumFilter>().map((v) => v.album);
+    final removableAlbums = (albums ?? _directories).where((album) {
+      if (filledAlbums.contains(album)) return false;
+      if (_newAlbums.contains(album)) return false;
+      if (vaults.isVault(album)) return false;
+      if (pinnedAlbums.contains(album)) return false;
+      return true;
+    }).toSet();
     if (removableAlbums.isNotEmpty) {
       _directories.removeAll(removableAlbums);
       _onAlbumChanged();
@@ -95,42 +103,27 @@ mixin AlbumMixin on SourceBase {
     }
   }
 
-  bool _isRemovable(String album) {
-    if (visibleEntries.any((entry) => entry.directory == album)) return false;
-    if (_newAlbums.contains(album)) return false;
-    if (vaults.isVault(album)) return false;
-    if (settings.pinnedFilters.whereType<StoredAlbumFilter>().map((v) => v.album).contains(album)) return false;
-    return true;
-  }
-
   // filter summary
 
   // by filter key
-  final Map<String, int> _filterEntryCountMap = {}, _filterSizeMap = {};
-  final Map<String, AvesEntry?> _filterRecentEntryMap = {};
+  final Map<String, FilterSummary> _filterSummary = {};
 
   void invalidateAlbumFilterSummary({
     Set<AvesEntry>? entries,
     Set<String?>? directories,
     bool notify = true,
   }) {
-    if (_filterEntryCountMap.isEmpty && _filterSizeMap.isEmpty && _filterRecentEntryMap.isEmpty) return;
+    if (_filterSummary.isEmpty) return;
 
     if (entries == null && directories == null) {
-      _filterEntryCountMap.clear();
-      _filterSizeMap.clear();
-      _filterRecentEntryMap.clear();
+      _filterSummary.clear();
     } else {
       // clear entries only for modified album directories
       directories ??= {};
       if (entries != null) {
         directories.addAll(entries.map((entry) => entry.directory).nonNulls);
       }
-      directories.nonNulls.map((v) => StoredAlbumFilter(v, null).key).forEach((key) {
-        _filterEntryCountMap.remove(key);
-        _filterSizeMap.remove(key);
-        _filterRecentEntryMap.remove(key);
-      });
+      directories.nonNulls.map((v) => StoredAlbumFilter(v, null).key).forEach(_filterSummary.remove);
 
       // clear entries for all dynamic albums and groups
       invalidateDynamicAlbumFilterSummary(notify: false);
@@ -144,9 +137,7 @@ mixin AlbumMixin on SourceBase {
   }
 
   void invalidateDynamicAlbumFilterSummary({bool notify = true}) {
-    _filterEntryCountMap.removeWhere(_isDynamicAlbumKey);
-    _filterSizeMap.removeWhere(_isDynamicAlbumKey);
-    _filterRecentEntryMap.removeWhere(_isDynamicAlbumKey);
+    _filterSummary.removeWhere(_isDynamicAlbumKey);
 
     if (notify) {
       eventBus.fire(const DynamicAlbumSummaryInvalidatedEvent());
@@ -154,9 +145,7 @@ mixin AlbumMixin on SourceBase {
   }
 
   void invalidateAlbumGroupFilterSummary({bool notify = true}) {
-    _filterEntryCountMap.removeWhere(_isAlbumGroupKey);
-    _filterSizeMap.removeWhere(_isAlbumGroupKey);
-    _filterRecentEntryMap.removeWhere(_isAlbumGroupKey);
+    _filterSummary.removeWhere(_isAlbumGroupKey);
 
     if (notify) {
       eventBus.fire(const AlbumGroupSummaryInvalidatedEvent());
@@ -167,17 +156,45 @@ mixin AlbumMixin on SourceBase {
 
   bool _isAlbumGroupKey(String key, _) => key.startsWith('${AlbumGroupFilter.type}-');
 
-  int albumEntryCount(AlbumBaseFilter filter) {
-    return _filterEntryCountMap.putIfAbsent(filter.key, () => visibleEntries.where(filter.test).length);
+  void _computeStoredAlbumSummaries() {
+    final entryCounts = <String, int>{};
+    final sizes = <String, int>{};
+    final recentEntries = <String, AvesEntry?>{};
+
+    sortedEntriesByDate.forEach((entry) {
+      final album = entry.directory;
+      if (album != null) {
+        entryCounts[album] = (entryCounts[album] ?? 0) + 1;
+        sizes[album] = (sizes[album] ?? 0) + (entry.sizeBytes ?? 0);
+        recentEntries.putIfAbsent(album, () => entry);
+      }
+    });
+
+    entryCounts.keys.forEach((album) {
+      final key = StoredAlbumFilter(album, null).key;
+      _filterSummary.putIfAbsent(
+        key,
+        () => FilterSummary(
+          entryCount: entryCounts[album] ?? 0,
+          size: sizes[album] ?? 0,
+          recentEntry: recentEntries[album],
+        ),
+      );
+    });
   }
 
-  int albumSize(AlbumBaseFilter filter) {
-    return _filterSizeMap.putIfAbsent(filter.key, () => visibleEntries.where(filter.test).map((v) => v.sizeBytes).sum);
+  FilterSummary _getSummary(AlbumBaseFilter filter) {
+    if (_filterSummary.isEmpty) {
+      _computeStoredAlbumSummaries();
+    }
+    return _filterSummary.putIfAbsent(filter.key, () => computeFilterSummary(filter));
   }
 
-  AvesEntry? albumRecentEntry(AlbumBaseFilter filter) {
-    return _filterRecentEntryMap.putIfAbsent(filter.key, () => sortedEntriesByDate.firstWhereOrNull(filter.test));
-  }
+  int albumEntryCount(AlbumBaseFilter filter) => _getSummary(filter).entryCount;
+
+  int albumSize(AlbumBaseFilter filter) => _getSummary(filter).size;
+
+  AvesEntry? albumRecentEntry(AlbumBaseFilter filter) => _getSummary(filter).recentEntry;
 
   // new albums
 
@@ -265,16 +282,8 @@ mixin AlbumMixin on SourceBase {
 
 class AlbumsChangedEvent;
 
-class DynamicAlbumSummaryInvalidatedEvent {
-  const new();
-}
+class const DynamicAlbumSummaryInvalidatedEvent();
 
-class AlbumGroupSummaryInvalidatedEvent {
-  const new();
-}
+class const AlbumGroupSummaryInvalidatedEvent();
 
-class StoredAlbumSummaryInvalidatedEvent {
-  final Set<String?>? directories;
-
-  const new(this.directories);
-}
+class const StoredAlbumSummaryInvalidatedEvent(final Set<String?>? directories);

@@ -2,3 +2,6 @@
 # so the pre-commit hook works the same on Windows and Unix.
 .githooks/* text eol=lf
 android/version.properties text eol=lf
+# POSIX shell scripts are executed by the git hooks and CI; a CRLF checkout
+# would corrupt them on Windows.
+scripts/*.sh text eol=lf

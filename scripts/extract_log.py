@@ -39,6 +39,10 @@ def extract_log(version: str) -> None:
     while body and not body[-1].strip():
         body.pop()
 
+    if not found:
+        print(f"Error: no '## ...[{version}]' section in CHANGELOG.md", file=sys.stderr)
+        sys.exit(1)
+
     output_file = f"CHANGELOG_{version}.md"
     with open(output_file, "w", encoding="utf-8") as f:
         f.write("".join(body).strip())

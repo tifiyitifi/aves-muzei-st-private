@@ -71,6 +71,8 @@ Order matters: `pub get` → codegen (if needed) → `gen-l10n` → `analyze`/`t
 
 CI (`quality-check.yml`) runs exactly: `pub get`, `gen-l10n`, `analyze`, `test`. Generated code is committed, so CI does not run codegen.
 
+CI (`build-custom-apk.yml`) builds a signed `custom`-flavor release APK on pushes/PRs to `muzei-dev`/`main` (and manual dispatch) and uploads it as an artifact. Signing secrets: `KEYSTORE`, `STORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` (optional `GOOGLE_API_KEY`).
+
 ## Architecture & layering
 
 - `lib/model` (domain), `lib/view/src` + `lib/view/view.dart` (shared enums/actions re-exported across layers), `lib/services` (platform-facing, registered via `get_it`), `lib/widgets` (UI).
@@ -114,6 +116,9 @@ New fork-only features must reuse the existing stack, not introduce a parallel o
 ## Version bump checklist
 
 From the comment in `pubspec.yaml`, in order: bump `version:` in `pubspec.yaml`, update `CHANGELOG.md`, update `whatsnew/whatsnew-en-US`, then run `scripts/apply_version_bump.sh` (regenerates changelogs + all three flavor manifests).
+
+- The `+N` build number is derived from `android/version.properties` and is rewritten by `scripts/sync-version-code.sh` (called by `.githooks/pre-commit`, covering the root pubspec **and** every `flavors/pubspec_*.yaml`). **Never hand-edit `+N`** — only the `X.Y.Z` marketing version is manual.
+- Release tags are `v<X.Y.Z>` (the `+N` part is dropped).
 
 ## AI session conventions
 

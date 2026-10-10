@@ -1,0 +1,90 @@
+name: Build custom APK
+
+# Fork-only build: produces an installable, signed `custom` APK as a workflow
+# artifact on every push/PR, so the private fork always has a downloadable build
+# without waiting for a tagged release. Other flavors stay in `release.yml`.
+on:
+  push:
+    branches: [ "muzei-dev", "main" ]
+  pull_request:
+    branches: [ "muzei-dev", "main" ]
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  build_custom_apk:
+    name: Custom APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Free disk space
+        run: |
+          # Split APKs plus native-lib merges can exhaust the stock runner.
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost \
+                      /usr/local/.ghcup /usr/share/swift || true
+          sudo rm -rf /usr/local/lib/android/sdk/system-images || true
+          sudo rm -rf "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" || true
+          sudo apt-get clean || true
+
+      # Building relies on the Android Gradle plugin, which requires a modern
+      # Java version (not the runner default).
+      - name: Set up JDK for Android Gradle plugin
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Decode and save keystore
+        run: |
+          echo "${{ secrets.KEYSTORE }}" | base64 --decode > android/app/keystore.jks
+
+      - name: Save signing properties
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          {
+            echo "storeFile=keystore.jks"
+            echo "storePassword=${{ secrets.STORE_PASSWORD }}"
+            echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
+            echo "keyAlias=${{ secrets.KEY_ALIAS }}"
+            # Only add googleApiKey when provided, so `custom` maps stay disabled
+            # ("NONE") instead of getting an empty key.
+            if [ -n "${GOOGLE_API_KEY}" ]; then echo "googleApiKey=${GOOGLE_API_KEY}"; fi
+          } > android/key.properties
+
+      - name: Apply custom flavor
+        run: scripts/apply_flavor_custom.sh
+
+      - name: Generate app localizations
+        run: ./flutterw gen-l10n
+
+      - name: Read app version
+        id: ver
+        run: |
+          # pubspec version is the single source of truth; `+` is not filename-safe.
+          raw=$(sed -n 's/^version: *//p' pubspec.yaml | head -n1)
+          echo "value=${raw//+/_}" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed custom APK
+        run: ./flutterw build apk --release -t lib/main_custom.dart --flavor custom
+
+      - name: Collect artifact
+        run: |
+          mkdir -p outputs
+          cp build/app/outputs/apk/custom/release/*.apk "outputs/aves-custom-${{ steps.ver.outputs.value }}.apk"
+          ls -l outputs
+
+      - name: Upload APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: aves-custom-apk
+          path: outputs/*.apk
+          if-no-files-found: error

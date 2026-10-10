@@ -26,6 +26,7 @@ Read the critical rules first, then the toolchain and workflow sections.
 This repo is a fork, so keeping the diff against `upstream` small matters more than any local style preference — it decides whether upstream updates stay mergeable.
 
 - Put every **new feature** in `lib/features/<feature>/` as a self-contained slice (`model/`, `services/`, `widgets/`, plus `view/`, `provider/`, `db/` as needed).
+- A feature slice is production code only: put its tests in `test/features/<feature>/`, mirroring `lib/features/<feature>/`. Never place test files inside the slice.
 - Touch upstream-owned trees (`lib/model`, `lib/services`, `lib/widgets`, `lib/view`, `lib/convert`, ...) only for the minimum cross-cutting wiring (DI/`get_it` registration, a route, a settings entry point).
 - Keep changes additive and localized so a fork slice can be dropped cleanly if upstream ships the same capability.
 - Inside a feature slice, package by **domain/feature**, not by technical layer: no shared `tables/`, `dao/`, `models/` catch-alls. Each domain gets its own subdirectory that owns its table, queries and mapping, and exposes a small domain-typed interface. Adding a capability adds a slice, not edits spread across several shared files.
@@ -118,6 +119,7 @@ New fork-only features must reuse the existing stack, not introduce a parallel o
 ## Testing
 
 - Unit/widget tests live in `test/` (run with `./flutterw test`); integration driver tests live in `test_driver/` and run via `./flutterw drive` on a connected device/emulator (they are not picked up by `flutter test`).
+- Mirror the source layout: tests for `lib/features/<feature>/` live in `test/features/<feature>/` (e.g. `lib/features/logging/log.dart` → `test/features/logging/log_test.dart`); `lib/features/**` holds production code only.
 - **TDD for behaviour changes** in testable layers (`lib/model`, `lib/services` logic, `lib/utils`, filters/parsers, and `lib/features/*/model|services`): Red → Green → Refactor — write or adjust the failing test first.
 - **Exempt:** UI widgets/layout, adapted third-party sources, platform channels (video/Google/report/Android native), and flavor/build config. For bug fixes, add a regression test that reproduces the bug first whenever feasible.
 - Tests that need platform services must call `setUpAllServices()` / `setUpServices()` from `test/common.dart`, which registers in-memory fakes (SharedPreferences, media/db/storage services). Don't hit real platform channels.

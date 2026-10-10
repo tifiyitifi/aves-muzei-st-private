@@ -34,6 +34,9 @@ jobs:
       - name: Static analysis.
         run: ./flutterw analyze
 
+      - name: Install host sqlite3 (Drift/sqflite-ffi database tests)
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
       - name: Unit tests.
         run: ./flutterw test
 

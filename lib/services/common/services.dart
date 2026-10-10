@@ -1,6 +1,6 @@
 import 'package:aves/model/availability.dart';
+import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/db/db.dart';
-import 'package:aves/model/db/db_sqflite.dart';
 import 'package:aves/model/settings/store_shared_pref.dart';
 import 'package:aves/services/app_profile_service.dart';
 import 'package:aves/services/app_service.dart';
@@ -60,7 +60,9 @@ final WindowService windowService = getIt<WindowService>();
 void initPlatformServices() {
   getIt.registerLazySingleton<p.Context>(p.Context.new);
   getIt.registerLazySingleton<AvesAvailability>(LiveAvesAvailability.new);
-  getIt.registerLazySingleton<LocalMediaDb>(SqfliteLocalMediaDb.new);
+  // Rollback path: register `SqfliteLocalMediaDb.new` here (and re-import
+  // `package:aves/model/db/db_sqflite.dart`) to fall back to the legacy engine.
+  getIt.registerLazySingleton<LocalMediaDb>(DriftLocalMediaDb.new);
   getIt.registerLazySingleton<AvesAudioControllerFactory>(MpvAudioControllerFactory.new);
   getIt.registerLazySingleton<AvesVideoControllerFactory>(MpvVideoControllerFactory.new);
   getIt.registerLazySingleton<AvesVideoMetadataFetcher>(MpvVideoMetadataFetcher.new);

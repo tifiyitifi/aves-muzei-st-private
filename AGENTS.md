@@ -143,3 +143,4 @@ Fork releases are produced from the **`release`** branch: pushing it triggers `b
 
 - `analysis_options.yaml`: `formatter.page_width: 240`, `trailing_commas: preserve`; enforced lints include single quotes, `always_declare_return_types`, `unawaited_futures`, and `prefer_const_*`.
 - Prefer `const` constructors, avoid `dynamic`, and declare explicit return types.
+- New code imports through full `package:` URIs (e.g. `package:aves/features/...`), never relative paths. The only exception is a file under `test/` importing another file under `test/`, which a package URI cannot address.

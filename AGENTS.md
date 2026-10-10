@@ -28,6 +28,7 @@ This repo is a fork, so keeping the diff against `upstream` small matters more t
 - Put every **new feature** in `lib/features/<feature>/` as a self-contained slice (`model/`, `services/`, `widgets/`, plus `view/`, `provider/`, `db/` as needed).
 - Touch upstream-owned trees (`lib/model`, `lib/services`, `lib/widgets`, `lib/view`, `lib/convert`, ...) only for the minimum cross-cutting wiring (DI/`get_it` registration, a route, a settings entry point).
 - Keep changes additive and localized so a fork slice can be dropped cleanly if upstream ships the same capability.
+- Inside a feature slice, package by **domain/feature**, not by technical layer: no shared `tables/`, `dao/`, `models/` catch-alls. Each domain gets its own subdirectory that owns its table, queries and mapping, and exposes a small domain-typed interface. Adding a capability adds a slice, not edits spread across several shared files.
 
 ## Toolchain and setup
 
@@ -78,6 +79,15 @@ CI (`build-custom-apk.yml`) builds a signed `custom`-flavor release APK on pushe
 - `lib/model` (domain), `lib/view/src` + `lib/view/view.dart` (shared enums/actions re-exported across layers), `lib/services` (platform-facing, registered via `get_it`), `lib/widgets` (UI).
 - `lib/features/**` is the fork-only layer for new features, isolated from upstream-owned trees.
 - Many files are deliberate adaptations of Flutter/package sources (`lib/widgets/common/basic/*`, `lib/services/common/output_buffer.dart`, etc.; the full list is in `pubspec.yaml` comments). Keep them close to upstream rather than refactoring them as ordinary app code.
+
+## Design principles (A Philosophy of Software Design)
+
+- Complexity is dependencies plus obscurity; prefer designs that reduce both.
+- Deep modules: keep a module's public interface small and domain-typed, and hide its implementation (schema, column names, SQL, serialization) inside it.
+- Information hiding: a design decision lives in exactly one module; do not leak it across slices or layers.
+- Pull complexity downwards: lower modules absorb the hard parts so callers and composition roots stay thin.
+- Different layer, different abstraction: keep the upstream seams (`LocalMediaDb`, `SettingsStore`) separate from the backing engine's concepts.
+- Prefer composition: a thin composition root wires self-contained slices; adding a capability adds a slice. Organize by feature the way Vue composables group one concern behind a small interface and are then composed, rather than spreading code across option-style buckets.
 
 ## Tech stack for new features (`lib/features/**`)
 

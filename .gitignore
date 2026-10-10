@@ -57,3 +57,4 @@ app.*.map.json
 # AI session scratch space: throwaway working notes. Keep the shared tooling only.
 /.ai_tmp/*
 !/.ai_tmp/_common/
+/.ai_tmp/_common/.log.txt

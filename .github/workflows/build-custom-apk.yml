@@ -8,9 +8,9 @@ name: Build custom APK
 # Other flavors stay in the upstream `release.yml`.
 on:
   push:
-    branches: [ "muzei-dev", "main", "release" ]
+    branches: [ "muzei-dev", "release" ]
   pull_request:
-    branches: [ "muzei-dev", "main", "release" ]
+    branches: [ "muzei-dev", "release" ]
   workflow_dispatch:
 
 permissions: read-all

@@ -53,3 +53,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# AI session scratch space: throwaway working notes. Keep the shared tooling only.
+/.ai_tmp/*
+!/.ai_tmp/_common/

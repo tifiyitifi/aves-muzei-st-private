@@ -5,3 +5,5 @@ android/version.properties text eol=lf
 # POSIX shell scripts are executed by the git hooks and CI; a CRLF checkout
 # would corrupt them on Windows.
 scripts/*.sh text eol=lf
+# The AI scratch-space helper is a POSIX shell script too.
+.ai_tmp/_common/*.sh text eol=lf

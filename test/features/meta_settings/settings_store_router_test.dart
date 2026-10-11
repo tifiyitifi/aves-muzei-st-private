@@ -66,6 +66,22 @@ void main() {
     expect(await gate.read(), SettingsEngineVersion.v1);
   });
 
+  test('writes to the gate key are ignored by both engines', () async {
+    await gate.write(SettingsEngineVersion.v1);
+    await router.init();
+
+    // v1: a stray write would land in the same SharedPreferences file as the gate
+    await router.setString(SettingsEngineGate.key, SettingsEngineVersion.v2.name);
+    expect(legacy.getString(SettingsEngineGate.key), SettingsEngineVersion.v1.name);
+    expect(await gate.read(), SettingsEngineVersion.v1);
+
+    // v2: a stray write would otherwise pollute the metadata store
+    await router.activate(SettingsEngineVersion.v2);
+    await router.setString(SettingsEngineGate.key, 'polluted');
+    expect(meta.getKeys(), isEmpty);
+    expect(router.get(SettingsEngineGate.key), isNull);
+  });
+
   test('clear preserves the gate', () async {
     await gate.write(SettingsEngineVersion.v1);
     await router.init();
@@ -90,6 +106,19 @@ void main() {
     final second = SettingsStoreRouter(legacy: legacy, meta: meta, gate: gate);
     await second.init();
     expect(meta.getKeys(), isEmpty);
+  });
+
+  test('seeding never copies the engine gate key into the metadata store', () async {
+    // the gate shares the legacy store's SharedPreferences file
+    await gate.write(SettingsEngineVersion.v2);
+    final pre = SharedPrefSettingsStore();
+    await pre.init();
+    await pre.setString(SettingKeys.themeBrightnessKey, 'dark');
+
+    await router.init();
+    expect(meta.getString(SettingKeys.themeBrightnessKey), 'dark');
+    expect(meta.getKeys(), isNot(contains(SettingsEngineGate.key)));
+    expect(router.getKeys(), isNot(contains(SettingsEngineGate.key)));
   });
 
   test('switching engines keeps the two stores independent after seeding', () async {

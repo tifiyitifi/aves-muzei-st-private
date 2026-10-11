@@ -46,6 +46,10 @@ Future<bool> setBinUsage(BuildContext context, bool enabled) async {
       if (source.trashedEntries.isNotEmpty) return false;
     }
 
+    // Parity with upstream `SettingsTilePrivacyEnableBin.setBinUsage`: it clears
+    // the search history too, which reads as a copy-paste from the
+    // save-search-history tile rather than intent. Kept as-is for now to stay
+    // diff-minimal against upstream; revisit if upstream fixes it.
     settings.searchHistory = [];
   }
 

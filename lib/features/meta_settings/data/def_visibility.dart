@@ -25,6 +25,7 @@ abstract final class DefVisibility {
 
   static bool isRegistered(String key) => _predicates.containsKey(key);
 
-  /// A def with no availability key is always visible.
-  static bool isVisible(String? key) => key == null || (_predicates[key]?.call() ?? true);
+  /// A def with no availability key is always visible; an unregistered key is
+  /// hidden, so a typo cannot silently ship a def (fail-closed).
+  static bool isVisible(String? key) => key == null || (_predicates[key]?.call() ?? false);
 }

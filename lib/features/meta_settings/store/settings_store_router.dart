@@ -40,6 +40,17 @@ class SettingsStoreRouter implements SettingsStore {
 
   SettingsStore get _active => isMeta ? _meta : _legacy;
 
+  /// The engine selector is not a setting: [remove] ignores it, [getKeys] hides
+  /// it and [clear] re-asserts it, so writes must be ignored too. Otherwise a
+  /// stray `SettingsAccess.set(gate)` would pollute the authoritative store —
+  /// and, while the legacy engine is active, silently overwrite the real gate
+  /// (it shares the same `SharedPreferences` file).
+  bool _ignoresGateWrite(String key) {
+    if (key != SettingsEngineGate.key) return false;
+    _log.w('ignored a write to the settings engine gate key');
+    return true;
+  }
+
   @override
   bool get initialized => _active.initialized;
 
@@ -117,17 +128,17 @@ class SettingsStoreRouter implements SettingsStore {
   // set
 
   @override
-  Future<bool> setBool(String key, bool value) => _active.setBool(key, value);
+  Future<bool> setBool(String key, bool value) => _ignoresGateWrite(key) ? Future.value(true) : _active.setBool(key, value);
 
   @override
-  Future<bool> setInt(String key, int value) => _active.setInt(key, value);
+  Future<bool> setInt(String key, int value) => _ignoresGateWrite(key) ? Future.value(true) : _active.setInt(key, value);
 
   @override
-  Future<bool> setDouble(String key, double value) => _active.setDouble(key, value);
+  Future<bool> setDouble(String key, double value) => _ignoresGateWrite(key) ? Future.value(true) : _active.setDouble(key, value);
 
   @override
-  Future<bool> setString(String key, String value) => _active.setString(key, value);
+  Future<bool> setString(String key, String value) => _ignoresGateWrite(key) ? Future.value(true) : _active.setString(key, value);
 
   @override
-  Future<bool> setStringList(String key, List<String> value) => _active.setStringList(key, value);
+  Future<bool> setStringList(String key, List<String> value) => _ignoresGateWrite(key) ? Future.value(true) : _active.setStringList(key, value);
 }

@@ -11,13 +11,17 @@ import 'package:flutter/widgets.dart';
 /// Renders the fork-owned metadata surface when the v2 engine is active, and the
 /// upstream surface otherwise. Rebuilds when the engine changes, so switching is
 /// immediate and in-place.
+///
+/// It also listens to [settings]: the tv/mobile choice depends on
+/// `settings.useTvLayout`, and the pages it returns are `const`, so reacting to
+/// every settings change is cheap (identical `const` widgets short-circuit).
 class SettingsHost extends StatelessWidget {
   const new({super.key});
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: settingsEngineController,
+      animation: Listenable.merge([settingsEngineController, settings]),
       builder: (context, child) {
         if (settingsEngineController.isMeta) {
           return settings.useTvLayout ? const MetaSettingsTvPage() : const MetaSettingsPage();

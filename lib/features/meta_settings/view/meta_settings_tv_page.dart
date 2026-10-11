@@ -4,6 +4,7 @@ import 'package:aves/features/meta_settings/model/enum/settings_category.dart';
 import 'package:aves/features/meta_settings/view/category_meta.dart';
 import 'package:aves/features/meta_settings/view/widgets/meta_settings_list_view.dart';
 import 'package:aves/features/meta_settings/view/widgets/setting_row.dart';
+import 'package:aves/model/settings/settings.dart';
 import 'package:aves/widgets/common/basic/insets.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/behaviour/pop/scope.dart';
@@ -138,6 +139,8 @@ class _CategoryDefs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // subscribe so the `not_tv` visibility filter re-evaluates when the layout toggles
+    context.select<Settings, bool>((s) => s.useTvLayout);
     final defs = metaSettingsDefsFor(category).where((def) => DefVisibility.isVisible(def.availabilityKey)).toList();
     return MetaSettingsListView(
       key: ValueKey(category),

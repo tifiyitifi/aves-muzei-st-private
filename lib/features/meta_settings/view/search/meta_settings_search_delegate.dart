@@ -1,8 +1,10 @@
 import 'package:aves/features/meta_settings/data/catalog.dart';
+import 'package:aves/features/meta_settings/data/def_search.dart';
 import 'package:aves/features/meta_settings/data/def_visibility.dart';
 import 'package:aves/features/meta_settings/model/enum/settings_category.dart';
 import 'package:aves/features/meta_settings/model/setting_def.dart';
 import 'package:aves/features/meta_settings/view/category_meta.dart';
+import 'package:aves/features/meta_settings/view/page_search_keys.dart';
 import 'package:aves/features/meta_settings/view/widgets/setting_row.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/icons.dart';
@@ -32,7 +34,27 @@ class MetaSettingsSearchDelegate extends AvesSearchDelegate {
     List<SettingDef> visibleDefs(SettingsCategory category) =>
         metaSettingsDefsFor(category).where((def) => DefVisibility.isVisible(def.availabilityKey)).toList();
 
+    // A sub-page is matched by the keys of the page it opens, not by its own
+    // `MetaPageKeys` route name (cf. upstream `SettingsTile.settingKeys`).
+    List<String> keysOf(SettingDef def) {
+      final routeName = def.routeName;
+      return routeName != null ? (metaPageSearchKeys[routeName] ?? const []) : [def.key];
+    }
+
     bool testTitle(String title) => title.toUpperCase().contains(upQuery);
+
+    // Recently changed settings: the window over `recentSettingKeys` is grown
+    // until enough defs match (same heuristic as the upstream search).
+    final recentKeys = <String>[];
+    if (upQuery.isEmpty) {
+      final recent = settings.recentSettingKeys;
+      final takeCount = recentSettingKeyTakeCount(
+        recentKeys: recent,
+        defs: SettingsCategory.values.expand(visibleDefs),
+        keysOf: keysOf,
+      );
+      recentKeys.addAll(recent.take(takeCount));
+    }
 
     final children = <Widget>[];
     for (final category in SettingsCategory.values) {
@@ -41,9 +63,7 @@ class MetaSettingsSearchDelegate extends AvesSearchDelegate {
 
       final List<SettingDef> matched;
       if (upQuery.isEmpty) {
-        // recently changed settings
-        final recent = settings.recentSettingKeys;
-        matched = visibleDefs(category).where((def) => recent.contains(def.key)).take(3).toList();
+        matched = visibleDefs(category).where((def) => keysOf(def).any(recentKeys.contains)).toList();
       } else if (testTitle(meta.title(context))) {
         matched = visibleDefs(category);
       } else {

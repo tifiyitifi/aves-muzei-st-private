@@ -2,6 +2,7 @@ import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/features/meta_settings/store/meta_settings_store.dart';
+import 'package:aves/features/meta_settings/store/settings_engine_gate.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
 
@@ -29,7 +30,9 @@ class MetaSettingsSeeder {
     if ((await appMeta.read({markerKey}))[markerKey] == 'true') return;
 
     if (meta.isEmpty) {
-      final keys = legacy.getKeys().whereNot(SettingKeys.isInternalKey).toList();
+      // the gate lives in the legacy store's SharedPreferences but is not a
+      // setting: never copy it into the metadata store
+      final keys = legacy.getKeys().whereNot(SettingKeys.isInternalKey).where((key) => key != SettingsEngineGate.key).toList();
       var copied = 0;
       for (final key in keys) {
         final value = legacy.get(key);

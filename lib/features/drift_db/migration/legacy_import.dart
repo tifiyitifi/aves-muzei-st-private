@@ -325,6 +325,11 @@ class LegacyImport {
     });
   }
 
+  /// Keeps the legacy file on disk as `metadata.db.imported` instead of
+  /// deleting it, so the pre-migration data stays inspectable for
+  /// traceability/rollback. Leftover sqflite side files (e.g.
+  /// `metadata.db-journal`) are likewise left in place; they are inert once the
+  /// database has been renamed.
   Future<void> _keepBackup(File legacyFile, String legacyPath) async {
     try {
       if (!legacyFile.existsSync()) return;

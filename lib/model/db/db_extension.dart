@@ -1,5 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 
+/// `sqflite`-only helper, retained together with the legacy database engine
+/// (`db_sqflite*.dart`) for historical reference. Not used by the active Drift
+/// backend.
 extension ExtraDatabase on Database {
   // check table existence via `sqlite_master`
   // `sqlite_schema` is the alias used in SQLite documentation,

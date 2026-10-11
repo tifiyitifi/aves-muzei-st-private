@@ -18,6 +18,14 @@ import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
+/// Legacy `sqflite` implementation of the local media database.
+///
+/// Historical retention: the app now runs on the Drift backend in
+/// `lib/features/drift_db/`. This engine is kept (not deleted) so the old
+/// physical behaviour can be traced, and so it can be re-registered as a
+/// documented rollback path (see the note in
+/// `lib/services/common/services.dart`). It is no longer part of the active
+/// code path; do not extend it.
 class SqfliteLocalMediaDb implements LocalMediaDb {
   late Database _db;
 

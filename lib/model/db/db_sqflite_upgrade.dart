@@ -7,6 +7,12 @@ import 'package:aves/model/filters/filters.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
+/// Forward-only upgrade history of the legacy `metadata.db` (v1 -> v16).
+///
+/// Historical retention: kept so the one-time legacy import can bring an old
+/// `metadata.db` up to v16 before copying it into the Drift database, and as
+/// part of the legacy rollback engine. Not used by the active Drift backend;
+/// do not extend it.
 class LocalMediaDbUpgrader {
   static const entryTable = SqfliteLocalMediaDbSchema.entryTable;
   static const dateTakenTable = SqfliteLocalMediaDbSchema.dateTakenTable;

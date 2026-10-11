@@ -1,5 +1,12 @@
 import 'package:sqflite/sqflite.dart';
 
+/// Physical schema of the legacy `metadata.db` (sqflite, v16).
+///
+/// Historical retention: the app's active database is the Drift one in
+/// `lib/features/drift_db/`. This schema is still read exactly once by the
+/// one-time legacy import (`drift_db/migration/legacy_import.dart`) and is
+/// reused by the legacy rollback engine; it is otherwise unused and kept for
+/// traceability. Do not extend it.
 class SqfliteLocalMediaDbSchema {
   static const entryTable = 'entry';
   static const dateTakenTable = 'dateTaken';

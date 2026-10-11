@@ -1,6 +1,8 @@
 import 'dart:isolate';
 
 import 'package:aves/app_flavor.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/widgets/aves_app.dart';
 import 'package:flutter/foundation.dart';
@@ -10,6 +12,10 @@ import 'package:material_ui/material_ui.dart';
 
 void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
   debugProfilePlatformChannels = false;
+
+  Log.init();
+  const appLog = AreaKeyLog(LogKeys.app);
+  appLog.i('app start flavor=${flavor.name}');
 
   //  HttpClient.enableTimelineLogging = true; // enable network traffic logging
   //  debugPrintGestureArenaDiagnostics = true;

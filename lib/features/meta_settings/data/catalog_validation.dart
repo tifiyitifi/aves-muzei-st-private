@@ -11,6 +11,7 @@ List<String> validateMetaSettingsCatalog(
   Iterable<SettingDef> defs, {
   required Set<String> registeredEditorKeys,
   required Set<String> registeredAvailabilityKeys,
+  required Set<String> registeredPageRouteNames,
 }) {
   final problems = <String>[];
   final seenKeys = <String>{};
@@ -33,6 +34,13 @@ List<String> validateMetaSettingsCatalog(
           problems.add('${def.key}: custom needs an editorKey');
         } else if (!registeredEditorKeys.contains(editorKey)) {
           problems.add('${def.key}: unregistered editorKey "$editorKey"');
+        }
+      case SettingWidgetKind.subPage:
+        final routeName = def.routeName;
+        if (routeName == null) {
+          problems.add('${def.key}: subPage needs a routeName');
+        } else if (!registeredPageRouteNames.contains(routeName)) {
+          problems.add('${def.key}: unregistered sub-page "$routeName"');
         }
     }
 

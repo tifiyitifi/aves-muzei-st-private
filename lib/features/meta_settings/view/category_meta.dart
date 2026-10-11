@@ -26,4 +26,53 @@ final Map<SettingsCategory, MetaCategoryMeta> metaCategoryMeta = {
           color: context.select<AvesColorsData, Color>((v) => v.fromHue(200)),
         ),
   ),
+  SettingsCategory.language: (
+    title: (context) => context.l10n.settingsLanguageSectionTitle,
+    icon: (context) => MetaTileLeading(
+          icon: AIcons.language,
+          color: context.select<AvesColorsData, Color>((v) => v.language),
+        ),
+  ),
+  SettingsCategory.accessibility: (
+    title: (context) => context.l10n.settingsAccessibilitySectionTitle,
+    icon: (context) => MetaTileLeading(
+          icon: AIcons.accessibility,
+          color: context.select<AvesColorsData, Color>((v) => v.accessibility),
+        ),
+  ),
+  SettingsCategory.privacy: (
+    title: (context) => context.l10n.settingsPrivacySectionTitle,
+    icon: (context) => MetaTileLeading(
+          icon: AIcons.privacy,
+          color: context.select<AvesColorsData, Color>((v) => v.privacy),
+        ),
+  ),
+  SettingsCategory.viewer: (
+    title: (context) => context.l10n.settingsViewerSectionTitle,
+    icon: (context) => MetaTileLeading(
+          icon: AIcons.image,
+          color: context.select<AvesColorsData, Color>((v) => v.image),
+        ),
+  ),
+  SettingsCategory.video: (
+    title: (context) => context.l10n.settingsVideoSectionTitle,
+    icon: (context) => MetaTileLeading(
+          icon: AIcons.video,
+          color: context.select<AvesColorsData, Color>((v) => v.video),
+        ),
+  ),
+  SettingsCategory.thumbnails: (
+    title: (context) => context.l10n.settingsThumbnailSectionTitle,
+    icon: (context) => MetaTileLeading(
+          icon: AIcons.thumbnails,
+          color: context.select<AvesColorsData, Color>((v) => v.thumbnails),
+        ),
+  ),
+  SettingsCategory.navigation: (
+    title: (context) => context.l10n.settingsNavigationSectionTitle,
+    icon: (context) => MetaTileLeading(
+          icon: AIcons.home,
+          color: context.select<AvesColorsData, Color>((v) => v.navigation),
+        ),
+  ),
 };

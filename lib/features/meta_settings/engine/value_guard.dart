@@ -25,13 +25,16 @@ abstract final class MetaValueGuard {
         }
         return value;
       case SettingWidgetKind.enumPick:
-        final names = def.enumValues?.map((v) => v.name).toSet() ?? const <String>{};
-        if (value is! String || !names.contains(value)) {
-          throw MetaSettingValueException('${def.key} expects one of $names, got $value');
+        final values = def.enumValues ?? const <Enum>[];
+        if (value is! Enum || !values.contains(value)) {
+          throw MetaSettingValueException('${def.key} expects one of ${values.map((v) => v.name).toList()}, got $value');
         }
         return value;
       case SettingWidgetKind.custom:
         // The custom editor owns its value domain.
+        return value;
+      case SettingWidgetKind.subPage:
+        // Sub-pages never write through the engine.
         return value;
     }
   }

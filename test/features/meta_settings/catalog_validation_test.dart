@@ -12,6 +12,7 @@ void main() {
     Object? Function(Object?)? reader,
     String? editorKey,
     String? availabilityKey,
+    String? routeName,
   }) =>
       SettingDef(
         key: key,
@@ -23,6 +24,7 @@ void main() {
         enumName: widgetKind == SettingWidgetKind.enumPick ? (context, value) => value.name : null,
         editorKey: editorKey,
         availabilityKey: availabilityKey,
+        routeName: routeName,
       );
 
   group('validateMetaSettingsCatalog', () {
@@ -35,6 +37,7 @@ void main() {
         ],
         registeredEditorKeys: {'editor'},
         registeredAvailabilityKeys: {},
+        registeredPageRouteNames: const {},
       );
       expect(problems, isEmpty);
     });
@@ -48,9 +51,11 @@ void main() {
           def(key: 'no_editor', widgetKind: SettingWidgetKind.custom),
           def(key: 'bad_editor', widgetKind: SettingWidgetKind.custom, editorKey: 'missing'),
           def(key: 'bad_availability', widgetKind: SettingWidgetKind.toggle, reader: (_) => true, availabilityKey: 'missing'),
+          def(key: 'bad_page', widgetKind: SettingWidgetKind.subPage, routeName: 'missing'),
         ],
         registeredEditorKeys: const {},
         registeredAvailabilityKeys: const {},
+        registeredPageRouteNames: const {},
       );
 
       expect(problems, contains('duplicate key "dup"'));
@@ -58,6 +63,7 @@ void main() {
       expect(problems.any((p) => p.startsWith('no_editor')), isTrue);
       expect(problems.any((p) => p.contains('unregistered editorKey "missing"')), isTrue);
       expect(problems.any((p) => p.contains('unregistered availabilityKey "missing"')), isTrue);
+      expect(problems.any((p) => p.contains('unregistered sub-page "missing"')), isTrue);
     });
   });
 }

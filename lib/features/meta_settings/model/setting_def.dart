@@ -28,6 +28,12 @@ class SettingDef {
   /// is [SettingWidgetKind.custom].
   final Object? Function(Settings settings)? reader;
 
+  /// Typed writer for settings whose setter has internal side effects (e.g.
+  /// `calendar` resets the cached locale). When present the engine calls it
+  /// instead of the generic `SettingsAccess.set`, and [reader] must return the
+  /// value type it accepts.
+  final void Function(Settings settings, Object? value)? mutator;
+
   final String Function(BuildContext context)? subtitle;
 
   /// Candidate values for [SettingWidgetKind.enumPick].
@@ -38,6 +44,13 @@ class SettingDef {
 
   /// Dialog title for [SettingWidgetKind.enumPick]; defaults to [title].
   final String Function(BuildContext context)? dialogTitle;
+
+  /// Option subtitle for [SettingWidgetKind.enumPick], e.g. a sample rendering.
+  final String? Function(BuildContext context, Enum value)? optionSubtitle;
+
+  /// Route name for [SettingWidgetKind.subPage]. The view resolves the page from
+  /// `metaPageRegistry`, so the catalog stays free of view imports.
+  final String? routeName;
 
   /// Registered editor for [SettingWidgetKind.custom] (see `MetaEditorKeys`).
   final String? editorKey;
@@ -54,10 +67,13 @@ class SettingDef {
     required this.widgetKind,
     required this.title,
     this.reader,
+    this.mutator,
     this.subtitle,
     this.enumValues,
     this.enumName,
     this.dialogTitle,
+    this.optionSubtitle,
+    this.routeName,
     this.editorKey,
     this.availabilityKey,
     this.sortOrder = 0,

@@ -6,4 +6,15 @@ abstract final class MetaEditorKeys {
   static const String settingsEngine = 'settings_engine';
   static const String themeColorMode = 'theme_color_mode';
   static const String forceTvLayout = 'force_tv_layout';
+  static const String locale = 'locale';
+  static const String timeToTakeAction = 'time_to_take_action';
+  static const String permissions = 'permissions';
+  static const String enableBin = 'enable_bin';
+  static const String autoExportSettings = 'auto_export_settings';
+  static const String viewerUseCutout = 'viewer_use_cutout';
+  static const String viewerImageBackground = 'viewer_image_background';
+  static const String videoShowVideos = 'video_show_videos';
+  static const String videoThumbnailMethods = 'video_thumbnail_methods';
+  static const String burstPatterns = 'burst_patterns';
+  static const String homePage = 'home_page';
 }

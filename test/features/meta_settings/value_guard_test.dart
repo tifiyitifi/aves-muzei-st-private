@@ -37,10 +37,10 @@ void main() {
       expect(() => MetaValueGuard.guard(toggle, 'true'), throwsA(isA<MetaSettingValueException>()));
     });
 
-    test('accepts a known enum name and rejects unknown ones', () {
-      final name = AvesThemeBrightness.dark.name;
-      expect(MetaValueGuard.guard(enumPick, name), name);
-      expect(() => MetaValueGuard.guard(enumPick, 'nope'), throwsA(isA<MetaSettingValueException>()));
+    test('accepts a known enum member and rejects others', () {
+      expect(MetaValueGuard.guard(enumPick, AvesThemeBrightness.dark), AvesThemeBrightness.dark);
+      expect(() => MetaValueGuard.guard(enumPick, 'dark'), throwsA(isA<MetaSettingValueException>()));
+      expect(() => MetaValueGuard.guard(enumPick, CoordinateFormat.dms), throwsA(isA<MetaSettingValueException>()));
     });
 
     test('passes custom values through untouched', () {

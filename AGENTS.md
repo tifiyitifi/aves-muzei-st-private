@@ -82,6 +82,18 @@ CI (`build-custom-apk.yml`) builds a signed `custom`-flavor release APK on pushe
 - `lib/features/**` is the fork-only layer for new features, isolated from upstream-owned trees.
 - Many files are deliberate adaptations of Flutter/package sources (`lib/widgets/common/basic/*`, `lib/services/common/output_buffer.dart`, etc.; the full list is in `pubspec.yaml` comments). Keep them close to upstream rather than refactoring them as ordinary app code.
 
+## Settings engine (v1 / v2)
+
+`lib/features/meta_settings/` is the fork-only settings engine; `lib/model/settings` and `lib/widgets/settings` stay upstream-owned (v1).
+
+- **Two independent stores, one switch.** v1 is `SharedPrefSettingsStore` (upstream `SharedPreferences`); v2 is `MetaSettingsStore` (Drift `settingsValues`, sparse overrides with a self-describing `type`). `SettingsStoreRouter` — the single `settingsStore` — delegates by the `settings_engine` gate in `SharedPreferences`; the gate key is hidden from `getKeys` and preserved across `clear`. The gate defaults to **v2**.
+- **One-time seed.** `MetaSettingsSeeder` copies v1's non-internal settings into an empty v2 once (marker in `appMeta`); the two stores stay independent afterwards.
+- **Switch is immediate** (`SettingsEngineController`): it reloads the newly authoritative store, replays the per-key change events so `updateStream` listeners re-apply, then notifies; `SettingsHost` swaps the surface in place.
+- **The v2 surface is catalog-driven.** Adding a setting = adding a `SettingDef` to `lib/features/meta_settings/data/catalog.dart`; the generic renderer (`SettingRow`) dispatches on `SettingWidgetKind`. Keys/titles are compile-checked; `validateMetaSettingsCatalog` plus `test/features/meta_settings/catalog_test.dart` (release gate) enforce uniqueness, per-kind completeness and full-category coverage.
+- **Writes** go through `MetaSettingsEngine` → `SettingsAccess.set`; a def whose setter has internal side effects declares a `mutator` (e.g. `calendar` resets the cached locale). Enum values persist by `name`.
+- **Isolation:** the v2 surface never imports upstream settings code. Generic app components (`AvesScaffold`, `AvesExpansionTile`, `AIcons`, dialogs) stay shared; fork-owned copies of small tiles live in `lib/features/meta_settings/view/widgets/`, and complex editors delegate to existing sub-pages via `metaPageRegistry`.
+- **Schema:** the `settingsValues` table is schema version 2 (`MigrationV2`); a schema bump needs a matching migration and upgrade test.
+
 ## Design principles (A Philosophy of Software Design)
 
 - Complexity is dependencies plus obscurity; prefer designs that reduce both.

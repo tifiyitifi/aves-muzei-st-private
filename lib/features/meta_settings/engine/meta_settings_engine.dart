@@ -22,7 +22,14 @@ class MetaSettingsEngine {
       _log.w('rejected value for ${def.key}: $error');
       return;
     }
-    settings.set(def.key, guarded);
+
+    final mutator = def.mutator;
+    if (mutator != null) {
+      mutator(settings, guarded);
+      return;
+    }
+    // Enums are persisted by name, like the typed setters do.
+    settings.set(def.key, guarded is Enum ? guarded.name : guarded);
   }
 }
 

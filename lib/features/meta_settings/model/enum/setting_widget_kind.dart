@@ -10,6 +10,9 @@ enum SettingWidgetKind {
   /// Enum setting rendered as a single-selection tile.
   enumPick,
 
+  /// Entry point to a full page (pushed as a route).
+  subPage,
+
   /// Setting whose editor is fork-owned and registered by `editorKey`.
   custom,
 }

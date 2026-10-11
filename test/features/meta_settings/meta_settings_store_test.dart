@@ -62,4 +62,24 @@ void main() {
     await reopened.init();
     expect(reopened.getKeys(), isEmpty);
   });
+
+  test('a failed write rolls the cache back instead of diverging', () async {
+    await store.init();
+    await store.setString('a', 'old');
+
+    // closing the database makes every subsequent persistence attempt fail
+    await db.close();
+
+    expect(await store.setString('a', 'new'), isFalse);
+    expect(store.getString('a'), 'old', reason: 'cache must not keep an unpersisted value');
+
+    expect(await store.setString('b', 'x'), isFalse);
+    expect(store.getKeys(), isNot(contains('b')), reason: 'an unpersisted insert must not linger');
+
+    expect(await store.remove('a'), isFalse);
+    expect(store.getString('a'), 'old', reason: 'a failed remove must not drop the cached value');
+
+    expect(await store.clear(), isFalse);
+    expect(store.getKeys(), {'a'}, reason: 'a failed clear must not wipe the cache');
+  });
 }

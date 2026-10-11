@@ -12,6 +12,12 @@ import 'package:shared_preferences_platform_interface/shared_preferences_platfor
 
 import '../../helpers/sqlite3_loader.dart';
 
+/// A `MetaSettingsStore` whose [init] fails, to exercise a failed engine switch.
+class _ThrowingMetaStore extends MetaSettingsStore {
+  @override
+  Future<void> init() async => throw StateError('database unavailable');
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -75,6 +81,10 @@ void main() {
     expect(legacy.getString(SettingsEngineGate.key), SettingsEngineVersion.v1.name);
     expect(await gate.read(), SettingsEngineVersion.v1);
 
+    // reads hide the gate too: otherwise the shared v1 file would leak it
+    expect(router.get(SettingsEngineGate.key), isNull);
+    expect(router.getString(SettingsEngineGate.key), isNull);
+
     // v2: a stray write would otherwise pollute the metadata store
     await router.activate(SettingsEngineVersion.v2);
     await router.setString(SettingsEngineGate.key, 'polluted');
@@ -133,5 +143,21 @@ void main() {
 
     await router.activate(SettingsEngineVersion.v1);
     expect(router.getString('shared'), 'v1');
+  });
+
+  test('a failed switch keeps the gate, the version and the active store on the old engine', () async {
+    await gate.write(SettingsEngineVersion.v1);
+    final failing = SettingsStoreRouter(legacy: legacy, meta: _ThrowingMetaStore(), gate: gate);
+    await failing.init();
+    expect(failing.version, SettingsEngineVersion.v1);
+
+    await expectLater(failing.activate(SettingsEngineVersion.v2), throwsA(isA<StateError>()));
+
+    expect(failing.version, SettingsEngineVersion.v1, reason: 'the switch must not commit when the store cannot open');
+    expect(await gate.read(), SettingsEngineVersion.v1, reason: 'the persisted gate must not advance either');
+
+    // the legacy store is still the authoritative one
+    await failing.setString('k', 'v');
+    expect(legacy.getString('k'), 'v');
   });
 }

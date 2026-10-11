@@ -29,6 +29,13 @@ void main() {
     title: (context) => 'k',
     editorKey: 'editor',
   );
+  final subPage = SettingDef(
+    key: 'page',
+    category: SettingsCategory.display,
+    widgetKind: SettingWidgetKind.subPage,
+    title: (context) => 'page',
+    routeName: 'page',
+  );
 
   group('MetaValueGuard', () {
     test('accepts a bool for a toggle and rejects other types', () {
@@ -45,6 +52,11 @@ void main() {
 
     test('passes custom values through untouched', () {
       expect(MetaValueGuard.guard(custom, 'anything'), 'anything');
+    });
+
+    test('rejects any value for a sub-page (it is a route, not a setting)', () {
+      expect(() => MetaValueGuard.guard(subPage, 'x'), throwsA(isA<MetaSettingValueException>()));
+      expect(() => MetaValueGuard.guard(subPage, null), throwsA(isA<MetaSettingValueException>()));
     });
   });
 }

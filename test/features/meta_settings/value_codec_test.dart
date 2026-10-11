@@ -30,5 +30,14 @@ void main() {
       expect(MetaSettingsValueCodec.decodeDouble('x'), isNull);
       expect(MetaSettingsValueCodec.decodeStringList('{'), isNull);
     });
+
+    test('a json array with non-string elements decodes to null', () {
+      // `List.cast` is lazy, so returning the view would throw on first access;
+      // the decoder must reject it eagerly instead.
+      expect(MetaSettingsValueCodec.decodeStringList('[1,2]'), isNull);
+      expect(MetaSettingsValueCodec.decodeStringList('["a",2]'), isNull);
+      // valid data still yields a real (non-lazy) list
+      expect(MetaSettingsValueCodec.decodeStringList(MetaSettingsValueCodec.encodeStringList(['a']))!.runtimeType, List<String>);
+    });
   });
 }

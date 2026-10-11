@@ -36,7 +36,14 @@ abstract final class MetaSettingsValueCodec {
     if (raw == null) return null;
     try {
       final decoded = jsonDecode(raw);
-      return decoded is List ? decoded.cast<String>() : null;
+      // `List.cast` is lazy: it returns a view that only throws when an element
+      // is read, which would break the "never throws" contract far from here.
+      // Validate eagerly and materialize a real list instead.
+      if (decoded is List && decoded.every((element) => element is String)) {
+        return List<String>.from(decoded);
+      }
+      _log.w('failed to decode string list raw=$raw');
+      return null;
     } catch (error) {
       _log.w('failed to decode string list raw=$raw error=$error');
       return null;

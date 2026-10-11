@@ -1,16 +1,21 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/features/meta_settings/data/value_codec.dart';
 import 'package:aves/features/meta_settings/db/settings_dao.dart';
 import 'package:aves/features/meta_settings/model/enum/setting_value_type.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
 
+const _log = AreaKeyLog(LogKeys.settings);
+
 /// The metadata engine's `SettingsStore`: Drift-backed sparse overrides.
 ///
 /// Values are loaded once at [init] into an in-memory cache so the typed getters
 /// stay synchronous (the same contract as `SharedPreferences`); writes update
-/// the cache and persist asynchronously.
+/// the cache and persist asynchronously. A failed write rolls the cache back to
+/// the persisted state, so memory never diverges from the database.
 class MetaSettingsStore implements SettingsStore {
   /// Optional injected database, used by tests (which never register the
   /// app-wide [AppDatabaseProvider]).
@@ -23,8 +28,6 @@ class MetaSettingsStore implements SettingsStore {
   /// The backing database, available after [init]; the seeder reads/writes its
   /// one-time marker through `AppMetaStore`.
   AppDatabase? get database => _db;
-
-  bool get isEmpty => _cache?.isEmpty ?? true;
 
   @override
   bool get initialized => _cache != null;
@@ -47,8 +50,15 @@ class MetaSettingsStore implements SettingsStore {
   Future<bool> clear() async {
     final db = _db;
     if (db == null) return false;
+    final previous = _cache;
     _cache = <String, MetaSettingRow>{};
-    await MetaSettingsDao(db).clear();
+    try {
+      await MetaSettingsDao(db).clear();
+    } catch (error, stack) {
+      _cache = previous;
+      _log.e('failed to clear settings, cache rolled back', error, stack);
+      return false;
+    }
     return true;
   }
 
@@ -56,8 +66,15 @@ class MetaSettingsStore implements SettingsStore {
   Future<bool> remove(String key) async {
     final db = _db;
     if (db == null) return false;
+    final previous = _cache?[key];
     _cache?.remove(key);
-    await MetaSettingsDao(db).remove(key);
+    try {
+      await MetaSettingsDao(db).remove(key);
+    } catch (error, stack) {
+      if (previous != null) _cache?[key] = previous;
+      _log.e('failed to remove setting key=$key, cache rolled back', error, stack);
+      return false;
+    }
     return true;
   }
 
@@ -114,20 +131,18 @@ class MetaSettingsStore implements SettingsStore {
 
   /// Writes [value] by its runtime type. Not part of [SettingsStore]: used by
   /// the one-time legacy seed to copy a heterogeneous value set verbatim.
-  Future<void> put(String key, Object? value) async {
-    if (value == null) {
-      await remove(key);
-    } else if (value is bool) {
-      await setBool(key, value);
-    } else if (value is int) {
-      await setInt(key, value);
-    } else if (value is double) {
-      await setDouble(key, value);
-    } else if (value is String) {
-      await setString(key, value);
-    } else if (value is List<String>) {
-      await setStringList(key, value);
-    }
+  ///
+  /// Returns whether the value was persisted, so the seed can abort before
+  /// marking itself done when a write fails.
+  Future<bool> put(String key, Object? value) async {
+    if (value == null) return remove(key);
+    if (value is bool) return setBool(key, value);
+    if (value is int) return setInt(key, value);
+    if (value is double) return setDouble(key, value);
+    if (value is String) return setString(key, value);
+    if (value is List<String>) return setStringList(key, value);
+    _log.w('skipped seeding of unsupported value for key=$key');
+    return true;
   }
 
   T? _typed<T>(String key, SettingValueType expected, T? Function(String) decode) {
@@ -139,8 +154,20 @@ class MetaSettingsStore implements SettingsStore {
   Future<bool> _put(String key, SettingValueType type, String raw) async {
     final db = _db;
     if (db == null) return false;
-    _cache?[key] = (type: type, raw: raw);
-    await MetaSettingsDao(db).upsert(key, type, raw);
+    final cache = _cache;
+    final previous = cache?[key];
+    cache?[key] = (type: type, raw: raw);
+    try {
+      await MetaSettingsDao(db).upsert(key, type, raw);
+    } catch (error, stack) {
+      if (previous != null) {
+        cache?[key] = previous;
+      } else {
+        cache?.remove(key);
+      }
+      _log.e('failed to persist setting key=$key, cache rolled back', error, stack);
+      return false;
+    }
     return true;
   }
 }

@@ -34,8 +34,10 @@ abstract final class MetaValueGuard {
         // The custom editor owns its value domain.
         return value;
       case SettingWidgetKind.subPage:
-        // Sub-pages never write through the engine.
-        return value;
+        // Sub-pages navigate to their own editor; they never write through the
+        // engine. Their key is a route name, not a setting key, so a stray write
+        // would pollute the store with a bogus entry.
+        throw MetaSettingValueException('${def.key} is a sub-page route, not a setting');
     }
   }
 }

@@ -51,6 +51,11 @@ class SettingsStoreRouter implements SettingsStore {
     return true;
   }
 
+  /// The gate is not part of the settings key space: reads must hide it too.
+  /// While the legacy engine is active the gate shares its `SharedPreferences`
+  /// file, so an unguarded read would leak the selector as a regular setting.
+  bool _hidesGateRead(String key) => key == SettingsEngineGate.key;
+
   @override
   bool get initialized => _active.initialized;
 
@@ -71,11 +76,17 @@ class SettingsStoreRouter implements SettingsStore {
   Future<void> activate(SettingsEngineVersion version) async {
     if (version == _version) return;
 
+    // Initialize the incoming store before committing the switch. If opening it
+    // fails (e.g. the database is unavailable), the gate, [_version] and the
+    // active store all stay on the previous engine instead of pointing at a
+    // broken one; the caller sees the error and the state remains consistent.
+    final SettingsStore target = version == SettingsEngineVersion.v2 ? _meta : _legacy;
+    if (!target.initialized) {
+      await target.init();
+    }
+
     await _gate.write(version);
     _version = version;
-    if (!_active.initialized) {
-      await _active.init();
-    }
     if (isMeta) {
       await MetaSettingsSeeder(legacy: _legacy, meta: _meta).seedIfNeeded();
     }
@@ -108,22 +119,22 @@ class SettingsStoreRouter implements SettingsStore {
   Set<String> getKeys() => _active.getKeys().where((key) => key != SettingsEngineGate.key).toSet();
 
   @override
-  Object? get(String key) => _active.get(key);
+  Object? get(String key) => _hidesGateRead(key) ? null : _active.get(key);
 
   @override
-  bool? getBool(String key) => _active.getBool(key);
+  bool? getBool(String key) => _hidesGateRead(key) ? null : _active.getBool(key);
 
   @override
-  int? getInt(String key) => _active.getInt(key);
+  int? getInt(String key) => _hidesGateRead(key) ? null : _active.getInt(key);
 
   @override
-  double? getDouble(String key) => _active.getDouble(key);
+  double? getDouble(String key) => _hidesGateRead(key) ? null : _active.getDouble(key);
 
   @override
-  String? getString(String key) => _active.getString(key);
+  String? getString(String key) => _hidesGateRead(key) ? null : _active.getString(key);
 
   @override
-  List<String>? getStringList(String key) => _active.getStringList(key);
+  List<String>? getStringList(String key) => _hidesGateRead(key) ? null : _active.getStringList(key);
 
   // set
 

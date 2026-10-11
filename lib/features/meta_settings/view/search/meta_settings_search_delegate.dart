@@ -1,0 +1,94 @@
+import 'package:aves/features/meta_settings/data/catalog.dart';
+import 'package:aves/features/meta_settings/data/def_visibility.dart';
+import 'package:aves/features/meta_settings/model/enum/settings_category.dart';
+import 'package:aves/features/meta_settings/model/setting_def.dart';
+import 'package:aves/features/meta_settings/view/category_meta.dart';
+import 'package:aves/features/meta_settings/view/widgets/setting_row.dart';
+import 'package:aves/model/settings/settings.dart';
+import 'package:aves/theme/icons.dart';
+import 'package:aves/widgets/common/extensions/build_context.dart';
+import 'package:aves/widgets/common/identity/empty.dart';
+import 'package:aves/widgets/common/identity/highlight_title.dart';
+import 'package:aves/widgets/common/providers/media_query_data_provider.dart';
+import 'package:aves/widgets/common/search/delegate.dart';
+import 'package:material_ui/material_ui.dart';
+
+/// Catalog-driven settings search for the v2 surface.
+///
+/// Indexes the catalog defs (grouped by category) instead of the upstream
+/// `SettingsSection` / `SettingsTile` abstraction.
+class MetaSettingsSearchDelegate extends AvesSearchDelegate {
+  static const pageRouteName = '/settings/search';
+
+  new({
+    required super.searchFieldLabel,
+    required super.searchFieldStyle,
+  }) : super(routeName: pageRouteName);
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    final upQuery = query.toUpperCase().trim();
+
+    List<SettingDef> visibleDefs(SettingsCategory category) =>
+        metaSettingsDefsFor(category).where((def) => DefVisibility.isVisible(def.availabilityKey)).toList();
+
+    bool testTitle(String title) => title.toUpperCase().contains(upQuery);
+
+    final children = <Widget>[];
+    for (final category in SettingsCategory.values) {
+      final meta = metaCategoryMeta[category];
+      if (meta == null) continue;
+
+      final List<SettingDef> matched;
+      if (upQuery.isEmpty) {
+        // recently changed settings
+        final recent = settings.recentSettingKeys;
+        matched = visibleDefs(category).where((def) => recent.contains(def.key)).take(3).toList();
+      } else if (testTitle(meta.title(context))) {
+        matched = visibleDefs(category);
+      } else {
+        matched = visibleDefs(category).where((def) => testTitle(def.title(context))).toList();
+      }
+      if (matched.isEmpty) continue;
+
+      children
+        ..add(
+          Padding(
+            // match header layout in the Settings page
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+            child: Row(
+              children: [
+                meta.icon(context),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: HighlightTitle(
+                    title: meta.title(context),
+                    locale: context.knownLocale,
+                    showHighlight: false,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        )
+        ..addAll(matched.map((def) => SettingRow(key: ValueKey('meta-${def.key}'), def: def)));
+    }
+
+    return MediaQueryDataProvider(
+      child: SafeArea(
+        child: children.isEmpty
+            ? EmptyContent(
+                icon: AIcons.settings,
+                text: context.l10n.settingsSearchEmpty,
+              )
+            : ListView(
+                padding: const EdgeInsets.all(8),
+                children: children,
+              ),
+      ),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) => buildSuggestions(context);
+}

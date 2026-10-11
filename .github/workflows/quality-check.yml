@@ -25,8 +25,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Get Flutter packages
-        run: ./flutterw pub get
+      # The committed root pubspec is the `custom` flavor; this job analyzes and
+      # tests the `play` flavor so the Crashlytics workspace member resolves.
+      - name: Apply play flavor
+        run: scripts/apply_flavor_play.sh
 
       - name: Generate app localizations
         run: ./flutterw gen-l10n

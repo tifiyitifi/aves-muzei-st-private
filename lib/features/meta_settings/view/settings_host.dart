@@ -1,5 +1,6 @@
 import 'package:aves/features/meta_settings/settings_engine_controller.dart';
 import 'package:aves/features/meta_settings/view/meta_settings_page.dart';
+import 'package:aves/features/meta_settings/view/meta_settings_tv_page.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/widgets/settings/settings_mobile_page.dart';
 import 'package:aves/widgets/settings/settings_tv_page.dart';
@@ -19,7 +20,7 @@ class SettingsHost extends StatelessWidget {
       animation: settingsEngineController,
       builder: (context, child) {
         if (settingsEngineController.isMeta) {
-          return const MetaSettingsPage();
+          return settings.useTvLayout ? const MetaSettingsTvPage() : const MetaSettingsPage();
         }
         return settings.useTvLayout ? const SettingsTvPage() : const SettingsMobilePage();
       },

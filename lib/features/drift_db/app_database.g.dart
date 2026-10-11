@@ -4042,6 +4042,323 @@ class AppMetaTableCompanion extends UpdateCompanion<AppMetaTableData> {
   }
 }
 
+class $SettingsValuesTableTable extends SettingsValuesTable
+    with TableInfo<$SettingsValuesTableTable, SettingsValuesTableData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SettingsValuesTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+    'value',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [key, type, value, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'settingsValues';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SettingsValuesTableData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+        _valueMeta,
+        value.isAcceptableOrUnknown(data['value']!, _valueMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  SettingsValuesTableData map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SettingsValuesTableData(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      value: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SettingsValuesTableTable createAlias(String alias) {
+    return $SettingsValuesTableTable(attachedDatabase, alias);
+  }
+}
+
+class SettingsValuesTableData extends DataClass
+    implements Insertable<SettingsValuesTableData> {
+  final String key;
+
+  /// `SettingValueType` name (`bool` / `int` / `double` / `string` /
+  /// `stringList`).
+  final String type;
+
+  /// Codec-encoded value (see `MetaSettingsValueCodec`).
+  final String value;
+  final DateTime updatedAt;
+  const SettingsValuesTableData({
+    required this.key,
+    required this.type,
+    required this.value,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['type'] = Variable<String>(type);
+    map['value'] = Variable<String>(value);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  SettingsValuesTableCompanion toCompanion(bool nullToAbsent) {
+    return SettingsValuesTableCompanion(
+      key: Value(key),
+      type: Value(type),
+      value: Value(value),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory SettingsValuesTableData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SettingsValuesTableData(
+      key: serializer.fromJson<String>(json['key']),
+      type: serializer.fromJson<String>(json['type']),
+      value: serializer.fromJson<String>(json['value']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'type': serializer.toJson<String>(type),
+      'value': serializer.toJson<String>(value),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  SettingsValuesTableData copyWith({
+    String? key,
+    String? type,
+    String? value,
+    DateTime? updatedAt,
+  }) => SettingsValuesTableData(
+    key: key ?? this.key,
+    type: type ?? this.type,
+    value: value ?? this.value,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  SettingsValuesTableData copyWithCompanion(SettingsValuesTableCompanion data) {
+    return SettingsValuesTableData(
+      key: data.key.present ? data.key.value : this.key,
+      type: data.type.present ? data.type.value : this.type,
+      value: data.value.present ? data.value.value : this.value,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SettingsValuesTableData(')
+          ..write('key: $key, ')
+          ..write('type: $type, ')
+          ..write('value: $value, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, type, value, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SettingsValuesTableData &&
+          other.key == this.key &&
+          other.type == this.type &&
+          other.value == this.value &&
+          other.updatedAt == this.updatedAt);
+}
+
+class SettingsValuesTableCompanion
+    extends UpdateCompanion<SettingsValuesTableData> {
+  final Value<String> key;
+  final Value<String> type;
+  final Value<String> value;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const SettingsValuesTableCompanion({
+    this.key = const Value.absent(),
+    this.type = const Value.absent(),
+    this.value = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SettingsValuesTableCompanion.insert({
+    required String key,
+    required String type,
+    required String value,
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : key = Value(key),
+       type = Value(type),
+       value = Value(value);
+  static Insertable<SettingsValuesTableData> custom({
+    Expression<String>? key,
+    Expression<String>? type,
+    Expression<String>? value,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (type != null) 'type': type,
+      if (value != null) 'value': value,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SettingsValuesTableCompanion copyWith({
+    Value<String>? key,
+    Value<String>? type,
+    Value<String>? value,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return SettingsValuesTableCompanion(
+      key: key ?? this.key,
+      type: type ?? this.type,
+      value: value ?? this.value,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SettingsValuesTableCompanion(')
+          ..write('key: $key, ')
+          ..write('type: $type, ')
+          ..write('value: $value, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4061,6 +4378,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $VideoPlaybackTableTable(this);
   late final $DebugTableTable debugTable = $DebugTableTable(this);
   late final $AppMetaTableTable appMetaTable = $AppMetaTableTable(this);
+  late final $SettingsValuesTableTable settingsValuesTable =
+      $SettingsValuesTableTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4078,6 +4397,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     videoPlaybackTable,
     debugTable,
     appMetaTable,
+    settingsValuesTable,
   ];
 }
 
@@ -6366,6 +6686,203 @@ typedef $$AppMetaTableTableProcessedTableManager =
       AppMetaTableData,
       PrefetchHooks Function()
     >;
+typedef $$SettingsValuesTableTableCreateCompanionBuilder =
+    SettingsValuesTableCompanion Function({
+      required String key,
+      required String type,
+      required String value,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$SettingsValuesTableTableUpdateCompanionBuilder =
+    SettingsValuesTableCompanion Function({
+      Value<String> key,
+      Value<String> type,
+      Value<String> value,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$SettingsValuesTableTableFilterComposer
+    extends Composer<_$AppDatabase, $SettingsValuesTableTable> {
+  $$SettingsValuesTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SettingsValuesTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $SettingsValuesTableTable> {
+  $$SettingsValuesTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SettingsValuesTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SettingsValuesTableTable> {
+  $$SettingsValuesTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$SettingsValuesTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SettingsValuesTableTable,
+          SettingsValuesTableData,
+          $$SettingsValuesTableTableFilterComposer,
+          $$SettingsValuesTableTableOrderingComposer,
+          $$SettingsValuesTableTableAnnotationComposer,
+          $$SettingsValuesTableTableCreateCompanionBuilder,
+          $$SettingsValuesTableTableUpdateCompanionBuilder,
+          (
+            SettingsValuesTableData,
+            BaseReferences<
+              _$AppDatabase,
+              $SettingsValuesTableTable,
+              SettingsValuesTableData
+            >,
+          ),
+          SettingsValuesTableData,
+          PrefetchHooks Function()
+        > {
+  $$SettingsValuesTableTableTableManager(
+    _$AppDatabase db,
+    $SettingsValuesTableTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SettingsValuesTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SettingsValuesTableTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$SettingsValuesTableTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String> value = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SettingsValuesTableCompanion(
+                key: key,
+                type: type,
+                value: value,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                required String type,
+                required String value,
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SettingsValuesTableCompanion.insert(
+                key: key,
+                type: type,
+                value: value,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SettingsValuesTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SettingsValuesTableTable,
+      SettingsValuesTableData,
+      $$SettingsValuesTableTableFilterComposer,
+      $$SettingsValuesTableTableOrderingComposer,
+      $$SettingsValuesTableTableAnnotationComposer,
+      $$SettingsValuesTableTableCreateCompanionBuilder,
+      $$SettingsValuesTableTableUpdateCompanionBuilder,
+      (
+        SettingsValuesTableData,
+        BaseReferences<
+          _$AppDatabase,
+          $SettingsValuesTableTable,
+          SettingsValuesTableData
+        >,
+      ),
+      SettingsValuesTableData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6394,4 +6911,6 @@ class $AppDatabaseManager {
       $$DebugTableTableTableManager(_db, _db.debugTable);
   $$AppMetaTableTableTableManager get appMetaTable =>
       $$AppMetaTableTableTableManager(_db, _db.appMetaTable);
+  $$SettingsValuesTableTableTableManager get settingsValuesTable =>
+      $$SettingsValuesTableTableTableManager(_db, _db.settingsValuesTable);
 }

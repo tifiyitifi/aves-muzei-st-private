@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:aves/features/drift_db/addresses/address_store.dart';
 import 'package:aves/features/drift_db/app_database.dart';
+import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/drift_db/catalog/catalog_store.dart';
 import 'package:aves/features/drift_db/covers/cover_store.dart';
@@ -28,7 +29,6 @@ import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/model/vaults/details.dart';
 import 'package:aves/model/viewer/video_playback.dart';
 import 'package:aves/services/common/services.dart';
-import 'package:drift/native.dart';
 import 'package:sqflite/sqflite.dart' as sqflite;
 
 const _log = AreaKeyLog(LogKeys.db);
@@ -39,14 +39,15 @@ const _log = AreaKeyLog(LogKeys.db);
 /// thin delegation; cross-domain work (like [removeIds]) is composed from the
 /// stores' own delete operations, so no domain reaches into another's table.
 class DriftLocalMediaDb implements LocalMediaDb {
-  /// Optional injected database, used by tests to run against an in-memory
-  /// connection instead of the on-disk file (which needs a platform path).
-  new({AppDatabase? database}) : _injectedDatabase = database;
+  /// Optional injected database or provider, used by tests to run against an
+  /// in-memory connection instead of the on-disk file (which needs a platform
+  /// path).
+  new({AppDatabase? database, AppDatabaseProvider? provider}) : _provider = provider ?? AppDatabaseProvider(injected: database);
 
-  static const dbFileName = 'aves.drift.db';
+  static const dbFileName = AppDatabaseProvider.dbFileName;
   static int _lastId = 0;
 
-  final AppDatabase? _injectedDatabase;
+  final AppDatabaseProvider _provider;
   late AppDatabase _db;
   late final EntryStore _entries;
   late final CatalogStore _catalog;
@@ -71,33 +72,21 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<void> init() => _initFuture ??= _initialize();
 
   Future<void> _initialize() async {
-    final injected = _injectedDatabase;
-    if (injected != null) {
-      _db = injected;
-      await _db.customSelect('SELECT 1').get();
-      _wireStores();
-      _lastId = await _entries.maxId();
-      return;
-    }
-
-    final databasesPath = await sqflite.getDatabasesPath();
-    final driftPath = pContext.join(databasesPath, dbFileName);
-    final legacyPath = pContext.join(databasesPath, LegacyImport.legacyDbFileName);
-
-    _db = AppDatabase(NativeDatabase.createInBackground(File(driftPath)));
-    // Force the connection open so onCreate/beforeOpen complete before the
-    // legacy import reads or writes.
-    await _db.customSelect('SELECT 1').get();
+    _db = await _provider.open();
     _wireStores();
 
-    try {
-      await LegacyImport(_db, _appMeta).runIfNeeded(
-        legacyPath: legacyPath,
-        onProgress: (progress) => legacyImportProgress.value = progress,
-      );
-    } finally {
-      // Never leave a stale indicator if the import fails.
-      legacyImportProgress.value = null;
+    if (!_provider.isInjected) {
+      final databasesPath = await sqflite.getDatabasesPath();
+      final legacyPath = pContext.join(databasesPath, LegacyImport.legacyDbFileName);
+      try {
+        await LegacyImport(_db, _appMeta).runIfNeeded(
+          legacyPath: legacyPath,
+          onProgress: (progress) => legacyImportProgress.value = progress,
+        );
+      } finally {
+        // Never leave a stale indicator if the import fails.
+        legacyImportProgress.value = null;
+      }
     }
 
     _lastId = await _entries.maxId();
@@ -126,7 +115,7 @@ class DriftLocalMediaDb implements LocalMediaDb {
   @override
   Future<void> reset() async {
     _log.d('$runtimeType reset');
-    await _db.close();
+    await _provider.close();
     await sqflite.deleteDatabase(await path);
     _initFuture = null;
     await init();

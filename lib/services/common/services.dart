@@ -1,7 +1,8 @@
 import 'package:aves/model/availability.dart';
+import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
+import 'package:aves/features/meta_settings/store/settings_store_router.dart';
 import 'package:aves/model/db/db.dart';
-import 'package:aves/model/settings/store_shared_pref.dart';
 import 'package:aves/services/app_profile_service.dart';
 import 'package:aves/services/app_service.dart';
 import 'package:aves/services/device_service.dart';
@@ -30,7 +31,11 @@ import 'package:path/path.dart' as p;
 final getIt = GetIt.instance;
 
 // fixed implementation is easier for test driver setup
-final SettingsStore settingsStore = SharedPrefSettingsStore();
+//
+// The router delegates to the v1 (`SharedPreferences`) or v2 (metadata) store
+// selected by the shared engine gate; callers keep reading `settings.*`.
+final SettingsStoreRouter settingsStoreRouter = SettingsStoreRouter();
+final SettingsStore settingsStore = settingsStoreRouter;
 
 final p.Context pContext = getIt<p.Context>();
 final AvesAvailability availability = getIt<AvesAvailability>();
@@ -62,7 +67,11 @@ void initPlatformServices() {
   getIt.registerLazySingleton<AvesAvailability>(LiveAvesAvailability.new);
   // Rollback path: register `SqfliteLocalMediaDb.new` here (and re-import
   // `package:aves/model/db/db_sqflite.dart`) to fall back to the legacy engine.
-  getIt.registerLazySingleton<LocalMediaDb>(DriftLocalMediaDb.new);
+  //
+  // The provider owns the single per-isolate Drift connection, shared with the
+  // metadata-settings store (v2).
+  getIt.registerLazySingleton<AppDatabaseProvider>(AppDatabaseProvider.new);
+  getIt.registerLazySingleton<LocalMediaDb>(() => DriftLocalMediaDb(provider: getIt<AppDatabaseProvider>()));
   getIt.registerLazySingleton<AvesAudioControllerFactory>(MpvAudioControllerFactory.new);
   getIt.registerLazySingleton<AvesVideoControllerFactory>(MpvVideoControllerFactory.new);
   getIt.registerLazySingleton<AvesVideoMetadataFetcher>(MpvVideoMetadataFetcher.new);

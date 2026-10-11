@@ -6,9 +6,11 @@ import 'package:aves/features/drift_db/debug/debug_table.dart';
 import 'package:aves/features/drift_db/dynamic_albums/dynamic_album_table.dart';
 import 'package:aves/features/drift_db/entries/entry_table.dart';
 import 'package:aves/features/drift_db/favourites/favourite_table.dart';
+import 'package:aves/features/drift_db/migration/migration_v2.dart';
 import 'package:aves/features/drift_db/trash/trash_table.dart';
 import 'package:aves/features/drift_db/vaults/vault_table.dart';
 import 'package:aves/features/drift_db/video_playback/video_playback_table.dart';
+import 'package:aves/features/meta_settings/db/settings_values_table.dart';
 import 'package:drift/drift.dart';
 
 part 'app_database.g.dart';
@@ -38,6 +40,7 @@ part 'app_database.g.dart';
     VideoPlaybackTable,
     DebugTable,
     AppMetaTable,
+    SettingsValuesTable,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -48,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -57,9 +60,8 @@ class AppDatabase extends _$AppDatabase {
           await _createIndexes();
         },
         onUpgrade: (m, from, to) async {
-          // Forward-only, per-version migration chain (iris-style). Add
-          // `if (from < N) await MigrationVN(this).run(m);` when the schema
-          // version is bumped; intentionally empty while [schemaVersion] is 1.
+          // Forward-only, per-version migration chain (iris-style).
+          if (from < 2) await MigrationV2(this).run(m);
         },
         beforeOpen: (details) async {
           // The main isolate and the analysis background isolate each open

@@ -1160,5 +1160,12 @@
   "panoramaEnableSensorControl": "Enable sensor control",
   "panoramaDisableSensorControl": "Disable sensor control",
 
-  "sourceViewerPageTitle": "Source"
+  "sourceViewerPageTitle": "Source",
+
+  "settingsAdvancedSectionTitle": "Advanced",
+  "settingsEngineTile": "Settings engine",
+  "settingsEngineDialogTitle": "Settings engine",
+  "settingsEngineV1": "Legacy (v1)",
+  "settingsEngineV2": "Metadata (v2)",
+  "settingsEngineDescription": "Legacy (v1) and Metadata (v2) keep separate settings. Switching takes effect immediately."
 }

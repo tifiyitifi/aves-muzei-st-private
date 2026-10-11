@@ -1,0 +1,133 @@
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
+import 'package:aves/features/meta_settings/model/enum/settings_engine_version.dart';
+import 'package:aves/features/meta_settings/store/meta_settings_seeder.dart';
+import 'package:aves/features/meta_settings/store/meta_settings_store.dart';
+import 'package:aves/features/meta_settings/store/settings_engine_gate.dart';
+import 'package:aves/model/settings/store_shared_pref.dart';
+import 'package:aves_model/aves_model.dart';
+
+const _log = AreaKeyLog(LogKeys.settings);
+
+/// The single `SettingsStore`, delegating to whichever engine [SettingsEngineGate]
+/// selects.
+///
+/// The rest of the app keeps reading `settings.*` through this seam, so the
+/// engine swap is invisible to callers. The gate key is hidden from [getKeys]
+/// (and preserved across [clear]) so settings export/import/reset never touch it.
+class SettingsStoreRouter implements SettingsStore {
+  new({
+    SharedPrefSettingsStore? legacy,
+    MetaSettingsStore? meta,
+    SettingsEngineGate? gate,
+  })  : _legacy = legacy ?? SharedPrefSettingsStore(),
+        _meta = meta ?? MetaSettingsStore(),
+        _gate = gate ?? SettingsEngineGate();
+
+  final SharedPrefSettingsStore _legacy;
+  final MetaSettingsStore _meta;
+  final SettingsEngineGate _gate;
+
+  SettingsEngineVersion _version = SettingsEngineVersion.defaultVersion;
+
+  SettingsEngineVersion get version => _version;
+
+  bool get isMeta => _version == SettingsEngineVersion.v2;
+
+  SharedPrefSettingsStore get legacyStore => _legacy;
+
+  MetaSettingsStore get metaStore => _meta;
+
+  SettingsStore get _active => isMeta ? _meta : _legacy;
+
+  @override
+  bool get initialized => _active.initialized;
+
+  @override
+  Future<void> init() async {
+    _version = await _gate.read();
+    // The legacy store is always initialized: it powers both the one-time seed
+    // and an instant, lossless rollback.
+    await _legacy.init();
+    if (isMeta) {
+      await _meta.init();
+      await MetaSettingsSeeder(legacy: _legacy, meta: _meta).seedIfNeeded();
+    }
+    _log.i('settings engine=${_version.name}');
+  }
+
+  /// Persists [version] and initializes the newly authoritative store.
+  Future<void> activate(SettingsEngineVersion version) async {
+    if (version == _version) return;
+
+    await _gate.write(version);
+    _version = version;
+    if (!_active.initialized) {
+      await _active.init();
+    }
+    if (isMeta) {
+      await MetaSettingsSeeder(legacy: _legacy, meta: _meta).seedIfNeeded();
+    }
+    _log.i('settings engine switched to ${version.name}');
+  }
+
+  // lifecycle
+
+  @override
+  Future<void> reload() => _active.reload();
+
+  @override
+  Future<bool> clear() async {
+    final version = _version;
+    final result = await _active.clear();
+    // The gate key lives in the same SharedPreferences file as v1; re-assert it.
+    await _gate.write(version);
+    return result;
+  }
+
+  @override
+  Future<bool> remove(String key) {
+    if (key == SettingsEngineGate.key) return Future.value(true);
+    return _active.remove(key);
+  }
+
+  // get
+
+  @override
+  Set<String> getKeys() => _active.getKeys().where((key) => key != SettingsEngineGate.key).toSet();
+
+  @override
+  Object? get(String key) => _active.get(key);
+
+  @override
+  bool? getBool(String key) => _active.getBool(key);
+
+  @override
+  int? getInt(String key) => _active.getInt(key);
+
+  @override
+  double? getDouble(String key) => _active.getDouble(key);
+
+  @override
+  String? getString(String key) => _active.getString(key);
+
+  @override
+  List<String>? getStringList(String key) => _active.getStringList(key);
+
+  // set
+
+  @override
+  Future<bool> setBool(String key, bool value) => _active.setBool(key, value);
+
+  @override
+  Future<bool> setInt(String key, int value) => _active.setInt(key, value);
+
+  @override
+  Future<bool> setDouble(String key, double value) => _active.setDouble(key, value);
+
+  @override
+  Future<bool> setString(String key, String value) => _active.setString(key, value);
+
+  @override
+  Future<bool> setStringList(String key, List<String> value) => _active.setStringList(key, value);
+}

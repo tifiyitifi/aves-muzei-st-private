@@ -2,6 +2,8 @@ import 'package:aves/model/availability.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/dynamic_albums.dart';
 import 'package:aves/model/grouping/common.dart';
+import 'package:aves/features/meta_settings/model/enum/settings_engine_version.dart';
+import 'package:aves/features/meta_settings/store/settings_engine_gate.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/services/app_service.dart';
 import 'package:aves/services/common/services.dart';
@@ -14,6 +16,7 @@ import 'package:aves/services/window_service.dart';
 import 'package:aves/utils/android_file_utils.dart';
 import 'package:aves_report/aves_report.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 import 'fake/android_app_service.dart';
@@ -43,6 +46,10 @@ Future<void> setUpAllServices() async {
   getIt.registerLazySingleton<WindowService>(FakeWindowService.new);
 
   SharedPreferencesStorePlatform.instance = InMemorySharedPreferencesStore.empty();
+  // The settings router defaults to the metadata (v2) engine, whose store needs
+  // the Drift database. This shared helper stays on the legacy engine so the
+  // suite remains database-free; v2 is covered in `test/features/meta_settings`.
+  await (await SharedPreferences.getInstance()).setString(SettingsEngineGate.key, SettingsEngineVersion.v1.name);
   await settings.init(monitorPlatformSettings: false, shouldSanitize: false);
   await androidFileUtils.init();
 

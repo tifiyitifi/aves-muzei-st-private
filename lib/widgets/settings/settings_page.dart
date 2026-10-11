@@ -1,4 +1,5 @@
-import 'package:aves/model/settings/settings.dart';
+import 'package:aves/features/meta_settings/view/settings_engine_section.dart';
+import 'package:aves/features/meta_settings/view/settings_host.dart';
 import 'package:aves/theme/durations.dart';
 import 'package:aves/widgets/common/extensions/media_query.dart';
 import 'package:aves/widgets/settings/accessibility/accessibility.dart';
@@ -7,8 +8,6 @@ import 'package:aves/widgets/settings/language/language.dart';
 import 'package:aves/widgets/settings/navigation/navigation.dart';
 import 'package:aves/widgets/settings/privacy/privacy.dart';
 import 'package:aves/widgets/settings/settings_definition.dart';
-import 'package:aves/widgets/settings/settings_mobile_page.dart';
-import 'package:aves/widgets/settings/settings_tv_page.dart';
 import 'package:aves/widgets/settings/thumbnails/thumbnails.dart';
 import 'package:aves/widgets/settings/video/video.dart';
 import 'package:aves/widgets/settings/viewer/viewer.dart';
@@ -29,18 +28,13 @@ class SettingsPage extends StatelessWidget {
     AccessibilitySection(),
     DisplaySection(),
     LanguageSection(),
+    SettingsVersionSection(),
   ];
 
   const new({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    if (settings.useTvLayout) {
-      return const SettingsTvPage();
-    } else {
-      return const SettingsMobilePage();
-    }
-  }
+  Widget build(BuildContext context) => const SettingsHost();
 }
 
 class SettingsListView extends StatelessWidget {

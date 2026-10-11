@@ -1,9 +1,12 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
+
+const _log = AreaKeyLog(LogKeys.db);
 
 /// Owns the `covers` table (per-collection cover overrides).
 class CoverStore {
@@ -15,7 +18,7 @@ class CoverStore {
 
   Future<void> clear() async {
     final count = await db.delete(db.coversTable).go();
-    debugPrint('$runtimeType clear deleted $count rows');
+    _log.d('$runtimeType clear deleted $count rows');
   }
 
   Future<Set<CoverRow>> loadAll() async {
@@ -25,7 +28,7 @@ class CoverStore {
       if (cover != null) {
         result.add(cover);
       } else {
-        debugPrint('$runtimeType failed to deserialize cover from row=${row.data}');
+        _log.w('$runtimeType failed to deserialize cover from row=${row.data}');
       }
     }
     return result;

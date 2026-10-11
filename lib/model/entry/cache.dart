@@ -23,7 +23,9 @@ class EntryCache {
 
   static void evict(String uri) {
     final keys = _requestKeysByUri.remove(uri) ?? {};
-    debugPrint('Evict cached images for uri=$uri: ${keys.length} imageCache keys');
+    // Upstream log: low value and one line per URI floods the console, so it is
+    // kept commented out (uncomment temporarily when debugging evictions).
+    // debugPrint('Evict cached images for uri=$uri: ${keys.length} imageCache keys');
     keys.forEach(imageCache.evict);
   }
 

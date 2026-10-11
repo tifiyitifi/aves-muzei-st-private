@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/catalog.dart';
@@ -39,6 +41,8 @@ import 'package:collection/collection.dart';
 import 'package:event_bus/event_bus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:leak_tracker/leak_tracker.dart';
+
+const _log = AreaKeyLog(LogKeys.media);
 
 typedef SourceScope = Set<CollectionFilter>?;
 
@@ -530,7 +534,7 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
         }
       }
 
-      debugPrint('analyze ${todoEntries.length} entries, force=$force, starting service=$startAnalysisService');
+      _log.d('analyze ${todoEntries.length} entries, force=$force, starting service=$startAnalysisService');
       if (startAnalysisService) {
         final lifecycleState = AvesApp.lifecycleStateNotifier.value;
         switch (lifecycleState) {

@@ -1,10 +1,13 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:collection/collection.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
+
+const _log = AreaKeyLog(LogKeys.db);
 
 /// Owns the `entry` table: CRUD, directory/origin loading, live search and
 /// duplicate detection. Drift types never leave this store.
@@ -23,7 +26,7 @@ class EntryStore {
 
   Future<void> clear() async {
     final count = await db.delete(db.entriesTable).go();
-    debugPrint('$runtimeType clear deleted $count rows');
+    _log.d('$runtimeType clear deleted $count rows');
   }
 
   Future<Set<AvesEntry>> load({int? origin, String? directory}) async {
@@ -71,7 +74,7 @@ class EntryStore {
     var inserted = 0;
     // slice entries to avoid memory issues
     for (final slice in entries.slices(_insertSliceMaxCount)) {
-      debugPrint('$runtimeType inserting slice of [${inserted + 1}, ${inserted + slice.length}] entries');
+      _log.d('$runtimeType inserting slice of [${inserted + 1}, ${inserted + slice.length}] entries');
       await db.batch((batch) {
         for (final entry in slice) {
           batchInsertReplace(batch, db.entriesTable, entry.toDatabaseMap());
@@ -79,7 +82,7 @@ class EntryStore {
       });
       inserted += slice.length;
     }
-    debugPrint('$runtimeType insert complete in ${stopwatch.elapsed.inMilliseconds}ms for ${entries.length} entries');
+    _log.d('$runtimeType insert complete in ${stopwatch.elapsed.inMilliseconds}ms for ${entries.length} entries');
   }
 
   Future<void> update(int id, AvesEntry entry) async {
@@ -112,7 +115,7 @@ class EntryStore {
     ).get();
     final duplicates = rows.map((row) => AvesEntry.fromMap(row.data)).toSet();
     if (duplicates.isNotEmpty) {
-      debugPrint('$runtimeType found duplicates=$duplicates');
+      _log.d('$runtimeType found duplicates=$duplicates');
     }
     // returns most recent duplicate for each duplicated content ID
     return duplicates;

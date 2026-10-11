@@ -14,6 +14,8 @@ import 'package:aves/features/drift_db/migration/legacy_import_progress.dart';
 import 'package:aves/features/drift_db/trash/trash_store.dart';
 import 'package:aves/features/drift_db/vaults/vault_store.dart';
 import 'package:aves/features/drift_db/video_playback/video_playback_store.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/dynamic_albums.dart';
@@ -27,8 +29,9 @@ import 'package:aves/model/vaults/details.dart';
 import 'package:aves/model/viewer/video_playback.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:drift/native.dart';
-import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart' as sqflite;
+
+const _log = AreaKeyLog(LogKeys.db);
 
 /// Composition root and [LocalMediaDb] adapter for the Drift backend.
 ///
@@ -122,7 +125,7 @@ class DriftLocalMediaDb implements LocalMediaDb {
 
   @override
   Future<void> reset() async {
-    debugPrint('$runtimeType reset');
+    _log.d('$runtimeType reset');
     await _db.close();
     await sqflite.deleteDatabase(await path);
     _initFuture = null;

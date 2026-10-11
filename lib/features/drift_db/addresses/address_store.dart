@@ -1,8 +1,11 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/metadata/address.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
+
+const _log = AreaKeyLog(LogKeys.db);
 
 /// Owns the `address` table (reverse-geocoded location metadata).
 class AddressStore {
@@ -14,7 +17,7 @@ class AddressStore {
 
   Future<void> clear() async {
     final count = await db.delete(db.addressesTable).go();
-    debugPrint('$runtimeType clear deleted $count rows');
+    _log.d('$runtimeType clear deleted $count rows');
   }
 
   Future<Set<AddressDetails>> loadAll() async {
@@ -35,7 +38,7 @@ class AddressStore {
         batchInsertReplace(batch, db.addressesTable, address.toDbMap());
       }
     });
-    debugPrint('$runtimeType save complete in ${stopwatch.elapsed.inMilliseconds}ms for ${addresses.length} entries');
+    _log.d('$runtimeType save complete in ${stopwatch.elapsed.inMilliseconds}ms for ${addresses.length} entries');
   }
 
   Future<void> update(int id, AddressDetails? address) async {

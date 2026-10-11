@@ -6,11 +6,14 @@ import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
 import 'package:aves/features/drift_db/migration/legacy_import_progress.dart';
 import 'package:aves/features/drift_db/migration/legacy_import_state_store.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/db/db_sqflite_schema.dart';
 import 'package:aves/model/db/db_sqflite_upgrade.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart' as sqflite;
+
+const _log = AreaKeyLog(LogKeys.db);
 
 /// One-time, forward-only import of the legacy `metadata.db` (sqflite, v16)
 /// into the fork-owned `aves.drift.db`.
@@ -224,7 +227,7 @@ class LegacyImport {
     // The legacy handle must be closed first: renaming an open file fails on
     // Windows (and the rename is only a rollback backup, so it runs last).
     await _keepBackup(legacyFile, legacyPath);
-    debugPrint('$runtimeType imported legacy db into drift');
+    _log.i('$runtimeType imported legacy db into drift');
     return true;
   }
 
@@ -337,9 +340,9 @@ class LegacyImport {
       final backup = File('$dir$importedBackupFileName');
       if (backup.existsSync()) await backup.delete();
       await legacyFile.rename(backup.path);
-      debugPrint('$runtimeType kept legacy db backup at ${backup.path}');
+      _log.d('$runtimeType kept legacy db backup at ${backup.path}');
     } catch (error) {
-      debugPrint('$runtimeType could not back up legacy db: $error');
+      _log.w('$runtimeType could not back up legacy db', error);
     }
   }
 

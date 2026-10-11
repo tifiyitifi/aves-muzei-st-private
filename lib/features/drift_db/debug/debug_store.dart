@@ -1,6 +1,9 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
-import 'package:flutter/foundation.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
+
+const _log = AreaKeyLog(LogKeys.db);
 
 /// Owns the `debug` table (platform debug log).
 class DebugStore {
@@ -12,7 +15,7 @@ class DebugStore {
 
   Future<void> clear() async {
     final count = await db.delete(db.debugTable).go();
-    debugPrint('$runtimeType clear deleted $count rows');
+    _log.d('$runtimeType clear deleted $count rows');
   }
 
   Future<List<String>> loadAll() async {

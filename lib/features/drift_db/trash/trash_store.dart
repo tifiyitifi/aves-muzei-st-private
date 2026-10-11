@@ -1,8 +1,11 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/metadata/trash.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
+
+const _log = AreaKeyLog(LogKeys.db);
 
 /// Owns the `trash` table (path + deletion date per trashed entry).
 class TrashStore {
@@ -14,7 +17,7 @@ class TrashStore {
 
   Future<void> clear() async {
     final count = await db.delete(db.trashTable).go();
-    debugPrint('$runtimeType clear deleted $count rows');
+    _log.d('$runtimeType clear deleted $count rows');
   }
 
   Future<Set<TrashDetails>> loadAll() async {

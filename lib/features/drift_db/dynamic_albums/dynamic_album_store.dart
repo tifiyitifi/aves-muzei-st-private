@@ -1,7 +1,10 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/dynamic_albums.dart';
-import 'package:flutter/foundation.dart';
+
+const _log = AreaKeyLog(LogKeys.db);
 
 /// Owns the `dynamicAlbums` table (named saved filters).
 class DynamicAlbumStore {
@@ -13,7 +16,7 @@ class DynamicAlbumStore {
 
   Future<int> clear() async {
     final count = await db.delete(db.dynamicAlbumsTable).go();
-    debugPrint('$runtimeType clear deleted $count rows');
+    _log.d('$runtimeType clear deleted $count rows');
     return count;
   }
 
@@ -24,7 +27,7 @@ class DynamicAlbumStore {
       if (album != null) {
         result.add(album);
       } else {
-        debugPrint('$runtimeType failed to deserialize dynamic album from row=${row.data}');
+        _log.w('$runtimeType failed to deserialize dynamic album from row=${row.data}');
       }
     }
     return result;

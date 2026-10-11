@@ -1,7 +1,10 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/vaults/details.dart';
-import 'package:flutter/foundation.dart';
+
+const _log = AreaKeyLog(LogKeys.db);
 
 /// Owns the `vaults` table (vault configuration, keyed by name).
 class VaultStore {
@@ -13,7 +16,7 @@ class VaultStore {
 
   Future<void> clear() async {
     final count = await db.delete(db.vaultsTable).go();
-    debugPrint('$runtimeType clear deleted $count rows');
+    _log.d('$runtimeType clear deleted $count rows');
   }
 
   Future<Set<VaultDetails>> loadAll() async {

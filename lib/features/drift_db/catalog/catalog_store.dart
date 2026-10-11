@@ -1,8 +1,11 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/metadata/catalog.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
+
+const _log = AreaKeyLog(LogKeys.db);
 
 /// Owns `dateTaken` + `metadata`. They are written together by [update] and
 /// [save], so they live in one slice rather than two.
@@ -16,12 +19,12 @@ class CatalogStore {
 
   Future<void> clearDates() async {
     final count = await db.delete(db.dateTakenTable).go();
-    debugPrint('$runtimeType clearDates deleted $count rows');
+    _log.d('$runtimeType clearDates deleted $count rows');
   }
 
   Future<void> clearMetadata() async {
     final count = await db.delete(db.metadataTable).go();
-    debugPrint('$runtimeType clearMetadata deleted $count rows');
+    _log.d('$runtimeType clearMetadata deleted $count rows');
   }
 
   Future<Map<int?, int?>> loadDates() async {
@@ -51,9 +54,9 @@ class CatalogStore {
           _addToBatch(batch, metadata);
         }
       });
-      debugPrint('$runtimeType save complete in ${stopwatch.elapsed.inMilliseconds}ms for ${entries.length} entries');
+      _log.d('$runtimeType save complete in ${stopwatch.elapsed.inMilliseconds}ms for ${entries.length} entries');
     } catch (error, stack) {
-      debugPrint('$runtimeType failed to save metadata with error=$error\n$stack');
+      _log.e('$runtimeType failed to save metadata', error, stack);
     }
   }
 

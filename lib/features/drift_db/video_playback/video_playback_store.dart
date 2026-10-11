@@ -1,8 +1,11 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/viewer/video_playback.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
+
+const _log = AreaKeyLog(LogKeys.db);
 
 /// Owns the `videoPlayback` table (resume position per entry).
 class VideoPlaybackStore {
@@ -14,7 +17,7 @@ class VideoPlaybackStore {
 
   Future<void> clear() async {
     final count = await db.delete(db.videoPlaybackTable).go();
-    debugPrint('$runtimeType clear deleted $count rows');
+    _log.d('$runtimeType clear deleted $count rows');
   }
 
   Future<Set<VideoPlaybackRow>> loadAll() async {
@@ -24,7 +27,7 @@ class VideoPlaybackStore {
       if (playback != null) {
         result.add(playback);
       } else {
-        debugPrint('$runtimeType failed to deserialize video playback from row=${row.data}');
+        _log.w('$runtimeType failed to deserialize video playback from row=${row.data}');
       }
     }
     return result;

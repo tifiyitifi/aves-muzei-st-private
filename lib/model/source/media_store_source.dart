@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/dynamic_albums.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -18,6 +20,8 @@ import 'package:aves/utils/debouncer.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
+
+const _log = AreaKeyLog(LogKeys.media);
 
 class MediaStoreSource extends CollectionSource {
   final Debouncer _changeDebouncer = Debouncer(delay: ADurations.mediaContentChangeDebounceDelay);
@@ -80,7 +84,7 @@ class MediaStoreSource extends CollectionSource {
       settings.catalogTimeZoneOffsetMillis = deviceOffset;
     }
     await loadDates();
-    debugPrint('$runtimeType load essentials complete in ${stopwatch.elapsed.inMilliseconds}ms');
+    _log.v('$runtimeType load essentials complete in ${stopwatch.elapsed.inMilliseconds}ms');
   }
 
   Future<void> _loadEntries({
@@ -99,13 +103,13 @@ class MediaStoreSource extends CollectionSource {
     if (loadTopEntriesFirst) {
       final topIds = settings.topEntryIds?.toSet();
       if (topIds != null) {
-        debugPrint('$runtimeType load ${stopwatch.elapsed} load ${topIds.length} top entries');
+        _log.v('$runtimeType load ${stopwatch.elapsed} load ${topIds.length} top entries');
         topEntries.addAll(await localMediaDb.loadEntriesById(topIds));
         addEntries(topEntries);
       }
     }
 
-    debugPrint('$runtimeType load ${stopwatch.elapsed} fetch known entries');
+    _log.v('$runtimeType load ${stopwatch.elapsed} fetch known entries');
     final knownEntries = await localMediaDb.loadEntries(origin: EntryOrigins.mediaStoreContent, directory: scopeDirectory);
     final knownLiveEntries = knownEntries.where((entry) => !entry.trashed).toSet();
     final isLargeCollection = knownEntries.length > 80000;
@@ -116,7 +120,7 @@ class MediaStoreSource extends CollectionSource {
     unawaited(reportService.setCustomKey('is_large_collection', isLargeCollection));
     unawaited(reportService.log('$runtimeType found ${knownEntries.length} known entries'));
 
-    debugPrint('$runtimeType load ${stopwatch.elapsed} check obsolete entries');
+    _log.v('$runtimeType load ${stopwatch.elapsed} check obsolete entries');
     final knownDateByContentId = Map.fromEntries(knownLiveEntries.map((entry) => MapEntry(entry.contentId, entry.dateModifiedMillis)));
     final knownContentIds = knownDateByContentId.keys.toList();
     final removedContentIds = (await mediaStoreService.checkObsoleteContentIds(knownContentIds)).toSet();
@@ -128,7 +132,7 @@ class MediaStoreSource extends CollectionSource {
     knownEntries.removeAll(removedEntries);
 
     // show known entries
-    debugPrint('$runtimeType load ${stopwatch.elapsed} add known entries');
+    _log.v('$runtimeType load ${stopwatch.elapsed} add known entries');
     // add entries without notifying, so that the collection is not refreshed
     // with items that may be hidden right away because of their metadata
     addEntries(knownEntries, notify: false);
@@ -138,7 +142,7 @@ class MediaStoreSource extends CollectionSource {
 
     await _loadVaultEntries(scopeDirectory);
 
-    debugPrint('$runtimeType load ${stopwatch.elapsed} load metadata');
+    _log.v('$runtimeType load ${stopwatch.elapsed} load metadata');
     if (scopeDirectory != null) {
       final ids = knownLiveEntries.map((entry) => entry.id).toSet();
       await loadCatalogMetadata(ids: ids);
@@ -153,11 +157,11 @@ class MediaStoreSource extends CollectionSource {
         deleteExpiredTrash().then(
           (deletedUris) {
             if (deletedUris.isNotEmpty) {
-              debugPrint('evicted ${deletedUris.length} expired items from the trash');
+              _log.d('evicted ${deletedUris.length} expired items from the trash');
               removeEntries(deletedUris, includeTrash: true);
             }
           },
-          onError: (error) => debugPrint('failed to evict expired trash error=$error'),
+          onError: (error) => _log.w('failed to evict expired trash', error),
         ),
       );
     }
@@ -165,7 +169,7 @@ class MediaStoreSource extends CollectionSource {
 
     // clean up obsolete entries
     if (removedEntries.isNotEmpty) {
-      debugPrint('$runtimeType load ${stopwatch.elapsed} remove obsolete entries');
+      _log.v('$runtimeType load ${stopwatch.elapsed} remove obsolete entries');
       await localMediaDb.removeIds(removedEntries.map((entry) => entry.id).toSet());
     }
 
@@ -198,7 +202,7 @@ class MediaStoreSource extends CollectionSource {
     final newEntries = <AvesEntry>{};
 
     // recover untracked trash items
-    debugPrint('$runtimeType load ${stopwatch.elapsed} recover untracked entries');
+    _log.v('$runtimeType load ${stopwatch.elapsed} recover untracked entries');
     if (directory == null) {
       final recoveredEntries = await recoverUntrackedTrashItems();
       // set media store as origin of recovered items, because they would be managed by it if restored
@@ -207,7 +211,7 @@ class MediaStoreSource extends CollectionSource {
     }
 
     // verify paths because some apps move files without updating their `last modified date`
-    debugPrint('$runtimeType load ${stopwatch.elapsed} check obsolete paths');
+    _log.v('$runtimeType load ${stopwatch.elapsed} check obsolete paths');
     final knownPathByContentId = Map.fromEntries(knownLiveEntries.map((entry) => MapEntry(entry.contentId, entry.path)));
     final movedContentIds = (await mediaStoreService.checkObsoletePaths(knownPathByContentId)).toSet();
     movedContentIds.forEach((contentId) {
@@ -216,7 +220,7 @@ class MediaStoreSource extends CollectionSource {
     });
 
     // fetch new & modified entries
-    debugPrint('$runtimeType load ${stopwatch.elapsed} fetch new entries');
+    _log.v('$runtimeType load ${stopwatch.elapsed} fetch new entries');
     final knownContentIds = knownDateByContentId.keys.toSet();
     final knownEntryByContentId = Map.fromEntries(knownLiveEntries.map((entry) => MapEntry(entry.contentId, entry)));
     mediaStoreService
@@ -235,7 +239,7 @@ class MediaStoreSource extends CollectionSource {
           onDone: () async {
             if (newEntries.isNotEmpty) {
               // TODO TLAD perform DB ops with `newEntries` by chunks
-              debugPrint('$runtimeType load ${stopwatch.elapsed} save ${newEntries.length} new entries');
+              _log.v('$runtimeType load ${stopwatch.elapsed} save ${newEntries.length} new entries');
               await localMediaDb.insertEntries(newEntries);
 
               // TODO TLAD find duplication cause
@@ -268,7 +272,7 @@ class MediaStoreSource extends CollectionSource {
               updateDirectories();
             }
 
-            debugPrint('$runtimeType load ${stopwatch.elapsed} analyze');
+            _log.v('$runtimeType load ${stopwatch.elapsed} analyze');
             Set<AvesEntry>? analysisEntries;
             final analysisIds = analysisController?.entryIds;
             if (analysisIds != null) {

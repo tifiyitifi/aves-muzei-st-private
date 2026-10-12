@@ -39,19 +39,29 @@ class SettingsEngineController extends ChangeNotifier {
       return;
     }
 
-    final keys = <String>{...before.getKeys(), ...after.getKeys()}..remove(SettingsEngineGate.key);
-    for (final key in keys) {
-      final oldValue = before.get(key);
-      final newValue = after.get(key);
-      if (settings.hasValueChanged(oldValue, newValue)) {
-        settings.notifyKeyChange(key, oldValue, newValue);
-      }
-    }
+    replayDiff(settings, before, after);
 
     settings.resetResolvedLocale();
     await settings.sanitize();
     settings.notifyListeners();
     notifyListeners();
+  }
+
+  /// Replays the values that differ between [before] and [after] to [settings]'
+  /// update stream, so listeners re-apply to the newly authoritative values.
+  ///
+  /// The replayed keys are not user edits, so they are kept out of the
+  /// recent-changed list; otherwise a single engine switch would mark every
+  /// differing key as recently changed and flood search's suggestions.
+  static void replayDiff(SettingsAccess settings, SettingsStore before, SettingsStore after) {
+    final keys = <String>{...before.getKeys(), ...after.getKeys()}..remove(SettingsEngineGate.key);
+    for (final key in keys) {
+      final oldValue = before.get(key);
+      final newValue = after.get(key);
+      if (settings.hasValueChanged(oldValue, newValue)) {
+        settings.notifyKeyChange(key, oldValue, newValue, recordRecent: false);
+      }
+    }
   }
 }
 

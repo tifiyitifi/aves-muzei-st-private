@@ -25,6 +25,15 @@ class MetaSettingsDao {
     return result;
   }
 
+  /// One persisted value by key, or null when absent or unreadable.
+  Future<MetaSettingRow?> load(String key) async {
+    final row = await (db.select(db.settingsValuesTable)..where((t) => t.key.equals(key))).getSingleOrNull();
+    if (row == null) return null;
+    final type = SettingValueType.tryParse(row.type);
+    if (type == null) return null;
+    return (type: type, raw: row.value);
+  }
+
   Future<void> upsert(String key, SettingValueType type, String raw) async {
     await db.into(db.settingsValuesTable).insertOnConflictUpdate(
           SettingsValuesTableCompanion.insert(key: key, type: type.storageType.name, value: raw),

@@ -9,7 +9,10 @@ mixin SettingsAccess {
 
   Stream<SettingsChangedEvent> get updateStream;
 
-  void notifyKeyChange(String key, Object? oldValue, Object? newValue);
+  /// Emits a change event for [key]. When [recordRecent] is false, a
+  /// programmatic replay is not treated as a user edit and is kept out of the
+  /// recent-changed list.
+  void notifyKeyChange(String key, Object? oldValue, Object? newValue, {bool recordRecent = true});
 
   void notifyListeners();
 
@@ -22,14 +25,21 @@ mixin SettingsAccess {
 
   void set(String key, Object? newValue) {
     var oldValue = store.get(key);
+    var handled = true;
     if (newValue == null) {
       store.remove(key);
     } else if (newValue is String) {
       oldValue = getString(key);
       store.setString(key, newValue);
-    } else if (newValue is List<String>) {
-      oldValue = getStringList(key);
-      store.setStringList(key, newValue);
+    } else if (newValue is List) {
+      final list = _asStringList(newValue);
+      if (list == null) {
+        handled = false;
+      } else {
+        oldValue = getStringList(key);
+        newValue = list;
+        store.setStringList(key, list);
+      }
     } else if (newValue is int) {
       oldValue = getInt(key);
       store.setInt(key, newValue);
@@ -39,8 +49,12 @@ mixin SettingsAccess {
     } else if (newValue is bool) {
       oldValue = getBool(key);
       store.setBool(key, newValue);
+    } else {
+      handled = false;
     }
-    if (hasValueChanged(oldValue, newValue)) {
+    // Never notify a value that was not persisted: a listener must not observe a
+    // change the store did not accept.
+    if (handled && hasValueChanged(oldValue, newValue)) {
       notifyKeyChange(key, oldValue, newValue);
       notifyListeners();
     }
@@ -104,5 +118,16 @@ mixin SettingsAccess {
 
   List<T> getEnumListOrDefault<T extends Enum>(String key, List<T> defaultValue, Iterable<T> values) {
     return store.getStringList(key)?.map((s) => values.safeByName(s)).nonNulls.toList() ?? defaultValue;
+  }
+}
+
+/// Eagerly materializes [value] as a string list, or null when it holds a
+/// non-string element. A lazy `cast` would only throw when the store later reads
+/// it, far from [SettingsAccess.set], turning a bad value into a delayed crash.
+List<String>? _asStringList(List value) {
+  try {
+    return List<String>.from(value);
+  } catch (error) {
+    return null;
   }
 }

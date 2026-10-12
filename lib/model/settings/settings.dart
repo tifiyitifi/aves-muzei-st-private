@@ -491,12 +491,12 @@ class Settings
   }
 
   @override
-  void notifyKeyChange(String key, Object? oldValue, Object? newValue) {
+  void notifyKeyChange(String key, Object? oldValue, Object? newValue, {bool recordRecent = true}) {
     _updateStreamController.add(SettingsChangedEvent(key, oldValue, newValue));
     if (key.startsWith(SettingKeys.tileExtentPrefixKey)) {
       _updateTileExtentStreamController.add(SettingsChangedEvent(key, oldValue, newValue));
     }
-    if (!SettingKeys.isInternalKey(key)) {
+    if (recordRecent && !SettingKeys.isInternalKey(key)) {
       final recent = recentSettingKeys..insert(0, key);
       recentSettingKeys = recent.toSet().toList();
     }

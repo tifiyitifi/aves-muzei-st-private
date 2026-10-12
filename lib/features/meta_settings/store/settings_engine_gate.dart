@@ -23,12 +23,19 @@ class SettingsEngineGate {
     }
   }
 
-  Future<void> write(SettingsEngineVersion version) async {
+  /// Persists [version]. Returns whether the write succeeded, so a caller can
+  /// refuse to commit a switch whose selector would be lost on the next launch.
+  Future<bool> write(SettingsEngineVersion version) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(key, version.name);
+      final success = await prefs.setString(key, version.name);
+      if (!success) {
+        _log.e('failed to write engine gate=${version.name}');
+      }
+      return success;
     } catch (error, stack) {
       _log.e('failed to write engine gate=${version.name}', error, stack);
+      return false;
     }
   }
 }

@@ -1,9 +1,28 @@
+import 'dart:convert';
+
 import 'package:aves/features/drift_db/app_database.dart';
+import 'package:aves/features/meta_settings/db/settings_dao.dart';
+import 'package:aves/features/meta_settings/model/enum/setting_value_type.dart';
 import 'package:aves/features/meta_settings/store/meta_settings_store.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/sqlite3_loader.dart';
+
+/// A DAO whose next [upsert] fails, to exercise a failed write while the
+/// database stays readable.
+class _FailOnceMetaSettingsDao(super.db) extends MetaSettingsDao {
+  bool failNextUpsert = false;
+
+  @override
+  Future<void> upsert(String key, SettingValueType type, String raw) {
+    if (failNextUpsert) {
+      failNextUpsert = false;
+      return Future.error(StateError('persistence failure'));
+    }
+    return super.upsert(key, type, raw);
+  }
+}
 
 void main() {
   setUpAll(ensureSqlite3Loaded);
@@ -81,5 +100,50 @@ void main() {
 
     expect(await store.clear(), isFalse);
     expect(store.getKeys(), {'a'}, reason: 'a failed clear must not wipe the cache');
+  });
+
+  test('put persists a list whose runtime type is not List<String>', () async {
+    await store.init();
+    final dynamic decoded = jsonDecode('["x","y"]');
+    expect(decoded, isNot(isA<List<String>>()), reason: 'guard against the test no longer exercising the narrowing');
+
+    expect(await store.put('l', decoded), isTrue);
+    expect(store.getStringList('l'), ['x', 'y']);
+  });
+
+  test('put skips a list holding non-string elements without retrying', () async {
+    await store.init();
+    final dynamic decoded = jsonDecode('[1,2]');
+    expect(await store.put('l', decoded), isTrue, reason: 'a permanently unsupported value must not make the seed retry forever');
+    expect(store.get('l'), isNull);
+  });
+
+  test('a failed write re-syncs the cache to the persisted value', () async {
+    final dao = _FailOnceMetaSettingsDao(db);
+    final flaky = MetaSettingsStore(injectedDatabase: db, injectedDaoFactory: (_) => dao);
+    await flaky.init();
+    await flaky.setString('k', 'persisted');
+
+    dao.failNextUpsert = true;
+    expect(await flaky.setString('k', 'unpersisted'), isFalse);
+    expect(flaky.getString('k'), 'persisted', reason: 'the cache must reflect what the database actually holds');
+  });
+
+  test('a failed write does not clobber a later concurrent write to the same key', () async {
+    final dao = _FailOnceMetaSettingsDao(db);
+    final flaky = MetaSettingsStore(injectedDatabase: db, injectedDaoFactory: (_) => dao);
+    await flaky.init();
+
+    dao.failNextUpsert = true;
+    final first = flaky.setString('k', 'first'); // fails
+    final second = flaky.setString('k', 'second'); // succeeds
+
+    expect(await first, isFalse);
+    expect(await second, isTrue);
+    expect(flaky.getString('k'), 'second', reason: 'the later write must win in the cache');
+
+    final reopened = MetaSettingsStore(injectedDatabase: db);
+    await reopened.init();
+    expect(reopened.getString('k'), 'second', reason: 'the cache must match the database');
   });
 }

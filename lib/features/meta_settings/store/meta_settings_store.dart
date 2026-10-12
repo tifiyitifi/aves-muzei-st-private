@@ -14,13 +14,16 @@ const _log = AreaKeyLog(LogKeys.settings);
 ///
 /// Values are loaded once at [init] into an in-memory cache so the typed getters
 /// stay synchronous (the same contract as `SharedPreferences`); writes update
-/// the cache and persist asynchronously. A failed write rolls the cache back to
+/// the cache and persist asynchronously. A failed write re-syncs the cache from
 /// the persisted state, so memory never diverges from the database.
 class MetaSettingsStore implements SettingsStore {
   /// Optional injected database, used by tests (which never register the
   /// app-wide [AppDatabaseProvider]).
-  new({this.injectedDatabase});
+  new({this.injectedDatabase, MetaSettingsDao Function(AppDatabase db)? injectedDaoFactory}) : _daoFactory = injectedDaoFactory ?? MetaSettingsDao.new;
 
+  /// Optional injected DAO factory, used by tests to simulate persistence
+  /// failures while the database stays readable.
+  final MetaSettingsDao Function(AppDatabase db) _daoFactory;
   final AppDatabase? injectedDatabase;
   AppDatabase? _db;
   Map<String, MetaSettingRow>? _cache;
@@ -36,14 +39,14 @@ class MetaSettingsStore implements SettingsStore {
   Future<void> init() async {
     final db = injectedDatabase ?? await getIt<AppDatabaseProvider>().open();
     _db = db;
-    _cache = await MetaSettingsDao(db).loadAll();
+    _cache = await _daoFactory(db).loadAll();
   }
 
   @override
   Future<void> reload() async {
     final db = _db;
     if (db == null) return;
-    _cache = await MetaSettingsDao(db).loadAll();
+    _cache = await _daoFactory(db).loadAll();
   }
 
   @override
@@ -53,7 +56,7 @@ class MetaSettingsStore implements SettingsStore {
     final previous = _cache;
     _cache = <String, MetaSettingRow>{};
     try {
-      await MetaSettingsDao(db).clear();
+      await _daoFactory(db).clear();
     } catch (error, stack) {
       _cache = previous;
       _log.e('failed to clear settings, cache rolled back', error, stack);
@@ -66,13 +69,19 @@ class MetaSettingsStore implements SettingsStore {
   Future<bool> remove(String key) async {
     final db = _db;
     if (db == null) return false;
-    final previous = _cache?[key];
-    _cache?.remove(key);
+    final dao = _daoFactory(db);
+    final cache = _cache;
+    final previous = cache?[key];
+    cache?.remove(key);
     try {
-      await MetaSettingsDao(db).remove(key);
+      await dao.remove(key);
     } catch (error, stack) {
-      if (previous != null) _cache?[key] = previous;
-      _log.e('failed to remove setting key=$key, cache rolled back', error, stack);
+      // Only re-sync when the key is still absent: a concurrent write may have
+      // re-added it, and restoring the snapshot would clobber that write.
+      if (cache != null && !cache.containsKey(key)) {
+        await _resync(dao, key, previous);
+      }
+      _log.e('failed to remove setting key=$key, cache resynced', error, stack);
       return false;
     }
     return true;
@@ -132,17 +141,37 @@ class MetaSettingsStore implements SettingsStore {
   /// Writes [value] by its runtime type. Not part of [SettingsStore]: used by
   /// the one-time legacy seed to copy a heterogeneous value set verbatim.
   ///
-  /// Returns whether the value was persisted, so the seed can abort before
-  /// marking itself done when a write fails.
+  /// Returns whether the seed may consider the key handled: `true` when the
+  /// value is persisted or is permanently unsupported (retrying cannot help),
+  /// `false` only when a write failed, so the seed can abort before marking
+  /// itself done and retry later.
   Future<bool> put(String key, Object? value) async {
     if (value == null) return remove(key);
     if (value is bool) return setBool(key, value);
     if (value is int) return setInt(key, value);
     if (value is double) return setDouble(key, value);
     if (value is String) return setString(key, value);
-    if (value is List<String>) return setStringList(key, value);
+    if (value is List) {
+      final list = _stringList(value);
+      if (list == null) {
+        _log.w('skipped seeding of a non-string list for key=$key');
+        return true;
+      }
+      return setStringList(key, list);
+    }
     _log.w('skipped seeding of unsupported value for key=$key');
     return true;
+  }
+
+  /// Eagerly materializes [value] as a string list, or null when it holds a
+  /// non-string element (a lazy `cast` would only throw when the encoder reads
+  /// it, far from here).
+  static List<String>? _stringList(List value) {
+    try {
+      return List<String>.from(value);
+    } catch (error) {
+      return null;
+    }
   }
 
   T? _typed<T>(String key, SettingValueType expected, T? Function(String) decode) {
@@ -154,20 +183,44 @@ class MetaSettingsStore implements SettingsStore {
   Future<bool> _put(String key, SettingValueType type, String raw) async {
     final db = _db;
     if (db == null) return false;
+    final dao = _daoFactory(db);
     final cache = _cache;
+    final written = (type: type, raw: raw);
     final previous = cache?[key];
-    cache?[key] = (type: type, raw: raw);
+    cache?[key] = written;
     try {
-      await MetaSettingsDao(db).upsert(key, type, raw);
+      await dao.upsert(key, type, raw);
     } catch (error, stack) {
-      if (previous != null) {
-        cache?[key] = previous;
-      } else {
-        cache?.remove(key);
+      // Only touch the cache if it still holds our write: a later, concurrent
+      // write may already have replaced it. Re-read the persisted row instead of
+      // restoring the (possibly stale) snapshot, so a failed write can never
+      // resurrect a value the database does not hold.
+      if (cache?[key] == written) {
+        await _resync(dao, key, previous);
       }
-      _log.e('failed to persist setting key=$key, cache rolled back', error, stack);
+      _log.e('failed to persist setting key=$key, cache resynced', error, stack);
       return false;
     }
     return true;
+  }
+
+  /// Re-reads [key]'s persisted value into the cache. Falls back to [snapshot]
+  /// when the database is unreachable (the likely cause of the failure), so a
+  /// failed read does not itself drop the cached value.
+  Future<void> _resync(MetaSettingsDao dao, String key, MetaSettingRow? snapshot) async {
+    MetaSettingRow? persisted;
+    try {
+      persisted = await dao.load(key);
+    } catch (error, stack) {
+      _log.w('failed to re-read setting key=$key from the database', error, stack);
+      persisted = snapshot;
+    }
+    final cache = _cache;
+    if (cache == null) return;
+    if (persisted == null) {
+      cache.remove(key);
+    } else {
+      cache[key] = persisted;
+    }
   }
 }

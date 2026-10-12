@@ -18,6 +18,12 @@ class _ThrowingMetaStore extends MetaSettingsStore {
   Future<void> init() async => throw StateError('database unavailable');
 }
 
+/// A gate whose [write] never succeeds, to exercise a lost selector.
+class _FailingGate extends SettingsEngineGate {
+  @override
+  Future<bool> write(SettingsEngineVersion version) async => false;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -47,6 +53,35 @@ void main() {
     await router.init();
     expect(router.version, SettingsEngineVersion.v2);
     expect(router.isMeta, isTrue);
+  });
+
+  test('a metadata init failure falls back to the legacy engine for the session', () async {
+    await gate.write(SettingsEngineVersion.v2);
+    final failing = SettingsStoreRouter(legacy: legacy, meta: _ThrowingMetaStore(), gate: gate);
+
+    await failing.init();
+
+    expect(failing.version, SettingsEngineVersion.v1, reason: 'an unopenable database must not take the app down');
+    expect(failing.isMeta, isFalse);
+
+    // the fallback is not persisted: a later launch retries the metadata engine
+    expect(await gate.read(), SettingsEngineVersion.v2);
+  });
+
+  test('a failed gate write aborts the switch and leaves the engine unchanged', () async {
+    await gate.write(SettingsEngineVersion.v1);
+    final failing = SettingsStoreRouter(legacy: legacy, meta: meta, gate: _FailingGate());
+    await failing.init();
+    expect(failing.version, SettingsEngineVersion.v1);
+
+    await expectLater(failing.activate(SettingsEngineVersion.v2), throwsA(isA<StateError>()));
+
+    expect(failing.version, SettingsEngineVersion.v1, reason: 'the switch must not commit when the selector cannot be persisted');
+    expect(await gate.read(), SettingsEngineVersion.v1, reason: 'the persisted gate must still name the old engine');
+
+    // the legacy store is still the authoritative one
+    await failing.setString('k', 'v');
+    expect(legacy.getString('k'), 'v');
   });
 
   test('the gate selects the legacy engine', () async {

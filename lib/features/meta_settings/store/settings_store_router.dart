@@ -66,8 +66,16 @@ class SettingsStoreRouter implements SettingsStore {
     // and an instant, lossless rollback.
     await _legacy.init();
     if (isMeta) {
-      await _meta.init();
-      await MetaSettingsSeeder(legacy: _legacy, meta: _meta).seedIfNeeded();
+      try {
+        await _meta.init();
+        await MetaSettingsSeeder(legacy: _legacy, meta: _meta).seedIfNeeded();
+      } catch (error, stack) {
+        // An unopenable database must not take the whole app down: serve this
+        // session from the legacy engine. The gate is left untouched, so a later
+        // launch with a healthy database retries v2.
+        _log.e('failed to open the metadata engine, falling back to the legacy engine', error, stack);
+        _version = SettingsEngineVersion.v1;
+      }
     }
     _log.i('settings engine=${_version.name}');
   }
@@ -85,7 +93,12 @@ class SettingsStoreRouter implements SettingsStore {
       await target.init();
     }
 
-    await _gate.write(version);
+    if (!await _gate.write(version)) {
+      // Refuse to commit a switch whose selector cannot be persisted: the stored
+      // gate would still name the previous engine and silently override the
+      // in-memory choice on the next launch.
+      throw StateError('failed to persist the settings engine gate=${version.name}');
+    }
     _version = version;
     if (isMeta) {
       await MetaSettingsSeeder(legacy: _legacy, meta: _meta).seedIfNeeded();
@@ -102,9 +115,11 @@ class SettingsStoreRouter implements SettingsStore {
   Future<bool> clear() async {
     final version = _version;
     final result = await _active.clear();
-    // The gate key lives in the same SharedPreferences file as v1; re-assert it.
-    await _gate.write(version);
-    return result;
+    // The gate key lives in the same SharedPreferences file as v1, so a v1 clear
+    // wipes the selector; re-assert it. A failed re-assert is reported rather
+    // than swallowed, otherwise the engine choice is silently lost.
+    final gateWritten = await _gate.write(version);
+    return result && gateWritten;
   }
 
   @override

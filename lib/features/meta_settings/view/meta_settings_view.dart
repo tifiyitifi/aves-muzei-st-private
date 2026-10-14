@@ -41,8 +41,9 @@ class _MetaSettingsViewState extends State<MetaSettingsView> {
     final meta = metaCategoryMeta[category]!;
     final defs = metaSettingsDefsFor(category).where((def) => DefVisibility.isVisible(def.availabilityKey));
     return AvesExpansionTile(
-      // key is expected by test driver
-      key: Key('section-meta-${category.name}'),
+      // key is expected by test driver; match the legacy section key so the
+      // shared driver (e.g. tapping `section-language`) works on both surfaces
+      key: Key('section-${category.name}'),
       value: 'meta-${category.name}',
       leading: meta.icon(context),
       title: meta.title(context),

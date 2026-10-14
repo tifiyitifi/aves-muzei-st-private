@@ -112,6 +112,9 @@ class SettingsStoreRouter implements SettingsStore {
   Future<void> reload() => _active.reload();
 
   @override
+  Future<void> flush() => _active.flush();
+
+  @override
   Future<bool> clear() async {
     final version = _version;
     final result = await _active.clear();

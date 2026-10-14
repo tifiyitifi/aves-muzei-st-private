@@ -20,6 +20,11 @@ class SharedPrefSettingsStore implements SettingsStore {
   @override
   Future<void> reload() => _prefs!.reload();
 
+  /// `SharedPreferences` commits on its own lifecycle boundary, so there is no
+  /// engine-side barrier to await here.
+  @override
+  Future<void> flush() async {}
+
   @override
   Future<bool> clear() => _prefs!.clear();
 

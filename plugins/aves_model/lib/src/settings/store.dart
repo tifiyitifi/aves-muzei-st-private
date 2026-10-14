@@ -5,6 +5,10 @@ abstract class SettingsStore {
 
   Future<void> reload();
 
+  /// Ensures writes issued before this call are persisted. Best effort: the
+  /// default is a no-op, engines with an explicit write barrier override it.
+  Future<void> flush() async {}
+
   Future<bool> clear();
 
   Future<bool> remove(String key);

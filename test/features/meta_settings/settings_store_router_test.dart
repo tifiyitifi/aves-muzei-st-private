@@ -24,6 +24,16 @@ class _FailingGate extends SettingsEngineGate {
   Future<bool> write(SettingsEngineVersion version) async => false;
 }
 
+/// A `MetaSettingsStore` that records [flush] calls, to check router delegation.
+class _RecordingMetaStore({super.injectedDatabase}) extends MetaSettingsStore {
+  bool flushed = false;
+
+  @override
+  Future<void> flush() async {
+    flushed = true;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -194,5 +204,16 @@ void main() {
     // the legacy store is still the authoritative one
     await failing.setString('k', 'v');
     expect(legacy.getString('k'), 'v');
+  });
+
+  test('flush is forwarded to the active store', () async {
+    await gate.write(SettingsEngineVersion.v2);
+    final recording = _RecordingMetaStore(injectedDatabase: db);
+    final forwarding = SettingsStoreRouter(legacy: legacy, meta: recording, gate: gate);
+    await forwarding.init();
+
+    await forwarding.flush();
+
+    expect(recording.flushed, isTrue);
   });
 }

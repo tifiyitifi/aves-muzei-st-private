@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:aves/features/drift_db/app_database.dart';
@@ -8,6 +9,21 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/sqlite3_loader.dart';
+
+/// A DAO whose next [upsert] waits on a gate, to observe [MetaSettingsStore.flush].
+class _GatedMetaSettingsDao(super.db) extends MetaSettingsDao {
+  Completer<void>? gate;
+
+  @override
+  Future<void> upsert(String key, SettingValueType type, String raw) async {
+    final pending = gate;
+    if (pending != null) {
+      gate = null;
+      await pending.future;
+    }
+    return super.upsert(key, type, raw);
+  }
+}
 
 /// A DAO whose next [upsert] fails, to exercise a failed write while the
 /// database stays readable.
@@ -145,5 +161,44 @@ void main() {
     final reopened = MetaSettingsStore(injectedDatabase: db);
     await reopened.init();
     expect(reopened.getString('k'), 'second', reason: 'the cache must match the database');
+  });
+
+  test('flush resolves immediately when nothing is pending', () async {
+    await store.init();
+    await store.flush();
+  });
+
+  test('flush waits for pending writes and they are persisted', () async {
+    final dao = _GatedMetaSettingsDao(db);
+    final gated = MetaSettingsStore(injectedDatabase: db, injectedDaoFactory: (_) => dao);
+    await gated.init();
+
+    final gate = Completer<void>();
+    dao.gate = gate;
+    final write = gated.setString('k', 'v');
+    var flushed = false;
+    final flush = gated.flush().then((_) => flushed = true);
+
+    await Future<void>.delayed(Duration.zero);
+    expect(flushed, isFalse, reason: 'flush must not resolve before the pending write is persisted');
+
+    gate.complete();
+    expect(await write, isTrue);
+    await flush;
+    expect(flushed, isTrue);
+
+    final reopened = MetaSettingsStore(injectedDatabase: db);
+    await reopened.init();
+    expect(reopened.getString('k'), 'v');
+  });
+
+  test('flush does not throw when a pending write failed', () async {
+    final dao = _FailOnceMetaSettingsDao(db);
+    final flaky = MetaSettingsStore(injectedDatabase: db, injectedDaoFactory: (_) => dao);
+    await flaky.init();
+
+    dao.failNextUpsert = true;
+    expect(await flaky.setString('k', 'v'), isFalse);
+    await flaky.flush();
   });
 }

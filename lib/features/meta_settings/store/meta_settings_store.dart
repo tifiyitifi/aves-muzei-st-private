@@ -28,6 +28,10 @@ class MetaSettingsStore implements SettingsStore {
   AppDatabase? _db;
   Map<String, MetaSettingRow>? _cache;
 
+  /// Persistence futures that have been started but not yet settled, so [flush]
+  /// can wait for them.
+  final Set<Future<void>> _pendingWrites = {};
+
   /// The backing database, available after [init]; the seeder reads/writes its
   /// one-time marker through `AppMetaStore`.
   AppDatabase? get database => _db;
@@ -50,13 +54,24 @@ class MetaSettingsStore implements SettingsStore {
   }
 
   @override
+  Future<void> flush() async {
+    final pending = _pendingWrites.toList();
+    if (pending.isEmpty) return;
+    // A failed write is reported by its own caller, so swallowing the error here
+    // keeps the barrier itself from throwing.
+    await Future.wait(pending.map((write) => write.then((_) {}, onError: (Object _) {})), eagerError: false);
+  }
+
+  @override
   Future<bool> clear() async {
     final db = _db;
     if (db == null) return false;
     final previous = _cache;
     _cache = <String, MetaSettingRow>{};
+    final completion = _daoFactory(db).clear();
+    _trackWrite(completion);
     try {
-      await _daoFactory(db).clear();
+      await completion;
     } catch (error, stack) {
       _cache = previous;
       _log.e('failed to clear settings, cache rolled back', error, stack);
@@ -73,8 +88,10 @@ class MetaSettingsStore implements SettingsStore {
     final cache = _cache;
     final previous = cache?[key];
     cache?.remove(key);
+    final completion = dao.remove(key);
+    _trackWrite(completion);
     try {
-      await dao.remove(key);
+      await completion;
     } catch (error, stack) {
       // Only re-sync when the key is still absent: a concurrent write may have
       // re-added it, and restoring the snapshot would clobber that write.
@@ -188,8 +205,10 @@ class MetaSettingsStore implements SettingsStore {
     final written = (type: type, raw: raw);
     final previous = cache?[key];
     cache?[key] = written;
+    final completion = dao.upsert(key, type, raw);
+    _trackWrite(completion);
     try {
-      await dao.upsert(key, type, raw);
+      await completion;
     } catch (error, stack) {
       // Only touch the cache if it still holds our write: a later, concurrent
       // write may already have replaced it. Re-read the persisted row instead of
@@ -222,5 +241,15 @@ class MetaSettingsStore implements SettingsStore {
     } else {
       cache[key] = persisted;
     }
+  }
+
+  /// Registers [write] so [flush] can await it, and drops the handle once it
+  /// settles. Errors are reported by the write's own caller, so they are
+  /// swallowed here to avoid a second, unhandled error.
+  void _trackWrite(Future<void> write) {
+    _pendingWrites.add(write);
+    write.whenComplete(() {
+      _pendingWrites.remove(write);
+    }).catchError((Object _) {});
   }
 }

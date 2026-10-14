@@ -18,6 +18,9 @@ class _MemoryStore implements SettingsStore {
   Future<void> reload() async {}
 
   @override
+  Future<void> flush() async {}
+
+  @override
   Future<bool> clear() async {
     _values.clear();
     return true;

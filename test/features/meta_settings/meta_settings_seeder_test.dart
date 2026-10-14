@@ -3,6 +3,7 @@ import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/meta_settings/store/meta_settings_seeder.dart';
 import 'package:aves/features/meta_settings/store/meta_settings_store.dart';
 import 'package:aves/model/settings/store_shared_pref.dart';
+import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -105,5 +106,25 @@ void main() {
     await meta.clear();
     await MetaSettingsSeeder(legacy: legacy, meta: meta).seedIfNeeded();
     expect(meta.getKeys(), isEmpty);
+  });
+
+  test('an internal key carrying user-visible state migrates, transient ones do not', () async {
+    await legacy.setBool(SettingKeys.hasAcceptedTermsKey, true);
+    await legacy.setStringList(SettingKeys.searchHistoryKey, ['q']);
+
+    final meta = MetaSettingsStore(injectedDatabase: db);
+    await meta.init();
+    await MetaSettingsSeeder(legacy: legacy, meta: meta).seedIfNeeded();
+
+    expect(
+      meta.getBool(SettingKeys.hasAcceptedTermsKey),
+      isTrue,
+      reason: 'the terms gate is user-visible state: dropping it re-shows the welcome page to an upgrading user',
+    );
+    expect(
+      meta.getKeys(),
+      isNot(contains(SettingKeys.searchHistoryKey)),
+      reason: 'transient internal caches must be left behind',
+    );
   });
 }

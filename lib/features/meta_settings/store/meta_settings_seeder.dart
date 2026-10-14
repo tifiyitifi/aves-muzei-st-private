@@ -4,7 +4,6 @@ import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/features/meta_settings/store/meta_settings_store.dart';
 import 'package:aves/features/meta_settings/store/settings_engine_gate.dart';
 import 'package:aves_model/aves_model.dart';
-import 'package:collection/collection.dart';
 
 const _log = AreaKeyLog(LogKeys.settings);
 
@@ -18,6 +17,13 @@ const _log = AreaKeyLog(LogKeys.settings);
 /// resumes on the next init instead of freezing the rest of the seed.
 class MetaSettingsSeeder {
   static const String markerKey = 'settings_engine_seeded_v2';
+
+  /// Internal keys that still migrate because they carry user-visible state.
+  ///
+  /// Histories, recent-item caches and platform mirrors are intentionally left
+  /// behind, but `has_accepted_terms` gates the welcome page: dropping it would
+  /// make every upgrading user accept the terms again.
+  static const Set<String> _migratedInternalKeys = {SettingKeys.hasAcceptedTermsKey};
 
   final SettingsStore legacy;
   final MetaSettingsStore meta;
@@ -40,7 +46,7 @@ class MetaSettingsSeeder {
     // setting: never copy it into the metadata store
     final keys = legacy
         .getKeys()
-        .whereNot(SettingKeys.isInternalKey)
+        .where((key) => !SettingKeys.isInternalKey(key) || _migratedInternalKeys.contains(key))
         .where((key) => key != SettingsEngineGate.key && !existing.contains(key))
         .toList();
     var copied = 0;

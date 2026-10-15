@@ -19,4 +19,8 @@ abstract final class LogKeys {
 
   /// Media scanning and cataloguing.
   static const String media = 'log.media';
+
+  /// Every cross-cutting channel, in declaration order. Debug builds open all
+  /// of them so development logs are never silently dropped.
+  static const List<String> all = [app, db, settings, media];
 }

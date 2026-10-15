@@ -70,6 +70,19 @@ void main() {
       expect(Log.isEnabled(LogKeys.db, LogLevel.error), isTrue);
       expect(records, isEmpty);
     });
+
+    test('never reports the off sentinel as enabled, even on an open channel', () {
+      Log.setEnabled(LogKeys.db, true);
+      expect(Log.isEnabled(LogKeys.db, LogLevel.off), isFalse);
+      Log.emit(LogKeys.db, LogLevel.off, 'sentinel must not pass');
+      expect(records, isEmpty);
+    });
+
+    test('a closed channel does not leak the off sentinel to the sink', () {
+      Log.setLevel(LogKeys.db, LogLevel.off);
+      Log.emit(LogKeys.db, LogLevel.off, 'sentinel must not pass');
+      expect(records, isEmpty);
+    });
   });
 
   group('sink', () {
@@ -112,15 +125,18 @@ void main() {
   });
 
   group('applyDefaults', () {
-    test('opens only the app channel in debug', () {
+    test('opens every channel in debug', () {
       Log.applyDefaults(debug: true);
       expect(Log.isEnabled(LogKeys.app, LogLevel.verbose), isTrue);
-      expect(Log.isEnabled(LogKeys.db, LogLevel.error), isFalse);
+      expect(Log.isEnabled(LogKeys.db, LogLevel.error), isTrue);
+      expect(Log.isEnabled(LogKeys.settings, LogLevel.verbose), isTrue);
+      expect(Log.isEnabled(LogKeys.media, LogLevel.verbose), isTrue);
     });
 
     test('opens nothing in release', () {
       Log.applyDefaults(debug: false);
       expect(Log.isEnabled(LogKeys.app, LogLevel.error), isFalse);
+      expect(Log.isEnabled(LogKeys.db, LogLevel.error), isFalse);
     });
   });
 }

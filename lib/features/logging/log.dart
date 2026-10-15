@@ -18,7 +18,7 @@ typedef LogSink = void Function(String key, LogLevel level, Object? message, Obj
 /// A record is emitted only when its channel is open **and** the record's level
 /// reaches the channel's gate. Channels are hierarchical keys
 /// (`log.<domain>.<sub>`); a gate on a parent applies to every child that does
-/// not define its own. In debug builds [LogKeys.app] is open by default;
+/// not define its own. Debug builds open every channel by default;
 /// `--dart-define=AVES_LOG_KEYS=a,b` opens more channels in any build mode.
 /// Release builds open nothing by default, and an opened channel only surfaces
 /// [LogLevel.warning]/[LogLevel.error].
@@ -30,8 +30,10 @@ typedef LogSink = void Function(String key, LogLevel level, Object? message, Obj
 /// Log.only([LogKeys.db]);                      // close everything else
 /// ```
 ///
-/// Records are forwarded to `dart:developer`, so Logcat / DevTools keep working
-/// and each line is tagged with its channel (e.g. `[log.db] message`).
+/// Records are forwarded to `dart:developer` (DevTools). Warnings and errors
+/// are additionally mirrored to Logcat in release builds, where the developer
+/// transport is not surfaced; each line is tagged with its channel
+/// (e.g. `[log.db] message`).
 abstract final class Log {
   static LogSink _sink = _devSink;
 
@@ -67,7 +69,10 @@ abstract final class Log {
 
   /// Whether a [level] record on [key] would be emitted. Use it to guard
   /// expensive message construction.
-  static bool isEnabled(String key, LogLevel level) => level.severity >= _gateFor(key).severity;
+  ///
+  /// [LogLevel.off] is the closed-channel sentinel, never a real record level,
+  /// so it is always reported as disabled (see [emit]).
+  static bool isEnabled(String key, LogLevel level) => level != LogLevel.off && level.severity >= _gateFor(key).severity;
 
   /// Emits a record if [key] / [level] pass the gate.
   static void emit(String key, LogLevel level, Object? message, [Object? error, StackTrace? stackTrace]) {
@@ -94,8 +99,13 @@ abstract final class Log {
   /// opened last so they win.
   @visibleForTesting
   static void applyDefaults({required bool debug}) {
+    _gates.clear();
     if (debug) {
-      setLevel(LogKeys.app, LogLevel.verbose);
+      // Debug builds open every cross-cutting channel so development logs are
+      // never silently dropped (e.g. a `log.db` error).
+      for (final key in LogKeys.all) {
+        setLevel(key, LogLevel.verbose);
+      }
     }
     final opened = debug ? LogLevel.verbose : LogLevel.warning;
     for (final key in parseKeys(const String.fromEnvironment('AVES_LOG_KEYS'))) {
@@ -117,13 +127,20 @@ abstract final class Log {
   }
 
   static void _devSink(String key, LogLevel level, Object? message, Object? error, StackTrace? stackTrace) {
+    final text = message?.toString() ?? '';
     dev.log(
-      message?.toString() ?? '',
+      text,
       name: key,
       level: level.severity,
       error: error,
       stackTrace: stackTrace,
     );
+    // `dart:developer` output is only surfaced while a debugger/DevTools is
+    // attached, so mirror warnings and errors to Logcat in release builds,
+    // where that is the only transport the sink can reach.
+    if (!kDebugMode && level.severity >= LogLevel.warning.severity) {
+      debugPrint('[$key] $text');
+    }
   }
 }
 

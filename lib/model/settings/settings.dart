@@ -486,10 +486,11 @@ class Settings
         notifyKeyChange(key, oldValue, newValue);
       }
     });
-    // The store writes above are fire-and-forget; wait for them before reporting
-    // success, so an immediate process kill cannot drop the tail of the import.
-    await store.flush();
     await sanitize();
+    // The store writes above — and those sanitize itself issues — are
+    // fire-and-forget; wait for them before reporting success, so an immediate
+    // process kill cannot drop the tail of the import.
+    await store.flush();
     notifyListeners();
   }
 

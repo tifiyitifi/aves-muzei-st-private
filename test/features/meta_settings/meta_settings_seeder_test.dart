@@ -111,6 +111,9 @@ void main() {
   test('an internal key carrying user-visible state migrates, transient ones do not', () async {
     await legacy.setBool(SettingKeys.hasAcceptedTermsKey, true);
     await legacy.setStringList(SettingKeys.searchHistoryKey, ['q']);
+    await legacy.setBool(SettingKeys.platformAccelerometerRotationKey, true);
+    await legacy.setBool(SettingKeys.platformTransitionAnimationScaleKey, true);
+    await legacy.setInt(SettingKeys.platformLongPressTimeoutMillisKey, 400);
 
     final meta = MetaSettingsStore(injectedDatabase: db);
     await meta.init();
@@ -125,6 +128,42 @@ void main() {
       meta.getKeys(),
       isNot(contains(SettingKeys.searchHistoryKey)),
       reason: 'transient internal caches must be left behind',
+    );
+    expect(
+      meta.getKeys().intersection(const {
+        SettingKeys.platformAccelerometerRotationKey,
+        SettingKeys.platformTransitionAnimationScaleKey,
+        SettingKeys.platformLongPressTimeoutMillisKey,
+      }),
+      isEmpty,
+      reason: 'platform mirrors are re-queried and rewritten on every cold start, so they need not be seeded',
+    );
+  });
+
+  test('user-visible widget and catalog keys migrate', () async {
+    const widgetShapeKey = '${SettingKeys.widgetShapePrefixKey}1';
+    const widgetFiltersKey = '${SettingKeys.widgetCollectionFiltersPrefixKey}1';
+    await legacy.setString(widgetShapeKey, 'circle');
+    await legacy.setStringList(widgetFiltersKey, ['{"k":"v"}']);
+    await legacy.setInt(SettingKeys.catalogTimeZoneOffsetMillisKey, 28800000);
+
+    final meta = MetaSettingsStore(injectedDatabase: db);
+    await meta.init();
+    await MetaSettingsSeeder(legacy: legacy, meta: meta).seedIfNeeded();
+
+    expect(
+      meta.getString(widgetShapeKey),
+      'circle',
+      reason: 'widget settings are user-visible configuration: dropping them silently resets every home widget',
+    );
+    expect(
+      meta.getStringList(widgetFiltersKey),
+      ['{"k":"v"}'],
+    );
+    expect(
+      meta.getInt(SettingKeys.catalogTimeZoneOffsetMillisKey),
+      28800000,
+      reason: 'a missing catalog offset makes the next launch clear the whole catalog as a time zone change',
     );
   });
 }

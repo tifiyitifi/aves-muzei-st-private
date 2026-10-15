@@ -18,12 +18,29 @@ const _log = AreaKeyLog(LogKeys.settings);
 class MetaSettingsSeeder {
   static const String markerKey = 'settings_engine_seeded_v2';
 
-  /// Internal keys that still migrate because they carry user-visible state.
+  /// Internal keys that must not migrate.
   ///
-  /// Histories, recent-item caches and platform mirrors are intentionally left
-  /// behind, but `has_accepted_terms` gates the welcome page: dropping it would
-  /// make every upgrading user accept the terms again.
-  static const Set<String> _migratedInternalKeys = {SettingKeys.hasAcceptedTermsKey};
+  /// These are the ephemeral histories/caches and the platform mirrors that the
+  /// app re-queries and rewrites on every cold start (see `AvesApp._setup`), so
+  /// their absence is harmless. Everything else — the terms gate, the catalog
+  /// time zone offset, `widget_*` and the catalog keys — is user-visible state
+  /// whose loss would silently change behaviour, so it is copied. Enumerating
+  /// what to skip (rather than what to keep) makes a new user-visible internal
+  /// key migrate by default instead of being silently dropped.
+  static const Set<String> _skippedInternalKeys = {
+    // history / caches
+    SettingKeys.topEntryIdsKey,
+    SettingKeys.recentSettingKeysKey,
+    SettingKeys.searchHistoryKey,
+    SettingKeys.recentDestinationAlbumsKey,
+    SettingKeys.recentTagsKey,
+    // platform mirrors, re-queried and rewritten on every cold start
+    SettingKeys.platformAccelerometerRotationKey,
+    SettingKeys.platformTransitionAnimationScaleKey,
+    SettingKeys.platformLongPressTimeoutMillisKey,
+    // debug
+    SettingKeys.debugShowViewerTilesKey,
+  };
 
   final SettingsStore legacy;
   final MetaSettingsStore meta;
@@ -46,7 +63,7 @@ class MetaSettingsSeeder {
     // setting: never copy it into the metadata store
     final keys = legacy
         .getKeys()
-        .where((key) => !SettingKeys.isInternalKey(key) || _migratedInternalKeys.contains(key))
+        .where((key) => !_skippedInternalKeys.contains(key))
         .where((key) => key != SettingsEngineGate.key && !existing.contains(key))
         .toList();
     var copied = 0;

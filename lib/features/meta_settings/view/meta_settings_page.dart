@@ -8,12 +8,14 @@ import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/bars/app_bar_title.dart';
 import 'package:aves/widgets/common/basic/font_size_icon_theme.dart';
+import 'package:aves/widgets/common/basic/insets.dart';
 import 'package:aves/widgets/common/basic/popup/menu_row.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/settings/settings_action_delegate.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
@@ -83,9 +85,13 @@ class _MetaSettingsPageState extends State<MetaSettingsPage> {
           ),
         ].map((v) => FontSizeIconTheme(child: v)).toList(),
       ),
-      body: const SafeArea(
-        bottom: false,
-        child: MetaSettingsView(),
+      body: const GestureAreaProtectorStack(
+        child: SafeArea(
+          bottom: false,
+          child: AnimationLimiter(
+            child: MetaSettingsView(),
+          ),
+        ),
       ),
     );
   }

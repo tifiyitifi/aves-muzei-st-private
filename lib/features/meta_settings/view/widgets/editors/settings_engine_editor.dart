@@ -29,6 +29,7 @@ class SettingsEngineEditor extends StatelessWidget {
                 for (final v in SettingsEngineVersion.values) v: settingsEngineName(context, v),
               },
               title: context.l10n.settingsEngineDialogTitle,
+              optionSubtitleBuilder: (v) => v == version ? null : context.l10n.settingsEngineDescription,
             ),
             onSelection: settingsEngineController.setVersion,
           ),

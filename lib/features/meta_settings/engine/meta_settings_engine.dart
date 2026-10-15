@@ -11,6 +11,10 @@ const _log = AreaKeyLog(LogKeys.settings);
 /// A value is validated by [MetaValueGuard] and written through
 /// `SettingsAccess.set`, which routes to whichever engine is authoritative and
 /// emits the usual change event.
+///
+/// This is the write path for generic `toggle`/`enumPick` defs (and the
+/// `mutator` defs). A `custom` editor that needs multi-key or async side
+/// effects calls the typed setters directly instead, skipping the guard.
 class MetaSettingsEngine {
   const new();
 

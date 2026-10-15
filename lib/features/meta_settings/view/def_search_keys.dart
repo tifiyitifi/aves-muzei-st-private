@@ -9,9 +9,12 @@ import 'package:aves_model/aves_model.dart';
 /// actually persist.
 ///
 /// A custom editor may flip another setting or open a page, so matching it by
-/// its own `key` never surfaces it under "recently changed settings". These
-/// aliases mirror the upstream tiles' `settingKeys`; a def absent here is
-/// matched by its own `key`.
+/// its own `key` never surfaces it under "recently changed settings".
+/// `permissions` mirrors its upstream tile's `settingKeys`; `videoShowVideos`
+/// is a deliberate v2 improvement — the upstream `SettingsTileVideoShowVideos`
+/// declares `settingKeys => []` (it prefers the main hidden-filter page), but
+/// the v2 switch flips the hidden-filter keys, so those are the ones to match.
+/// A def absent here is matched by its own `key`.
 const Map<String, List<String>> metaDefSearchKeys = {
   MetaPageKeys.permissions: PermissionsPage.settingKeys,
   MetaSettingIds.videoShowVideos: [

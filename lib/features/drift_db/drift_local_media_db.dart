@@ -8,6 +8,7 @@ import 'package:aves/features/drift_db/catalog/catalog_store.dart';
 import 'package:aves/features/drift_db/covers/cover_store.dart';
 import 'package:aves/features/drift_db/debug/debug_store.dart';
 import 'package:aves/features/drift_db/dynamic_albums/dynamic_album_store.dart';
+import 'package:aves/features/drift_db/entries/entry_id_allocator.dart';
 import 'package:aves/features/drift_db/entries/entry_store.dart';
 import 'package:aves/features/drift_db/favourites/favourite_store.dart';
 import 'package:aves/features/drift_db/migration/legacy_import.dart';
@@ -45,11 +46,11 @@ class DriftLocalMediaDb implements LocalMediaDb {
   new({AppDatabase? database, AppDatabaseProvider? provider}) : _provider = provider ?? AppDatabaseProvider(injected: database);
 
   static const dbFileName = AppDatabaseProvider.dbFileName;
-  static int _lastId = 0;
 
   final AppDatabaseProvider _provider;
   late AppDatabase _db;
   late final EntryStore _entries;
+  late final EntryIdAllocator _ids;
   late final CatalogStore _catalog;
   late final AddressStore _addresses;
   late final VaultStore _vaults;
@@ -63,13 +64,26 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<void>? _initFuture;
 
   @override
-  int get nextId => ++_lastId;
+  int get nextId => _ids.next();
 
   @override
   Future<String> get path async => pContext.join(await sqflite.getDatabasesPath(), dbFileName);
 
+  /// Opens the database and wires the stores, once.
+  ///
+  /// Concurrent callers share the in-flight attempt, but a *failed* attempt is
+  /// dropped so a later [init] retries: a transient failure of the one-time
+  /// legacy import must not poison the instance for the rest of the process.
   @override
-  Future<void> init() => _initFuture ??= _initialize();
+  Future<void> init() async {
+    final attempt = _initFuture ??= _initialize();
+    try {
+      await attempt;
+    } catch (_) {
+      if (identical(_initFuture, attempt)) _initFuture = null;
+      rethrow;
+    }
+  }
 
   Future<void> _initialize() async {
     _db = await _provider.open();
@@ -89,7 +103,7 @@ class DriftLocalMediaDb implements LocalMediaDb {
       }
     }
 
-    _lastId = await _entries.maxId();
+    await _ids.init();
   }
 
   void _wireStores() {
@@ -104,6 +118,7 @@ class DriftLocalMediaDb implements LocalMediaDb {
     _videoPlayback = VideoPlaybackStore(_db);
     _debug = DebugStore(_db);
     _appMeta = AppMetaStore(_db);
+    _ids = EntryIdAllocator(_db, _entries, _appMeta);
   }
 
   @override

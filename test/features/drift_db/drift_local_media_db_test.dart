@@ -1,4 +1,5 @@
 import 'package:aves/features/drift_db/app_database.dart';
+import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/dynamic_albums.dart';
@@ -68,6 +69,21 @@ void main() {
 
     final tableNames = (await db.customSelect("SELECT name FROM sqlite_master WHERE type = 'table'").get()).map((r) => r.data['name']).toSet();
     expect(tableNames, containsAll(<String>['entry', 'dateTaken', 'metadata', 'address', 'favourites', 'covers', 'dynamicAlbums', 'vaults', 'trash', 'videoPlayback', 'debug', 'appMeta']));
+  });
+
+  test('init retries after a transient failure instead of staying poisoned', () async {
+    final provider = _FlakyDatabaseProvider(db);
+    final flaky = DriftLocalMediaDb(provider: provider);
+    await expectLater(flaky.init(), throwsA(isA<StateError>()));
+    expect(provider.attempts, 1);
+
+    // The failed attempt must be dropped so a later init can retry and succeed.
+    await flaky.init();
+    expect(provider.attempts, 2);
+
+    final a = entry(flaky.nextId);
+    await flaky.insertEntries({a});
+    expect((await flaky.loadEntriesById({a.id})).single.path, a.path);
   });
 
   test('entries round trip, update and remove', () async {
@@ -196,4 +212,21 @@ void main() {
     await service.clearDebugLog();
     expect(await service.loadAllDebugLog(), isEmpty);
   });
+}
+
+/// An [AppDatabaseProvider] whose first [open] fails, to exercise init retry.
+class _FlakyDatabaseProvider extends AppDatabaseProvider {
+  final AppDatabase _delegate;
+  var attempts = 0;
+
+  new(this._delegate);
+
+  @override
+  bool get isInjected => true;
+
+  @override
+  Future<AppDatabase> open() async {
+    if (attempts++ == 0) throw StateError('transient open failure');
+    return _delegate;
+  }
 }

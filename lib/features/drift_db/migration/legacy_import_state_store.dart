@@ -81,18 +81,13 @@ class LegacyImportStateStore {
 
   Future<LegacyImportState> read() async {
     final values = await appMeta.read(_readKeys);
-    final status = switch (values[statusKey]) {
-      final String name => LegacyImportStatus.values.byName(name),
-      null => values[legacyDoneKey] == 'true' ? LegacyImportStatus.done : LegacyImportStatus.pending,
-    };
+    final status = _parseEnum(values[statusKey], LegacyImportStatus.values) ??
+        (values[legacyDoneKey] == 'true' ? LegacyImportStatus.done : LegacyImportStatus.pending);
     return LegacyImportState(
       status: status,
       owner: _nonEmpty(values[ownerKey]),
       heartbeatMs: int.tryParse(values[heartbeatKey] ?? '') ?? 0,
-      phase: switch (_nonEmpty(values[phaseKey])) {
-        final String name => LegacyImportPhase.values.byName(name),
-        null => LegacyImportPhase.preparing,
-      },
+      phase: _parseEnum(values[phaseKey], LegacyImportPhase.values) ?? LegacyImportPhase.preparing,
       totalRows: int.tryParse(values[totalKey] ?? '') ?? 0,
       copiedRows: int.tryParse(values[copiedKey] ?? '') ?? 0,
       tableIndex: int.tryParse(values[tableIndexKey] ?? '') ?? 0,
@@ -132,6 +127,17 @@ class LegacyImportStateStore {
         cursorKey: '',
       });
 
+  /// Rewinds the copy cursor so the next pass re-copies every table from the
+  /// top, keeping the already-known total.
+  Future<void> writeRestart({required String owner, required int nowMs}) => appMeta.write({
+        ownerKey: owner,
+        heartbeatKey: '$nowMs',
+        phaseKey: LegacyImportPhase.copying.name,
+        copiedKey: '0',
+        tableIndexKey: '0',
+        cursorKey: '',
+      });
+
   /// Commits one copied chunk's progress (and refreshes the heartbeat).
   Future<void> writeProgress({
     required int copiedRows,
@@ -160,4 +166,17 @@ class LegacyImportStateStore {
       });
 
   static String? _nonEmpty(String? value) => (value == null || value.isEmpty) ? null : value;
+
+  /// Parses a stored enum name, tolerating a missing or unrecognized value.
+  ///
+  /// The state lives in the generic `appMeta` table as plain strings, so a
+  /// stale rename or a hand-edited/corrupt row must degrade to the caller's
+  /// default instead of throwing and bricking every subsequent attempt.
+  static T? _parseEnum<T extends Enum>(String? name, List<T> values) {
+    if (name == null) return null;
+    for (final value in values) {
+      if (value.name == name) return value;
+    }
+    return null;
+  }
 }

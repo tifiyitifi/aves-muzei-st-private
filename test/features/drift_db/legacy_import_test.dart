@@ -5,6 +5,8 @@ import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/drift_db/migration/legacy_import.dart';
 import 'package:aves/features/drift_db/migration/legacy_import_progress.dart';
 import 'package:aves/features/drift_db/migration/legacy_import_state_store.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/db/db_sqflite_schema.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:drift/native.dart';
@@ -177,6 +179,36 @@ void main() {
     expect(await count(db, 'entry'), 0);
     expect(seen, isNotEmpty);
     expect(await status(db), LegacyImportStatus.done);
+
+    await db.close();
+  });
+
+  test('reconciles a verification mismatch from a clean slate', () async {
+    await seedLegacy(entryCount: 2);
+
+    final db = AppDatabase(NativeDatabase.memory());
+    // A stray row makes the drift count differ from the legacy source, which the
+    // old code turned into an opaque error on every launch.
+    await db.customStatement('INSERT INTO entry(id) VALUES (999)');
+
+    final messages = <String>[];
+    Log.setSink((key, level, message, error, stackTrace) => messages.add('$message'));
+    Log.setEnabled(LogKeys.db, true);
+    try {
+      await LegacyImport(db, AppMetaStore(db)).runIfNeeded(legacyPath: legacyPath);
+    } finally {
+      Log.reset();
+    }
+
+    expect(await status(db), LegacyImportStatus.done);
+    // The stray row is gone and the legacy rows are intact.
+    expect(await count(db, 'entry'), 2);
+    expect(
+      (await db.customSelect('SELECT id FROM entry ORDER BY id').get()).map((r) => r.data['id']),
+      [1, 2],
+    );
+    // The mismatch is reported with a row-level diff, not just two counts.
+    expect(messages.any((m) => m.contains('mismatch') && m.contains('extraIds=[999]')), isTrue);
 
     await db.close();
   });

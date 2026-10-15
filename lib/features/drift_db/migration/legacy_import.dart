@@ -50,6 +50,11 @@ class LegacyImport {
   /// How often a waiting actor re-checks the shared state.
   final Duration pollInterval;
 
+  /// How many times a verification mismatch may restart the copy before the
+  /// failure is raised. A deterministic defect fails again immediately, so one
+  /// re-import is enough to absorb a transient inconsistency.
+  final int maxReimports;
+
   final LegacyImportStateStore _state;
 
   new(
@@ -58,6 +63,7 @@ class LegacyImport {
     this.chunkSize = 5000,
     this.staleMs = 60000,
     this.pollInterval = const Duration(milliseconds: 500),
+    this.maxReimports = 1,
   }) : _state = LegacyImportStateStore(appMeta);
 
   static const legacyDbFileName = 'metadata.db';
@@ -157,67 +163,33 @@ class LegacyImport {
       onUpgrade: LocalMediaDbUpgrader.upgradeDb,
     );
     try {
-      var state = await _state.read();
-      if (state.totalRows == 0) {
-        // First owner: count once, then reset progress.
-        final totalRows = await _countLegacyRows(legacy);
-        await db.transaction(() async {
+      var reimports = 0;
+      while (true) {
+        await _copyTables(owner: owner, legacy: legacy, onProgress: onProgress);
+
+        final mismatches = await db.transaction(() async {
           await _state.takeWriteLock();
           if (!await _owns(owner)) throw const _LostOwnership();
-          await _state.writeCounting(owner: owner, totalRows: totalRows, nowMs: _now);
+          await _state.writeVerifying(nowMs: _now);
+          final result = await _verifyCounts(legacy);
+          // Commit `done` in the same transaction as a clean verification, so the
+          // import is never left verified-but-not-done.
+          if (result.isEmpty) await _state.writeDone();
+          return result;
         });
-        state = await _state.read();
-      }
-      onProgress?.call(state.toProgress());
 
-      var tableIndex = state.tableIndex;
-      var copied = state.copiedRows;
-      final totalRows = state.totalRows;
+        if (mismatches.isEmpty) break;
 
-      for (; tableIndex < _legacyTables.length; tableIndex++) {
-        final table = _legacyTables[tableIndex];
-        if (_textKeyedTables.contains(table)) {
-          final rows = await legacy.query(table);
-          if (rows.isNotEmpty) {
-            await _commitChunk(
-              owner: owner,
-              table: table,
-              rows: rows,
-              copiedRows: copied + rows.length,
-              tableIndex: tableIndex + 1,
-              cursor: null,
-            );
-            copied += rows.length;
-            onProgress?.call(LegacyImportProgress(phase: LegacyImportPhase.copying, copiedRows: copied, totalRows: totalRows));
-          }
-        } else {
-          var cursor = tableIndex == state.tableIndex ? state.cursor : null;
-          while (true) {
-            final rows = await _queryChunk(legacy, table, cursor);
-            if (rows.isEmpty) break;
-            final lastId = '${rows.last['id'] as int}';
-            await _commitChunk(
-              owner: owner,
-              table: table,
-              rows: rows,
-              copiedRows: copied + rows.length,
-              tableIndex: tableIndex,
-              cursor: lastId,
-            );
-            copied += rows.length;
-            cursor = lastId;
-            onProgress?.call(LegacyImportProgress(phase: LegacyImportPhase.copying, copiedRows: copied, totalRows: totalRows));
-          }
+        // A copy defect leaves a state that verification keeps rejecting; report
+        // the row-level diff and reconcile from a clean slate instead of failing
+        // (and re-failing on every launch) against the same bad state.
+        _log.w('$runtimeType legacy import mismatch: ${mismatches.map((m) => m.describe()).join('; ')}');
+        if (reimports++ >= maxReimports) {
+          throw LegacyImportVerifyException(mismatches.map((m) => m.describe()).toList());
         }
+        await _restartImport(owner);
+        onProgress?.call(const LegacyImportProgress(phase: LegacyImportPhase.preparing, copiedRows: 0, totalRows: 0));
       }
-
-      await db.transaction(() async {
-        await _state.takeWriteLock();
-        if (!await _owns(owner)) throw const _LostOwnership();
-        await _state.writeVerifying(nowMs: _now);
-        await _verifyCounts(legacy);
-        await _state.writeDone();
-      });
     } on _LostOwnership {
       return false;
     } finally {
@@ -230,6 +202,88 @@ class LegacyImport {
     _log.i('$runtimeType imported legacy db into drift');
     return true;
   }
+
+  /// Copies every legacy table, resuming from the committed progress cursor.
+  Future<void> _copyTables({
+    required String owner,
+    required sqflite.Database legacy,
+    void Function(LegacyImportProgress)? onProgress,
+  }) async {
+    var state = await _state.read();
+    if (state.totalRows == 0) {
+      // First owner: count once, then reset progress.
+      final totalRows = await _countLegacyRows(legacy);
+      await db.transaction(() async {
+        await _state.takeWriteLock();
+        if (!await _owns(owner)) throw const _LostOwnership();
+        await _state.writeCounting(owner: owner, totalRows: totalRows, nowMs: _now);
+      });
+      state = await _state.read();
+    }
+    onProgress?.call(state.toProgress());
+
+    var copied = state.copiedRows;
+    final totalRows = state.totalRows;
+
+    for (var tableIndex = state.tableIndex; tableIndex < _legacyTables.length; tableIndex++) {
+      final table = _legacyTables[tableIndex];
+      if (_textKeyedTables.contains(table)) {
+        final rows = await legacy.query(table);
+        if (rows.isNotEmpty) {
+          await _commitChunk(
+            owner: owner,
+            table: table,
+            rows: rows,
+            copiedRows: copied + rows.length,
+            tableIndex: tableIndex + 1,
+            cursor: null,
+          );
+          copied += rows.length;
+          onProgress?.call(LegacyImportProgress(phase: LegacyImportPhase.copying, copiedRows: copied, totalRows: totalRows));
+        }
+      } else {
+        var cursor = tableIndex == state.tableIndex ? state.cursor : null;
+        while (true) {
+          final rows = await _queryChunk(legacy, table, cursor);
+          if (rows.isEmpty) break;
+          final lastId = '${rows.last['id'] as int}';
+          await _commitChunk(
+            owner: owner,
+            table: table,
+            rows: rows,
+            copiedRows: copied + rows.length,
+            tableIndex: tableIndex,
+            cursor: lastId,
+          );
+          copied += rows.length;
+          cursor = lastId;
+          onProgress?.call(LegacyImportProgress(phase: LegacyImportPhase.copying, copiedRows: copied, totalRows: totalRows));
+        }
+      }
+    }
+  }
+
+  /// Drops the copied rows and rewinds the cursor so the next pass re-copies
+  /// every table from the top. Safe because writers gate on `init()`: while the
+  /// import runs, no other actor has touched these tables yet.
+  Future<void> _restartImport(String owner) => db.transaction(() async {
+        await _state.takeWriteLock();
+        if (!await _owns(owner)) throw const _LostOwnership();
+        await db.batch((batch) {
+          batch.deleteAll(db.entriesTable);
+          batch.deleteAll(db.dateTakenTable);
+          batch.deleteAll(db.metadataTable);
+          batch.deleteAll(db.addressesTable);
+          batch.deleteAll(db.favouritesTable);
+          batch.deleteAll(db.coversTable);
+          batch.deleteAll(db.dynamicAlbumsTable);
+          batch.deleteAll(db.vaultsTable);
+          batch.deleteAll(db.trashTable);
+          batch.deleteAll(db.videoPlaybackTable);
+          batch.deleteAll(db.debugTable);
+        });
+        await _state.writeRestart(owner: owner, nowMs: _now);
+      });
 
   /// Copies one chunk in a transaction that also commits its progress cursor.
   ///
@@ -309,16 +363,38 @@ class LegacyImport {
     return total;
   }
 
-  Future<void> _verifyCounts(sqflite.Database legacy) async {
+  /// Compares every table's row count against the legacy source, returning the
+  /// differences (empty when the import is consistent) instead of throwing, so
+  /// the caller can diagnose and reconcile them.
+  Future<List<_TableMismatch>> _verifyCounts(sqflite.Database legacy) async {
+    final mismatches = <_TableMismatch>[];
     for (final table in _legacyTables) {
       final legacyRows = await legacy.rawQuery('SELECT COUNT(*) AS c FROM $table');
       final legacyCount = legacyRows.first['c'] as int? ?? 0;
       final driftRows = await db.customSelect('SELECT COUNT(*) AS c FROM $table').get();
       final driftCount = driftRows.first.data['c'] as int? ?? 0;
       if (legacyCount != driftCount) {
-        throw StateError('legacy import mismatch for $table: legacy=$legacyCount drift=$driftCount');
+        mismatches.add(await _describeMismatch(legacy, table, legacyCount, driftCount));
       }
     }
+    return mismatches;
+  }
+
+  /// Builds a mismatch record and, for id-keyed tables, samples the differing
+  /// ids so the failure is diagnosable instead of just two counts.
+  Future<_TableMismatch> _describeMismatch(sqflite.Database legacy, String table, int legacyCount, int driftCount) async {
+    if (_textKeyedTables.contains(table)) {
+      return _TableMismatch(table: table, legacyCount: legacyCount, driftCount: driftCount);
+    }
+    final legacyIds = (await legacy.rawQuery('SELECT id FROM $table')).map((row) => row['id'] as int).toSet();
+    final driftIds = (await db.customSelect('SELECT id FROM $table').get()).map((row) => row.data['id'] as int).toSet();
+    return _TableMismatch(
+      table: table,
+      legacyCount: legacyCount,
+      driftCount: driftCount,
+      missingIds: legacyIds.difference(driftIds).take(_diagnosticSampleSize).toList(),
+      extraIds: driftIds.difference(legacyIds).take(_diagnosticSampleSize).toList(),
+    );
   }
 
   Future<void> _markDone() async {
@@ -360,4 +436,37 @@ enum _Claim { done, owned, busy }
 /// chunk rolls back and this actor returns to waiting.
 class _LostOwnership implements Exception {
   const new();
+}
+
+/// Rows sampled per mismatched table when reporting a verification difference.
+const _diagnosticSampleSize = 16;
+
+/// One table's verification difference, with a bounded id sample for diagnosis.
+class _TableMismatch {
+  final String table;
+  final int legacyCount;
+  final int driftCount;
+  final List<int> missingIds;
+  final List<int> extraIds;
+
+  const new({
+    required this.table,
+    required this.legacyCount,
+    required this.driftCount,
+    this.missingIds = const [],
+    this.extraIds = const [],
+  });
+
+  String describe() => 'table=$table legacy=$legacyCount drift=$driftCount missingIds=$missingIds extraIds=$extraIds';
+}
+
+/// Thrown when the legacy import still fails verification after the allowed
+/// re-imports, carrying a per-table diff so the failure is diagnosable.
+class LegacyImportVerifyException implements Exception {
+  final List<String> details;
+
+  const new(this.details);
+
+  @override
+  String toString() => '$runtimeType: ${details.join('; ')}';
 }

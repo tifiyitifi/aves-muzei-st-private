@@ -82,6 +82,11 @@ abstract class LocalMediaDb {
     required bool reverse,
   });
 
+  /// Count, total size and most recent `bestDate` of the entries matching
+  /// [predicate] — the aggregate of a filter tile (album group, dynamic album,
+  /// ...) without materializing its entries.
+  Future<({int count, int sizeBytes, int maxBestDate})> aggregateEntries(CollectionWindowPredicate predicate);
+
   /// DB-backed filter summaries: per-group aggregates plus recent entry id,
   /// without materializing entries. Powers the filter grid pages (albums,
   /// tags, countries, states, places) for entry-free (paged) collections.

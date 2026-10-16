@@ -3,6 +3,9 @@ import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/filters/container/album_group.dart';
+import 'package:aves/model/filters/container/set_or.dart';
+import 'package:aves/model/filters/container/tag_group.dart';
 import 'package:aves/model/filters/covered/location.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/covered/tag.dart';
@@ -24,6 +27,15 @@ void main() {
   });
 
   tearDownAll(tearDownAllServices);
+
+  /// Waits for a lazily-kicked summary computation to land.
+  Future<void> settle(bool Function() done) async {
+    for (var i = 0; i < 200; i++) {
+      if (done()) return;
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    fail('summary did not settle');
+  }
 
   late AppDatabase db;
   late DriftLocalMediaDb database;
@@ -87,6 +99,41 @@ void main() {
       expect(s.tagCount(TagFilter('x')), 0);
     });
 
+    test('resolves an album group aggregate on first touch', () async {
+      await database.insertEntries({
+        entry(1, dir: '/a', size: 10, sourceDateTaken: 100),
+        entry(2, dir: '/b', size: 20, sourceDateTaken: 300),
+        entry(3, dir: '/c', size: 30, sourceDateTaken: 200),
+      });
+      final s = summaries();
+      await s.ensureLoaded(SummaryDomain.albums);
+
+      final group = AlbumGroupFilter(
+        Uri.parse('/group'),
+        SetOrFilter({StoredAlbumFilter('/a', null), StoredAlbumFilter('/b', null)}),
+      );
+      // unknown on first touch, then resolved from the database and cached
+      expect(s.albumCount(group), 0);
+      await settle(() => s.albumCount(group) > 0);
+      expect(s.albumCount(group), 2);
+      expect(s.albumSize(group), 30);
+      expect(s.albumMaxBestDate(group), 300);
+      expect(s.albumRecentEntry(group)?.id, 2);
+    });
+
+    test('a tag group counts an entry once when several members match', () async {
+      await database.insertEntries({entry(1, sourceDateTaken: 100), entry(2, sourceDateTaken: 300)});
+      await database.saveCatalogMetadata({CatalogMetadata(id: 1, xmpSubjects: 'red;blue'), CatalogMetadata(id: 2, xmpSubjects: 'blue')});
+      final s = summaries();
+      await s.ensureLoaded(SummaryDomain.tags);
+
+      final group = TagGroupFilter(Uri.parse('/taggroup'), SetOrFilter({TagFilter('red'), TagFilter('blue')}));
+      await settle(() => s.tagCount(group) > 0);
+      // entry 1 carries both member tags: the union is {1, 2}, not the sum (3)
+      expect(s.tagCount(group), 2);
+      expect(s.tagRecentEntry(group)?.id, 2);
+    });
+
     test('loads album summaries with covers on demand', () async {
       await database.insertEntries({entry(1, dir: '/a', size: 10, sourceDateTaken: 100), entry(2, dir: '/a', size: 20, sourceDateTaken: 300)});
       final s = summaries();
@@ -102,8 +149,7 @@ void main() {
       expect(s.coverEntry(filter)?.id, 2);
     });
 
-    test('loads tag and location summaries', () async {
-      await database.insertEntries({entry(1, sourceDateTaken: 100), entry(2, sourceDateTaken: 300)});
+    test('loads tag and location summaries', () async {      await database.insertEntries({entry(1, sourceDateTaken: 100), entry(2, sourceDateTaken: 300)});
       await database.saveCatalogMetadata({CatalogMetadata(id: 1, xmpSubjects: 'red;blue'), CatalogMetadata(id: 2, xmpSubjects: 'blue')});
       final s = summaries();
       await s.ensureLoaded(SummaryDomain.tags);

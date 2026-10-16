@@ -248,6 +248,9 @@ class DriftLocalMediaDb implements LocalMediaDb {
       _entries.countBefore(predicate: predicate, id: id, sort: sort, reverse: reverse);
 
   @override
+  Future<({int count, int sizeBytes, int maxBestDate})> aggregateEntries(CollectionWindowPredicate predicate) => _entries.aggregate(predicate: predicate);
+
+  @override
   Future<void> insertEntries(Set<AvesEntry> entries) => _entries.insertAll(entries);
 
   @override

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/filter_summary/hidden_exclusion.dart';
 import 'package:aves/features/drift_db/filter_summary/summary_rows.dart';
 import 'package:aves/features/logging/log.dart';
@@ -8,6 +9,7 @@ import 'package:aves/model/covers.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/container/album_group.dart';
+import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/container/tag_group.dart';
 import 'package:aves/model/filters/covered/location.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
@@ -59,6 +61,13 @@ class PagedFilterSummaries implements FilterSummaryProvider {
   Map<String, PlaceSummaryRow> _places = {};
   Map<String, AvesEntry> _recentByFilterKey = {};
 
+  /// Aggregates for container filters (album/tag groups, dynamic albums) that
+  /// the per-album/per-tag rows cannot answer, because a group is a *union*
+  /// (summing members would double-count overlapping entries). Computed from
+  /// the database on first touch, keyed by [CollectionFilter.key].
+  Map<String, ({int count, int sizeBytes, int maxBestDate})> _containers = {};
+  final Set<String> _containerLoading = {};
+
   final Set<SummaryDomain> _loaded = {};
   final Set<SummaryDomain> _loading = {};
   int _pendingLoads = 0;
@@ -84,6 +93,7 @@ class PagedFilterSummaries implements FilterSummaryProvider {
     _countries = {};
     _states = {};
     _places = {};
+    _containers = {};
     // Values may be shared between filters: dispose by identity.
     final seen = <AvesEntry>{};
     for (final entry in _recentByFilterKey.values) {
@@ -274,28 +284,95 @@ class PagedFilterSummaries implements FilterSummaryProvider {
   // per-filter aggregates
 
   @override
-  int albumCount(AlbumBaseFilter filter) => filter is StoredAlbumFilter ? _albums[filter.album]?.count ?? 0 : 0;
+  int albumCount(AlbumBaseFilter filter) {
+    if (filter is StoredAlbumFilter) return _albums[filter.album]?.count ?? 0;
+    return _container(filter)?.count ?? 0;
+  }
 
   @override
-  int albumSize(AlbumBaseFilter filter) => filter is StoredAlbumFilter ? _albums[filter.album]?.sizeBytes ?? 0 : 0;
+  int albumSize(AlbumBaseFilter filter) {
+    if (filter is StoredAlbumFilter) return _albums[filter.album]?.sizeBytes ?? 0;
+    return _container(filter)?.sizeBytes ?? 0;
+  }
 
   @override
-  int albumMaxBestDate(AlbumBaseFilter filter) => filter is StoredAlbumFilter ? _albums[filter.album]?.maxBestDate ?? 0 : 0;
+  int albumMaxBestDate(AlbumBaseFilter filter) {
+    if (filter is StoredAlbumFilter) return _albums[filter.album]?.maxBestDate ?? 0;
+    return _container(filter)?.maxBestDate ?? 0;
+  }
 
   @override
-  AvesEntry? albumRecentEntry(AlbumBaseFilter filter) => filter is StoredAlbumFilter ? _recentByFilterKey[filter.key] : null;
+  AvesEntry? albumRecentEntry(AlbumBaseFilter filter) => filter is StoredAlbumFilter || _isContainer(filter) ? _recentByFilterKey[filter.key] : null;
 
   @override
-  int tagCount(TagBaseFilter filter) => filter is TagFilter ? _tags[filter.tag]?.count ?? 0 : 0;
+  int tagCount(TagBaseFilter filter) {
+    if (filter is TagFilter) return _tags[filter.tag]?.count ?? 0;
+    return _container(filter)?.count ?? 0;
+  }
 
   @override
-  int tagSize(TagBaseFilter filter) => filter is TagFilter ? _tags[filter.tag]?.sizeBytes ?? 0 : 0;
+  int tagSize(TagBaseFilter filter) {
+    if (filter is TagFilter) return _tags[filter.tag]?.sizeBytes ?? 0;
+    return _container(filter)?.sizeBytes ?? 0;
+  }
 
   @override
-  int tagMaxBestDate(TagBaseFilter filter) => filter is TagFilter ? _tags[filter.tag]?.maxBestDate ?? 0 : 0;
+  int tagMaxBestDate(TagBaseFilter filter) {
+    if (filter is TagFilter) return _tags[filter.tag]?.maxBestDate ?? 0;
+    return _container(filter)?.maxBestDate ?? 0;
+  }
 
   @override
-  AvesEntry? tagRecentEntry(TagBaseFilter filter) => filter is TagFilter ? _recentByFilterKey[filter.key] : null;
+  AvesEntry? tagRecentEntry(TagBaseFilter filter) => filter is TagFilter || _isContainer(filter) ? _recentByFilterKey[filter.key] : null;
+
+  /// A container filter (group or dynamic album) whose aggregate the per-filter
+  /// rows cannot answer.
+  static bool _isContainer(CollectionFilter filter) => filter is AlbumGroupFilter || filter is TagGroupFilter || filter is DynamicAlbumFilter;
+
+  /// Cached aggregate for [filter], kicking a one-shot database computation on
+  /// the first miss. Returns null (reads as zero) while it is in flight or when
+  /// the filter is not expressible in SQL — the same "unknown reads empty"
+  /// contract as the other domains.
+  ({int count, int sizeBytes, int maxBestDate})? _container(CollectionFilter filter) {
+    if (!_isContainer(filter)) return null;
+    final key = filter.key;
+    final cached = _containers[key];
+    if (cached != null) return cached;
+    if (_containerLoading.add(key)) {
+      final predicate = predicateForFilters({filter});
+      if (predicate == null) {
+        _containerLoading.remove(key);
+        return null;
+      }
+      _pendingLoads++;
+      source.state = SourceState.loading;
+      unawaited(
+        _resolveContainer(filter, key, predicate).whenComplete(() {
+          _containerLoading.remove(key);
+          _pendingLoads--;
+          if (_pendingLoads == 0) source.state = SourceState.ready;
+        }),
+      );
+    }
+    return null;
+  }
+
+  Future<void> _resolveContainer(CollectionFilter filter, String key, CollectionWindowPredicate predicate) async {
+    try {
+      final aggregate = await database.aggregateEntries(predicate);
+      _containers[key] = aggregate;
+      // A cover keeps the group/dynamic-album tile recognizable.
+      final window = await database.loadEntryWindow(predicate: predicate, sort: SortFactor.date, reverse: false, limit: 1, offset: 0);
+      if (window.isNotEmpty) _recentByFilterKey[key] = window.first;
+      if (filter is TagBaseFilter) {
+        source.eventBus.fire(TagsChangedEvent());
+      } else {
+        source.eventBus.fire(AlbumsChangedEvent());
+      }
+    } catch (error, stack) {
+      _log.e('container aggregate failed for ${filter.key}', error, stack);
+    }
+  }
 
   @override
   int locationCount(LocationFilter filter) => _locationRow(filter)?.count ?? 0;

@@ -160,6 +160,27 @@ class EntryStore {
     return [for (final row in rows) row.data['id'] as int];
   }
 
+  /// Count, total size and most recent `bestDate` of the entries matching
+  /// [predicate].
+  ///
+  /// One query, so a filter tile (album group, dynamic album, ...) can show its
+  /// aggregate without materializing its entries. `bestDate` is the same
+  /// expression the window ordering uses.
+  Future<({int count, int sizeBytes, int maxBestDate})> aggregate({required CollectionWindowPredicate predicate}) async {
+    final where = _windowWhere(predicate: predicate);
+    final from = _from(predicate, dateTaken: true);
+    final rows = await db.customSelect(
+      'SELECT COUNT(*) AS n, COALESCE(SUM(e.sizeBytes), 0) AS s, MAX($_bestDate) AS md $from ${where.sql}',
+      variables: where.variables,
+    ).get();
+    final data = rows.firstOrNull?.data;
+    return (
+      count: (data?['n'] as int?) ?? 0,
+      sizeBytes: (data?['s'] as int?) ?? 0,
+      maxBestDate: (data?['md'] as int?) ?? 0,
+    );
+  }
+
   /// Counts the entries matching the window predicate.
   ///
   /// Built on the same [_windowWhere] predicate as [loadWindow], so the total
@@ -368,8 +389,7 @@ class EntryStore {
 
   /// `FROM` clause for the standard window aliases, joining only the tables the
   /// predicate or the query needs (`dt`/`m`/`a`).
-  String _from(CollectionWindowPredicate predicate, {bool dateTaken = false, bool metadata = false, bool address = false}) {
-    final requires = predicate.requires;
+  String _from(CollectionWindowPredicate predicate, {bool dateTaken = false, bool metadata = false, bool address = false}) {    final requires = predicate.requires;
     final buffer = StringBuffer('FROM $_table e');
     if (dateTaken || requires.contains(WindowTable.dateTaken)) buffer.write(' LEFT JOIN dateTaken dt ON dt.id = e.id');
     if (metadata || requires.contains(WindowTable.metadata)) buffer.write(' LEFT JOIN metadata m ON m.id = e.id');

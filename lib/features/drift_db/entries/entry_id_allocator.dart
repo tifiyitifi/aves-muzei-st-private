@@ -44,6 +44,12 @@ class EntryIdAllocator {
 
   /// The next id. Never reused, and disjoint from the ids another allocator
   /// hands out for the same database.
+  ///
+  /// Throws [StateError] if the current block runs dry before the background
+  /// top-up lands. [next] is synchronous, so only a caller that hands out a
+  /// sustained burst without yielding (a scan assigning ids to a large batch)
+  /// can reach this; such a caller can synchronize with [settled]. The
+  /// `blockSize` in the message sizes the gap for diagnosis.
   int next() {
     if (_cursor >= _ceiling) {
       throw StateError('$runtimeType exhausted its id block before the background top-up landed (blockSize=$blockSize)');

@@ -217,6 +217,31 @@ class PagedCollectionLens extends CollectionLens {
   /// Live total for viewer copies.
   int get totalCount => _total;
 
+  /// The predicate/sort the current paged view resolved to; null until paged.
+  CollectionWindowPredicate? _pagedPredicate;
+  SortFactor _pagedSort = SortFactor.date;
+  bool _pagedReverse = false;
+
+  /// Global index of the entry with [id] in the current view, or -1 when the
+  /// view is not paged (the legacy list answers in memory) or [id] is not in
+  /// the view.
+  ///
+  /// Resolved with the database's own ordering, so a viewer can open on an
+  /// entry that is not in any loaded window.
+  Future<int> indexOfId(int id) async {
+    final predicate = _pagedPredicate;
+    if (!pagedActive || predicate == null) {
+      final index = sortedEntries.indexWhere((entry) => entry.id == id);
+      return index;
+    }
+    try {
+      return await localMediaDb.countEntriesBefore(predicate: predicate, id: id, sort: _pagedSort, reverse: _pagedReverse);
+    } catch (error, stack) {
+      _log.w('paged index lookup failed for id=$id', error, stack);
+      return -1;
+    }
+  }
+
   /// The live windowed list. Viewer copies read through it on every access so
   /// they track refreshes; they never mutate it.
   PagedFlatList get liveFlatList => _flat;
@@ -463,6 +488,9 @@ class PagedCollectionLens extends CollectionLens {
     _sectionStates = List.unmodifiable(states);
     _flat = PagedFlatList(List.unmodifiable(lists.values.toList()));
     sections = Map.unmodifiable(lists);
+    _pagedPredicate = predicate;
+    _pagedSort = sort;
+    _pagedReverse = reverse;
     _blocked = false;
     _morphed = false;
     _pagedActive = true;

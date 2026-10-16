@@ -423,6 +423,10 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
   void _saveTopEntries() {
     if (!settings.initialized) return;
 
+    // The saved ids only pre-seed the legacy full load. An entry-free (paged)
+    // source has nothing to sample and must not clobber them.
+    if (_mediaStoreSource.summaries != null || _mediaStoreSource.allEntries.isEmpty) return;
+
     final screenSize = _screenSize;
     if (screenSize == null) return;
 

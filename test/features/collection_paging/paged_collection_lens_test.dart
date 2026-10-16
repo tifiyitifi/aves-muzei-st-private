@@ -262,5 +262,37 @@ void main() {
       expect(locatedIds, [1]);
       expect((await service.loadAddresses()).single.locality, 'Paris');
     });
+
+    test('resolves an entry index without loading a window', () async {
+      final service = await drift();
+      await service.insertEntries({for (var i = 1; i <= 5; i++) entry(i, dateTaken: i * 10)});
+      await collectionPagingPrefs.setWindowSize(2);
+      await collectionPagingPrefs.setLargeThreshold(2);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.entryCount == 5 && lens.pagedActive);
+
+      // date desc: 5, 4, 3, 2, 1 — resolved straight from the database
+      expect(await lens.indexOfId(5), 0);
+      expect(await lens.indexOfId(1), 4);
+      expect(await lens.indexOfId(999), -1);
+
+      // the position agrees with the lazy window list once it fills
+      await lens.fillAround(4);
+      await settle(lens, done: () => lens.sortedEntries[4] is! SkeletonEntry);
+      expect(lens.sortedEntries[4].id, 1);
+    });
+
+    test('resolves the legacy index in memory', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1, dateTaken: 10), entry(2, dateTaken: 20)});
+      await collectionPagingPrefs.setLargeThreshold(100000);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.entryCount == 2);
+      expect(lens.pagedActive, isFalse);
+      expect(await lens.indexOfId(2), 0);
+      expect(await lens.indexOfId(999), -1);
+    });
   });
 }

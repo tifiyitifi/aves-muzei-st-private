@@ -28,6 +28,11 @@ class PagedViewerCopy extends CollectionLens {
   /// Seeded shuffle of the index space, or null for the collection's own order.
   final int? shuffleSeed;
 
+  /// When true the copy owns [parent] and disposes it too. Used when the copy
+  /// is the only consumer (e.g. a viewer opened from an external intent) and
+  /// `EntryViewerPage` disposes the copy it was handed.
+  final bool ownsParent;
+
   bool _disposed = false;
 
   ShufflePermutation? _permutation;
@@ -37,6 +42,7 @@ class PagedViewerCopy extends CollectionLens {
   new({
     required this.parent,
     this.shuffleSeed,
+    this.ownsParent = false,
   }) : super(
           source: parent.source,
           filters: parent.filters,
@@ -148,6 +154,7 @@ class PagedViewerCopy extends CollectionLens {
   void dispose() {
     _disposed = true;
     parent.removeListener(_onParentChanged);
+    if (ownsParent) parent.dispose();
     super.dispose();
   }
 }

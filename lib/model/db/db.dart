@@ -70,6 +70,18 @@ abstract class LocalMediaDb {
     required bool reverse,
   });
 
+  /// Global index of the entry with [id] in the collection order of
+  /// [predicate], or -1 when it is not in the view.
+  ///
+  /// Resolved with the database's own ordering, so a viewer can open on an
+  /// entry without loading a single window.
+  Future<int> countEntriesBefore({
+    required CollectionWindowPredicate predicate,
+    required int id,
+    required SortFactor sort,
+    required bool reverse,
+  });
+
   /// DB-backed filter summaries: per-group aggregates plus recent entry id,
   /// without materializing entries. Powers the filter grid pages (albums,
   /// tags, countries, states, places) for entry-free (paged) collections.

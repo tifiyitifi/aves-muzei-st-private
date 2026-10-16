@@ -5,6 +5,9 @@ import 'dart:typed_data';
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
+import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/locale/intl.dart';
@@ -298,9 +301,18 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
               unawaited(AnalysisService.registerCallback());
               await reportService.log('Initialize source to view item in directory $directory');
               final source = context.read<CollectionSource>();
-              // analysis is necessary to display neighbour items when the initial item is a new one
-              source.canAnalyze = true;
-              await source.init(scope: {StoredAlbumFilter(directory, null)});
+              final albumFilters = {StoredAlbumFilter(directory, null)};
+              // A huge album must not be fully loaded just to show one item:
+              // the paged path bootstraps entry-free and resolves the opened
+              // entry's index from the database.
+              final viewDecision = await const CollectionEngineRouter().resolve(filters: albumFilters);
+              if (viewDecision.route == CollectionRoute.paged) {
+                await PagedBootstrap.ensure(source);
+              } else {
+                // analysis is necessary to display neighbour items when the initial item is a new one
+                source.canAnalyze = true;
+                await source.init(scope: albumFilters);
+              }
             }
           }
         default:
@@ -330,6 +342,45 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
 
   bool _isViewerSourceable(AvesEntry? viewerEntry) {
     return viewerEntry != null && viewerEntry.directory != null && !settings.hiddenFilters.any((filter) => filter.test(viewerEntry));
+  }
+
+  /// The real entry at [index] of [copy], after prefetching its window; null
+  /// when the position could not be materialized.
+  Future<AvesEntry?> _resolvePagedViewEntry(PagedViewerCopy copy, int index) async {
+    await copy.prefetchAround(index);
+    final entry = copy.entryAt(index);
+    return entry is SkeletonEntry ? null : entry;
+  }
+
+  /// Exact legacy view collection: an in-memory album lens that does not stack
+  /// bursts/RAWs, so opening a sub-entry selects the containing main entry.
+  ///
+  /// Returns null (and disposes the collection) when the album does not contain
+  /// [viewerEntry]; otherwise reports the collection's own instance through
+  /// [onResolved], so the viewer pages through the lens rather than the
+  /// transient entry fetched from the intent.
+  Future<CollectionLens?> _legacyViewCollection(
+    CollectionSource source,
+    Set<CollectionFilter> filters,
+    AvesEntry viewerEntry,
+    void Function(AvesEntry resolved) onResolved,
+  ) async {
+    final collection = CollectionLens(
+      source: source,
+      filters: filters,
+      listenToSource: true,
+      stackBursts: false,
+      stackDevelopedRaws: false,
+    );
+    // useful when opening transient images from camera apps
+    await source.checkForChanges();
+    final resolved = collection.sortedEntries.firstWhereOrNull((entry) => entry.uri == viewerEntry.uri || entry.path == viewerEntry.path);
+    if (resolved == null) {
+      collection.dispose();
+      return null;
+    }
+    onResolved(resolved);
+    return collection;
   }
 
   Future<AvesEntry?> _initViewerEntry({required String uri, required String? mimeType}) async {
@@ -379,29 +430,33 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           _onSourceStateChanged();
           await loadingCompleter.future;
 
-          collection = CollectionLens(
-            source: source,
-            filters: {StoredAlbumFilter(album, source.getStoredAlbumDisplayName(context, album))},
-            listenToSource: true,
-            // if we group bursts/RAWs, opening a sub-entry should:
-            // - identify and select the containing main entry,
-            // - select the sub-entry in the Viewer page.
-            stackBursts: false,
-            stackDevelopedRaws: false,
-          );
-          // useful when opening transient images from camera apps
-          await source.checkForChanges();
-
-          final viewerEntryUri = viewerEntry.uri;
-          final viewerEntryPath = viewerEntry.path;
-          final collectionEntry = collection.sortedEntries.firstWhereOrNull((entry) {
-            return entry.uri == viewerEntryUri || entry.path == viewerEntryPath;
-          });
-          if (collectionEntry != null) {
-            viewerEntry = collectionEntry;
+          final filters = {StoredAlbumFilter(album, source.getStoredAlbumDisplayName(context, album))};
+          final pagedDecision = await const CollectionEngineRouter().resolve(filters: filters);
+          if (pagedDecision.route == CollectionRoute.paged) {
+            // Window-backed viewer: the opened entry's index comes from the
+            // database order, so the neighbours resolve without any window
+            // being materialized up front.
+            final lens = PagedCollectionLens(source: source, filters: filters);
+            await lens.ready;
+            if (lens.pagedActive) {
+              final copy = PagedViewerCopy(parent: lens, ownsParent: true);
+              final index = await lens.indexOfId(viewerEntry.id);
+              final resolved = index >= 0 ? await _resolvePagedViewEntry(copy, index) : null;
+              if (resolved != null) {
+                viewerEntry = resolved;
+                collection = copy;
+              } else {
+                debugPrint('collection does not contain viewerEntry=$viewerEntry');
+                copy.dispose();
+                collection = null;
+              }
+            } else {
+              // Morphed after all: fall back to the exact legacy path.
+              lens.dispose();
+              collection = await _legacyViewCollection(source, filters, viewerEntry, (resolved) => viewerEntry = resolved);
+            }
           } else {
-            debugPrint('collection does not contain viewerEntry=$viewerEntry');
-            collection = null;
+            collection = await _legacyViewCollection(source, filters, viewerEntry, (resolved) => viewerEntry = resolved);
           }
         }
 

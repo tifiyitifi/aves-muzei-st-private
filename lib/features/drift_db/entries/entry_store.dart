@@ -205,23 +205,96 @@ class EntryStore {
       dateToMillis: dateToMillis,
       ratingEquals: ratingEquals,
     );
-    final joinMetadata = sort == SortFactor.rating || ratingEquals != null;
-    const bestDate = 'COALESCE(dt.dateMillis, e.sourceDateTakenMillis, e.dateModifiedMillis, 0)';
-    final orderBy = switch (sort) {
-      SortFactor.date => 'ORDER BY $bestDate ${_dir(descDefault: true, reverse: reverse)}, e.title ${_dir(descDefault: true, reverse: reverse)}, e.id ${_dir(descDefault: true, reverse: reverse)}',
-      SortFactor.albumItemName => 'ORDER BY e.path ${_dir(descDefault: false, reverse: reverse)}, e.id ${_dir(descDefault: false, reverse: reverse)}',
-      SortFactor.rating => 'ORDER BY COALESCE(m.rating, 0) ${_dir(descDefault: true, reverse: reverse)}, $bestDate ${_dir(descDefault: true, reverse: reverse)}, e.id ${_dir(descDefault: true, reverse: reverse)}',
-      SortFactor.size => 'ORDER BY COALESCE(e.sizeBytes, 0) ${_dir(descDefault: true, reverse: reverse)}, $bestDate ${_dir(descDefault: true, reverse: reverse)}, e.id ${_dir(descDefault: true, reverse: reverse)}',
-      SortFactor.duration => 'ORDER BY COALESCE(e.durationMillis, 0) ${_dir(descDefault: true, reverse: reverse)}, $bestDate ${_dir(descDefault: true, reverse: reverse)}, e.id ${_dir(descDefault: true, reverse: reverse)}',
-      SortFactor.path => 'ORDER BY e.path ${_dir(descDefault: false, reverse: reverse)}, e.id ${_dir(descDefault: false, reverse: reverse)}',
-      SortFactor.chipName || SortFactor.count => throw UnimplementedError('window loading is not defined for chip sorts: $sort'),
-    };
+    final key = _sortKey(sort);
+    if (key == null) throw UnimplementedError('window loading is not defined for chip sorts: $sort');
+    final joinMetadata = key.any((k) => k.expr.contains('m.')) || ratingEquals != null;
+    final orderBy = 'ORDER BY ${key.map((k) => '${k.expr} ${_dir(descDefault: k.descDefault, reverse: reverse)}').join(', ')}';
     final from = _from(predicate, dateTaken: true, metadata: joinMetadata);
     final rows = await db.customSelect(
       'SELECT e.*, dt.dateMillis AS dateMillis, t.path AS trashPath, t.dateMillis AS trashDateMillis $from LEFT JOIN trash t ON t.id = e.id ${where.sql} $orderBy LIMIT ? OFFSET ?',
       variables: [...where.variables, Variable(limit), Variable(offset < 0 ? 0 : offset)],
     ).get();
     return [for (final row in rows) _entryFromWindowRow(row.data)];
+  }
+
+  /// `bestDate`, mirroring `AvesEntry.bestDate` (and the ORDER BY below).
+  static const String _bestDate = 'COALESCE(dt.dateMillis, e.sourceDateTakenMillis, e.dateModifiedMillis, 0)';
+
+  /// Sort key of the collection order: one expression per key part, each with
+  /// its default direction.
+  ///
+  /// Both [loadWindow]'s ORDER BY and [countBefore]'s tuple comparison build
+  /// from this single definition, so an entry's index can never drift from the
+  /// row order the UI pages through. Every key is *uniformly* directed (all
+  /// parts share `descDefault`), which is what makes the row-value comparison
+  /// in [countBefore] valid.
+  ///
+  /// Null for the chip sorts, which have no window ordering.
+  static List<({String expr, bool descDefault})>? _sortKey(SortFactor sort) => switch (sort) {
+        SortFactor.date => const [
+            (expr: _bestDate, descDefault: true),
+            (expr: 'e.title', descDefault: true),
+            (expr: 'e.id', descDefault: true),
+          ],
+        SortFactor.albumItemName || SortFactor.path => const [
+            (expr: 'e.path', descDefault: false),
+            (expr: 'e.id', descDefault: false),
+          ],
+        SortFactor.rating => const [
+            (expr: 'COALESCE(m.rating, 0)', descDefault: true),
+            (expr: _bestDate, descDefault: true),
+            (expr: 'e.id', descDefault: true),
+          ],
+        SortFactor.size => const [
+            (expr: 'COALESCE(e.sizeBytes, 0)', descDefault: true),
+            (expr: _bestDate, descDefault: true),
+            (expr: 'e.id', descDefault: true),
+          ],
+        SortFactor.duration => const [
+            (expr: 'COALESCE(e.durationMillis, 0)', descDefault: true),
+            (expr: _bestDate, descDefault: true),
+            (expr: 'e.id', descDefault: true),
+          ],
+        SortFactor.chipName || SortFactor.count => null,
+      };
+
+  /// Global index of the entry with [id] in the collection order of
+  /// [predicate]: how many rows sort strictly before it. -1 when [id] is not in
+  /// the view (or [sort] has no window ordering).
+  ///
+  /// Lets a viewer open on an entry without loading a single window: the target
+  /// is located with the same expressions [loadWindow] orders by, in one count.
+  Future<int> countBefore({
+    required CollectionWindowPredicate predicate,
+    required int id,
+    required SortFactor sort,
+    required bool reverse,
+  }) async {
+    final key = _sortKey(sort);
+    if (key == null) return -1;
+
+    // The entry must belong to the view for its index to mean anything.
+    final inView = CollectionWindowPredicate(
+      conjunction: [
+        ...predicate.conjunction,
+        (sql: 'e.id = ?', variables: [Variable(id)], requires: const <WindowTable>{}),
+      ],
+      trashedOnly: predicate.trashedOnly,
+    );
+    if (await count(predicate: inView) == 0) return -1;
+
+    final joinMetadata = key.any((k) => k.expr.contains('m.'));
+    final from = _from(predicate, dateTaken: true, metadata: joinMetadata);
+    final where = _windowWhere(predicate: predicate);
+    final exprs = key.map((k) => k.expr).join(', ');
+    final descending = _dir(descDefault: key.first.descDefault, reverse: reverse) == 'DESC';
+    final targetWhere = where.sql.replaceFirst('WHERE ', 'WHERE e.id = ? AND ');
+    final rows = await db.customSelect(
+      'SELECT COUNT(*) AS n $from ${where.sql} AND (($exprs) ${descending ? '>' : '<'} (SELECT $exprs $from $targetWhere))',
+      // Positional order: outer WHERE, then the subquery's id, then its WHERE.
+      variables: [...where.variables, Variable(id), ...where.variables],
+    ).get();
+    return (rows.firstOrNull?.data['n'] as int?) ?? 0;
   }
 
   /// `ASC`/`DESC` for a sort whose default direction is [descDefault],

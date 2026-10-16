@@ -245,4 +245,44 @@ void main() {
       expect(await windowIds(predicate: predicate), [1]);
     });
   });
+
+  group('countEntriesBefore', () {
+    // The index must equal the position in the very list loadWindow walks, for
+    // every sort factor and both directions: it is what a viewer opens on.
+    for (final sort in [SortFactor.date, SortFactor.path, SortFactor.size, SortFactor.rating, SortFactor.duration, SortFactor.albumItemName]) {
+      for (final reverse in [false, true]) {
+        test('matches the window order for $sort (reverse=$reverse)', () async {
+          await service.insertEntries({
+            entry(1, dir: '/a', dateTaken: 30, size: 10),
+            entry(2, dir: '/b', dateTaken: 10, size: 30),
+            entry(3, dir: '/a', dateTaken: 20, size: 20),
+            entry(4, dir: '/b', dateTaken: 40, size: 5),
+          });
+          await service.saveCatalogMetadata({
+            CatalogMetadata(id: 1, rating: 5),
+            CatalogMetadata(id: 2, rating: 2),
+            CatalogMetadata(id: 3, rating: 2),
+          });
+          final predicate = const CollectionWindowPredicate();
+          final ordered = await windowIds(predicate: predicate, sort: sort, reverse: reverse);
+
+          for (var index = 0; index < ordered.length; index++) {
+            expect(await service.countEntriesBefore(predicate: predicate, id: ordered[index], sort: sort, reverse: reverse), index, reason: 'sort=$sort reverse=$reverse id=${ordered[index]}');
+          }
+        });
+      }
+    }
+
+    test('respects the predicate and reports absent entries as -1', () async {
+      await service.insertEntries({entry(1, dir: '/a', dateTaken: 10), entry(2, dir: '/b', dateTaken: 20), entry(3, dir: '/b', dateTaken: 30)});
+      final album = lsAlbum('/b');
+      // within /b the order is 3, 2
+      expect(await service.countEntriesBefore(predicate: album, id: 3, sort: SortFactor.date, reverse: false), 0);
+      expect(await service.countEntriesBefore(predicate: album, id: 2, sort: SortFactor.date, reverse: false), 1);
+      // entry 1 is not part of the album view
+      expect(await service.countEntriesBefore(predicate: album, id: 1, sort: SortFactor.date, reverse: false), -1);
+      // unknown ids are absent
+      expect(await service.countEntriesBefore(predicate: album, id: 999, sort: SortFactor.date, reverse: false), -1);
+    });
+  });
 }

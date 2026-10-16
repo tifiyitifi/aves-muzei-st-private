@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/app_flavor.dart';
+import 'package:aves/features/collection_paging/view/paged_widget_candidates.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/sort.dart';
 import 'package:aves/model/settings/enums/widget_outline.dart';
@@ -93,6 +94,14 @@ Future<AvesEntry?> _getWidgetEntry(int widgetId, bool reuseEntry) async {
   await androidFileUtils.init();
 
   final filters = settings.getWidgetCollectionFilters(widgetId);
+
+  // A huge collection must not be fully loaded just to pick one entry: when the
+  // filters route paged, read a bounded block from the database mirror instead.
+  final pagedCandidates = await PagedWidgetCandidates.load(filters: filters);
+  if (pagedCandidates != null) {
+    return _pickWidgetEntry(widgetId, pagedCandidates);
+  }
+
   final source = MediaStoreSource();
   final readyCompleter = Completer();
   source.stateNotifier.addListener(() {
@@ -104,7 +113,14 @@ Future<AvesEntry?> _getWidgetEntry(int widgetId, bool reuseEntry) async {
   await source.init(scope: filters);
   await readyCompleter.future;
 
-  final entries = List.of(CollectionLens(source: source, filters: filters).sortedEntries);
+  final entry = _pickWidgetEntry(widgetId, List.of(CollectionLens(source: source, filters: filters).sortedEntries));
+  source.dispose();
+  return entry;
+}
+
+/// Applies the widget's random / most-recent choice to [entries], remembering
+/// the pick so the next refresh can reuse the same file.
+AvesEntry? _pickWidgetEntry(int widgetId, List<AvesEntry> entries) {
   switch (settings.getWidgetDisplayedItem(widgetId)) {
     case .random:
       entries.shuffle();
@@ -115,6 +131,5 @@ Future<AvesEntry?> _getWidgetEntry(int widgetId, bool reuseEntry) async {
   if (entry != null) {
     settings.setWidgetUri(widgetId, entry.uri);
   }
-  source.dispose();
   return entry;
 }

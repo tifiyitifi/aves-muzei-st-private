@@ -11,7 +11,9 @@ import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/model/metadata/address.dart';
 import 'package:aves/model/metadata/catalog.dart';
+import 'package:aves/model/source/location/place.dart';
 import 'package:aves/model/filters/query.dart';
 import 'package:aves/model/filters/trash.dart';
 import 'package:aves/model/metadata/trash.dart';
@@ -216,6 +218,49 @@ void main() {
       }
       expect(await service.countUncatalogued(), 0);
       expect((await service.loadCatalogMetadata()).length, 2);
+    });
+
+    test('places backlog runs lazily when locations load', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 3))});
+      await collectionPagingPrefs.setLargeThreshold(2);
+      await collectionPagingPrefs.setWindowSize(10);
+      final locatedIds = <int>[];
+      final lens = PagedCollectionLens(
+        source: source,
+        filters: {},
+        catalogWorkerFactory: ({required source}) => PagedCatalogWorker(
+          source: source,
+          // id 1 is geotagged; bootstrap may wipe metadata, so the fake
+          // catalog re-supplies the coordinates.
+          catalogEntry: (entry) async => entry.catalogMetadata = CatalogMetadata(
+            id: entry.id,
+            latitude: entry.id == 1 ? 48.8 : null,
+            longitude: entry.id == 1 ? 2.3 : null,
+          ),
+          locateCountry: (entry) async => AddressDetails(id: entry.id, countryCode: 'FR', countryName: 'FRA'),
+          locatePlaces: (entry) async {
+            locatedIds.add(entry.id);
+            return AddressDetails(id: entry.id, countryCode: 'FR', countryName: 'France', adminArea: 'IDF', locality: 'Paris');
+          },
+          canLocate: () async => true,
+        ),
+      );
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.entryCount == 2 && lens.pagedActive);
+      // eager passes (catalog + countries) run on enter, places do not
+      for (var i = 0; i < 200; i++) {
+        if ((await service.loadUnaddressedGpsIds(afterId: 0, limit: 10)).isEmpty) break;
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+      expect(locatedIds, isEmpty);
+      // opening a places surface loads the locations domain, which lazily
+      // triggers the fine-places pass for the country-only row (id 1; id 2
+      // has no gps)
+      source.eventBus.fire(PlacesChangedEvent());
+      await settle(lens, done: () => locatedIds.isNotEmpty);
+      expect(locatedIds, [1]);
+      expect((await service.loadAddresses()).single.locality, 'Paris');
     });
   });
 }

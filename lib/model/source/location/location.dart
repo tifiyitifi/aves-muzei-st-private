@@ -178,6 +178,12 @@ mixin LocationMixin on CountryMixin, StateMixin {
   }
 
   void updateLocations() {
+    // An entry-free (paged) source has nothing to derive in memory: the
+    // provider serves these lists from the database. Skipping the derivation
+    // also avoids touching the provider getters, which would otherwise load
+    // the locations domain (and trigger its fine-places backfill) as a side
+    // effect of every address change.
+    if (summaries != null && allEntries.isEmpty) return;
     final locations = visibleEntries.map((entry) => entry.addressDetails).nonNulls.toList();
 
     final updatedPlaces = locations.map((address) => address.place).nonNulls.where((v) => v.isNotEmpty).toSet().toList()..sort(compareAsciiUpperCase);

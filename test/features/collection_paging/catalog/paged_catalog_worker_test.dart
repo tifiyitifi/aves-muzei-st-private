@@ -68,12 +68,16 @@ void main() {
   PagedCatalogWorker worker({
     Future<void> Function(AvesEntry entry)? catalogEntry,
     Future<AddressDetails?> Function(AvesEntry entry)? locateCountry,
+    Future<AddressDetails?> Function(AvesEntry entry)? locatePlaces,
+    Future<bool> Function()? canLocate,
   }) =>
       PagedCatalogWorker(
         source: source,
         database: database,
         catalogEntry: catalogEntry ?? ((entry) async => entry.catalogMetadata = CatalogMetadata(id: entry.id, xmpSubjects: 't')),
         locateCountry: locateCountry,
+        locatePlaces: locatePlaces,
+        canLocate: canLocate,
       );
 
   group('PagedCatalogWorker', () {
@@ -155,6 +159,50 @@ void main() {
       expect((await database.loadAddresses()).length, 2);
       expect(addressEvents, greaterThan(0));
       expect(await database.loadUnaddressedGpsIds(afterId: 0, limit: 10), isEmpty);
+    });
+
+    test('runPlaces skips when locating is unavailable', () async {
+      await database.insertEntries({entry(1)});
+      await database.saveCatalogMetadata({CatalogMetadata(id: 1, latitude: 48.8, longitude: 2.3)});
+      // FakeAvesAvailability.canLocatePlaces is false in tests
+      final w = worker(
+        catalogEntry: (entry) async => entry.catalogMetadata ??= CatalogMetadata(id: entry.id),
+        locatePlaces: (entry) async {
+          fail('must not geocode when locating is unavailable');
+        },
+      );
+      await w.runPlaces(chunkSize: 10);
+      expect(await database.loadAddresses(), isEmpty);
+    });
+
+    test('runPlaces fills fine addresses for unlocated gps rows', () async {
+      await database.insertEntries({for (var i = 1; i <= 3; i++) entry(i)});
+      await database.saveCatalogMetadata({
+        CatalogMetadata(id: 1, latitude: 48.8, longitude: 2.3),
+        CatalogMetadata(id: 2, latitude: 40.7, longitude: -74.0),
+        CatalogMetadata(id: 3),
+      });
+      await database.saveAddresses({
+        const AddressDetails(id: 1, countryCode: 'FR', countryName: 'FRA'),
+      });
+      var addressEvents = 0;
+      final sub = source.eventBus.on<AddressMetadataChangedEvent>().listen((_) => addressEvents++);
+      addTearDown(sub.cancel);
+
+      final locatedIds = <int>[];
+      final w = worker(
+        canLocate: () async => true,
+        locatePlaces: (entry) async {
+          locatedIds.add(entry.id);
+          return AddressDetails(id: entry.id, countryCode: 'FR', countryName: 'France', adminArea: 'Ile-de-France', locality: 'Paris');
+        },
+      );
+      await w.runPlaces(chunkSize: 2);
+      // id 1 (country-only) and id 2 (no address); id 3 has no gps
+      expect(locatedIds.toSet(), {1, 2});
+      expect((await database.loadAddresses()).length, 2);
+      expect(addressEvents, greaterThan(0));
+      expect(await database.loadUnlocatedGpsIds(afterId: 0, limit: 10), isEmpty);
     });
   });
 }

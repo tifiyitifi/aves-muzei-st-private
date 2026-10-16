@@ -97,5 +97,26 @@ void main() {
       expect(await service.loadUnaddressedGpsIds(afterId: 0, limit: 10), [2]);
       expect(await service.loadUnaddressedGpsIds(afterId: 2, limit: 10), isEmpty);
     });
+
+    test('lists gps entries missing fine addresses, including country-only rows', () async {
+      await service.insertEntries({for (var i = 1; i <= 4; i++) entry(i)});
+      await service.saveCatalogMetadata({
+        metadata(1, latitude: 1, longitude: 1),
+        metadata(2, latitude: 2, longitude: 2),
+        metadata(3, latitude: 3, longitude: 3),
+        metadata(4),
+      });
+      await service.saveAddresses({
+        // country-only row (offline-country pass output): still needs places
+        const AddressDetails(id: 1, countryCode: 'FR', countryName: 'FRA'),
+        // fine row: done
+        const AddressDetails(id: 2, countryCode: 'US', countryName: 'United States', adminArea: 'California', locality: 'SF'),
+      });
+
+      // id 1 (country-only) and id 3 (no address row); id 2 fine, id 4 no gps
+      expect(await service.loadUnlocatedGpsIds(afterId: 0, limit: 10), [1, 3]);
+      expect(await service.loadUnlocatedGpsIds(afterId: 1, limit: 10), [3]);
+      expect(await service.loadUnlocatedGpsIds(afterId: 3, limit: 10), isEmpty);
+    });
   });
 }

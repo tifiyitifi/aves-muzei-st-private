@@ -141,6 +141,24 @@ class EntryStore {
     return [for (final row in rows) row.data['id'] as int];
   }
 
+  /// Keyset page over GPS entries missing *fine* addresses (the locate-places
+  /// backlog).
+  ///
+  /// Unlike [loadUnaddressedGpsIds] (country pass: rows with no address row at
+  /// all), this also selects country-only rows (`locality` and `adminArea`
+  /// both null, as written by `setCountry`), which still need full reverse
+  /// geocoding. Memory-side `hasFineAddress` additionally treats long
+  /// `countryName`s as fine; such rows are selected here but no-op inside
+  /// `locatePlace`, so the pass stays idempotent.
+  Future<List<int>> loadUnlocatedGpsIds({required int afterId, required int limit}) async {
+    if (limit <= 0) return [];
+    final rows = await db.customSelect(
+      'SELECT e.id AS id FROM $_table e JOIN metadata m ON m.id = e.id LEFT JOIN address a ON a.id = e.id WHERE (a.id IS NULL OR (a.locality IS NULL AND a.adminArea IS NULL)) AND (COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0) AND e.id > ? ORDER BY e.id LIMIT ?',
+      variables: [Variable(afterId), Variable(limit)],
+    ).get();
+    return [for (final row in rows) row.data['id'] as int];
+  }
+
   /// Counts the entries matching the window predicate.
   ///
   /// Built on the same [_windowWhere] predicate as [loadWindow], so the total

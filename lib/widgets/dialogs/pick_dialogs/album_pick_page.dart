@@ -39,6 +39,22 @@ import 'package:flutter/scheduler.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
+/// Ensures album data is available for picking: entry-free (paged) sources
+/// preload their album summaries instead of a full load, which would
+/// materialize a huge library.
+Future<void> ensureAlbumPickData(CollectionSource source) async {
+  if (source.targetScope == CollectionSource.fullScope) return;
+  final summaries = source.summaries;
+  if (summaries != null) {
+    await summaries.ensureAlbums();
+    return;
+  }
+  await reportService.log('Complete source initialization to pick album');
+  // source may not be fully initialized in view mode
+  source.canAnalyze = true;
+  await source.init(scope: CollectionSource.fullScope);
+}
+
 Future<AlbumBaseFilter?> pickAlbum({
   required BuildContext context,
   required MoveType? moveType,
@@ -47,12 +63,7 @@ Future<AlbumBaseFilter?> pickAlbum({
   GroupUriPredicate? isValidGroupPick,
 }) async {
   final source = context.read<CollectionSource>();
-  if (source.targetScope != CollectionSource.fullScope) {
-    await reportService.log('Complete source initialization to pick album');
-    // source may not be fully initialized in view mode
-    source.canAnalyze = true;
-    await source.init(scope: CollectionSource.fullScope);
-  }
+  await ensureAlbumPickData(source);
   return await Navigator.maybeOf(context)?.push<AlbumBaseFilter>(
     MaterialPageRoute(
       settings: const RouteSettings(name: _AlbumPickPage.routeName),

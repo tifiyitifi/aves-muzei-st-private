@@ -32,6 +32,22 @@ import 'package:flutter/scheduler.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
+/// Ensures tag data is available for picking: entry-free (paged) sources
+/// preload their tag summaries instead of a full load, which would
+/// materialize a huge library.
+Future<void> ensureTagPickData(CollectionSource source) async {
+  if (source.targetScope == CollectionSource.fullScope) return;
+  final summaries = source.summaries;
+  if (summaries != null) {
+    await summaries.ensureTags();
+    return;
+  }
+  await reportService.log('Complete source initialization to pick tag');
+  // source may not be fully initialized in view mode
+  source.canAnalyze = true;
+  await source.init(scope: CollectionSource.fullScope);
+}
+
 Future<TagBaseFilter?> pickTag({
   required BuildContext context,
   required Set<ChipType> chipTypes,
@@ -39,12 +55,7 @@ Future<TagBaseFilter?> pickTag({
   GroupUriPredicate? isValidGroupPick,
 }) async {
   final source = context.read<CollectionSource>();
-  if (source.targetScope != CollectionSource.fullScope) {
-    await reportService.log('Complete source initialization to pick tag');
-    // source may not be fully initialized in view mode
-    source.canAnalyze = true;
-    await source.init(scope: CollectionSource.fullScope);
-  }
+  await ensureTagPickData(source);
   return await Navigator.maybeOf(context)?.push<TagBaseFilter>(
     MaterialPageRoute(
       settings: const RouteSettings(name: _TagPickPage.routeName),

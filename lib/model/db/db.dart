@@ -137,6 +137,11 @@ abstract class LocalMediaDb {
   /// [afterId] is exclusive.
   Future<List<int>> loadUnaddressedGpsIds({required int afterId, required int limit});
 
+  /// Keyset page over GPS entries missing *fine* addresses (the locate-places
+  /// backlog): rows with no address row, or a country-only row.
+  /// [afterId] is exclusive.
+  Future<List<int>> loadUnlocatedGpsIds({required int afterId, required int limit});
+
   // vaults
 
   Future<void> clearVaults();

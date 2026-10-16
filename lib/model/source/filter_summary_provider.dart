@@ -11,6 +11,19 @@ import 'package:aves/model/filters/filters.dart';
 /// empty/zero/null until their domain loads. Implemented by the fork-only
 /// paging slice; the legacy in-memory path never sets a provider.
 abstract class FilterSummaryProvider {
+  /// Preloads the albums domain, so [albumDirectories] and per-album
+  /// aggregates serve without a full collection load. Used by pick dialogs
+  /// on entry-free (paged) sources.
+  Future<void> ensureAlbums();
+
+  /// Preloads the tags domain, so [tags] and per-tag aggregates serve without
+  /// a full collection load. Used by pick dialogs on entry-free sources.
+  Future<void> ensureTags();
+
+  /// Preloads the locations domain, so [countries]/[states]/[places] serve
+  /// without a full collection load.
+  Future<void> ensureLocations();
+
   List<String> get albumDirectories;
 
   List<String> get tags;

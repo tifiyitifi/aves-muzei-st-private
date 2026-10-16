@@ -97,6 +97,15 @@ class PagedFilterSummaries implements FilterSummaryProvider {
   /// morph and dispose, where the legacy path takes over.
   void dispose() => invalidate();
 
+  @override
+  Future<void> ensureAlbums() => ensureLoaded(SummaryDomain.albums);
+
+  @override
+  Future<void> ensureTags() => ensureLoaded(SummaryDomain.tags);
+
+  @override
+  Future<void> ensureLocations() => ensureLoaded(SummaryDomain.locations);
+
   Future<void> ensureLoaded(SummaryDomain domain) async {
     if (_loaded.contains(domain) || _loading.contains(domain)) return;
     _loading.add(domain);

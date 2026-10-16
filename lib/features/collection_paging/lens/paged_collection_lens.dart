@@ -20,6 +20,7 @@ import 'package:aves/model/source/collection_lens.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/model/source/events.dart';
 import 'package:aves/model/source/location/location.dart';
+import 'package:aves/model/source/location/place.dart';
 import 'package:aves/model/source/section_keys.dart';
 import 'package:aves/model/source/tag.dart';
 import 'package:aves/model/vaults/vaults.dart';
@@ -104,6 +105,10 @@ class PagedCollectionLens extends CollectionLens {
       source.eventBus.on<FilterVisibilityChangedEvent>().listen((_) => refresh()),
       source.eventBus.on<CatalogMetadataChangedEvent>().listen((_) => refresh()),
       source.eventBus.on<AddressMetadataChangedEvent>().listen((_) => refresh()),
+      // The locations domain loads when the user opens a places surface;
+      // lazily backfill fine addresses then, instead of geocoding a huge
+      // library up front.
+      source.eventBus.on<PlacesChangedEvent>().listen((_) => _runPlacesBacklog()),
     ]);
     _vaultsListener = refresh;
     vaults.lockStateChangeNotifier.addListener(_vaultsListener!);
@@ -498,6 +503,22 @@ class PagedCollectionLens extends CollectionLens {
   void _detachCatalogWorker() {
     _catalogWorker?.stop();
     _catalogWorker = null;
+  }
+
+  /// Lazily backfills fine addresses once the locations domain loads. Cheap
+  /// probe first: without unlocated GPS rows this is a no-op, so repeated
+  /// locations reloads stay harmless. A request that lands while the eager
+  /// pass still runs is queued by the worker instead of dropped.
+  Future<void> _runPlacesBacklog() async {
+    final worker = _catalogWorker;
+    if (worker == null) return;
+    try {
+      if ((await localMediaDb.loadUnlocatedGpsIds(afterId: 0, limit: 1)).isEmpty) return;
+    } catch (error, stack) {
+      _log.w('paged places backlog probe failed', error, stack);
+      return;
+    }
+    await worker.runPlaces();
   }
 
   /// Rebuilds the flat global-index map from the loaded section rows.

@@ -310,6 +310,9 @@ class DriftLocalMediaDb implements LocalMediaDb {
   @override
   Future<List<int>> loadUnaddressedGpsIds({required int afterId, required int limit}) => _entries.loadUnaddressedGpsIds(afterId: afterId, limit: limit);
 
+  @override
+  Future<List<int>> loadUnlocatedGpsIds({required int afterId, required int limit}) => _entries.loadUnlocatedGpsIds(afterId: afterId, limit: limit);
+
   // vaults
 
   @override

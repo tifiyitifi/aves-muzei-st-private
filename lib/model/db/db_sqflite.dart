@@ -436,6 +436,9 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   @override
   Future<List<int>> loadUnaddressedGpsIds({required int afterId, required int limit}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
+  @override
+  Future<List<int>> loadUnlocatedGpsIds({required int afterId, required int limit}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
   void _batchInsertAddress(Batch batch, AddressDetails? address) {
     if (address == null) return;
     batch.insert(

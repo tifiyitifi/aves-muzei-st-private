@@ -34,7 +34,7 @@ class CollectionEngineEditor extends StatelessWidget {
                 for (final v in CollectionEngine.values) v: collectionEngineName(context, v),
               },
               title: context.l10n.settingsCollectionEngineDialogTitle,
-              optionSubtitleBuilder: (v) => v == engine ? null : context.l10n.collectionEngineDescription,
+              optionSubtitleBuilder: (v) => v == engine ? null : collectionEngineDescription(context, v),
             ),
             onSelection: collectionPagingPrefs.setEngine,
           ),
@@ -101,6 +101,38 @@ class CollectionPrefetchScreensEditor extends StatelessWidget {
               title: context.l10n.settingsCollectionPrefetchDialogTitle,
             ),
             onSelection: collectionPagingPrefs.setPrefetchScreens,
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Custom editor for the large-collection threshold of the auto engine.
+class CollectionThresholdEditor extends StatelessWidget {
+  final SettingDef def;
+
+  const new({super.key, required this.def});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: collectionPagingPrefs,
+      builder: (context, child) {
+        final threshold = collectionPagingPrefs.largeThreshold;
+        return ListTile(
+          title: Text(def.title(context)),
+          subtitle: AvesListSubtitle(context.l10n.collectionThresholdCount(threshold)),
+          onTap: () => showSelectionDialog<int>(
+            context: context,
+            builder: (context) => AvesSingleSelectionDialog<int>(
+              initialValue: threshold,
+              options: {
+                for (final v in CollectionPagingPrefs.largeThresholdPresets) v: context.l10n.collectionThresholdCount(v),
+              },
+              title: context.l10n.settingsCollectionThresholdDialogTitle,
+            ),
+            onSelection: collectionPagingPrefs.setLargeThreshold,
           ),
         );
       },

@@ -11,8 +11,8 @@ void main() {
   });
 
   group('CollectionEngine', () {
-    test('defaults to paged', () {
-      expect(CollectionEngine.defaultEngine, CollectionEngine.paged);
+    test('defaults to auto', () {
+      expect(CollectionEngine.defaultEngine, CollectionEngine.auto);
     });
 
     test('tryParse round-trips member names', () {
@@ -33,15 +33,17 @@ void main() {
       await store.remove(CollectionPagingKeys.engine);
       await store.remove(CollectionPagingKeys.windowSize);
       await store.remove(CollectionPagingKeys.prefetchScreens);
+      await store.remove(CollectionPagingKeys.largeThreshold);
     }
 
     test('starts on defaults when nothing is persisted', () async {
       await clearKeys();
       final prefs = CollectionPagingPrefs();
       await prefs.init();
-      expect(prefs.engine, CollectionEngine.paged);
+      expect(prefs.engine, CollectionEngine.auto);
       expect(prefs.windowSize, CollectionPagingPrefs.defaultWindowSize);
       expect(prefs.prefetchScreens, CollectionPagingPrefs.defaultPrefetchScreens);
+      expect(prefs.largeThreshold, CollectionPagingPrefs.defaultLargeThreshold);
       expect(prefs.isLoaded, isTrue);
       prefs.dispose();
     });
@@ -53,6 +55,12 @@ void main() {
       expect(CollectionPagingPrefs.clampWindowSize(100000), CollectionPagingPrefs.maxWindowSize);
     });
 
+    test('clamps the large threshold into 1..max', () {
+      expect(CollectionPagingPrefs.clampLargeThreshold(0), 1);
+      expect(CollectionPagingPrefs.clampLargeThreshold(50000), 50000);
+      expect(CollectionPagingPrefs.clampLargeThreshold(100000000), CollectionPagingPrefs.maxLargeThreshold);
+    });
+
     test('persists and reloads values', () async {
       await clearKeys();
       final prefs = CollectionPagingPrefs();
@@ -60,6 +68,7 @@ void main() {
       await prefs.setEngine(CollectionEngine.legacy);
       await prefs.setWindowSize(400);
       await prefs.setPrefetchScreens(0);
+      await prefs.setLargeThreshold(50000);
       prefs.dispose();
 
       final reloaded = CollectionPagingPrefs();
@@ -67,6 +76,7 @@ void main() {
       expect(reloaded.engine, CollectionEngine.legacy);
       expect(reloaded.windowSize, 400);
       expect(reloaded.prefetchScreens, 0);
+      expect(reloaded.largeThreshold, 50000);
       reloaded.dispose();
     });
 
@@ -75,12 +85,14 @@ void main() {
       await store.setString(CollectionPagingKeys.engine, 'nope');
       await store.setInt(CollectionPagingKeys.windowSize, -12);
       await store.setInt(CollectionPagingKeys.prefetchScreens, 99);
+      await store.setInt(CollectionPagingKeys.largeThreshold, -7);
 
       final prefs = CollectionPagingPrefs();
       await prefs.init();
-      expect(prefs.engine, CollectionEngine.paged);
+      expect(prefs.engine, CollectionEngine.auto);
       expect(prefs.windowSize, 1);
       expect(prefs.prefetchScreens, CollectionPagingPrefs.maxPrefetchScreens);
+      expect(prefs.largeThreshold, 1);
       prefs.dispose();
     });
 

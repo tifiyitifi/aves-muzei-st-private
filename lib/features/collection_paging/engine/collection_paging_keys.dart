@@ -9,4 +9,6 @@ abstract final class CollectionPagingKeys {
   static const String windowSize = 'collection_paging.window_size';
 
   static const String prefetchScreens = 'collection_paging.prefetch_screens';
+
+  static const String largeThreshold = 'collection_paging.large_threshold';
 }

@@ -175,29 +175,51 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<Set<AvesEntry>> loadEntriesById(Set<int> ids) => _entries.loadByIds(ids);
 
   @override
-  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true}) => _entries.count(origin: origin, directory: directory, excludeTrashed: excludeTrashed);
+  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false}) =>
+      _entries.count(origin: origin, directory: directory, excludeTrashed: excludeTrashed, trashedOnly: trashedOnly);
 
   @override
   Future<List<AvesEntry>> loadEntryWindow({
     int? origin,
     String? directory,
     bool excludeTrashed = true,
+    bool trashedOnly = false,
+    String? directoryEquals,
+    bool directoryEqualsNull = false,
+    int? dateFromMillis,
+    int? dateToMillis,
+    int? ratingEquals,
     required SortFactor sort,
     required bool reverse,
     required int limit,
     required int offset,
   }) =>
-      _entries.loadWindow(origin: origin, directory: directory, excludeTrashed: excludeTrashed, sort: sort, reverse: reverse, limit: limit, offset: offset);
+      _entries.loadWindow(
+        origin: origin,
+        directory: directory,
+        excludeTrashed: excludeTrashed,
+        trashedOnly: trashedOnly,
+        directoryEquals: directoryEquals,
+        directoryEqualsNull: directoryEqualsNull,
+        dateFromMillis: dateFromMillis,
+        dateToMillis: dateToMillis,
+        ratingEquals: ratingEquals,
+        sort: sort,
+        reverse: reverse,
+        limit: limit,
+        offset: offset,
+      );
 
   @override
   Future<List<SectionHeader>> loadSectionHeaders({
     int? origin,
     String? directory,
     bool excludeTrashed = true,
+    bool trashedOnly = false,
     required SectionGrouping grouping,
     required bool reverse,
   }) =>
-      _entries.loadSectionHeaders(origin: origin, directory: directory, excludeTrashed: excludeTrashed, grouping: grouping, reverse: reverse);
+      _entries.loadSectionHeaders(origin: origin, directory: directory, excludeTrashed: excludeTrashed, trashedOnly: trashedOnly, grouping: grouping, reverse: reverse);
 
   @override
   Future<void> insertEntries(Set<AvesEntry> entries) => _entries.insertAll(entries);

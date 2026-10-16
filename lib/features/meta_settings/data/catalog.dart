@@ -500,4 +500,12 @@ final List<SettingDef> _advancedDefs = [
     editorKey: MetaEditorKeys.collectionPrefetchScreens,
     sortOrder: 40,
   ),
+  SettingDef(
+    key: CollectionPagingKeys.largeThreshold,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsCollectionThresholdTile,
+    editorKey: MetaEditorKeys.collectionThreshold,
+    sortOrder: 50,
+  ),
 ];

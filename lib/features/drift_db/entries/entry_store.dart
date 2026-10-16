@@ -4,6 +4,7 @@ import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
@@ -79,8 +80,8 @@ class EntryStore {
   ///
   /// Built on the same [_windowWhere] predicate as [loadWindow], so the total
   /// reported to the UI always matches the rows a full walk would return.
-  Future<int> count({int? origin, String? directory, bool excludeTrashed = true}) async {
-    final where = _windowWhere(origin: origin, directory: directory, excludeTrashed: excludeTrashed);
+  Future<int> count({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false}) async {
+    final where = _windowWhere(origin: origin, directory: directory, excludeTrashed: excludeTrashed, trashedOnly: trashedOnly);
     final rows = await db.customSelect('SELECT COUNT(*) AS n FROM $_table e ${where.sql}', variables: where.variables).get();
     return (rows.firstOrNull?.data['n'] as int?) ?? 0;
   }
@@ -92,18 +93,39 @@ class EntryStore {
   /// deterministic (`title`, then `id`) but only approximates the in-memory
   /// natural sort, which SQLite cannot express; items whose primary keys tie
   /// may sit in a different adjacency than in the legacy full-load path.
+  ///
+  /// The optional section predicates ([directoryEquals], [dateFromMillis] /
+  /// [dateToMillis], [ratingEquals]) restrict the window to one section; they
+  /// extend the same [_windowWhere] predicate, so section windows always agree
+  /// with [loadSectionHeaders] and [count].
   Future<List<AvesEntry>> loadWindow({
     int? origin,
     String? directory,
     bool excludeTrashed = true,
+    bool trashedOnly = false,
+    String? directoryEquals,
+    bool directoryEqualsNull = false,
+    int? dateFromMillis,
+    int? dateToMillis,
+    int? ratingEquals,
     required SortFactor sort,
     required bool reverse,
     required int limit,
     required int offset,
   }) async {
     if (limit <= 0) return [];
-    final where = _windowWhere(origin: origin, directory: directory, excludeTrashed: excludeTrashed);
-    final joinMetadata = sort == SortFactor.rating;
+    final where = _windowWhere(
+      origin: origin,
+      directory: directory,
+      excludeTrashed: excludeTrashed,
+      trashedOnly: trashedOnly,
+      directoryEquals: directoryEquals,
+      directoryEqualsNull: directoryEqualsNull,
+      dateFromMillis: dateFromMillis,
+      dateToMillis: dateToMillis,
+      ratingEquals: ratingEquals,
+    );
+    final joinMetadata = sort == SortFactor.rating || ratingEquals != null;
     const bestDate = 'COALESCE(dt.dateMillis, e.sourceDateTakenMillis, e.dateModifiedMillis, 0)';
     final orderBy = switch (sort) {
       SortFactor.date => 'ORDER BY $bestDate ${_dir(descDefault: true, reverse: reverse)}, e.title ${_dir(descDefault: true, reverse: reverse)}, e.id ${_dir(descDefault: true, reverse: reverse)}',
@@ -115,7 +137,7 @@ class EntryStore {
       SortFactor.chipName || SortFactor.count => throw UnimplementedError('window loading is not defined for chip sorts: $sort'),
     };
     final rows = await db.customSelect(
-      'SELECT e.*, dt.dateMillis AS dateMillis FROM $_table e LEFT JOIN dateTaken dt ON dt.id = e.id${joinMetadata ? ' LEFT JOIN metadata m ON m.id = e.id' : ''} ${where.sql} $orderBy LIMIT ? OFFSET ?',
+      'SELECT e.*, dt.dateMillis AS dateMillis, t.path AS trashPath, t.dateMillis AS trashDateMillis FROM $_table e LEFT JOIN dateTaken dt ON dt.id = e.id LEFT JOIN trash t ON t.id = e.id${joinMetadata ? ' LEFT JOIN metadata m ON m.id = e.id' : ''} ${where.sql} $orderBy LIMIT ? OFFSET ?',
       variables: [...where.variables, Variable(limit), Variable(offset < 0 ? 0 : offset)],
     ).get();
     return [for (final row in rows) _entryFromWindowRow(row.data)];
@@ -129,6 +151,13 @@ class EntryStore {
     final entry = AvesEntry.fromMap(data);
     // Same source as `CollectionSource._savedDates`: the catalogued date.
     entry.catalogDateMillis = data['dateMillis'] as int?;
+    // Trash rows carry their restore details so bin actions keep working on
+    // windowed entries without a separate lookup.
+    final trashPath = data['trashPath'] as String?;
+    final trashDateMillis = data['trashDateMillis'] as int?;
+    if (trashPath != null && trashDateMillis != null) {
+      entry.trashDetails = TrashDetails(id: entry.id, path: trashPath, dateMillis: trashDateMillis);
+    }
     return entry;
   }
 
@@ -143,10 +172,11 @@ class EntryStore {
     int? origin,
     String? directory,
     bool excludeTrashed = true,
+    bool trashedOnly = false,
     required SectionGrouping grouping,
     required bool reverse,
   }) async {
-    final where = _windowWhere(origin: origin, directory: directory, excludeTrashed: excludeTrashed);
+    final where = _windowWhere(origin: origin, directory: directory, excludeTrashed: excludeTrashed, trashedOnly: trashedOnly);
     switch (grouping) {
       case SectionGrouping.album:
         // `IS NULL` first: legacy sorts a null directory as `''` (first in
@@ -181,23 +211,36 @@ class EntryStore {
         ).get();
         return [for (final row in rows) SectionHeader.rating(rating: (row.data['k'] as int?) ?? 0, count: (row.data['n'] as int?) ?? 0)];
       case SectionGrouping.single:
-        return [SectionHeader.single(count: await count(origin: origin, directory: directory, excludeTrashed: excludeTrashed))];
+        return [SectionHeader.single(count: await count(origin: origin, directory: directory, excludeTrashed: excludeTrashed, trashedOnly: trashedOnly))];
     }
   }
 
-  /// Shared predicate for [count] and [loadWindow].
+  /// Shared predicate for [count], [loadWindow] and [loadSectionHeaders].
   ///
   /// The directory clause matches direct children only (`dir/%` but not
   /// `dir/%/%`), mirroring the subfolder skip in [load]. The `LIKE` prefix is
   /// escaped so directories containing `%` or `_` filter literally.
-  ({String sql, List<Variable> variables}) _windowWhere({int? origin, String? directory, bool excludeTrashed = true}) {
+  ({String sql, List<Variable> variables}) _windowWhere({
+    int? origin,
+    String? directory,
+    bool excludeTrashed = true,
+    bool trashedOnly = false,
+    String? directoryEquals,
+    bool directoryEqualsNull = false,
+    int? dateFromMillis,
+    int? dateToMillis,
+    int? ratingEquals,
+  }) {
     final conditions = <String>[];
     final variables = <Variable>[];
     if (origin != null) {
       conditions.add('e.origin = ?');
       variables.add(Variable(origin));
     }
-    if (excludeTrashed) {
+    if (trashedOnly) {
+      conditions.add('e.trashed != ?');
+      variables.add(const Variable(0));
+    } else if (excludeTrashed) {
       conditions.add('e.trashed = ?');
       variables.add(const Variable(0));
     }
@@ -212,6 +255,27 @@ class EntryStore {
       variables.add(Variable('$escaped%'));
       conditions.add("e.path NOT LIKE ? ESCAPE '\\'");
       variables.add(Variable('$escaped%/%'));
+    }
+    if (directoryEqualsNull) {
+      conditions.add('e.directory IS NULL');
+    } else if (directoryEquals != null) {
+      conditions.add('e.directory = ?');
+      variables.add(Variable(directoryEquals));
+    }
+    if (dateFromMillis != null || dateToMillis != null) {
+      const bestDate = 'COALESCE(dt.dateMillis, e.sourceDateTakenMillis, e.dateModifiedMillis, 0)';
+      if (dateFromMillis != null) {
+        conditions.add('$bestDate >= ?');
+        variables.add(Variable(dateFromMillis));
+      }
+      if (dateToMillis != null) {
+        conditions.add('$bestDate < ?');
+        variables.add(Variable(dateToMillis));
+      }
+    }
+    if (ratingEquals != null) {
+      conditions.add('COALESCE(m.rating, 0) = ?');
+      variables.add(Variable(ratingEquals));
     }
     return (sql: conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}', variables: variables);
   }

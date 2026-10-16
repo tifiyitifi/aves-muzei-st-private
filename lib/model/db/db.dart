@@ -34,14 +34,23 @@ abstract class LocalMediaDb {
 
   /// Counts the entries matching the window predicate (same definition as
   /// [loadEntryWindow], so the total always matches a full walk of windows).
-  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true});
+  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false});
 
   /// Loads one window of entries in collection order ([SortFactor] + whole-list
   /// [reverse]), for paged collection loading without full materialization.
+  ///
+  /// The optional section predicates restrict the window to one section,
+  /// matching [loadSectionHeaders].
   Future<List<AvesEntry>> loadEntryWindow({
     int? origin,
     String? directory,
     bool excludeTrashed = true,
+    bool trashedOnly = false,
+    String? directoryEquals,
+    bool directoryEqualsNull = false,
+    int? dateFromMillis,
+    int? dateToMillis,
+    int? ratingEquals,
     required SortFactor sort,
     required bool reverse,
     required int limit,
@@ -53,6 +62,7 @@ abstract class LocalMediaDb {
     int? origin,
     String? directory,
     bool excludeTrashed = true,
+    bool trashedOnly = false,
     required SectionGrouping grouping,
     required bool reverse,
   });

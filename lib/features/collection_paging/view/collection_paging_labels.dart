@@ -6,4 +6,11 @@ import 'package:flutter/widgets.dart';
 String collectionEngineName(BuildContext context, CollectionEngine engine) => switch (engine) {
       CollectionEngine.legacy => context.l10n.collectionEngineLegacy,
       CollectionEngine.paged => context.l10n.collectionEnginePaged,
+      CollectionEngine.auto => context.l10n.collectionEngineAuto,
+    };
+
+/// Localized description of a collection engine, shown for the non-current options.
+String collectionEngineDescription(BuildContext context, CollectionEngine engine) => switch (engine) {
+      CollectionEngine.auto => context.l10n.collectionEngineAutoDescription,
+      _ => context.l10n.collectionEngineDescription,
     };

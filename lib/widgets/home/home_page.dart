@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
+import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/locale/intl.dart';
@@ -266,9 +268,16 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           final source = context.read<CollectionSource>();
           if (source.loadedScope != CollectionSource.fullScope) {
             await reportService.log('Initialize source to start app with mode=$appMode, loaded scope=${source.loadedScope}');
-            final loadTopEntriesFirst = settings.homeNavItem.route == CollectionPage.routeName && settings.homeCustomCollection.isEmpty;
-            source.canAnalyze = true;
-            await source.init(scope: CollectionSource.fullScope, loadTopEntriesFirst: loadTopEntriesFirst);
+            // Huge libraries start paged (entry-free essentials only) instead of
+            // materializing everything; small ones keep the legacy full load.
+            final decision = await const CollectionEngineRouter().resolve(filters: CollectionSource.fullScope);
+            if (decision.route == CollectionRoute.paged) {
+              await PagedBootstrap.ensure(source);
+            } else {
+              final loadTopEntriesFirst = settings.homeNavItem.route == CollectionPage.routeName && settings.homeCustomCollection.isEmpty;
+              source.canAnalyze = true;
+              await source.init(scope: CollectionSource.fullScope, loadTopEntriesFirst: loadTopEntriesFirst);
+            }
           }
         case .screenSaver:
           await reportService.log('Initialize source to start screen saver');

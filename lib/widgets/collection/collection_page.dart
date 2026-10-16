@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/query.dart';
@@ -53,7 +54,9 @@ class _CollectionPageState extends State<CollectionPage> {
   void initState() {
     // do not seed this widget with the collection, but control its lifecycle here instead,
     // as the collection properties may change and they should not be reset by a widget update (e.g. with theme change)
-    _collection = CollectionLens(
+    // The paged lens covers both paths: it serves windows from the database on
+    // huge collections and morphs to the exact legacy behaviour otherwise.
+    _collection = PagedCollectionLens(
       source: widget.source,
       filters: widget.filters,
     );

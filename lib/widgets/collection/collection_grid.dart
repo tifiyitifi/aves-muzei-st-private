@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
+import 'package:aves/features/collection_paging/view/skeleton_tile.dart';
 import 'package:aves/locale/calendar/calendar_utils.dart';
 import 'package:aves/model/app/permissions.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -201,6 +204,10 @@ class _CollectionGridContentState extends State<_CollectionGridContent> {
                               horizontalPadding: horizontalPadding,
                               tileExtent: thumbnailExtent,
                               tileBuilder: (entry, tileSize) {
+                                // Unloaded positions render an inert shimmer at the exact
+                                // tile extent, so the sliver geometry never shifts while
+                                // windows fetch in the background.
+                                if (entry is SkeletonEntry) return SkeletonTile(tileSize: tileSize);
                                 final extent = tileSize.shortestSide;
                                 return ListenableBuilder(
                                   listenable: favourites,
@@ -503,7 +510,11 @@ class _CollectionScrollViewState extends State<_CollectionScrollView> with Widge
       _checkingStoragePermission = false;
       _isStoragePermissionGranted.then((granted) {
         if (granted) {
-          widget.collection.source.init(scope: CollectionSource.fullScope);
+          final collection = widget.collection;
+          // A paged lens keeps an entry-free source on purpose; a full load
+          // here would reintroduce the OOM it exists to prevent.
+          if (collection is PagedCollectionLens && collection.pagedActive) return;
+          collection.source.init(scope: CollectionSource.fullScope);
         }
       });
     }
@@ -637,6 +648,13 @@ class _CollectionScrollViewState extends State<_CollectionScrollView> with Widge
               return EmptyContent(
                 icon: AIcons.favourite,
                 text: context.l10n.collectionEmptyFavourites,
+                bottom: bottom,
+              );
+            }
+            if (collection is PagedCollectionLens && collection.pagedBlocked) {
+              return EmptyContent(
+                icon: AIcons.image,
+                text: context.l10n.collectionPagedUnsupportedFilter,
                 bottom: bottom,
               );
             }

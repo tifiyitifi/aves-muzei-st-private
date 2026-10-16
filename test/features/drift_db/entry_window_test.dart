@@ -3,6 +3,7 @@ import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/metadata/catalog.dart';
+import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
@@ -70,6 +71,8 @@ void main() {
     return window.map((e) => e.id).toList();
   }
 
+  int millis(int year, int month, [int day = 15]) => DateTime.utc(year, month, day).millisecondsSinceEpoch;
+
   group('countEntries', () {
     test('counts all non-trashed entries by default', () async {
       await service.insertEntries({entry(1), entry(2), entry(3, trashed: true)});
@@ -130,6 +133,33 @@ void main() {
       await service.insertEntries({entry(1)});
       expect(await windowIds(limit: 0), isEmpty);
       expect(await windowIds(offset: 99), isEmpty);
+    });
+
+    test('supports trashed-only windows with restore details', () async {
+      await service.insertEntries({entry(1), entry(2, trashed: true)});
+      await service.updateTrash(2, TrashDetails(id: 2, path: '/album/2.jpg', dateMillis: 7));
+      final window = await service.loadEntryWindow(trashedOnly: true, excludeTrashed: false, sort: SortFactor.date, reverse: false, limit: 10, offset: 0);
+      expect(window.map((e) => e.id), [2]);
+      expect(window.single.trashDetails, isNotNull);
+      expect(await service.countEntries(trashedOnly: true, excludeTrashed: false), 1);
+    });
+
+    test('restricts windows to one section', () async {
+      await service.insertEntries({
+        entry(1, dir: '/a', dateTaken: millis(2024, 1)),
+        entry(2, dir: '/b', dateTaken: millis(2024, 3, 5)),
+        entry(3, dir: '/b', dateTaken: millis(2024, 3, 6)),
+      });
+      await service.saveCatalogMetadata({CatalogMetadata(id: 3, rating: 4)});
+
+      final album = await service.loadEntryWindow(directoryEquals: '/b', sort: SortFactor.date, reverse: false, limit: 10, offset: 0);
+      expect(album.map((e) => e.id), [3, 2]);
+
+      final month = await service.loadEntryWindow(dateFromMillis: millis(2024, 3, 1), dateToMillis: millis(2024, 4, 1), sort: SortFactor.date, reverse: false, limit: 10, offset: 0);
+      expect(month.map((e) => e.id).toSet(), {2, 3});
+
+      final rated = await service.loadEntryWindow(ratingEquals: 4, sort: SortFactor.rating, reverse: false, limit: 10, offset: 0);
+      expect(rated.map((e) => e.id), [3]);
     });
   });
 }

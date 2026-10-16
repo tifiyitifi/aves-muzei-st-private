@@ -1195,5 +1195,19 @@
         "format": "decimalPattern"
       }
     }
-  }
+  },
+  "collectionEngineAuto": "Auto (size-based)",
+  "collectionEngineAutoDescription": "Full load below the size threshold, paged loading above it.",
+  "settingsCollectionThresholdTile": "Large collection threshold",
+  "settingsCollectionThresholdDialogTitle": "Large collection threshold",
+  "collectionThresholdCount": "{count, plural, =1{{count} entry} other{{count} entries}}",
+  "@collectionThresholdCount": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "collectionPagedUnsupportedFilter": "This filter combination is not supported in paged mode yet."
 }

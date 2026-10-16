@@ -186,13 +186,19 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   // retired rollback path ("do not extend it" above): the stubs satisfy the
   // seam so the file still compiles, and fail loudly if ever re-registered.
   @override
-  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
   Future<List<AvesEntry>> loadEntryWindow({
     int? origin,
     String? directory,
     bool excludeTrashed = true,
+    bool trashedOnly = false,
+    String? directoryEquals,
+    bool directoryEqualsNull = false,
+    int? dateFromMillis,
+    int? dateToMillis,
+    int? ratingEquals,
     required SortFactor sort,
     required bool reverse,
     required int limit,
@@ -205,6 +211,7 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
     int? origin,
     String? directory,
     bool excludeTrashed = true,
+    bool trashedOnly = false,
     required SectionGrouping grouping,
     required bool reverse,
   }) =>

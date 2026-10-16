@@ -46,10 +46,13 @@ class EntryIdAllocator {
   /// hands out for the same database.
   ///
   /// Throws [StateError] if the current block runs dry before the background
-  /// top-up lands. [next] is synchronous, so only a caller that hands out a
-  /// sustained burst without yielding (a scan assigning ids to a large batch)
-  /// can reach this; such a caller can synchronize with [settled]. The
-  /// `blockSize` in the message sizes the gap for diagnosis.
+  /// top-up lands. [next] is synchronous, so only a caller that hands out more
+  /// than `blockSize ~/ 2` ids (where the top-up starts) in one uninterrupted
+  /// synchronous loop can reach this; a caller that yields to the event loop
+  /// between ids lets the top-up land. The only such call site today is a bulk
+  /// copy assigning ids in a plain `forEach` (`CollectionSource.updateAfterMove`),
+  /// which can synchronize with [settled] instead of racing it (it does not
+  /// today). The `blockSize` in the message sizes the gap for diagnosis.
   int next() {
     if (_cursor >= _ceiling) {
       throw StateError('$runtimeType exhausted its id block before the background top-up landed (blockSize=$blockSize)');

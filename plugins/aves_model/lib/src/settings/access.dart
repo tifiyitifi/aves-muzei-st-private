@@ -52,8 +52,10 @@ mixin SettingsAccess {
     } else {
       handled = false;
     }
-    // Never notify a value that was not persisted: a listener must not observe a
-    // change the store did not accept.
+    // Only notify a value the store accepted: an unhandled value (an
+    // unsupported type or a non-string list) must not reach a listener. This is
+    // not a durability check — a store may persist asynchronously, so the
+    // notified value can still fail to reach disk afterwards.
     if (handled && hasValueChanged(oldValue, newValue)) {
       notifyKeyChange(key, oldValue, newValue);
       notifyListeners();

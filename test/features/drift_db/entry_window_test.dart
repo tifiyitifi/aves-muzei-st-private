@@ -137,7 +137,7 @@ void main() {
 
     test('supports trashed-only windows with restore details', () async {
       await service.insertEntries({entry(1), entry(2, trashed: true)});
-      await service.updateTrash(2, TrashDetails(id: 2, path: '/album/2.jpg', dateMillis: 7));
+      await service.updateTrash(2, const TrashDetails(id: 2, path: '/album/2.jpg', dateMillis: 7));
       final window = await service.loadEntryWindow(trashedOnly: true, excludeTrashed: false, sort: SortFactor.date, reverse: false, limit: 10, offset: 0);
       expect(window.map((e) => e.id), [2]);
       expect(window.single.trashDetails, isNotNull);

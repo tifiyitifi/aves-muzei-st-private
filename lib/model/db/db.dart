@@ -32,6 +32,12 @@ abstract class LocalMediaDb {
 
   Future<Set<AvesEntry>> loadEntriesById(Set<int> ids);
 
+  /// Loads entries by URI (bounded `IN` query, chunked).
+  Future<Set<AvesEntry>> loadEntriesByUris(Set<String> uris);
+
+  /// Loads entries by MediaStore content id (bounded `IN` query, chunked).
+  Future<Set<AvesEntry>> loadEntriesByContentIds(Set<int> ids);
+
   /// Counts the entries matching the window predicate (same definition as
   /// [loadEntryWindow], so the total always matches a full walk of windows).
   Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false});

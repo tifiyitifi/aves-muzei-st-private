@@ -74,6 +74,11 @@ mixin SourceBase {
   void invalidateEntries();
 
   FilterSummary computeFilterSummary(CollectionFilter filter);
+
+  /// Scope the in-memory entries were loaded with, if any. Null while the
+  /// source never materialized a scope (paged collections), which lets
+  /// derived structures tell "empty library" from "not loaded".
+  SourceScope? get loadedScope;
 }
 
 abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, PlaceMixin, StateMixin, LocationMixin, TagMixin, TrashMixin {
@@ -227,7 +232,16 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
   Future<void> removeEntries(Set<String> uris, {required bool includeTrash}) async {
     if (uris.isEmpty) return;
 
-    final oldEntries = allEntries.where((entry) => uris.contains(entry.uri)).toSet();
+    var oldEntries = allEntries.where((entry) => uris.contains(entry.uri)).toSet();
+    if (oldEntries.length < uris.length) {
+      // Paged collections do not materialize entries: resolve the missing ones
+      // from the database (bounded by the selection) so deletes actually delete.
+      final missing = uris.difference(oldEntries.map((entry) => entry.uri).toSet());
+      oldEntries = {
+        ...oldEntries,
+        ...await localMediaDb.loadEntriesByUris(missing),
+      };
+    }
     if (!includeTrash) {
       oldEntries.removeWhere(TrashFilter.instance.test);
     }
@@ -464,6 +478,7 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
     eventBus.fire(EntryMovedEvent(MoveType.move, movedEntries));
   }
 
+  @override
   SourceScope get loadedScope;
 
   SourceScope get targetScope;

@@ -175,6 +175,12 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<Set<AvesEntry>> loadEntriesById(Set<int> ids) => _entries.loadByIds(ids);
 
   @override
+  Future<Set<AvesEntry>> loadEntriesByUris(Set<String> uris) => _entries.loadByUris(uris);
+
+  @override
+  Future<Set<AvesEntry>> loadEntriesByContentIds(Set<int> ids) => _entries.loadByContentIds(ids);
+
+  @override
   Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false}) =>
       _entries.count(origin: origin, directory: directory, excludeTrashed: excludeTrashed, trashedOnly: trashedOnly);
 

@@ -76,6 +76,36 @@ class EntryStore {
 
   Future<Set<AvesEntry>> loadByIds(Set<int> ids) => selectByIds(db, _table, ids, AvesEntry.fromMap);
 
+  /// Loads entries by URI, in chunks. Lets entry-free (paged) sources resolve
+  /// a bounded set of URIs — e.g. a user selection to delete.
+  Future<Set<AvesEntry>> loadByUris(Set<String> uris) async {
+    final result = <AvesEntry>{};
+    if (uris.isEmpty) return result;
+    for (final slice in uris.slices(500)) {
+      final variables = slice.map((_) => '?').join(',');
+      final rows = await db.customSelect('SELECT * FROM $_table WHERE uri IN ($variables)', variables: [for (final uri in slice) Variable(uri)]).get();
+      for (final row in rows) {
+        result.add(AvesEntry.fromMap(row.data));
+      }
+    }
+    return result;
+  }
+
+  /// Loads entries by MediaStore content id, in chunks. Used to resolve a
+  /// bounded set of changed/deleted items (sync, delete) without loading the
+  /// collection.
+  Future<Set<AvesEntry>> loadByContentIds(Set<int> ids) async {
+    final result = <AvesEntry>{};
+    if (ids.isEmpty) return result;
+    for (final slice in ids.slices(500)) {
+      final rows = await db.customSelect('SELECT * FROM $_table WHERE contentId IN (${slice.join(',')})').get();
+      for (final row in rows) {
+        result.add(AvesEntry.fromMap(row.data));
+      }
+    }
+    return result;
+  }
+
   /// Counts the entries matching the window predicate.
   ///
   /// Built on the same [_windowWhere] predicate as [loadWindow], so the total

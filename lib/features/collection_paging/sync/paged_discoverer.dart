@@ -1,0 +1,234 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:aves/features/collection_paging/engine/collection_paging_keys.dart';
+import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/model/db/db.dart';
+import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/entry/origins.dart';
+import 'package:aves/services/common/services.dart';
+import 'package:aves/services/media/media_fetch_service.dart';
+import 'package:aves/services/media/media_store_service.dart';
+import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+const _log = AreaKeyLog(collectionPagingLogKey);
+
+/// MediaStore <-> database sync for paged collections, without materializing
+/// the collection.
+///
+/// Two paths, both bounded by the change size instead of the library size:
+/// - [syncIfChanged]: generation-gated. One cheap platform query when quiet;
+///   when the generation moved, only the changed URIs round-trip (fetch,
+///   obsolete-check and upsert per URI).
+/// - [importAll]: chunked full scan for a first launch on an unseen library
+///   (or an interrupted one). Streams every row once, upserts per chunk by
+///   content id, and skips rows already in the database — so reruns resume
+///   instead of duplicating, at any scale.
+///
+/// The generation cursor persists in `SharedPreferences`, so restarts do not
+/// redownload the world.
+class PagedDiscoverer {
+  final MediaStoreService mediaStore;
+  final MediaFetchService mediaFetch;
+  final LocalMediaDb database;
+
+  Map<String, int>? _lastGeneration;
+  bool _importing = false;
+  new({
+    MediaStoreService? mediaStore,
+    MediaFetchService? mediaFetch,
+    LocalMediaDb? database,
+  })  : mediaStore = mediaStore ?? mediaStoreService,
+        mediaFetch = mediaFetch ?? mediaFetchService,
+        database = database ?? localMediaDb;
+
+  /// Generation cursor, for tests.
+  @visibleForTesting
+  Map<String, int>? get lastGeneration => _lastGeneration;
+
+  @visibleForTesting
+  set lastGeneration(Map<String, int>? generation) => _lastGeneration = generation;
+
+  /// Discovers MediaStore changes since the last generation. Returns the
+  /// number of applied changes (0 when quiet or untrackable).
+  Future<int> syncIfChanged() async {
+    final generation = await mediaStore.getGenerationByVolume();
+    if (generation == null) return 0;
+    final since = _lastGeneration ?? await _readPersistedGeneration();
+    if (since == null) {
+      await _storeGeneration(generation);
+      return 0;
+    }
+    if (_equalGenerations(since, generation)) return 0;
+    final applied = await _syncChanged(since);
+    await _storeGeneration(generation);
+    return applied;
+  }
+
+  /// Chunked full import. Safe to rerun: rows already in the database (by
+  /// content id) are skipped, modified ones are overwritten in place.
+  /// Returns the number of inserted or updated rows.
+  Future<int> importAll({required void Function(int done) onProgress}) async {
+    if (_importing) return 0;
+    _importing = true;
+    try {
+      var done = 0;
+      var batch = <AvesEntry>{};
+      Future<void> flush() async {
+        if (batch.isEmpty) return;
+        done += await _upsertBatch(batch);
+        onProgress(done);
+        batch = {};
+        // Cooperative yield: a million-row import must not starve the UI.
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      await for (final entry in mediaStore.getEntries(const {})) {
+        entry.id = database.nextId;
+        batch.add(entry);
+        if (batch.length >= 2000) await flush();
+      }
+      await flush();
+
+      final generation = await mediaStore.getGenerationByVolume();
+      if (generation != null) await _storeGeneration(generation);
+      return done;
+    } finally {
+      _importing = false;
+    }
+  }
+
+  /// Applies one batch: existing rows (by content id) are overwritten when
+  /// modified, missing rows are inserted, trash details are attached.
+  /// Returns the number of written rows.
+  Future<int> _upsertBatch(Set<AvesEntry> batch) async {
+    if (batch.isEmpty) return 0;
+    final byContentId = <int, AvesEntry>{};
+    for (final entry in batch) {
+      final contentId = entry.contentId;
+      if (contentId != null) byContentId[contentId] = entry;
+    }
+    final known = await database.loadEntriesByContentIds(byContentId.keys.toSet());
+    final knownByContentId = {for (final e in known) e.contentId: e};
+
+    final toInsert = <AvesEntry>{};
+    var written = 0;
+    for (final kv in byContentId.entries) {
+      final knownEntry = knownByContentId[kv.key];
+      if (knownEntry == null) {
+        toInsert.add(kv.value);
+      } else if ((kv.value.dateModifiedMillis ?? 0) > (knownEntry.dateModifiedMillis ?? 0)) {
+        kv.value.id = knownEntry.id;
+        await database.updateEntry(knownEntry.id, kv.value);
+        await _saveTrash(kv.value);
+        written++;
+      }
+    }
+    if (toInsert.isNotEmpty) {
+      await database.insertEntries(toInsert);
+      for (final entry in toInsert) {
+        await _saveTrash(entry);
+      }
+      written += toInsert.length;
+    }
+    return written;
+  }
+
+  Future<void> _saveTrash(AvesEntry entry) async {
+    final trashDetails = entry.trashDetails;
+    if (entry.trashed && trashDetails != null) {
+      await database.updateTrash(entry.id, trashDetails);
+    }
+  }
+
+  /// Syncs exactly the URIs changed since [sinceGeneration].
+  Future<int> _syncChanged(Map<String, int> sinceGeneration) async {
+    final changedUris = await mediaStore.getChangedUris(sinceGeneration);
+    if (changedUris.isEmpty) return 0;
+    var applied = 0;
+    for (final uri in changedUris) {
+      try {
+        if (await _syncUri(uri)) applied++;
+      } catch (error, stack) {
+        _log.w('paged sync failed for uri=$uri', error, stack);
+      }
+      // Cooperative yield between platform round-trips.
+      await Future<void>.delayed(Duration.zero);
+    }
+    return applied;
+  }
+
+  /// Returns true when [uri] produced a database write.
+  Future<bool> _syncUri(String uri) async {
+    final entry = await mediaFetch.getEntry(uri, null);
+    if (entry == null) {
+      return _removeObsoleteUri(uri);
+    }
+    final contentId = entry.contentId;
+    if (contentId != null) {
+      final known = await database.loadEntriesByContentIds({contentId});
+      final existing = known.firstOrNull;
+      if (existing != null) {
+        if ((entry.dateModifiedMillis ?? 0) <= (existing.dateModifiedMillis ?? 0) && existing.path == entry.path) {
+          return false;
+        }
+        entry.id = existing.id;
+        await database.updateEntry(existing.id, entry);
+        await _saveTrash(entry);
+        return true;
+      }
+    }
+    entry.id = database.nextId;
+    entry.origin = EntryOrigins.mediaStoreContent;
+    await database.insertEntries({entry});
+    await _saveTrash(entry);
+    return true;
+  }
+
+  /// Removes the row for a vanished [uri] (content id parsed like the legacy
+  /// refresh path does), if it is still tracked.
+  Future<bool> _removeObsoleteUri(String uri) async {
+    final contentId = int.tryParse(Uri.parse(uri).pathSegments.lastOrNull ?? '');
+    if (contentId == null) return false;
+    final obsolete = await mediaStore.checkObsoleteContentIds([contentId]);
+    if (!obsolete.contains(contentId)) return false;
+    final known = await database.loadEntriesByContentIds({contentId});
+    if (known.isEmpty) return false;
+    await database.removeIds(known.map((e) => e.id).toSet());
+    return true;
+  }
+
+  static bool _equalGenerations(Map<String, int> a, Map<String, int> b) {
+    if (a.length != b.length) return false;
+    for (final key in a.keys) {
+      if (b[key] != a[key]) return false;
+    }
+    return true;
+  }
+
+  Future<Map<String, int>?> _readPersistedGeneration() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(CollectionPagingKeys.mediaGeneration);
+      if (raw == null || raw.isEmpty) return _lastGeneration;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return _lastGeneration;
+      return _lastGeneration = decoded.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+    } catch (error, stack) {
+      _log.w('failed to read media generation', error, stack);
+      return _lastGeneration;
+    }
+  }
+
+  Future<void> _storeGeneration(Map<String, int> generation) async {
+    _lastGeneration = Map.of(generation);
+    try {
+      await (await SharedPreferences.getInstance()).setString(CollectionPagingKeys.mediaGeneration, jsonEncode(generation));
+    } catch (error, stack) {
+      _log.e('failed to persist media generation', error, stack);
+    }
+  }
+}

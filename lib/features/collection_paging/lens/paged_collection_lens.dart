@@ -5,6 +5,7 @@ import 'package:aves/features/collection_paging/engine/collection_paging_prefs.d
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/collection_paging/lens/paged_lists.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
+import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
 import 'package:aves/features/collection_paging/windows/window_cache.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/logging/log.dart';
@@ -211,8 +212,22 @@ class PagedCollectionLens extends CollectionLens {
       await PagedBootstrap.ensure(source);
       if (!_current(gen)) return;
 
-      final decision = await const CollectionEngineRouter().resolve(filters: filters);
+      // Steady-state MediaStore sync: one cheap generation query when quiet,
+      // bounded change handling otherwise. New files appear without a restart.
+      await PagedDiscoverer().syncIfChanged();
       if (!_current(gen)) return;
+
+      var decision = await const CollectionEngineRouter().resolve(filters: filters);
+      if (!_current(gen)) return;
+
+      if (decision.total == 0 && await _isDatabaseEmpty()) {
+        // Fresh database on an unseen library: bulk import, then re-resolve.
+        // Skipped for legitimately empty scopes (e.g. an empty trash).
+        await _initialImport(gen);
+        if (!_current(gen)) return;
+        decision = await const CollectionEngineRouter().resolve(filters: filters);
+        if (!_current(gen)) return;
+      }
 
       if (decision.route == CollectionRoute.legacy) {
         await _enterLegacy(decision, gen);
@@ -225,6 +240,33 @@ class PagedCollectionLens extends CollectionLens {
       _enterBlocked();
     } finally {
       _reloading = false;
+    }
+  }
+
+  Future<bool> _isDatabaseEmpty() async {
+    try {
+      return await localMediaDb.countEntries() == 0;
+    } catch (error, stack) {
+      _log.w('paged emptiness probe failed', error, stack);
+      return false;
+    }
+  }
+
+  Future<void> _initialImport(int gen) async {
+    source.state = SourceState.loading;
+    source.setProgress(done: 0, total: 0);
+    notifyListeners();
+    try {
+      final imported = await PagedDiscoverer().importAll(
+        onProgress: (done) {
+          if (_current(gen)) {
+            source.setProgress(done: done, total: 0);
+          }
+        },
+      );
+      _log.d('paged bulk import complete: $imported rows');
+    } catch (error, stack) {
+      _log.e('paged bulk import failed', error, stack);
     }
   }
 

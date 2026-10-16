@@ -87,6 +87,11 @@ mixin AlbumMixin on SourceBase {
   }
 
   void cleanEmptyAlbums([Set<String>? albums]) {
+    // An entry-free source cannot tell an actually-empty album from one whose
+    // rows simply are not materialized (paged collections never fully load).
+    // Sweeping here would evict every album, so skip unless the source was
+    // fully loaded (a legacy full wipe, where emptiness is real).
+    if (allEntries.isEmpty && loadedScope != CollectionSource.fullScope) return;
     final filledAlbums = visibleEntries.map((entry) => entry.directory).toSet();
     final pinnedAlbums = settings.pinnedFilters.whereType<StoredAlbumFilter>().map((v) => v.album);
     final removableAlbums = (albums ?? _directories).where((album) {

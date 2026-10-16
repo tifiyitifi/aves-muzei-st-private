@@ -1,25 +1,92 @@
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/locale/aves_locale.dart';
+import 'package:aves/model/filters/container/album_group.dart';
+import 'package:aves/model/filters/container/set_or.dart';
+import 'package:aves/model/filters/container/tag_group.dart';
+import 'package:aves/model/filters/covered/location.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/model/filters/covered/tag.dart';
+import 'package:aves/model/filters/container/dynamic_album.dart';
+import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/query.dart';
+import 'package:aves/model/filters/rating.dart';
 import 'package:aves/model/filters/trash.dart';
+import 'package:aves/services/common/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
+  setUpAll(() {
+    // `SetOrFilter` sorts its members by label, which resolves `pContext`.
+    getIt.registerLazySingleton<p.Context>(() => p.Context(style: p.Style.posix));
+  });
+
+  tearDownAll(getIt.reset);
+
   group('predicateForFilters', () {
     test('empty filters match the whole library', () {
-      expect(predicateForFilters({}), const CollectionWindowPredicate());
+      final predicate = predicateForFilters({})!;
+      expect(predicate.conjunction, isEmpty);
+      expect(predicate.trashedOnly, isFalse);
+      expect(predicate.requires, isEmpty);
     });
 
     test('a single album matches its directory', () {
-      expect(
-        predicateForFilters({StoredAlbumFilter('/a', null)}),
-        const CollectionWindowPredicate(directory: '/a'),
-      );
+      final predicate = predicateForFilters({StoredAlbumFilter('/a', null)})!;
+      expect(predicate.trashedOnly, isFalse);
+      expect(predicate.conjunction.single.sql, 'e.directory = ?');
+      expect(predicate.conjunction.single.variables.single.value, '/a');
     });
 
-    test('two albums need the legacy path', () {
-      expect(predicateForFilters({StoredAlbumFilter('/a', null), StoredAlbumFilter('/b', null)}), isNull);
+    test('two albums intersect to nothing', () {
+      // Aves intersects a view's filters, so two albums can never both match;
+      // the predicate expresses that (unlike the old flat predicate, which
+      // punted to the in-memory path).
+      final predicate = predicateForFilters({StoredAlbumFilter('/a', null), StoredAlbumFilter('/b', null)})!;
+      expect(predicate.conjunction, hasLength(2));
+    });
+
+    test('an album group matches its members with IN', () {
+      final group = AlbumGroupFilter(
+        Uri.parse('/group'),
+        SetOrFilter({StoredAlbumFilter('/a', null), StoredAlbumFilter('/b', null)}),
+      );
+      final predicate = predicateForFilters({group})!;
+      expect(predicate.conjunction, hasLength(1));
+      expect(predicate.conjunction.single.sql, contains('e.directory = ?'));
+      expect(predicate.conjunction.single.sql, contains(' OR '));
+    });
+
+    test('a tag group reads metadata', () {
+      final group = TagGroupFilter(
+        Uri.parse('/taggroup'),
+        SetOrFilter({TagFilter('sunset'), TagFilter('beach')}),
+      );
+      final predicate = predicateForFilters({group})!;
+      expect(predicate.requires, contains(WindowTable.metadata));
+    });
+
+    test('a dynamic album unwraps to its inner filter', () {
+      final dynamicAlbum = DynamicAlbumFilter('faves', StoredAlbumFilter('/a', null));
+      final predicate = predicateForFilters({dynamicAlbum})!;
+      expect(predicate.conjunction.single.sql, 'e.directory = ?');
+    });
+
+    test('a location filter reads address', () {
+      final predicate = predicateForFilters({LocationFilter(LocationLevel.country, 'France;FR')})!;
+      expect(predicate.requires, contains(WindowTable.address));
+      expect(predicate.conjunction.single.variables.single.value, 'FR');
+    });
+
+    test('a mime filter reads metadata', () {
+      final predicate = predicateForFilters({MimeFilter.video})!;
+      expect(predicate.requires, contains(WindowTable.metadata));
+      expect(predicate.conjunction.single.sql, contains('LOWER(COALESCE(m.mimeType, e.sourceMimeType))'));
+    });
+
+    test('a rating filter reads metadata', () {
+      final predicate = predicateForFilters({RatingFilter(4)})!;
+      expect(predicate.requires, contains(WindowTable.metadata));
     });
 
     test('a reversed album needs the legacy path', () {
@@ -27,14 +94,26 @@ void main() {
     });
 
     test('trash maps to the trashed-only predicate', () {
-      expect(
-        predicateForFilters({TrashFilter.instance}),
-        const CollectionWindowPredicate(excludeTrashed: false, trashedOnly: true),
-      );
+      final predicate = predicateForFilters({TrashFilter.instance})!;
+      expect(predicate.trashedOnly, isTrue);
+      expect(predicate.conjunction, isEmpty);
     });
 
     test('a live query needs the legacy path', () {
       expect(predicateForFilters({QueryFilter('a', ACalendar.gregorian, live: true)}), isNull);
+    });
+
+    test('hidden filters become an exclusion fragment', () {
+      final predicate = predicateForFilters({}, hidden: {StoredAlbumFilter('/hidden', null)})!;
+      expect(predicate.conjunction.single.sql, contains('NOT IN'));
+      expect(predicate.requires, contains(WindowTable.metadata));
+      expect(predicate.requires, contains(WindowTable.address));
+    });
+
+    test('an uncompilable hidden filter keeps the legacy path', () {
+      // Never silently ignore a hidden filter: it must not vanish from the view.
+      expect(predicateForFilters({}, hidden: {RatingFilter(5)}), isNull);
+      expect(predicateForFilters({}, hidden: {StoredAlbumFilter('/hidden', null, reversed: true)}), isNull);
     });
   });
 }

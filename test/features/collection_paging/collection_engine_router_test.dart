@@ -1,6 +1,7 @@
 import 'package:aves/features/collection_paging/engine/collection_engine.dart';
 import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -80,7 +81,7 @@ void main() {
     test('unsupported filters keep the legacy path', () async {
       await configure(engine: CollectionEngine.paged, threshold: 5);
       final decision = await router.resolve(
-        filters: {StoredAlbumFilter('/a', null), StoredAlbumFilter('/b', null)},
+        filters: {StoredAlbumFilter('/a', null, reversed: true)},
         database: driftDb,
       );
       expect(decision.route, CollectionRoute.legacy);
@@ -111,14 +112,16 @@ void main() {
       expect(decision.total, 1);
     });
 
-    test('hidden filters keep the legacy path', () async {
+    test('hidden filters are compiled into the predicate', () async {
       await driftDb.insertEntries({entry(1)});
       await configure(engine: CollectionEngine.paged, threshold: 1);
       final old = settings.hiddenFilters;
       try {
         settings.hiddenFilters = {StoredAlbumFilter('/hidden', null)};
         final decision = await router.resolve(filters: {}, database: driftDb);
-        expect(decision.route, CollectionRoute.legacy);
+        expect(decision.route, CollectionRoute.paged);
+        // The hidden album is not the entry's album, so it still shows.
+        expect(decision.total, 1);
       } finally {
         settings.hiddenFilters = old;
       }
@@ -135,5 +138,5 @@ void main() {
 
 class _FailingDb extends FakeAvesDb {
   @override
-  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false}) => throw StateError('no database');
+  Future<int> countEntries([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) => throw StateError('no database');
 }

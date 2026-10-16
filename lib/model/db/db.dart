@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/drift_db/filter_summary/hidden_exclusion.dart';
 import 'package:aves/features/drift_db/filter_summary/summary_rows.dart';
@@ -42,7 +43,7 @@ abstract class LocalMediaDb {
 
   /// Counts the entries matching the window predicate (same definition as
   /// [loadEntryWindow], so the total always matches a full walk of windows).
-  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false});
+  Future<int> countEntries([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]);
 
   /// Loads one window of entries in collection order ([SortFactor] + whole-list
   /// [reverse]), for paged collection loading without full materialization.
@@ -50,10 +51,7 @@ abstract class LocalMediaDb {
   /// The optional section predicates restrict the window to one section,
   /// matching [loadSectionHeaders].
   Future<List<AvesEntry>> loadEntryWindow({
-    int? origin,
-    String? directory,
-    bool excludeTrashed = true,
-    bool trashedOnly = false,
+    CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     String? directoryEquals,
     bool directoryEqualsNull = false,
     int? dateFromMillis,
@@ -67,10 +65,7 @@ abstract class LocalMediaDb {
 
   /// Loads one header per group of the window predicate, in display order.
   Future<List<SectionHeader>> loadSectionHeaders({
-    int? origin,
-    String? directory,
-    bool excludeTrashed = true,
-    bool trashedOnly = false,
+    CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     required SectionGrouping grouping,
     required bool reverse,
   });

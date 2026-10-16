@@ -79,12 +79,15 @@ class CollectionEngineRouter {
       return const EngineDecision.legacy(reason: 'engine preference is legacy');
     }
 
-    final predicate = predicateForFilters(filters);
+    final predicate = predicateForFilters(
+      filters,
+      hidden: settings.hiddenFilters,
+      // Locked vaults are excluded below anyway; passing them keeps the
+      // exclusion fragment correct if that bail is ever relaxed.
+      lockedVaultDirs: vaults.vaultDirectories.where(vaults.isLocked).toSet(),
+    );
     if (predicate == null) {
       return const EngineDecision.legacy(reason: 'filters need the in-memory path');
-    }
-    if (settings.hiddenFilters.isNotEmpty) {
-      return const EngineDecision.legacy(reason: 'hidden filters need the in-memory path');
     }
     if (vaults.vaultDirectories.any(vaults.isLocked)) {
       return const EngineDecision.legacy(reason: 'locked vaults need the in-memory path');
@@ -101,7 +104,7 @@ class CollectionEngineRouter {
     try {
       final db = database ?? localMediaDb;
       await db.init();
-      total = await db.countEntries(origin: predicate.origin, directory: predicate.directory, excludeTrashed: predicate.excludeTrashed, trashedOnly: predicate.trashedOnly);
+      total = await db.countEntries(predicate);
     } catch (error, stack) {
       _log.w('paged probe failed, keeping legacy', error, stack);
       return const EngineDecision.legacy(reason: 'paged probe failed');

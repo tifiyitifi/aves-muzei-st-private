@@ -1,7 +1,18 @@
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/filters/container/album_group.dart';
+import 'package:aves/model/filters/container/dynamic_album.dart';
+import 'package:aves/model/filters/container/set_or.dart';
+import 'package:aves/model/filters/container/tag_group.dart';
+import 'package:aves/model/filters/covered/location.dart';
+import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/model/filters/covered/tag.dart';
+import 'package:aves/model/filters/mime.dart';
+import 'package:aves/model/filters/rating.dart';
+import 'package:aves/model/metadata/address.dart';
 import 'package:aves/model/metadata/catalog.dart';
 import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/services/common/services.dart';
@@ -43,6 +54,7 @@ void main() {
     int size = 5,
     bool trashed = false,
     int origin = EntryOrigins.mediaStoreContent,
+    String mime = 'image/jpeg',
   }) {
     final album = dir ?? '/album';
     return AvesEntry(
@@ -51,7 +63,7 @@ void main() {
       path: '$album/$id.jpg',
       contentId: 100 + id,
       pageId: null,
-      sourceMimeType: 'image/jpeg',
+      sourceMimeType: mime,
       width: 10,
       height: 20,
       sourceRotationDegrees: 0,
@@ -66,8 +78,12 @@ void main() {
     );
   }
 
-  Future<List<int>> windowIds({int limit = 100, int offset = 0, SortFactor sort = SortFactor.date, bool reverse = false, String? directory, bool excludeTrashed = true}) async {
-    final window = await service.loadEntryWindow(directory: directory, excludeTrashed: excludeTrashed, sort: sort, reverse: reverse, limit: limit, offset: offset);
+  CollectionWindowPredicate lsAlbum(String directory) => predicateForFilters({StoredAlbumFilter(directory, null)})!;
+
+  CollectionWindowPredicate lsTrash() => const CollectionWindowPredicate(trashedOnly: true);
+
+  Future<List<int>> windowIds({int limit = 100, int offset = 0, SortFactor sort = SortFactor.date, bool reverse = false, CollectionWindowPredicate? predicate}) async {
+    final window = await service.loadEntryWindow(predicate: predicate ?? const CollectionWindowPredicate(), sort: sort, reverse: reverse, limit: limit, offset: offset);
     return window.map((e) => e.id).toList();
   }
 
@@ -77,13 +93,13 @@ void main() {
     test('counts all non-trashed entries by default', () async {
       await service.insertEntries({entry(1), entry(2), entry(3, trashed: true)});
       expect(await service.countEntries(), 2);
-      expect(await service.countEntries(excludeTrashed: false), 3);
+      expect(await service.countEntries(lsTrash()), 1);
     });
 
     test('counts a single directory level only', () async {
       await service.insertEntries({entry(1, dir: '/album'), entry(2, dir: '/album/sub'), entry(3, dir: '/other')});
-      expect(await service.countEntries(directory: '/album'), 1);
-      expect(await service.countEntries(directory: '/album/sub'), 1);
+      expect(await service.countEntries(lsAlbum('/album')), 1);
+      expect(await service.countEntries(lsAlbum('/album/sub')), 1);
     });
   });
 
@@ -138,10 +154,10 @@ void main() {
     test('supports trashed-only windows with restore details', () async {
       await service.insertEntries({entry(1), entry(2, trashed: true)});
       await service.updateTrash(2, const TrashDetails(id: 2, path: '/album/2.jpg', dateMillis: 7));
-      final window = await service.loadEntryWindow(trashedOnly: true, excludeTrashed: false, sort: SortFactor.date, reverse: false, limit: 10, offset: 0);
+      final window = await service.loadEntryWindow(predicate: lsTrash(), sort: SortFactor.date, reverse: false, limit: 10, offset: 0);
       expect(window.map((e) => e.id), [2]);
       expect(window.single.trashDetails, isNotNull);
-      expect(await service.countEntries(trashedOnly: true, excludeTrashed: false), 1);
+      expect(await service.countEntries(lsTrash()), 1);
     });
 
     test('restricts windows to one section', () async {
@@ -160,6 +176,73 @@ void main() {
 
       final rated = await service.loadEntryWindow(ratingEquals: 4, sort: SortFactor.rating, reverse: false, limit: 10, offset: 0);
       expect(rated.map((e) => e.id), [3]);
+    });
+  });
+
+  group('compiled filter predicates', () {
+    test('an album group selects its members', () async {
+      await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/b'), entry(3, dir: '/c')});
+      final group = AlbumGroupFilter(
+        Uri.parse('/group'),
+        SetOrFilter({StoredAlbumFilter('/a', null), StoredAlbumFilter('/c', null)}),
+      );
+      expect((await windowIds(predicate: predicateForFilters({group}))).toSet(), {1, 3});
+    });
+
+    test('tags select tagged entries; the empty tag selects untagged', () async {
+      await service.insertEntries({entry(1), entry(2), entry(3)});
+      await service.saveCatalogMetadata({
+        CatalogMetadata(id: 1, xmpSubjects: 'sunset;beach'),
+        CatalogMetadata(id: 2, xmpSubjects: 'beach'),
+        CatalogMetadata(id: 3, xmpSubjects: ''),
+      });
+      expect(await windowIds(predicate: predicateForFilters({TagFilter('sunset')})), [1]);
+      expect((await windowIds(predicate: predicateForFilters({TagFilter('beach')}))).toSet(), {1, 2});
+      expect(await windowIds(predicate: predicateForFilters({TagFilter('')})), [3]);
+    });
+
+    test('a tag group is the union of its tags', () async {
+      await service.insertEntries({entry(1), entry(2), entry(3)});
+      await service.saveCatalogMetadata({
+        CatalogMetadata(id: 1, xmpSubjects: 'sunset'),
+        CatalogMetadata(id: 2, xmpSubjects: 'beach'),
+      });
+      final group = TagGroupFilter(Uri.parse('/taggroup'), SetOrFilter({TagFilter('sunset'), TagFilter('beach')}));
+      expect((await windowIds(predicate: predicateForFilters({group}))).toSet(), {1, 2});
+    });
+
+    test('a dynamic album unwraps to its inner filter', () async {
+      await service.insertEntries({entry(1), entry(2)});
+      await service.saveCatalogMetadata({CatalogMetadata(id: 2, xmpSubjects: 'beach')});
+      final album = DynamicAlbumFilter('faves', TagFilter('beach'));
+      expect(await windowIds(predicate: predicateForFilters({album})), [2]);
+    });
+
+    test('mime and rating filters read metadata', () async {
+      await service.insertEntries({entry(1), entry(2, mime: 'video/mp4'), entry(3)});
+      await service.saveCatalogMetadata({CatalogMetadata(id: 3, rating: 5)});
+      expect(await windowIds(predicate: predicateForFilters({MimeFilter.video})), [2]);
+      expect(await windowIds(predicate: predicateForFilters({RatingFilter(5)})), [3]);
+    });
+
+    test('a location filter reads the address', () async {
+      await service.insertEntries({entry(1), entry(2)});
+      await service.saveAddresses({const AddressDetails(id: 1, countryCode: 'FR', countryName: 'France', adminArea: 'Île-de-France', locality: 'Paris')});
+      expect(await windowIds(predicate: predicateForFilters({LocationFilter(LocationLevel.country, 'France;FR')})), [1]);
+      expect(await windowIds(predicate: predicateForFilters({LocationFilter(LocationLevel.place, 'Paris')})), [1]);
+    });
+
+    test('hidden filters are excluded from the window', () async {
+      await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/hidden')});
+      final predicate = predicateForFilters({}, hidden: {StoredAlbumFilter('/hidden', null)})!;
+      expect(await windowIds(predicate: predicate), [1]);
+    });
+
+    test('filters intersect (AND)', () async {
+      await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/a'), entry(3, dir: '/b')});
+      await service.saveCatalogMetadata({CatalogMetadata(id: 1, xmpSubjects: 'beach'), CatalogMetadata(id: 2, xmpSubjects: 'sunset'), CatalogMetadata(id: 3, xmpSubjects: 'beach')});
+      final predicate = predicateForFilters({StoredAlbumFilter('/a', null), TagFilter('beach')})!;
+      expect(await windowIds(predicate: predicate), [1]);
     });
   });
 }

@@ -367,19 +367,11 @@ class PagedCollectionLens extends CollectionLens {
     final reverse = settings.getEffectiveCollectionSortReverse(filters);
     final windowSize = prefs.windowSize;
     final prefetch = prefs.prefetchScreens;
-    final total = await localMediaDb.countEntries(
-      origin: predicate.origin,
-      directory: predicate.directory,
-      excludeTrashed: predicate.excludeTrashed,
-      trashedOnly: predicate.trashedOnly,
-    );
+    final total = await localMediaDb.countEntries(predicate);
     if (!_current(gen)) return;
 
     final headers = await localMediaDb.loadSectionHeaders(
-      origin: predicate.origin,
-      directory: predicate.directory,
-      excludeTrashed: predicate.excludeTrashed,
-      trashedOnly: predicate.trashedOnly,
+      predicate: predicate,
       grouping: grouping,
       reverse: reverse,
     );
@@ -399,10 +391,7 @@ class PagedCollectionLens extends CollectionLens {
       final state = _SectionState(header: header, key: key, list: list);
       state.cache = WindowCache<AvesEntry>(
         fetch: (windowIndex, limit, offset) => localMediaDb.loadEntryWindow(
-          origin: predicate.origin,
-          directory: predicate.directory,
-          excludeTrashed: predicate.excludeTrashed,
-          trashedOnly: predicate.trashedOnly,
+          predicate: predicate,
           directoryEquals: range.directoryEquals,
           directoryEqualsNull: range.directoryEqualsNull,
           dateFromMillis: range.dateFromMillis,

@@ -131,3 +131,17 @@ SummaryExclusion buildSummaryExclusion({
 extension SummaryExclusionX on SummaryExclusion {
   bool get isEmpty => sql.isEmpty;
 }
+
+/// Whether [buildSummaryExclusion] can express *every* filter in [hidden].
+///
+/// `buildSummaryExclusion` silently skips what it cannot compile, which is fine
+/// for an approximate summary. Callers that must never silently ignore a hidden
+/// filter (the paged window predicate) check this first and keep the legacy
+/// path instead.
+bool isSummaryExclusionComplete(Set<CollectionFilter> hidden) {
+  for (final filter in hidden) {
+    if (filter.reversed) return false;
+    if (filter is! StoredAlbumFilter && filter is! TagFilter && filter is! LocationFilter) return false;
+  }
+  return true;
+}

@@ -37,10 +37,7 @@ class PagedWidgetCandidates {
       final db = database ?? localMediaDb;
       await db.init();
       final window = await db.loadEntryWindow(
-        origin: predicate.origin,
-        directory: predicate.directory,
-        excludeTrashed: predicate.excludeTrashed,
-        trashedOnly: predicate.trashedOnly,
+        predicate: predicate,
         sort: SortFactor.date,
         reverse: false,
         limit: limit,

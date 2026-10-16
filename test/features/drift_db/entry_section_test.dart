@@ -1,8 +1,10 @@
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/metadata/catalog.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:drift/native.dart';
@@ -73,8 +75,8 @@ void main() {
 
     test('scopes album headers to a directory', () async {
       await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/a/sub'), entry(3, dir: '/b')});
-      final headers = await service.loadSectionHeaders(directory: '/a', grouping: SectionGrouping.album, reverse: false);
-      // single-level predicate: only direct children of /a
+      final headers = await service.loadSectionHeaders(predicate: predicateForFilters({StoredAlbumFilter('/a', null)})!, grouping: SectionGrouping.album, reverse: false);
+      // album atom resolves to the maintained directory, so only direct children of /a
       expect(headers.map((h) => h.directory).toList(), ['/a']);
     });
 
@@ -85,7 +87,7 @@ void main() {
       final months = await service.loadSectionHeaders(grouping: SectionGrouping.month, reverse: false);
       expect(months.map((h) => (h.year, h.month, h.count)).toList(), [(2024, 3, 1), (2024, 1, 2)]);
 
-      final days = await service.loadSectionHeaders(directory: null, grouping: SectionGrouping.day, reverse: false);
+      final days = await service.loadSectionHeaders(grouping: SectionGrouping.day, reverse: false);
       expect(days.map((h) => (h.year, h.month, h.day, h.count)).toList(), [(2024, 3, 5, 1), (2024, 1, 15, 2)]);
     });
 

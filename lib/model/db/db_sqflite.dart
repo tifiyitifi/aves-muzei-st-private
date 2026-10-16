@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/drift_db/filter_summary/hidden_exclusion.dart';
 import 'package:aves/features/drift_db/filter_summary/summary_rows.dart';
@@ -194,14 +195,11 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   // retired rollback path ("do not extend it" above): the stubs satisfy the
   // seam so the file still compiles, and fail loudly if ever re-registered.
   @override
-  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+  Future<int> countEntries([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
   Future<List<AvesEntry>> loadEntryWindow({
-    int? origin,
-    String? directory,
-    bool excludeTrashed = true,
-    bool trashedOnly = false,
+    CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     String? directoryEquals,
     bool directoryEqualsNull = false,
     int? dateFromMillis,
@@ -216,10 +214,7 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
 
   @override
   Future<List<SectionHeader>> loadSectionHeaders({
-    int? origin,
-    String? directory,
-    bool excludeTrashed = true,
-    bool trashedOnly = false,
+    CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     required SectionGrouping grouping,
     required bool reverse,
   }) =>

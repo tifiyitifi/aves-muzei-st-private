@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/addresses/address_store.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
@@ -201,15 +202,11 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<List<PlaceSummaryRow>> loadPlaceSummaryRows(SummaryExclusion exclusion) => _summaries.placeRows(exclusion);
 
   @override
-  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false}) =>
-      _entries.count(origin: origin, directory: directory, excludeTrashed: excludeTrashed, trashedOnly: trashedOnly);
+  Future<int> countEntries([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) => _entries.count(predicate: predicate);
 
   @override
   Future<List<AvesEntry>> loadEntryWindow({
-    int? origin,
-    String? directory,
-    bool excludeTrashed = true,
-    bool trashedOnly = false,
+    CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     String? directoryEquals,
     bool directoryEqualsNull = false,
     int? dateFromMillis,
@@ -221,10 +218,7 @@ class DriftLocalMediaDb implements LocalMediaDb {
     required int offset,
   }) =>
       _entries.loadWindow(
-        origin: origin,
-        directory: directory,
-        excludeTrashed: excludeTrashed,
-        trashedOnly: trashedOnly,
+        predicate: predicate,
         directoryEquals: directoryEquals,
         directoryEqualsNull: directoryEqualsNull,
         dateFromMillis: dateFromMillis,
@@ -238,14 +232,11 @@ class DriftLocalMediaDb implements LocalMediaDb {
 
   @override
   Future<List<SectionHeader>> loadSectionHeaders({
-    int? origin,
-    String? directory,
-    bool excludeTrashed = true,
-    bool trashedOnly = false,
+    CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     required SectionGrouping grouping,
     required bool reverse,
   }) =>
-      _entries.loadSectionHeaders(origin: origin, directory: directory, excludeTrashed: excludeTrashed, trashedOnly: trashedOnly, grouping: grouping, reverse: reverse);
+      _entries.loadSectionHeaders(predicate: predicate, grouping: grouping, reverse: reverse);
 
   @override
   Future<void> insertEntries(Set<AvesEntry> entries) => _entries.insertAll(entries);

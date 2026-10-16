@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
@@ -162,10 +163,12 @@ class EntryStore {
   /// Counts the entries matching the window predicate.
   ///
   /// Built on the same [_windowWhere] predicate as [loadWindow], so the total
-  /// reported to the UI always matches the rows a full walk would return.
-  Future<int> count({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false}) async {
-    final where = _windowWhere(origin: origin, directory: directory, excludeTrashed: excludeTrashed, trashedOnly: trashedOnly);
-    final rows = await db.customSelect('SELECT COUNT(*) AS n FROM $_table e ${where.sql}', variables: where.variables).get();
+  /// reported to the UI always matches the rows a full walk would return. Only
+  /// the tables the predicate actually reads are joined, so the whole-library
+  /// probe stays a single-table scan.
+  Future<int> count({CollectionWindowPredicate predicate = const CollectionWindowPredicate()}) async {
+    final where = _windowWhere(predicate: predicate);
+    final rows = await db.customSelect('SELECT COUNT(*) AS n ${_from(predicate)} ${where.sql}', variables: where.variables).get();
     return (rows.firstOrNull?.data['n'] as int?) ?? 0;
   }
 
@@ -182,10 +185,7 @@ class EntryStore {
   /// extend the same [_windowWhere] predicate, so section windows always agree
   /// with [loadSectionHeaders] and [count].
   Future<List<AvesEntry>> loadWindow({
-    int? origin,
-    String? directory,
-    bool excludeTrashed = true,
-    bool trashedOnly = false,
+    CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     String? directoryEquals,
     bool directoryEqualsNull = false,
     int? dateFromMillis,
@@ -198,10 +198,7 @@ class EntryStore {
   }) async {
     if (limit <= 0) return [];
     final where = _windowWhere(
-      origin: origin,
-      directory: directory,
-      excludeTrashed: excludeTrashed,
-      trashedOnly: trashedOnly,
+      predicate: predicate,
       directoryEquals: directoryEquals,
       directoryEqualsNull: directoryEqualsNull,
       dateFromMillis: dateFromMillis,
@@ -219,8 +216,9 @@ class EntryStore {
       SortFactor.path => 'ORDER BY e.path ${_dir(descDefault: false, reverse: reverse)}, e.id ${_dir(descDefault: false, reverse: reverse)}',
       SortFactor.chipName || SortFactor.count => throw UnimplementedError('window loading is not defined for chip sorts: $sort'),
     };
+    final from = _from(predicate, dateTaken: true, metadata: joinMetadata);
     final rows = await db.customSelect(
-      'SELECT e.*, dt.dateMillis AS dateMillis, t.path AS trashPath, t.dateMillis AS trashDateMillis FROM $_table e LEFT JOIN dateTaken dt ON dt.id = e.id LEFT JOIN trash t ON t.id = e.id${joinMetadata ? ' LEFT JOIN metadata m ON m.id = e.id' : ''} ${where.sql} $orderBy LIMIT ? OFFSET ?',
+      'SELECT e.*, dt.dateMillis AS dateMillis, t.path AS trashPath, t.dateMillis AS trashDateMillis $from LEFT JOIN trash t ON t.id = e.id ${where.sql} $orderBy LIMIT ? OFFSET ?',
       variables: [...where.variables, Variable(limit), Variable(offset < 0 ? 0 : offset)],
     ).get();
     return [for (final row in rows) _entryFromWindowRow(row.data)];
@@ -252,14 +250,11 @@ class EntryStore {
   /// `calendar.ops` and issues bounded `COUNT` queries per bucket, so SQL
   /// never needs to understand those calendars.
   Future<List<SectionHeader>> loadSectionHeaders({
-    int? origin,
-    String? directory,
-    bool excludeTrashed = true,
-    bool trashedOnly = false,
+    CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     required SectionGrouping grouping,
     required bool reverse,
   }) async {
-    final where = _windowWhere(origin: origin, directory: directory, excludeTrashed: excludeTrashed, trashedOnly: trashedOnly);
+    final where = _windowWhere(predicate: predicate);
     switch (grouping) {
       case SectionGrouping.album:
         // `IS NULL` first: legacy sorts a null directory as `''` (first in
@@ -267,7 +262,7 @@ class EntryStore {
         // NULLs first in both directions.
         final dir = reverse ? 'DESC' : 'ASC';
         final rows = await db.customSelect(
-          'SELECT e.directory AS k, COUNT(*) AS n FROM $_table e ${where.sql} GROUP BY e.directory ORDER BY e.directory IS NULL, e.directory $dir',
+          'SELECT e.directory AS k, COUNT(*) AS n ${_from(predicate)} ${where.sql} GROUP BY e.directory ORDER BY e.directory IS NULL, e.directory $dir',
           variables: where.variables,
         ).get();
         return [for (final row in rows) SectionHeader.album(directory: row.data['k'] as String?, count: (row.data['n'] as int?) ?? 0)];
@@ -277,7 +272,7 @@ class EntryStore {
         final parts = grouping == SectionGrouping.month ? "strftime('%Y', $bestDateSecs, 'unixepoch', 'localtime') AS y, strftime('%m', $bestDateSecs, 'unixepoch', 'localtime') AS m" : "strftime('%Y', $bestDateSecs, 'unixepoch', 'localtime') AS y, strftime('%m', $bestDateSecs, 'unixepoch', 'localtime') AS m, strftime('%d', $bestDateSecs, 'unixepoch', 'localtime') AS d";
         final dir = reverse ? 'ASC' : 'DESC';
         final rows = await db.customSelect(
-          'SELECT $parts, COUNT(*) AS n FROM $_table e LEFT JOIN dateTaken dt ON dt.id = e.id ${where.sql} GROUP BY y, m${grouping == SectionGrouping.day ? ', d' : ''} ORDER BY y $dir, m $dir${grouping == SectionGrouping.day ? ', d $dir' : ''}',
+          'SELECT $parts, COUNT(*) AS n ${_from(predicate, dateTaken: true)} ${where.sql} GROUP BY y, m${grouping == SectionGrouping.day ? ', d' : ''} ORDER BY y $dir, m $dir${grouping == SectionGrouping.day ? ', d $dir' : ''}',
           variables: where.variables,
         ).get();
         return [
@@ -289,55 +284,45 @@ class EntryStore {
         ];
       case SectionGrouping.rating:
         final rows = await db.customSelect(
-          'SELECT COALESCE(m.rating, 0) AS k, COUNT(*) AS n FROM $_table e LEFT JOIN metadata m ON m.id = e.id ${where.sql} GROUP BY k ORDER BY k ${reverse ? 'ASC' : 'DESC'}',
+          'SELECT COALESCE(m.rating, 0) AS k, COUNT(*) AS n ${_from(predicate, metadata: true)} ${where.sql} GROUP BY k ORDER BY k ${reverse ? 'ASC' : 'DESC'}',
           variables: where.variables,
         ).get();
         return [for (final row in rows) SectionHeader.rating(rating: (row.data['k'] as int?) ?? 0, count: (row.data['n'] as int?) ?? 0)];
       case SectionGrouping.single:
-        return [SectionHeader.single(count: await count(origin: origin, directory: directory, excludeTrashed: excludeTrashed, trashedOnly: trashedOnly))];
+        return [SectionHeader.single(count: await count(predicate: predicate))];
     }
+  }
+
+  /// `FROM` clause for the standard window aliases, joining only the tables the
+  /// predicate or the query needs (`dt`/`m`/`a`).
+  String _from(CollectionWindowPredicate predicate, {bool dateTaken = false, bool metadata = false, bool address = false}) {
+    final requires = predicate.requires;
+    final buffer = StringBuffer('FROM $_table e');
+    if (dateTaken || requires.contains(WindowTable.dateTaken)) buffer.write(' LEFT JOIN dateTaken dt ON dt.id = e.id');
+    if (metadata || requires.contains(WindowTable.metadata)) buffer.write(' LEFT JOIN metadata m ON m.id = e.id');
+    if (address || requires.contains(WindowTable.address)) buffer.write(' LEFT JOIN address a ON a.id = e.id');
+    return buffer.toString();
   }
 
   /// Shared predicate for [count], [loadWindow] and [loadSectionHeaders].
   ///
-  /// The directory clause matches direct children only (`dir/%` but not
-  /// `dir/%/%`), mirroring the subfolder skip in [load]. The `LIKE` prefix is
-  /// escaped so directories containing `%` or `_` filter literally.
+  /// Composes the trash scope, the compiled filter atoms and the optional
+  /// section bounds with `AND`. The stored-album atom already restricts to
+  /// direct children (`e.directory = ?`), matching the maintained `directory`
+  /// column and the album section grouping.
   ({String sql, List<Variable> variables}) _windowWhere({
-    int? origin,
-    String? directory,
-    bool excludeTrashed = true,
-    bool trashedOnly = false,
+    required CollectionWindowPredicate predicate,
     String? directoryEquals,
     bool directoryEqualsNull = false,
     int? dateFromMillis,
     int? dateToMillis,
     int? ratingEquals,
   }) {
-    final conditions = <String>[];
+    final conditions = <String>[predicate.trashedOnly ? 'e.trashed != 0' : 'e.trashed = 0'];
     final variables = <Variable>[];
-    if (origin != null) {
-      conditions.add('e.origin = ?');
-      variables.add(Variable(origin));
-    }
-    if (trashedOnly) {
-      conditions.add('e.trashed != ?');
-      variables.add(const Variable(0));
-    } else if (excludeTrashed) {
-      conditions.add('e.trashed = ?');
-      variables.add(const Variable(0));
-    }
-    if (directory != null) {
-      var prefix = directory;
-      final separator = pContext.separator;
-      if (!prefix.endsWith(separator)) {
-        prefix = '$prefix$separator';
-      }
-      final escaped = prefix.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
-      conditions.add("e.path LIKE ? ESCAPE '\\'");
-      variables.add(Variable('$escaped%'));
-      conditions.add("e.path NOT LIKE ? ESCAPE '\\'");
-      variables.add(Variable('$escaped%/%'));
+    for (final fragment in predicate.conjunction) {
+      conditions.add(fragment.sql);
+      variables.addAll(fragment.variables);
     }
     if (directoryEqualsNull) {
       conditions.add('e.directory IS NULL');
@@ -360,7 +345,7 @@ class EntryStore {
       conditions.add('COALESCE(m.rating, 0) = ?');
       variables.add(Variable(ratingEquals));
     }
-    return (sql: conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}', variables: variables);
+    return (sql: 'WHERE ${conditions.join(' AND ')}', variables: variables);
   }
 
   Future<void> insertAll(Set<AvesEntry> entries) async {

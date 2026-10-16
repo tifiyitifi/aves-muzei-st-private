@@ -7,6 +7,7 @@ import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/collection_paging/lens/paged_lists.dart';
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/collection_paging/summary/paged_filter_summaries.dart';
 import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
 import 'package:aves/features/collection_paging/windows/window_cache.dart';
@@ -81,10 +82,23 @@ class PagedCollectionLens extends CollectionLens {
   int _reloadGen = 0;
   bool _reloading = false;
   bool _disposed = false;
+  final Completer<void> _ready = Completer<void>();
+
+  /// Completes once the first load resolved (paged, morphed or blocked).
+  /// Callers that must know which path was taken (the paged slideshow) await
+  /// this instead of polling.
+  Future<void> get ready => _ready.future;
+
   PagedFilterSummaries? _summaries;
   PagedCatalogWorker? _catalogWorker;
   final PagedCatalogWorker Function({required CollectionSource source}) _catalogWorkerFactory;
   final List<StreamSubscription> _pagedSubs = [];
+
+  /// View-specific atoms appended to the compiled filter predicate (e.g. the
+  /// slideshow's video exclusion, which is not one of the collection's filters
+  /// but still defines which rows the view contains).
+  final List<WindowFragment> _extraFragments;
+
   StreamSubscription<SettingsChangedEvent>? _layoutFactorSub;
   VoidCallback? _vaultsListener;
 
@@ -95,7 +109,9 @@ class PagedCollectionLens extends CollectionLens {
     super.fixedSort,
     super.fixedSelection,
     PagedCatalogWorker Function({required CollectionSource source})? catalogWorkerFactory,
+    List<WindowFragment> extraFragments = const [],
   })  : _catalogWorkerFactory = catalogWorkerFactory ?? PagedCatalogWorker.new,
+        _extraFragments = extraFragments,
         super(listenToSource: false) {
     _pagedSubs.addAll([
       source.eventBus.on<EntryAddedEvent>().listen((_) => refresh()),
@@ -278,6 +294,7 @@ class PagedCollectionLens extends CollectionLens {
       _enterBlocked();
     } finally {
       _reloading = false;
+      if (!_ready.isCompleted) _ready.complete();
     }
   }
 
@@ -347,11 +364,20 @@ class PagedCollectionLens extends CollectionLens {
   }
 
   Future<void> _enterPaged(EngineDecision decision, int gen) async {
-    final predicate = decision.predicate;
-    if (predicate == null) {
+    final resolved = decision.predicate;
+    if (resolved == null) {
       _enterBlocked();
       return;
     }
+    // A view may add its own atoms (the slideshow's video exclusion): they are
+    // not collection filters but they still define the rows the view contains,
+    // so they ride on the same predicate the totals and windows use.
+    final predicate = _extraFragments.isEmpty
+        ? resolved
+        : CollectionWindowPredicate(
+            conjunction: [...resolved.conjunction, ..._extraFragments],
+            trashedOnly: resolved.trashedOnly,
+          );
     final prefs = collectionPagingPrefs;
     await prefs.init();
     if (!_current(gen)) return;

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:aves/features/collection_paging/view/paged_slideshow.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -31,6 +34,8 @@ class ScreenSaverPage extends StatefulWidget {
 class _ScreenSaverPageState extends State<ScreenSaverPage> with WidgetsBindingObserver {
   late final ViewerController _viewerController;
   CollectionLens? _slideshowCollection;
+  PagedSlideshowSession? _pagedSession;
+  bool _opening = false;
 
   CollectionSource get source => widget.source;
 
@@ -46,7 +51,7 @@ class _ScreenSaverPageState extends State<ScreenSaverPage> with WidgetsBindingOb
       autopilotAnimatedZoom: settings.screenSaverAnimatedZoomEffect,
     );
     source.stateNotifier.addListener(_onSourceStateChanged);
-    _initSlideshowCollection();
+    unawaited(_initSlideshowCollection());
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -54,6 +59,7 @@ class _ScreenSaverPageState extends State<ScreenSaverPage> with WidgetsBindingOb
   void dispose() {
     source.stateNotifier.removeListener(_onSourceStateChanged);
     _viewerController.dispose();
+    _pagedSession?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -102,17 +108,46 @@ class _ScreenSaverPageState extends State<ScreenSaverPage> with WidgetsBindingOb
   }
 
   void _onSourceStateChanged() {
-    if (_slideshowCollection == null) {
-      _initSlideshowCollection();
-      if (_slideshowCollection != null) {
-        setState(() {});
-      }
+    if (_slideshowCollection == null && !_opening) {
+      unawaited(_initSlideshowCollection());
     }
   }
 
-  void _initSlideshowCollection() {
-    if (!source.isReady || _slideshowCollection != null) return;
+  Future<void> _initSlideshowCollection() async {
+    if (!source.isReady || _slideshowCollection != null || _opening) return;
+    _opening = true;
+    try {
+      // A paged scope plays a window-backed shuffled permutation instead of
+      // materializing (and shuffling) every entry.
+      final session = await PagedSlideshow.open(
+        source: source,
+        filters: settings.screenSaverCollectionFilters,
+        skipVideos: settings.screenSaverVideoPlayback == SlideshowVideoPlayback.skip,
+      );
+      if (!mounted) {
+        session?.dispose();
+        return;
+      }
+      if (session != null) {
+        _pagedSession = session;
+        // Resolve the first playable row before the viewer opens.
+        await session.ready();
+        if (!mounted) {
+          session.dispose();
+          return;
+        }
+        _slideshowCollection = session.collection;
+      } else {
+        _slideshowCollection = _legacySlideshowCollection();
+      }
+      setState(() {});
+    } finally {
+      _opening = false;
+    }
+  }
 
+  /// Legacy slideshow collection: a shuffled snapshot of the scope's entries.
+  CollectionLens _legacySlideshowCollection() {
     final originalCollection = CollectionLens(
       source: source,
       filters: settings.screenSaverCollectionFilters,
@@ -122,7 +157,7 @@ class _ScreenSaverPageState extends State<ScreenSaverPage> with WidgetsBindingOb
       entries = entries.where((entry) => !MimeFilter.video.test(entry)).toList();
     }
     entries.shuffle();
-    _slideshowCollection = CollectionLens(
+    return CollectionLens(
       source: originalCollection.source,
       listenToSource: false,
       fixedSort: true,

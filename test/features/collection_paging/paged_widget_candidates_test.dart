@@ -1,21 +1,22 @@
 import 'package:aves/features/collection_paging/engine/collection_engine.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/query/shuffle_permutation.dart';
 import 'package:aves/features/collection_paging/view/paged_widget_candidates.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
-import 'package:aves/model/metadata/catalog.dart';
+import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../common.dart';
 import '../../helpers/sqlite3_loader.dart';
 
-/// Home-widget candidates: a paged collection yields a bounded most-recent
-/// block instead of a full load; small collections keep the legacy path
-/// (null), so the caller falls back unchanged.
+/// Home-widget entry resolution: a paged collection yields a single row (most
+/// recent, or a seeded-permutation random pick) instead of a full load; small
+/// or unsupported scopes keep the legacy path (`handled: false`).
 void main() {
   setUpAll(() async {
     ensureSqlite3Loaded();
@@ -64,38 +65,55 @@ void main() {
   }
 
   group('PagedWidgetCandidates', () {
-    test('pages a big library into a bounded most-recent block', () async {
+    test('most recent reads the first row of the collection order', () async {
       await database.insertEntries({entry(1, dateTaken: 100), entry(2, dateTaken: 300), entry(3, dateTaken: 200)});
       await collectionPagingPrefs.setLargeThreshold(2);
 
-      final candidates = await PagedWidgetCandidates.load(filters: {}, limit: 2, database: database);
-      expect(candidates, isNotNull);
-      expect(candidates!.map((e) => e.id), [2, 3]);
+      final resolution = await PagedWidgetCandidates.resolve(filters: {}, mostRecent: true, database: database);
+      expect(resolution.handled, isTrue);
+      expect(resolution.entry?.id, 2);
     });
 
-    test('catalogs dates onto the candidates', () async {
-      await database.insertEntries({entry(1), entry(2)});
-      await database.saveCatalogMetadata({CatalogMetadata(id: 1, dateMillis: 999)});
+    test('random picks a single row through the seeded permutation', () async {
+      await database.insertEntries({entry(1, dateTaken: 100), entry(2, dateTaken: 300), entry(3, dateTaken: 200)});
       await collectionPagingPrefs.setLargeThreshold(2);
 
-      final candidates = await PagedWidgetCandidates.load(filters: {}, limit: 10, database: database);
-      expect(candidates, isNotNull);
-      expect(candidates!.firstWhere((e) => e.id == 1).catalogDateMillis, 999);
+      const seed = 42;
+      final resolution = await PagedWidgetCandidates.resolve(filters: {}, mostRecent: false, shuffleSeed: seed, database: database);
+      expect(resolution.handled, isTrue);
+      // The pick is the ordered row at the permutation's first virtual position.
+      final total = await database.countEntries();
+      final expectedOffset = ShufflePermutation(seed, total).forward(0);
+      final ordered = await database.loadEntryWindow(sort: SortFactor.date, reverse: false, limit: total, offset: 0);
+      expect(resolution.entry?.id, ordered[expectedOffset].id);
     });
 
     test('keeps the legacy path below the threshold', () async {
       await database.insertEntries({entry(1), entry(2)});
       await collectionPagingPrefs.setLargeThreshold(100);
 
-      expect(await PagedWidgetCandidates.load(filters: {}, database: database), isNull);
+      final resolution = await PagedWidgetCandidates.resolve(filters: {}, mostRecent: true, database: database);
+      expect(resolution.handled, isFalse);
+      expect(resolution.entry, isNull);
     });
 
     test('keeps the legacy path for scopes the SQL layer cannot express', () async {
       await database.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/b')});
       await collectionPagingPrefs.setLargeThreshold(1);
 
-      final filters = {StoredAlbumFilter('/a', null), StoredAlbumFilter('/b', null)};
-      expect(await PagedWidgetCandidates.load(filters: filters, database: database), isNull);
+      final resolution = await PagedWidgetCandidates.resolve(
+        filters: {StoredAlbumFilter('/a', null, reversed: true)},
+        mostRecent: true,
+        database: database,
+      );
+      expect(resolution.handled, isFalse);
+    });
+
+    test('a paged but empty view is handled with no entry', () async {
+      await collectionPagingPrefs.setEngine(CollectionEngine.paged);
+      final resolution = await PagedWidgetCandidates.resolve(filters: {}, mostRecent: true, database: database);
+      expect(resolution.handled, isTrue);
+      expect(resolution.entry, isNull);
     });
   });
 }

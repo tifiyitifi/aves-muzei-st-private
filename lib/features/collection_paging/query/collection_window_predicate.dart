@@ -225,3 +225,15 @@ WindowFragment? _ratingFragment(int rating, String op) {
 
 /// Escapes the LIKE metacharacters in a literal pattern.
 String _escapeLike(String value) => value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+
+/// Fragment excluding video entries: the `MimeFilter.video` complement used by
+/// slideshows that skip videos.
+///
+/// Safe as a negation because `AvesEntry.mimeType` is never null (catalogued
+/// `mimeType` falls back to `sourceMimeType`), so `COALESCE` cannot turn the
+/// test into a NULL.
+WindowFragment excludeVideoFragment() => (
+      sql: "LOWER(COALESCE(m.mimeType, e.sourceMimeType)) NOT LIKE 'video/%'",
+      variables: const [],
+      requires: const {WindowTable.metadata},
+    );

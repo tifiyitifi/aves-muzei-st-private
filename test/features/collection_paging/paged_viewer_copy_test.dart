@@ -3,6 +3,7 @@ import 'package:aves/features/collection_paging/engine/collection_paging_prefs.d
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
+import 'package:aves/features/collection_paging/query/shuffle_permutation.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/db/db.dart';
@@ -179,6 +180,44 @@ void main() {
       expect(viewer2.entryCount, 0);
       expect(viewer2.sortedEntries, isEmpty);
       viewer2.dispose();
+    });
+  });
+
+  group('PagedViewerCopy with a shuffle seed', () {
+    test('indexes the shuffled order and stays inverse to globalIndexOf', () async {
+      const seed = 42;
+      final lens = await pagedLens(5);
+      final shuffled = PagedViewerCopy(parent: lens, shuffleSeed: seed);
+      addTearDown(shuffled.dispose);
+
+      // load every position (scattered across the parent's windows)
+      for (var i = 0; i < 5; i++) {
+        await shuffled.prefetchAround(i);
+      }
+      final sequentialIds = [for (var i = 0; i < 5; i++) lens.sortedEntries[i].id];
+      final permutation = ShufflePermutation(seed, 5);
+      final shuffledIds = [for (var i = 0; i < 5; i++) shuffled.entryAt(i).id];
+
+      // a true permutation, in the seeded order
+      expect(shuffledIds, [for (var v = 0; v < 5; v++) sequentialIds[permutation.forward(v)]]);
+      expect(shuffledIds.toSet(), sequentialIds.toSet());
+      // entryAt/globalIndexOf are inverse, and sortedEntries is the virtual list
+      for (var v = 0; v < 5; v++) {
+        expect(shuffled.globalIndexOf(shuffled.entryAt(v)), v);
+        expect(shuffled.sortedEntries[v].id, shuffled.entryAt(v).id);
+      }
+      expect(shuffled.sortedEntries.indexOf(shuffled.entryAt(3)), 3);
+    });
+
+    test('a null seed keeps the collection order', () async {
+      final lens = await pagedLens(4);
+      final sequential = PagedViewerCopy(parent: lens);
+      addTearDown(sequential.dispose);
+      for (var i = 0; i < 4; i++) {
+        await sequential.prefetchAround(i);
+      }
+      expect([for (var i = 0; i < 4; i++) sequential.entryAt(i).id], [for (var i = 0; i < 4; i++) lens.sortedEntries[i].id]);
+      expect(sequential.sortedEntries, same(lens.sortedEntries));
     });
   });
 }

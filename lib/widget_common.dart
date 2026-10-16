@@ -96,10 +96,17 @@ Future<AvesEntry?> _getWidgetEntry(int widgetId, bool reuseEntry) async {
   final filters = settings.getWidgetCollectionFilters(widgetId);
 
   // A huge collection must not be fully loaded just to pick one entry: when the
-  // filters route paged, read a bounded block from the database mirror instead.
-  final pagedCandidates = await PagedWidgetCandidates.load(filters: filters);
-  if (pagedCandidates != null) {
-    return _pickWidgetEntry(widgetId, pagedCandidates);
+  // filters route paged, the entry is read straight from the database mirror.
+  final resolution = await PagedWidgetCandidates.resolve(
+    filters: filters,
+    mostRecent: settings.getWidgetDisplayedItem(widgetId) == .mostRecent,
+  );
+  if (resolution.handled) {
+    final entry = resolution.entry;
+    if (entry != null) {
+      settings.setWidgetUri(widgetId, entry.uri);
+    }
+    return entry;
   }
 
   final source = MediaStoreSource();

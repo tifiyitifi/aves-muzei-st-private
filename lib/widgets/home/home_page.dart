@@ -283,7 +283,14 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           await reportService.log('Initialize source to start screen saver');
           final source = context.read<CollectionSource>();
           source.canAnalyze = false;
-          await source.init(scope: settings.screenSaverCollectionFilters);
+          // A huge screen saver scope must not be fully loaded either: the paged
+          // path bootstraps entry-free and plays a window-backed permutation.
+          final screenSaverDecision = await const CollectionEngineRouter().resolve(filters: settings.screenSaverCollectionFilters);
+          if (screenSaverDecision.route == CollectionRoute.paged) {
+            await PagedBootstrap.ensure(source);
+          } else {
+            await source.init(scope: settings.screenSaverCollectionFilters);
+          }
         case .view:
           if (_isViewerSourceable(_viewerEntry) && _secureUris == null) {
             final directory = _viewerEntry?.directory;

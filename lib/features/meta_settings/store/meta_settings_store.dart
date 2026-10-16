@@ -16,6 +16,14 @@ const _log = AreaKeyLog(LogKeys.settings);
 /// stay synchronous (the same contract as `SharedPreferences`); writes update
 /// the cache and persist asynchronously. A failed write re-syncs the cache from
 /// the persisted state, so memory never diverges from the database.
+///
+/// A failed write cannot, however, un-emit the change event that
+/// `SettingsAccess.set` already published: it notifies synchronously and
+/// discards this store's future, so a listener that applied the optimistic value
+/// keeps it until the next [reload]/restart. Batch callers stay correct because
+/// they `await flush()`; only an interactive toggle that fails mid-write is left
+/// on the stale value. Correcting that would require threading a future-returning
+/// write through `SettingsAccess.set` (shared with the legacy engine).
 class MetaSettingsStore implements SettingsStore {
   /// Optional injected database, used by tests (which never register the
   /// app-wide [AppDatabaseProvider]).

@@ -15,6 +15,13 @@ const _log = AreaKeyLog(LogKeys.settings);
 /// This is the write path for generic `toggle`/`enumPick` defs (and the
 /// `mutator` defs). A `custom` editor that needs multi-key or async side
 /// effects calls the typed setters directly instead, skipping the guard.
+///
+/// [apply] cannot report a persistence failure: it writes through
+/// `SettingsAccess.set`, which notifies synchronously and drops the store's
+/// future. The v2 store therefore resyncs its cache on a failed write without
+/// re-emitting, and a listener keeps the optimistic value until the next reload
+/// (see `MetaSettingsStore`). Keeping [apply] synchronous is deliberate; only
+/// these defs are at risk, and batch paths `await flush()`.
 class MetaSettingsEngine {
   const new();
 

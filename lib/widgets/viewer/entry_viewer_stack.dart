@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
+import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/multipage.dart';
 import 'package:aves/model/entry/extensions/props.dart';
@@ -114,12 +116,23 @@ class _EntryViewerStackState extends State<EntryViewerStack> with EntryViewContr
     // so it is, strictly speaking, not contained in the lens used by the viewer,
     // but it can be found by content ID
     final initialEntry = widget.initialEntry;
-    final entry = entries.firstWhereOrNull((entry) => entry.id == initialEntry.id) ?? entries.firstOrNull;
+    final viewerCopy = collection is PagedViewerCopy ? collection as PagedViewerCopy : null;
+    AvesEntry? entry;
+    var index = -1;
+    if (viewerCopy != null) {
+      // O(1) lookup: the tapped tile is always loaded. Never iterate the lazy
+      // list here — every miss would kick a window fetch.
+      index = viewerCopy.globalIndexOf(initialEntry);
+      entry = index != -1 ? initialEntry : null;
+    } else {
+      entry = entries.firstWhereOrNull((entry) => entry.id == initialEntry.id) ?? entries.firstOrNull;
+      index = entry != null ? entries.indexOf(entry) : -1;
+    }
     // opening hero, with viewer as target
     _heroInfoNotifier.value = EntryHeroInfo(collection, entry);
     entryNotifier = viewerController.entryNotifier;
     entryNotifier.value = entry;
-    _currentEntryIndex = max(0, entry != null ? entries.indexOf(entry) : -1);
+    _currentEntryIndex = max(0, index);
     _currentVerticalPage = ValueNotifier(imagePage);
     _horizontalPager = PageController(initialPage: _currentEntryIndex);
     _verticalPager = PageController(initialPage: _currentVerticalPage.value)..addListener(_onVerticalPageControllerChanged);
@@ -767,6 +780,12 @@ class _EntryViewerStackState extends State<EntryViewerStack> with EntryViewContr
     if (viewerController.repeat) {
       _currentEntryIndex %= entries.length;
     }
+    final viewerCopy = collection is PagedViewerCopy ? collection as PagedViewerCopy : null;
+    if (viewerCopy != null) {
+      // keep the windows around the new page (and the video-search landing
+      // zones) loaded ahead of the swipe
+      unawaited(viewerCopy.prefetchAround(_currentEntryIndex));
+    }
     _updateEntry();
   }
 
@@ -793,6 +812,22 @@ class _EntryViewerStackState extends State<EntryViewerStack> with EntryViewContr
     if (removedEntries.isEmpty) return;
 
     if (hasCollection) {
+      final viewerCopy = collection is PagedViewerCopy ? collection as PagedViewerCopy : null;
+      if (viewerCopy != null) {
+        // read-only live list: the parent refresh shifts indices asynchronously,
+        // so there is nothing to splice — only pop when everything is gone
+        // (the stale total still includes the removed entries)
+        if (viewerCopy.entryCount <= removedEntries.length) {
+          if (Navigator.canPop(context)) {
+            Navigator.maybeOf(context)?.pop();
+          } else {
+            _leaveViewer();
+          }
+        } else {
+          _onCollectionChanged();
+        }
+        return;
+      }
       final collectionEntries = collection!.sortedEntries;
       removedEntries.forEach((removedEntry) {
         // remove from collection
@@ -831,6 +866,11 @@ class _EntryViewerStackState extends State<EntryViewerStack> with EntryViewContr
     }
 
     final newEntry = _currentEntryIndex < entries.length ? entries[_currentEntryIndex] : null;
+    if (newEntry is SkeletonEntry && collection is PagedViewerCopy) {
+      // window still loading: the pager shows the placeholder page, the wired
+      // entry stays until the fill notifies and `_updateEntry` reruns
+      return;
+    }
     if (entryNotifier.value == newEntry) return;
     cleanEntryControllers(entryNotifier.value);
     entryNotifier.value = newEntry;

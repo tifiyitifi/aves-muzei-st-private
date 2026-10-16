@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/info.dart';
 import 'package:aves/model/entry/extensions/metadata_edition.dart';
@@ -261,9 +262,12 @@ class EntryInfoActionDelegate with FeedbackMixin, PermissionAwareMixin, EntryEdi
     final baseCollection = collection;
     if (baseCollection == null) return;
 
+    // a paged viewer copy cannot be walked (every miss would kick a window),
+    // so map the loaded neighbourhood instead of the whole collection
+    final pool = baseCollection is PagedViewerCopy ? baseCollection.loadedEntries : baseCollection.sortedEntries;
     final mapCollection = baseCollection.copyWith(
       listenToSource: true,
-      fixedSelection: baseCollection.sortedEntries.where((entry) => entry.hasGps).where((entry) => entry != targetEntry).toList(),
+      fixedSelection: pool.where((entry) => entry.hasGps).where((entry) => entry != targetEntry).toList(),
     );
     await Navigator.maybeOf(context)?.push(
       MaterialPageRoute(

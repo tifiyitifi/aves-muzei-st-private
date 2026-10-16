@@ -1,4 +1,5 @@
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/location.dart';
 import 'package:aves/model/filters/covered/location.dart';
@@ -154,9 +155,12 @@ class _LocationSectionState extends State<LocationSection> {
     final baseCollection = collection;
     if (baseCollection == null) return;
 
+    // a paged viewer copy cannot be walked (every miss would kick a window),
+    // so map the loaded neighbourhood instead of the whole collection
+    final pool = baseCollection is PagedViewerCopy ? baseCollection.loadedEntries : baseCollection.sortedEntries;
     final mapCollection = baseCollection.copyWith(
       listenToSource: true,
-      fixedSelection: baseCollection.sortedEntries.where((entry) => entry.hasGps).toList(),
+      fixedSelection: pool.where((entry) => entry.hasGps).toList(),
     );
     await Navigator.maybeOf(context)?.push(
       MaterialPageRoute(

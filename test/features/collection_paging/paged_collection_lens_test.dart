@@ -1,6 +1,7 @@
 import 'package:aves/features/collection_paging/engine/collection_engine.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
@@ -148,18 +149,22 @@ void main() {
       expect(lens.entryCount, 0);
     });
 
-    test('viewer copies carry loaded real entries', () async {
+    test('viewer copies resolve across windows instead of snapshotting', () async {
       final service = await drift();
       await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 3))});
       await collectionPagingPrefs.setLargeThreshold(2);
       await collectionPagingPrefs.setWindowSize(10);
       final lens = PagedCollectionLens(source: source, filters: {});
       addTearDown(lens.dispose);
-      await settle(lens, done: () => allReal(lens));
-      final viewer = lens.copyWith(listenToSource: false) as PagedCollectionLens;
+      await settle(lens, done: () => allReal(lens) && lens.loadedEntries.length == 2);
+      final viewer = lens.copyWith(listenToSource: false);
       addTearDown(viewer.dispose);
-      expect(viewer.sortedEntries.length, 2);
-      expect(viewer.sortedEntries.every((e) => e is! SkeletonEntry), isTrue);
+      expect(viewer, isA<PagedViewerCopy>());
+      final copy = viewer as PagedViewerCopy;
+      expect(copy.entryCount, 2);
+      expect(copy.sortedEntries.length, 2);
+      expect(copy.globalIndexOf(lens.loadedEntries.first), 0);
+      expect(copy.entryAt(1).id, 1);
     });
 
     test('trash scope pages with restore details', () async {

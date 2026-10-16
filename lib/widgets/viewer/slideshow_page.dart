@@ -1,4 +1,5 @@
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/mime.dart';
@@ -106,7 +107,11 @@ class _SlideshowPageState extends State<SlideshowPage> {
   void _disposeViewerController() => _viewerController.dispose();
 
   void _initSlideshowCollection() {
-    var entries = List.of(widget.collection.sortedEntries);
+    // a paged viewer copy cannot be materialized (every miss would kick a
+    // window), so the slideshow loops the loaded neighbourhood instead
+    final base = widget.collection;
+    final pool = base is PagedViewerCopy ? base.loadedEntries : base.sortedEntries;
+    var entries = List.of(pool);
     if (settings.slideshowVideoPlayback == SlideshowVideoPlayback.skip) {
       entries = entries.where((entry) => !MimeFilter.video.test(entry)).toList();
     }

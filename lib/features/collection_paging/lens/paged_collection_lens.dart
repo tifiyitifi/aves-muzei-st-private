@@ -4,6 +4,7 @@ import 'package:aves/features/collection_paging/engine/collection_engine_router.
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/collection_paging/lens/paged_lists.dart';
+import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/collection_paging/summary/paged_filter_summaries.dart';
 import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
@@ -23,6 +24,7 @@ import 'package:aves/model/source/tag.dart';
 import 'package:aves/model/vaults/vaults.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
 const _log = AreaKeyLog(collectionPagingLogKey);
@@ -172,8 +174,8 @@ class PagedCollectionLens extends CollectionLens {
     return _flat;
   }
 
-  /// Loaded real entries in display order (test seam + viewer copies).
-  @visibleForTesting
+  /// Loaded real entries in display order. Shared with viewer copies, which
+  /// must never walk the lazy list.
   List<AvesEntry> get loadedEntries {
     final result = <AvesEntry>[];
     for (final state in _sectionStates) {
@@ -183,6 +185,28 @@ class PagedCollectionLens extends CollectionLens {
       }
     }
     return result;
+  }
+
+  /// Live total for viewer copies.
+  int get totalCount => _total;
+
+  /// The live windowed list. Viewer copies read through it on every access so
+  /// they track refreshes; they never mutate it.
+  PagedFlatList get liveFlatList => _flat;
+
+  /// False once disposed; viewer copies go empty instead of touching dead caches.
+  bool get lensAlive => !_disposed;
+
+  /// Kicks the windows around [globalIndex] (plus the cache's own prefetch
+  /// neighbourhood) and waits for the drain, so a caller can then read rows
+  /// synchronously. Never throws: a failed fetch simply leaves skeletons.
+  Future<void> fillAround(int globalIndex) async {
+    if (_disposed || _total == 0) return;
+    final index = globalIndex.clamp(0, _total - 1);
+    final (section, local) = _flat.locate(index);
+    final cache = _sectionStates.firstWhereOrNull((s) => identical(s.list, section))?.cache;
+    if (cache == null) return;
+    await cache.ensureAround(local);
   }
 
   @override
@@ -548,6 +572,11 @@ class PagedCollectionLens extends CollectionLens {
   }) {
     if (_morphed && fixedSelection == null) {
       return super.copyWith(source: source, filters: filters, fixedSelection: fixedSelection, listenToSource: listenToSource);
+    }
+    // Viewer copies share the live windows instead of snapshotting loaded
+    // rows, so swiping past the loaded neighbourhood keeps resolving.
+    if (fixedSelection == null && _pagedActive && !_blocked) {
+      return PagedViewerCopy(parent: this);
     }
     // The paged lens manages its own subscriptions; viewer copies are inert.
     fixedSelection ??= loadedEntries;

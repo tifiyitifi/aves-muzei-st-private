@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
+import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
+import 'package:aves/features/collection_paging/view/viewer_skeleton_page.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/multipage.dart';
 import 'package:aves/model/entry/extensions/props.dart';
@@ -38,6 +43,9 @@ class MultiEntryScroller extends StatefulWidget {
 class _MultiEntryScrollerState extends State<MultiEntryScroller> with AutomaticKeepAliveClientMixin {
   List<AvesEntry> get entries => widget.collection.sortedEntries;
 
+  /// Window-backed viewer collection, if the viewer opened over a paged lens.
+  PagedViewerCopy? get viewerCopy => widget.collection is PagedViewerCopy ? widget.collection as PagedViewerCopy : null;
+
   ViewerController get viewerController => widget.viewerController;
 
   PageController get pageController => widget.pageController;
@@ -61,7 +69,17 @@ class _MultiEntryScrollerState extends State<MultiEntryScroller> with AutomaticK
           ),
           onPageChanged: widget.onPageChanged,
           itemBuilder: (context, index) {
-            final mainEntry = entries[index % entries.length];
+            final copy = viewerCopy;
+            final AvesEntry mainEntry;
+            if (copy != null) {
+              // Window-backed: resolves across the whole collection, swiping
+              // past loaded windows. Unloaded positions show an inert
+              // placeholder until their window fills.
+              mainEntry = copy.entryAt(index % copy.entryCount);
+              if (mainEntry is SkeletonEntry) return const ViewerSkeletonPage(key: Key('image_view'));
+            } else {
+              mainEntry = entries[index % entries.length];
+            }
 
             final child = mainEntry.isMultiPage
                 ? PageEntryBuilder(
@@ -85,7 +103,7 @@ class _MultiEntryScrollerState extends State<MultiEntryScroller> with AutomaticK
               child: child,
             );
           },
-          itemCount: viewerController.repeat ? null : entries.length,
+          itemCount: viewerController.repeat ? null : (viewerCopy?.entryCount ?? entries.length),
         ),
       ),
     );
@@ -115,26 +133,40 @@ class _MultiEntryScrollerState extends State<MultiEntryScroller> with AutomaticK
 
   void _showPreviousVideo() {
     final currentIndex = pageController.page?.round();
-    if (currentIndex != null) {
-      final previousVideoEntry = entries.take(currentIndex).lastWhereOrNull((entry) => entry.isVideo);
-      if (previousVideoEntry != null) {
-        final previousIndex = entries.indexOf(previousVideoEntry);
-        if (previousIndex != -1) {
-          ShowEntryNotification(animate: false, index: previousIndex).dispatch(context);
-        }
+    if (currentIndex == null) return;
+    final copy = viewerCopy;
+    if (copy != null) {
+      // The lazy list cannot be scanned (every miss would kick a window), so
+      // the copy pages windows in on demand, bounded.
+      unawaited(copy.findNeighborVideo(currentIndex, -1).then((found) {
+        if (found != null) ShowEntryNotification(animate: false, index: found).dispatch(context);
+      }));
+      return;
+    }
+    final previousVideoEntry = entries.take(currentIndex).lastWhereOrNull((entry) => entry.isVideo);
+    if (previousVideoEntry != null) {
+      final previousIndex = entries.indexOf(previousVideoEntry);
+      if (previousIndex != -1) {
+        ShowEntryNotification(animate: false, index: previousIndex).dispatch(context);
       }
     }
   }
 
   void _showNextVideo() {
     final currentIndex = pageController.page?.round();
-    if (currentIndex != null) {
-      final nextVideoEntry = entries.skip(currentIndex + 1).firstWhereOrNull((entry) => entry.isVideo);
-      if (nextVideoEntry != null) {
-        final nextIndex = entries.indexOf(nextVideoEntry);
-        if (nextIndex != -1) {
-          ShowEntryNotification(animate: false, index: nextIndex).dispatch(context);
-        }
+    if (currentIndex == null) return;
+    final copy = viewerCopy;
+    if (copy != null) {
+      unawaited(copy.findNeighborVideo(currentIndex, 1).then((found) {
+        if (found != null) ShowEntryNotification(animate: false, index: found).dispatch(context);
+      }));
+      return;
+    }
+    final nextVideoEntry = entries.skip(currentIndex + 1).firstWhereOrNull((entry) => entry.isVideo);
+    if (nextVideoEntry != null) {
+      final nextIndex = entries.indexOf(nextVideoEntry);
+      if (nextIndex != -1) {
+        ShowEntryNotification(animate: false, index: nextIndex).dispatch(context);
       }
     }
   }

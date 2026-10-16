@@ -114,6 +114,13 @@ abstract class LocalMediaDb {
 
   Future<void> updateCatalogMetadata(int id, CatalogMetadata? metadata);
 
+  /// Counts entries missing catalog metadata rows (the catalog backlog).
+  Future<int> countUncatalogued();
+
+  /// Keyset page over entries missing metadata rows, for the background
+  /// catalog worker. [afterId] is exclusive.
+  Future<List<int>> loadUncataloguedEntryIds({required int afterId, required int limit});
+
   // address
 
   Future<void> clearAddresses();
@@ -125,6 +132,10 @@ abstract class LocalMediaDb {
   Future<void> saveAddresses(Set<AddressDetails> addresses);
 
   Future<void> updateAddress(int id, AddressDetails? address);
+
+  /// Keyset page over GPS entries missing address rows (the locate backlog).
+  /// [afterId] is exclusive.
+  Future<List<int>> loadUnaddressedGpsIds({required int afterId, required int limit});
 
   // vaults
 

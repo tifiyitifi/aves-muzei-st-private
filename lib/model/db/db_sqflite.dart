@@ -369,6 +369,12 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
     await batch.commit(noResult: true);
   }
 
+  @override
+  Future<int> countUncatalogued() => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<List<int>> loadUncataloguedEntryIds({required int afterId, required int limit}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
   void _batchInsertMetadata(Batch batch, CatalogMetadata? metadata) {
     if (metadata == null) return;
     if (metadata.dateMillis != 0) {
@@ -426,6 +432,9 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
     _batchInsertAddress(batch, address);
     await batch.commit(noResult: true);
   }
+
+  @override
+  Future<List<int>> loadUnaddressedGpsIds({required int afterId, required int limit}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   void _batchInsertAddress(Batch batch, AddressDetails? address) {
     if (address == null) return;

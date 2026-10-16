@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dart';
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/collection_paging/lens/paged_lists.dart';
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
@@ -80,6 +81,8 @@ class PagedCollectionLens extends CollectionLens {
   bool _reloading = false;
   bool _disposed = false;
   PagedFilterSummaries? _summaries;
+  PagedCatalogWorker? _catalogWorker;
+  final PagedCatalogWorker Function({required CollectionSource source}) _catalogWorkerFactory;
   final List<StreamSubscription> _pagedSubs = [];
   StreamSubscription<SettingsChangedEvent>? _layoutFactorSub;
   VoidCallback? _vaultsListener;
@@ -90,7 +93,9 @@ class PagedCollectionLens extends CollectionLens {
     super.id,
     super.fixedSort,
     super.fixedSelection,
-  }) : super(listenToSource: false) {
+    PagedCatalogWorker Function({required CollectionSource source})? catalogWorkerFactory,
+  })  : _catalogWorkerFactory = catalogWorkerFactory ?? PagedCatalogWorker.new,
+        super(listenToSource: false) {
     _pagedSubs.addAll([
       source.eventBus.on<EntryAddedEvent>().listen((_) => refresh()),
       source.eventBus.on<EntryRemovedEvent>().listen((_) => refresh()),
@@ -137,6 +142,7 @@ class PagedCollectionLens extends CollectionLens {
   void dispose() {
     _disposed = true;
     _detachSummaries();
+    _detachCatalogWorker();
     for (final sub in _pagedSubs) {
       sub.cancel();
     }
@@ -316,6 +322,7 @@ class PagedCollectionLens extends CollectionLens {
     super.refresh();
     if (!_current(gen)) return;
     _detachSummaries();
+    _detachCatalogWorker();
     _blocked = false;
     _morphed = true;
     _pagedActive = false;
@@ -449,6 +456,10 @@ class PagedCollectionLens extends CollectionLens {
     // stays unloaded and retries on next touch.
     await _summaries!.reload();
     if (!_current(gen)) return;
+    // Backlog catalog runs behind the instant grid: the worker fills tags,
+    // precise dates and countries in bounded chunks without blocking display.
+    _attachCatalogWorker();
+    unawaited(_runCatalogBacklog());
     source.state = SourceState.ready;
     notifyListeners();
   }
@@ -466,6 +477,27 @@ class PagedCollectionLens extends CollectionLens {
     source.summaries = null;
     _summaries?.dispose();
     _summaries = null;
+  }
+
+  void _attachCatalogWorker() {
+    _catalogWorker ??= _catalogWorkerFactory(source: source);
+  }
+
+  Future<void> _runCatalogBacklog() async {
+    final worker = _catalogWorker;
+    if (worker == null || worker.isRunning) return;
+    try {
+      if (await localMediaDb.countUncatalogued() == 0) return;
+    } catch (error, stack) {
+      _log.w('paged catalog backlog probe failed', error, stack);
+      return;
+    }
+    await worker.run();
+  }
+
+  void _detachCatalogWorker() {
+    _catalogWorker?.stop();
+    _catalogWorker = null;
   }
 
   /// Rebuilds the flat global-index map from the loaded section rows.

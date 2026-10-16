@@ -6,6 +6,7 @@ import 'package:aves/features/collection_paging/engine/collection_paging_prefs.d
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/entry/extensions/catalog.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/services/media/media_fetch_service.dart';
@@ -34,6 +35,7 @@ class PagedDiscoverer {
   final MediaStoreService mediaStore;
   final MediaFetchService mediaFetch;
   final LocalMediaDb database;
+  final Future<void> Function(AvesEntry entry) catalogEntry;
 
   Map<String, int>? _lastGeneration;
   bool _importing = false;
@@ -41,9 +43,20 @@ class PagedDiscoverer {
     MediaStoreService? mediaStore,
     MediaFetchService? mediaFetch,
     LocalMediaDb? database,
+    Future<void> Function(AvesEntry entry)? catalogEntry,
   })  : mediaStore = mediaStore ?? mediaStoreService,
         mediaFetch = mediaFetch ?? mediaFetchService,
-        database = database ?? localMediaDb;
+        database = database ?? localMediaDb,
+        catalogEntry = catalogEntry ?? ((entry) => _defaultCatalogEntry(database ?? localMediaDb, entry));
+
+  /// Inline catalog for steady-state changes, mirroring the legacy
+  /// `refreshUris -> analyze` path: fresh rows arrive tagged and dated instead
+  /// of waiting for the background worker. Failures leave the row
+  /// uncatalogued for the worker; never fail the sync.
+  static Future<void> _defaultCatalogEntry(LocalMediaDb database, AvesEntry entry) async {
+    await entry.catalog(background: true, force: false, persist: true);
+    await database.updateCatalogMetadata(entry.id, entry.catalogMetadata);
+  }
 
   /// Generation cursor, for tests.
   @visibleForTesting
@@ -176,6 +189,11 @@ class PagedDiscoverer {
           return false;
         }
         entry.id = existing.id;
+        try {
+          await catalogEntry(entry);
+        } catch (error, stack) {
+          _log.w('paged sync catalog failed for uri=$uri', error, stack);
+        }
         await database.updateEntry(existing.id, entry);
         await _saveTrash(entry);
         return true;
@@ -183,6 +201,11 @@ class PagedDiscoverer {
     }
     entry.id = database.nextId;
     entry.origin = EntryOrigins.mediaStoreContent;
+    try {
+      await catalogEntry(entry);
+    } catch (error, stack) {
+      _log.w('paged sync catalog failed for uri=$uri', error, stack);
+    }
     await database.insertEntries({entry});
     await _saveTrash(entry);
     return true;

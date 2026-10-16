@@ -6,6 +6,7 @@ import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/metadata/catalog.dart';
 import 'package:aves/model/source/media_store_source.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/services/media/media_store_service.dart';
@@ -124,10 +125,33 @@ void main() {
         ..generation = {'primary': 8}
         ..changedUris = [fresh.uri];
       final fetch = FakeMediaFetchService()..entries = {fresh};
-      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: fetch, database: driftDb)..lastGeneration = {'primary': 7};
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: fetch, database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
       expect(await discoverer.syncIfChanged(), 1);
       expect(await driftDb.countEntries(), 1);
       expect(discoverer.lastGeneration, {'primary': 8});
+    });
+
+    test('catalogs synced files inline', () async {
+      final fresh = entry(1);
+      final store = _ScriptedMediaStore()
+        ..generation = {'primary': 8}
+        ..changedUris = [fresh.uri];
+      final fetch = FakeMediaFetchService()..entries = {fresh};
+      final cataloguedIds = <int>[];
+      final discoverer = PagedDiscoverer(
+        mediaStore: store,
+        mediaFetch: fetch,
+        database: driftDb,
+        catalogEntry: (entry) async {
+          cataloguedIds.add(entry.id);
+          entry.catalogMetadata = CatalogMetadata(id: entry.id, xmpSubjects: 'fresh');
+          await driftDb.updateCatalogMetadata(entry.id, entry.catalogMetadata);
+        },
+      )..lastGeneration = {'primary': 7};
+      expect(await discoverer.syncIfChanged(), 1);
+      expect(cataloguedIds, hasLength(1));
+      expect((await driftDb.loadCatalogMetadata()).single.xmpSubjects, 'fresh');
+      expect(await driftDb.countUncatalogued(), 0);
     });
 
     test('removes obsolete files', () async {
@@ -136,7 +160,7 @@ void main() {
         ..generation = {'primary': 8}
         ..changedUris = ['content://media/external/images/media/101']
         ..obsoleteContentIds = [101];
-      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb)
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb, catalogEntry: (_) async {})
         ..lastGeneration = {'primary': 7};
       expect(await discoverer.syncIfChanged(), 1);
       expect(await driftDb.countEntries(), 0);
@@ -146,7 +170,7 @@ void main() {
       final store = _ScriptedMediaStore()
         ..generation = {'primary': 8}
         ..changedUris = ['content://media/external/images/media/999'];
-      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb)
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb, catalogEntry: (_) async {})
         ..lastGeneration = {'primary': 7};
       expect(await discoverer.syncIfChanged(), 0);
       expect(await driftDb.countEntries(), 0);

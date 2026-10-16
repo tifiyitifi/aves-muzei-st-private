@@ -1,5 +1,6 @@
 import 'package:aves/features/collection_paging/engine/collection_engine.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
@@ -10,6 +11,7 @@ import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/model/metadata/catalog.dart';
 import 'package:aves/model/filters/query.dart';
 import 'package:aves/model/filters/trash.dart';
 import 'package:aves/model/metadata/trash.dart';
@@ -190,6 +192,30 @@ void main() {
       await settle(lens, done: () => allReal(lens) && lens.loadedEntries.length == 1);
       expect(lens.entryCount, 1);
       expect(lens.loadedEntries.single.id, 1);
+    });
+
+    test('paged enter drains the catalog backlog in the background', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 3))});
+      await collectionPagingPrefs.setLargeThreshold(2);
+      await collectionPagingPrefs.setWindowSize(10);
+      final lens = PagedCollectionLens(
+        source: source,
+        filters: {},
+        catalogWorkerFactory: ({required source}) => PagedCatalogWorker(
+          source: source,
+          catalogEntry: (entry) async => entry.catalogMetadata = CatalogMetadata(id: entry.id, xmpSubjects: 't'),
+        ),
+      );
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.entryCount == 2 && lens.pagedActive);
+      // the grid is instant; the backlog drains behind it
+      for (var i = 0; i < 200; i++) {
+        if (await service.countUncatalogued() == 0) break;
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+      expect(await service.countUncatalogued(), 0);
+      expect((await service.loadCatalogMetadata()).length, 2);
     });
   });
 }

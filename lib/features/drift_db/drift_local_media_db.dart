@@ -284,6 +284,12 @@ class DriftLocalMediaDb implements LocalMediaDb {
   @override
   Future<void> updateCatalogMetadata(int id, CatalogMetadata? metadata) => _catalog.update(id, metadata);
 
+  @override
+  Future<int> countUncatalogued() => _entries.countUncatalogued();
+
+  @override
+  Future<List<int>> loadUncataloguedEntryIds({required int afterId, required int limit}) => _entries.loadUncataloguedEntryIds(afterId: afterId, limit: limit);
+
   // address
 
   @override
@@ -300,6 +306,9 @@ class DriftLocalMediaDb implements LocalMediaDb {
 
   @override
   Future<void> updateAddress(int id, AddressDetails? address) => _addresses.update(id, address);
+
+  @override
+  Future<List<int>> loadUnaddressedGpsIds({required int afterId, required int limit}) => _entries.loadUnaddressedGpsIds(afterId: afterId, limit: limit);
 
   // vaults
 

@@ -106,6 +106,41 @@ class EntryStore {
     return result;
   }
 
+  /// Counts entries missing catalog metadata rows (the catalog backlog).
+  ///
+  /// Mirrors the legacy `catalogEntriesTest` (`!entry.isCatalogued`): any entry
+  /// without a metadata row counts, trashed or not.
+  Future<int> countUncatalogued() async {
+    final rows = await db.customSelect('SELECT COUNT(*) AS n FROM $_table e LEFT JOIN metadata m ON m.id = e.id WHERE m.id IS NULL').get();
+    return (rows.firstOrNull?.data['n'] as int?) ?? 0;
+  }
+
+  /// Keyset page over entries missing metadata rows, for the background
+  /// catalog worker. [afterId] is exclusive (pass 0 to start); reruns skip
+  /// finished rows, so an interrupted run resumes instead of restarting.
+  Future<List<int>> loadUncataloguedEntryIds({required int afterId, required int limit}) async {
+    if (limit <= 0) return [];
+    final rows = await db.customSelect(
+      'SELECT e.id AS id FROM $_table e LEFT JOIN metadata m ON m.id = e.id WHERE m.id IS NULL AND e.id > ? ORDER BY e.id LIMIT ?',
+      variables: [Variable(afterId), Variable(limit)],
+    ).get();
+    return [for (final row in rows) row.data['id'] as int];
+  }
+
+  /// Keyset page over GPS entries missing address rows (the locate backlog).
+  ///
+  /// Same coordinate test as `AvesEntry.hasGps`: a row counts when either
+  /// coordinate is non-zero, so entries without a metadata row at all are
+  /// skipped here (they surface through [loadUncataloguedEntryIds] first).
+  Future<List<int>> loadUnaddressedGpsIds({required int afterId, required int limit}) async {
+    if (limit <= 0) return [];
+    final rows = await db.customSelect(
+      'SELECT e.id AS id FROM $_table e JOIN metadata m ON m.id = e.id LEFT JOIN address a ON a.id = e.id WHERE a.id IS NULL AND (COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0) AND e.id > ? ORDER BY e.id LIMIT ?',
+      variables: [Variable(afterId), Variable(limit)],
+    ).get();
+    return [for (final row in rows) row.data['id'] as int];
+  }
+
   /// Counts the entries matching the window predicate.
   ///
   /// Built on the same [_windowWhere] predicate as [loadWindow], so the total

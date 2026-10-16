@@ -15,7 +15,15 @@ mixin TagMixin on SourceBase {
   static const commitCountThreshold = 400;
   static const _stopCheckCountThreshold = 100;
 
-  List<String> sortedTags = List.unmodifiable([]);
+  List<String> _sortedTags = List.unmodifiable([]);
+
+  List<String> get sortedTags {
+    final provider = summaries;
+    if (provider != null && allEntries.isEmpty) return provider.tags;
+    return _sortedTags;
+  }
+
+  set sortedTags(List<String> value) => _sortedTags = value;
 
   Future<void> loadCatalogMetadata({Set<int>? ids}) async {
     final saved = await (ids != null ? localMediaDb.loadCatalogMetadataById(ids) : localMediaDb.loadCatalogMetadata());

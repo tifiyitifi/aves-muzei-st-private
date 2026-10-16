@@ -1,4 +1,6 @@
 import 'package:aves/features/drift_db/entries/section_header.dart';
+import 'package:aves/features/drift_db/filter_summary/hidden_exclusion.dart';
+import 'package:aves/features/drift_db/filter_summary/summary_rows.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/dynamic_albums.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -72,6 +74,19 @@ abstract class LocalMediaDb {
     required SectionGrouping grouping,
     required bool reverse,
   });
+
+  /// DB-backed filter summaries: per-group aggregates plus recent entry id,
+  /// without materializing entries. Powers the filter grid pages (albums,
+  /// tags, countries, states, places) for entry-free (paged) collections.
+  Future<List<AlbumSummaryRow>> loadAlbumSummaryRows(SummaryExclusion exclusion);
+
+  Future<List<TagSummaryRow>> loadTagSummaryRows(SummaryExclusion exclusion);
+
+  Future<List<CountrySummaryRow>> loadCountrySummaryRows(SummaryExclusion exclusion);
+
+  Future<List<StateSummaryRow>> loadStateSummaryRows(SummaryExclusion exclusion);
+
+  Future<List<PlaceSummaryRow>> loadPlaceSummaryRows(SummaryExclusion exclusion);
 
   Future<void> insertEntries(Set<AvesEntry> entries);
 

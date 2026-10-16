@@ -19,9 +19,33 @@ mixin LocationMixin on CountryMixin, StateMixin {
   static const commitCountThreshold = 200;
   static const _stopCheckCountThreshold = 50;
 
-  List<String> sortedCountries = List.unmodifiable([]);
-  List<String> sortedStates = List.unmodifiable([]);
-  List<String> sortedPlaces = List.unmodifiable([]);
+  List<String> _sortedCountries = List.unmodifiable([]);
+  List<String> _sortedStates = List.unmodifiable([]);
+  List<String> _sortedPlaces = List.unmodifiable([]);
+
+  List<String> get sortedCountries {
+    final provider = summaries;
+    if (provider != null && allEntries.isEmpty) return provider.countries;
+    return _sortedCountries;
+  }
+
+  set sortedCountries(List<String> value) => _sortedCountries = value;
+
+  List<String> get sortedStates {
+    final provider = summaries;
+    if (provider != null && allEntries.isEmpty) return provider.states;
+    return _sortedStates;
+  }
+
+  set sortedStates(List<String> value) => _sortedStates = value;
+
+  List<String> get sortedPlaces {
+    final provider = summaries;
+    if (provider != null && allEntries.isEmpty) return provider.places;
+    return _sortedPlaces;
+  }
+
+  set sortedPlaces(List<String> value) => _sortedPlaces = value;
 
   Future<void> loadAddresses({Set<int>? ids}) async {
     final saved = await (ids != null ? localMediaDb.loadAddressesById(ids) : localMediaDb.loadAddresses());

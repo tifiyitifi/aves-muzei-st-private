@@ -5,6 +5,7 @@ import 'package:aves/features/collection_paging/engine/collection_paging_prefs.d
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/collection_paging/lens/paged_lists.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
+import 'package:aves/features/collection_paging/summary/paged_filter_summaries.dart';
 import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
 import 'package:aves/features/collection_paging/windows/window_cache.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
@@ -76,6 +77,7 @@ class PagedCollectionLens extends CollectionLens {
   int _reloadGen = 0;
   bool _reloading = false;
   bool _disposed = false;
+  PagedFilterSummaries? _summaries;
   final List<StreamSubscription> _pagedSubs = [];
   StreamSubscription<SettingsChangedEvent>? _layoutFactorSub;
   VoidCallback? _vaultsListener;
@@ -132,6 +134,7 @@ class PagedCollectionLens extends CollectionLens {
   @override
   void dispose() {
     _disposed = true;
+    _detachSummaries();
     for (final sub in _pagedSubs) {
       sub.cancel();
     }
@@ -288,6 +291,7 @@ class PagedCollectionLens extends CollectionLens {
     }
     super.refresh();
     if (!_current(gen)) return;
+    _detachSummaries();
     _blocked = false;
     _morphed = true;
     _pagedActive = false;
@@ -414,8 +418,30 @@ class PagedCollectionLens extends CollectionLens {
     if (grouping == SectionGrouping.album) {
       PagedBootstrap.feedDirectories(source, headers);
     }
+    _attachSummaries();
+    if (!_current(gen)) return;
+    // Eager albums on first entry; refreshes already-loaded domains (tags,
+    // locations) whose rows may have changed. Never throws: a failed domain
+    // stays unloaded and retries on next touch.
+    await _summaries!.reload();
+    if (!_current(gen)) return;
     source.state = SourceState.ready;
     notifyListeners();
+  }
+
+  void _attachSummaries() {
+    _summaries ??= PagedFilterSummaries(
+      source: source,
+      hiddenFilters: () => settings.hiddenFilters,
+      lockedVaultDirs: () => vaults.vaultDirectories.where(vaults.isLocked).toSet(),
+    );
+    source.summaries = _summaries;
+  }
+
+  void _detachSummaries() {
+    source.summaries = null;
+    _summaries?.dispose();
+    _summaries = null;
   }
 
   /// Rebuilds the flat global-index map from the loaded section rows.

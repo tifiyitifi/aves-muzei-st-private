@@ -12,6 +12,9 @@ import 'package:aves/features/drift_db/entries/entry_id_allocator.dart';
 import 'package:aves/features/drift_db/entries/entry_store.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/drift_db/favourites/favourite_store.dart';
+import 'package:aves/features/drift_db/filter_summary/filter_summary_store.dart';
+import 'package:aves/features/drift_db/filter_summary/hidden_exclusion.dart';
+import 'package:aves/features/drift_db/filter_summary/summary_rows.dart';
 import 'package:aves/features/drift_db/migration/legacy_import.dart';
 import 'package:aves/features/drift_db/migration/legacy_import_progress.dart';
 import 'package:aves/features/drift_db/trash/trash_store.dart';
@@ -52,6 +55,7 @@ class DriftLocalMediaDb implements LocalMediaDb {
   final AppDatabaseProvider _provider;
   late AppDatabase _db;
   late final EntryStore _entries;
+  late final FilterSummaryStore _summaries;
   late final EntryIdAllocator _ids;
   late final CatalogStore _catalog;
   late final AddressStore _addresses;
@@ -110,6 +114,7 @@ class DriftLocalMediaDb implements LocalMediaDb {
 
   void _wireStores() {
     _entries = EntryStore(_db);
+    _summaries = FilterSummaryStore(_db);
     _catalog = CatalogStore(_db);
     _addresses = AddressStore(_db);
     _vaults = VaultStore(_db);
@@ -179,6 +184,21 @@ class DriftLocalMediaDb implements LocalMediaDb {
 
   @override
   Future<Set<AvesEntry>> loadEntriesByContentIds(Set<int> ids) => _entries.loadByContentIds(ids);
+
+  @override
+  Future<List<AlbumSummaryRow>> loadAlbumSummaryRows(SummaryExclusion exclusion) => _summaries.albumRows(exclusion);
+
+  @override
+  Future<List<TagSummaryRow>> loadTagSummaryRows(SummaryExclusion exclusion) => _summaries.tagRows(exclusion);
+
+  @override
+  Future<List<CountrySummaryRow>> loadCountrySummaryRows(SummaryExclusion exclusion) => _summaries.countryRows(exclusion);
+
+  @override
+  Future<List<StateSummaryRow>> loadStateSummaryRows(SummaryExclusion exclusion) => _summaries.stateRows(exclusion);
+
+  @override
+  Future<List<PlaceSummaryRow>> loadPlaceSummaryRows(SummaryExclusion exclusion) => _summaries.placeRows(exclusion);
 
   @override
   Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true, bool trashedOnly = false}) =>

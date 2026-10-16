@@ -24,6 +24,7 @@ import 'package:aves/model/source/album.dart';
 import 'package:aves/model/source/analysis_controller.dart';
 import 'package:aves/model/source/events.dart';
 import 'package:aves/model/source/filter_summary.dart';
+import 'package:aves/model/source/filter_summary_provider.dart';
 import 'package:aves/model/source/location/country.dart';
 import 'package:aves/model/source/location/location.dart';
 import 'package:aves/model/source/location/place.dart';
@@ -74,6 +75,10 @@ mixin SourceBase {
   void invalidateEntries();
 
   FilterSummary computeFilterSummary(CollectionFilter filter);
+
+  /// DB-backed summaries for entry-free (paged) collections. Null on the
+  /// legacy path, where every getter below derives from in-memory entries.
+  FilterSummaryProvider? summaries;
 
   /// Scope the in-memory entries were loaded with, if any. Null while the
   /// source never materialized a scope (paged collections), which lets
@@ -600,6 +605,8 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
   }
 
   int count(CollectionFilter filter) {
+    final provider = summaries;
+    if (provider != null && allEntries.isEmpty) return provider.count(filter);
     switch (filter) {
       case AlbumBaseFilter _:
         return albumEntryCount(filter);
@@ -616,6 +623,8 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
   }
 
   int size(CollectionFilter filter) {
+    final provider = summaries;
+    if (provider != null && allEntries.isEmpty) return provider.size(filter);
     switch (filter) {
       case AlbumBaseFilter _:
         return albumSize(filter);
@@ -632,6 +641,8 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
   }
 
   AvesEntry? recentEntry(CollectionFilter filter) {
+    final provider = summaries;
+    if (provider != null && allEntries.isEmpty) return provider.recentEntry(filter);
     switch (filter) {
       case AlbumBaseFilter _:
         return albumRecentEntry(filter);
@@ -648,6 +659,8 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
   }
 
   AvesEntry? coverEntry(CollectionFilter filter) {
+    final provider = summaries;
+    if (provider != null && allEntries.isEmpty) return provider.coverEntry(filter);
     final id = covers.of(filter)?.entryId;
     if (id != null) {
       final entry = visibleEntries.firstWhereOrNull((entry) => entry.id == id);

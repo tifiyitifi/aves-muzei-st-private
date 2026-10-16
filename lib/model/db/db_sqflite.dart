@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:aves/features/drift_db/entries/section_header.dart';
+import 'package:aves/features/drift_db/filter_summary/hidden_exclusion.dart';
+import 'package:aves/features/drift_db/filter_summary/summary_rows.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/db/db_sqflite_schema.dart';
@@ -222,6 +224,21 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
     required bool reverse,
   }) =>
       throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<List<AlbumSummaryRow>> loadAlbumSummaryRows(SummaryExclusion exclusion) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<List<TagSummaryRow>> loadTagSummaryRows(SummaryExclusion exclusion) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<List<CountrySummaryRow>> loadCountrySummaryRows(SummaryExclusion exclusion) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<List<StateSummaryRow>> loadStateSummaryRows(SummaryExclusion exclusion) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<List<PlaceSummaryRow>> loadPlaceSummaryRows(SummaryExclusion exclusion) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
   Future<void> insertEntries(Set<AvesEntry> entries) async {

@@ -17,7 +17,11 @@ mixin AlbumMixin on SourceBase {
   final Set<String> _directories = {};
   final Set<String> _newAlbums = {};
 
-  List<String> get rawAlbums => List.unmodifiable(_directories);
+  List<String> get rawAlbums {
+    final provider = summaries;
+    if (provider != null && allEntries.isEmpty) return provider.albumDirectories;
+    return List.unmodifiable(_directories);
+  }
 
   Set<StoredAlbumFilter> getNewAlbumFilters(BuildContext context) => Set.unmodifiable(_newAlbums.map((v) => StoredAlbumFilter(v, getStoredAlbumDisplayName(context, v))));
 

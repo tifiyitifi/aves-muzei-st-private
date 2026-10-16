@@ -35,7 +35,7 @@ void main() {
     if (tempDir.existsSync()) await tempDir.delete(recursive: true);
   });
 
-  Future<void> seedLegacy({int entryCount = 1}) async {
+  Future<void> seedLegacy({int entryCount = 1, int coverCount = 1, int dynamicAlbumCount = 1, int vaultCount = 1}) async {
     final legacy = await databaseFactory.openDatabase(
       legacyPath,
       options: OpenDatabaseOptions(
@@ -67,9 +67,15 @@ void main() {
     await legacy.insert('favourites', {'id': 1});
     await legacy.insert('metadata', {'id': 1, 'mimeType': 'image/jpeg', 'dateMillis': 3, 'flags': 0, 'rating': 4});
     await legacy.insert('dateTaken', {'id': 1, 'dateMillis': 3});
-    await legacy.insert('covers', {'filter': filterJson, 'entryId': 1, 'packageName': null, 'color': null});
-    await legacy.insert('dynamicAlbums', {'name': 'dyn', 'filter': filterJson});
-    await legacy.insert('vaults', {'name': 'v', 'autoLock': 1, 'useBin': 0, 'lockType': 'system'});
+    for (var i = 0; i < coverCount; i++) {
+      await legacy.insert('covers', {'filter': StoredAlbumFilter('/cover$i', null).toJsonString(), 'entryId': i + 1, 'packageName': null, 'color': null});
+    }
+    for (var i = 0; i < dynamicAlbumCount; i++) {
+      await legacy.insert('dynamicAlbums', {'name': 'dyn$i', 'filter': filterJson});
+    }
+    for (var i = 0; i < vaultCount; i++) {
+      await legacy.insert('vaults', {'name': 'v$i', 'autoLock': 1, 'useBin': 0, 'lockType': 'system'});
+    }
     await legacy.insert('trash', {'id': 1, 'path': '/trash/1', 'dateMillis': 9});
     await legacy.insert('videoPlayback', {'id': 1, 'resumeTimeMillis': 42});
     await legacy.insert('debug', {'message': 'log'});
@@ -227,6 +233,55 @@ void main() {
     expect(copied, equals(List.of(copied)..sort()), reason: 'progress must never go backwards');
     expect(copied.last, seen.last.totalRows);
     expect(seen.last.totalRows, 14);
+
+    await db.close();
+  });
+
+  test('a corrupt persisted cursor restarts instead of bricking the import', () async {
+    await seedLegacy(entryCount: 3);
+
+    final db = AppDatabase(NativeDatabase.memory());
+    final state = LegacyImportStateStore(AppMetaStore(db));
+    // A resumable state whose cursor was hand-edited/corrupted: a plain
+    // `int.parse` used to throw on every launch, failing the import forever.
+    await db.transaction(() async {
+      await state.takeWriteLock();
+      await state.writeClaim(owner: 'other', nowMs: 0);
+      await state.writeCounting(owner: 'other', totalRows: 12, nowMs: 0);
+      await state.writeProgress(copiedRows: 0, tableIndex: 0, cursor: 'not-an-int', nowMs: 0);
+    });
+
+    final messages = <String>[];
+    Log.setSink((key, level, message, error, stackTrace) => messages.add('$message'));
+    Log.setEnabled(LogKeys.db, true);
+    try {
+      await LegacyImport(db, AppMetaStore(db), staleMs: 0, pollInterval: Duration.zero).runIfNeeded(legacyPath: legacyPath);
+    } finally {
+      Log.reset();
+    }
+
+    expect(await status(db), LegacyImportStatus.done);
+    expect(await count(db, 'entry'), 3);
+    expect(messages.any((m) => m.contains('corrupt legacy import cursor')), isTrue);
+
+    await db.close();
+  });
+
+  test('chunks the text-keyed tables instead of loading them whole', () async {
+    await seedLegacy(entryCount: 1, coverCount: 5, dynamicAlbumCount: 3, vaultCount: 2);
+
+    final db = AppDatabase(NativeDatabase.memory());
+    final seen = <LegacyImportProgress>[];
+    await LegacyImport(db, AppMetaStore(db), chunkSize: 1).runIfNeeded(legacyPath: legacyPath, onProgress: seen.add);
+
+    expect(await status(db), LegacyImportStatus.done);
+    expect(await count(db, 'covers'), 5);
+    expect(await count(db, 'dynamicAlbums'), 3);
+    expect(await count(db, 'vaults'), 2);
+
+    final copied = seen.map((p) => p.copiedRows).toList();
+    expect(copied, equals(List.of(copied)..sort()), reason: 'progress must never go backwards');
+    expect(copied.last, seen.last.totalRows);
 
     await db.close();
   });

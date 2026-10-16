@@ -85,8 +85,19 @@ class LegacyImport {
     'debug',
   ];
 
-  /// Small, user-defined tables whose primary key is a text id, copied whole.
-  static const _textKeyedTables = <String>{'covers', 'dynamicAlbums', 'vaults'};
+  /// Small, user-defined tables whose primary key is a text id, mapped to the
+  /// key column used to chunk their copy. They grow with the user's own data
+  /// (one cover/dynamic album/vault per filter), so they are paginated like the
+  /// id-keyed tables instead of being loaded whole into memory.
+  static const _textKeyedTables = <String, String>{
+    'covers': 'filter',
+    'dynamicAlbums': 'name',
+    'vaults': 'name',
+  };
+
+  /// Whether the table at [tableIndex] is text-keyed, so its persisted cursor is
+  /// a key rather than an integer.
+  static bool _isTextKeyed(int tableIndex) => tableIndex >= 0 && tableIndex < _legacyTables.length && _textKeyedTables.containsKey(_legacyTables[tableIndex]);
 
   Future<void> runIfNeeded({
     required String legacyPath,
@@ -221,6 +232,18 @@ class LegacyImport {
       });
       state = await _state.read();
     }
+
+    // The cursor is plain text in appMeta; a hand-edited or corrupt value must
+    // not brick the import (an int parse would throw on every retry). Rewind and
+    // recopy from a clean slate instead, like a verification mismatch does. A
+    // text-keyed table's cursor is legitimately non-numeric, so only id-keyed
+    // tables are validated here.
+    if (!_isTextKeyed(state.tableIndex) && state.cursor != null && int.tryParse(state.cursor!) == null) {
+      _log.w('$runtimeType discarding corrupt legacy import cursor=${state.cursor}, restarting');
+      await _restartImport(owner);
+      state = await _state.read();
+    }
+
     onProgress?.call(state.toProgress());
 
     var copied = state.copiedRows;
@@ -228,38 +251,25 @@ class LegacyImport {
 
     for (var tableIndex = state.tableIndex; tableIndex < _legacyTables.length; tableIndex++) {
       final table = _legacyTables[tableIndex];
-      if (_textKeyedTables.contains(table)) {
-        final rows = await legacy.query(table);
-        if (rows.isNotEmpty) {
-          await _commitChunk(
-            owner: owner,
-            table: table,
-            rows: rows,
-            copiedRows: copied + rows.length,
-            tableIndex: tableIndex + 1,
-            cursor: null,
-          );
-          copied += rows.length;
-          onProgress?.call(LegacyImportProgress(phase: LegacyImportPhase.copying, copiedRows: copied, totalRows: totalRows));
-        }
-      } else {
-        var cursor = tableIndex == state.tableIndex ? state.cursor : null;
-        while (true) {
-          final rows = await _queryChunk(legacy, table, cursor);
-          if (rows.isEmpty) break;
-          final lastId = '${rows.last['id'] as int}';
-          await _commitChunk(
-            owner: owner,
-            table: table,
-            rows: rows,
-            copiedRows: copied + rows.length,
-            tableIndex: tableIndex,
-            cursor: lastId,
-          );
-          copied += rows.length;
-          cursor = lastId;
-          onProgress?.call(LegacyImportProgress(phase: LegacyImportPhase.copying, copiedRows: copied, totalRows: totalRows));
-        }
+      final textKeyColumn = _textKeyedTables[table];
+      var cursor = tableIndex == state.tableIndex ? state.cursor : null;
+      while (true) {
+        final rows = textKeyColumn != null
+            ? await _queryTextChunk(legacy, table, textKeyColumn, cursor)
+            : await _queryChunk(legacy, table, cursor);
+        if (rows.isEmpty) break;
+        final lastKey = textKeyColumn != null ? rows.last[textKeyColumn] as String : '${rows.last['id'] as int}';
+        await _commitChunk(
+          owner: owner,
+          table: table,
+          rows: rows,
+          copiedRows: copied + rows.length,
+          tableIndex: tableIndex,
+          cursor: lastKey,
+        );
+        copied += rows.length;
+        cursor = lastKey;
+        onProgress?.call(LegacyImportProgress(phase: LegacyImportPhase.copying, copiedRows: copied, totalRows: totalRows));
       }
     }
   }
@@ -318,6 +328,14 @@ class LegacyImport {
       return legacy.rawQuery('SELECT * FROM $table ORDER BY id LIMIT $chunkSize');
     }
     return legacy.rawQuery('SELECT * FROM $table WHERE id > ? ORDER BY id LIMIT $chunkSize', [int.parse(cursor)]);
+  }
+
+  /// One keyset page of a text-keyed table, ordered by its text key.
+  Future<List<Map<String, Object?>>> _queryTextChunk(sqflite.Database legacy, String table, String column, String? cursor) {
+    if (cursor == null) {
+      return legacy.rawQuery('SELECT * FROM $table ORDER BY $column LIMIT $chunkSize');
+    }
+    return legacy.rawQuery('SELECT * FROM $table WHERE $column > ? ORDER BY $column LIMIT $chunkSize', [cursor]);
   }
 
   void Function(Batch batch, List<Map<String, Object?>> rows) _inserter(String table) {
@@ -384,7 +402,7 @@ class LegacyImport {
   /// Builds a mismatch record and, for id-keyed tables, samples the differing
   /// ids so the failure is diagnosable instead of just two counts.
   Future<_TableMismatch> _describeMismatch(sqflite.Database legacy, String table, int legacyCount, int driftCount) async {
-    if (_textKeyedTables.contains(table)) {
+    if (_textKeyedTables.containsKey(table)) {
       return _TableMismatch(table: table, legacyCount: legacyCount, driftCount: driftCount);
     }
     final (missingIds, extraIds) = await _sampleIdDiff(legacy, table);

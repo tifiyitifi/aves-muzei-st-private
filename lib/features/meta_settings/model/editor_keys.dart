@@ -17,4 +17,7 @@ abstract final class MetaEditorKeys {
   static const String videoThumbnailMethods = 'video_thumbnail_methods';
   static const String burstPatterns = 'burst_patterns';
   static const String homePage = 'home_page';
+  static const String collectionEngine = 'collection_engine';
+  static const String collectionWindowSize = 'collection_window_size';
+  static const String collectionPrefetchScreens = 'collection_prefetch_screens';
 }

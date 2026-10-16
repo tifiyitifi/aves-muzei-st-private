@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
+import 'package:aves/features/drift_db/entries/entry_store.dart';
 import 'package:aves/features/drift_db/migration/legacy_import_progress.dart';
 import 'package:aves/features/drift_db/migration/legacy_import_state_store.dart';
 import 'package:aves/features/logging/log.dart';
@@ -341,7 +342,15 @@ class LegacyImport {
   void Function(Batch batch, List<Map<String, Object?>> rows) _inserter(String table) {
     switch (table) {
       case 'entry':
-        return (batch, rows) => _insertAll(batch, db.entriesTable, rows);
+        // Legacy rows predate the maintained `directory` column (v3): stamp it
+        // while copying, as the v3 backfill runs before the import.
+        return (batch, rows) => _insertAll(batch, db.entriesTable, [
+              for (final row in rows)
+                {
+                  ...row,
+                  EntryStore.directoryColumn: EntryStore.directoryOf(row['path'] as String?),
+                },
+            ]);
       case 'dateTaken':
         return (batch, rows) => _insertAll(batch, db.dateTakenTable, rows);
       case 'metadata':

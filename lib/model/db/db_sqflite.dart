@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/db/db_sqflite_schema.dart';
@@ -14,6 +15,7 @@ import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/model/vaults/details.dart';
 import 'package:aves/model/viewer/video_playback.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
@@ -179,6 +181,34 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
 
   @override
   Future<Set<AvesEntry>> loadEntriesById(Set<int> ids) => _getByIds(ids, entryTable, AvesEntry.fromMap);
+
+  // Windowed reads are only implemented on the Drift backend. This engine is a
+  // retired rollback path ("do not extend it" above): the stubs satisfy the
+  // seam so the file still compiles, and fail loudly if ever re-registered.
+  @override
+  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<List<AvesEntry>> loadEntryWindow({
+    int? origin,
+    String? directory,
+    bool excludeTrashed = true,
+    required SortFactor sort,
+    required bool reverse,
+    required int limit,
+    required int offset,
+  }) =>
+      throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<List<SectionHeader>> loadSectionHeaders({
+    int? origin,
+    String? directory,
+    bool excludeTrashed = true,
+    required SectionGrouping grouping,
+    required bool reverse,
+  }) =>
+      throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
   Future<void> insertEntries(Set<AvesEntry> entries) async {

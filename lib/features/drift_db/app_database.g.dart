@@ -168,6 +168,17 @@ class $EntriesTableTable extends EntriesTable
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _directoryMeta = const VerificationMeta(
+    'directory',
+  );
+  @override
+  late final GeneratedColumn<String> directory = GeneratedColumn<String>(
+    'directory',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -186,6 +197,7 @@ class $EntriesTableTable extends EntriesTable
     durationMillis,
     trashed,
     origin,
+    directory,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -310,6 +322,12 @@ class $EntriesTableTable extends EntriesTable
         origin.isAcceptableOrUnknown(data['origin']!, _originMeta),
       );
     }
+    if (data.containsKey('directory')) {
+      context.handle(
+        _directoryMeta,
+        directory.isAcceptableOrUnknown(data['directory']!, _directoryMeta),
+      );
+    }
     return context;
   }
 
@@ -383,6 +401,10 @@ class $EntriesTableTable extends EntriesTable
         DriftSqlType.int,
         data['${effectivePrefix}origin'],
       ),
+      directory: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}directory'],
+      ),
     );
   }
 
@@ -410,6 +432,14 @@ class EntriesTableData extends DataClass
   final int? durationMillis;
   final int? trashed;
   final int? origin;
+
+  /// Raw single-level parent directory (`dirname(path)`), maintained by the
+  /// entries domain on every write and backfilled by `MigrationV3`.
+  ///
+  /// Powers indexed album grouping and single-level directory filters without
+  /// scanning paths. Display names still resolve through `entryDirRepo`, which
+  /// may disambiguate case variants against the filesystem.
+  final String? directory;
   const EntriesTableData({
     required this.id,
     this.contentId,
@@ -427,6 +457,7 @@ class EntriesTableData extends DataClass
     this.durationMillis,
     this.trashed,
     this.origin,
+    this.directory,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -477,6 +508,9 @@ class EntriesTableData extends DataClass
     if (!nullToAbsent || origin != null) {
       map['origin'] = Variable<int>(origin);
     }
+    if (!nullToAbsent || directory != null) {
+      map['directory'] = Variable<String>(directory);
+    }
     return map;
   }
 
@@ -524,6 +558,9 @@ class EntriesTableData extends DataClass
       origin: origin == null && nullToAbsent
           ? const Value.absent()
           : Value(origin),
+      directory: directory == null && nullToAbsent
+          ? const Value.absent()
+          : Value(directory),
     );
   }
 
@@ -553,6 +590,7 @@ class EntriesTableData extends DataClass
       durationMillis: serializer.fromJson<int?>(json['durationMillis']),
       trashed: serializer.fromJson<int?>(json['trashed']),
       origin: serializer.fromJson<int?>(json['origin']),
+      directory: serializer.fromJson<String?>(json['directory']),
     );
   }
   @override
@@ -575,6 +613,7 @@ class EntriesTableData extends DataClass
       'durationMillis': serializer.toJson<int?>(durationMillis),
       'trashed': serializer.toJson<int?>(trashed),
       'origin': serializer.toJson<int?>(origin),
+      'directory': serializer.toJson<String?>(directory),
     };
   }
 
@@ -595,6 +634,7 @@ class EntriesTableData extends DataClass
     Value<int?> durationMillis = const Value.absent(),
     Value<int?> trashed = const Value.absent(),
     Value<int?> origin = const Value.absent(),
+    Value<String?> directory = const Value.absent(),
   }) => EntriesTableData(
     id: id ?? this.id,
     contentId: contentId.present ? contentId.value : this.contentId,
@@ -624,6 +664,7 @@ class EntriesTableData extends DataClass
         : this.durationMillis,
     trashed: trashed.present ? trashed.value : this.trashed,
     origin: origin.present ? origin.value : this.origin,
+    directory: directory.present ? directory.value : this.directory,
   );
   EntriesTableData copyWithCompanion(EntriesTableCompanion data) {
     return EntriesTableData(
@@ -655,6 +696,7 @@ class EntriesTableData extends DataClass
           : this.durationMillis,
       trashed: data.trashed.present ? data.trashed.value : this.trashed,
       origin: data.origin.present ? data.origin.value : this.origin,
+      directory: data.directory.present ? data.directory.value : this.directory,
     );
   }
 
@@ -676,7 +718,8 @@ class EntriesTableData extends DataClass
           ..write('sourceDateTakenMillis: $sourceDateTakenMillis, ')
           ..write('durationMillis: $durationMillis, ')
           ..write('trashed: $trashed, ')
-          ..write('origin: $origin')
+          ..write('origin: $origin, ')
+          ..write('directory: $directory')
           ..write(')'))
         .toString();
   }
@@ -699,6 +742,7 @@ class EntriesTableData extends DataClass
     durationMillis,
     trashed,
     origin,
+    directory,
   );
   @override
   bool operator ==(Object other) =>
@@ -719,7 +763,8 @@ class EntriesTableData extends DataClass
           other.sourceDateTakenMillis == this.sourceDateTakenMillis &&
           other.durationMillis == this.durationMillis &&
           other.trashed == this.trashed &&
-          other.origin == this.origin);
+          other.origin == this.origin &&
+          other.directory == this.directory);
 }
 
 class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
@@ -739,6 +784,7 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
   final Value<int?> durationMillis;
   final Value<int?> trashed;
   final Value<int?> origin;
+  final Value<String?> directory;
   const EntriesTableCompanion({
     this.id = const Value.absent(),
     this.contentId = const Value.absent(),
@@ -756,6 +802,7 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
     this.durationMillis = const Value.absent(),
     this.trashed = const Value.absent(),
     this.origin = const Value.absent(),
+    this.directory = const Value.absent(),
   });
   EntriesTableCompanion.insert({
     this.id = const Value.absent(),
@@ -774,6 +821,7 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
     this.durationMillis = const Value.absent(),
     this.trashed = const Value.absent(),
     this.origin = const Value.absent(),
+    this.directory = const Value.absent(),
   });
   static Insertable<EntriesTableData> custom({
     Expression<int>? id,
@@ -792,6 +840,7 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
     Expression<int>? durationMillis,
     Expression<int>? trashed,
     Expression<int>? origin,
+    Expression<String>? directory,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -812,6 +861,7 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
       if (durationMillis != null) 'durationMillis': durationMillis,
       if (trashed != null) 'trashed': trashed,
       if (origin != null) 'origin': origin,
+      if (directory != null) 'directory': directory,
     });
   }
 
@@ -832,6 +882,7 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
     Value<int?>? durationMillis,
     Value<int?>? trashed,
     Value<int?>? origin,
+    Value<String?>? directory,
   }) {
     return EntriesTableCompanion(
       id: id ?? this.id,
@@ -852,6 +903,7 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
       durationMillis: durationMillis ?? this.durationMillis,
       trashed: trashed ?? this.trashed,
       origin: origin ?? this.origin,
+      directory: directory ?? this.directory,
     );
   }
 
@@ -906,6 +958,9 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
     if (origin.present) {
       map['origin'] = Variable<int>(origin.value);
     }
+    if (directory.present) {
+      map['directory'] = Variable<String>(directory.value);
+    }
     return map;
   }
 
@@ -927,7 +982,8 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
           ..write('sourceDateTakenMillis: $sourceDateTakenMillis, ')
           ..write('durationMillis: $durationMillis, ')
           ..write('trashed: $trashed, ')
-          ..write('origin: $origin')
+          ..write('origin: $origin, ')
+          ..write('directory: $directory')
           ..write(')'))
         .toString();
   }
@@ -4419,6 +4475,7 @@ typedef $$EntriesTableTableCreateCompanionBuilder =
       Value<int?> durationMillis,
       Value<int?> trashed,
       Value<int?> origin,
+      Value<String?> directory,
     });
 typedef $$EntriesTableTableUpdateCompanionBuilder =
     EntriesTableCompanion Function({
@@ -4438,6 +4495,7 @@ typedef $$EntriesTableTableUpdateCompanionBuilder =
       Value<int?> durationMillis,
       Value<int?> trashed,
       Value<int?> origin,
+      Value<String?> directory,
     });
 
 class $$EntriesTableTableFilterComposer
@@ -4526,6 +4584,11 @@ class $$EntriesTableTableFilterComposer
 
   ColumnFilters<int> get origin => $composableBuilder(
     column: $table.origin,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get directory => $composableBuilder(
+    column: $table.directory,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4618,6 +4681,11 @@ class $$EntriesTableTableOrderingComposer
     column: $table.origin,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get directory => $composableBuilder(
+    column: $table.directory,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$EntriesTableTableAnnotationComposer
@@ -4688,6 +4756,9 @@ class $$EntriesTableTableAnnotationComposer
 
   GeneratedColumn<int> get origin =>
       $composableBuilder(column: $table.origin, builder: (column) => column);
+
+  GeneratedColumn<String> get directory =>
+      $composableBuilder(column: $table.directory, builder: (column) => column);
 }
 
 class $$EntriesTableTableTableManager
@@ -4737,6 +4808,7 @@ class $$EntriesTableTableTableManager
                 Value<int?> durationMillis = const Value.absent(),
                 Value<int?> trashed = const Value.absent(),
                 Value<int?> origin = const Value.absent(),
+                Value<String?> directory = const Value.absent(),
               }) => EntriesTableCompanion(
                 id: id,
                 contentId: contentId,
@@ -4754,6 +4826,7 @@ class $$EntriesTableTableTableManager
                 durationMillis: durationMillis,
                 trashed: trashed,
                 origin: origin,
+                directory: directory,
               ),
           createCompanionCallback:
               ({
@@ -4773,6 +4846,7 @@ class $$EntriesTableTableTableManager
                 Value<int?> durationMillis = const Value.absent(),
                 Value<int?> trashed = const Value.absent(),
                 Value<int?> origin = const Value.absent(),
+                Value<String?> directory = const Value.absent(),
               }) => EntriesTableCompanion.insert(
                 id: id,
                 contentId: contentId,
@@ -4790,6 +4864,7 @@ class $$EntriesTableTableTableManager
                 durationMillis: durationMillis,
                 trashed: trashed,
                 origin: origin,
+                directory: directory,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

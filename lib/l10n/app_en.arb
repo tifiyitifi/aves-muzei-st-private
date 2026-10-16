@@ -1167,5 +1167,33 @@
   "settingsEngineDialogTitle": "Settings engine",
   "settingsEngineV1": "Legacy (v1)",
   "settingsEngineV2": "Metadata (v2)",
-  "settingsEngineDescription": "Legacy (v1) and Metadata (v2) keep separate settings. Switching takes effect immediately."
+  "settingsEngineDescription": "Legacy (v1) and Metadata (v2) keep separate settings. Switching takes effect immediately.",
+
+  "settingsCollectionEngineTile": "Collection engine",
+  "settingsCollectionEngineDialogTitle": "Collection engine",
+  "collectionEngineLegacy": "Legacy (v1, full load)",
+  "collectionEnginePaged": "Paged (v2, windowed)",
+  "collectionEngineDescription": "Legacy loads the whole collection into memory. Paged loads windows from the database on demand.",
+  "settingsCollectionWindowTile": "Collection window size",
+  "settingsCollectionWindowDialogTitle": "Collection window size",
+  "collectionWindowSizeCount": "{count, plural, =1{{count} row} other{{count} rows}}",
+  "@collectionWindowSizeCount": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "settingsCollectionPrefetchTile": "Collection prefetch depth",
+  "settingsCollectionPrefetchDialogTitle": "Collection prefetch depth",
+  "collectionPrefetchScreens": "{count, plural, =0{Off} =1{1 screen} other{{count} screens}}",
+  "@collectionPrefetchScreens": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  }
 }

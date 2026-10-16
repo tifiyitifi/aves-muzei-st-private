@@ -10,6 +10,7 @@ import 'package:aves/features/drift_db/debug/debug_store.dart';
 import 'package:aves/features/drift_db/dynamic_albums/dynamic_album_store.dart';
 import 'package:aves/features/drift_db/entries/entry_id_allocator.dart';
 import 'package:aves/features/drift_db/entries/entry_store.dart';
+import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/drift_db/favourites/favourite_store.dart';
 import 'package:aves/features/drift_db/migration/legacy_import.dart';
 import 'package:aves/features/drift_db/migration/legacy_import_progress.dart';
@@ -30,6 +31,7 @@ import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/model/vaults/details.dart';
 import 'package:aves/model/viewer/video_playback.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:aves_model/aves_model.dart';
 import 'package:sqflite/sqflite.dart' as sqflite;
 
 const _log = AreaKeyLog(LogKeys.db);
@@ -171,6 +173,31 @@ class DriftLocalMediaDb implements LocalMediaDb {
 
   @override
   Future<Set<AvesEntry>> loadEntriesById(Set<int> ids) => _entries.loadByIds(ids);
+
+  @override
+  Future<int> countEntries({int? origin, String? directory, bool excludeTrashed = true}) => _entries.count(origin: origin, directory: directory, excludeTrashed: excludeTrashed);
+
+  @override
+  Future<List<AvesEntry>> loadEntryWindow({
+    int? origin,
+    String? directory,
+    bool excludeTrashed = true,
+    required SortFactor sort,
+    required bool reverse,
+    required int limit,
+    required int offset,
+  }) =>
+      _entries.loadWindow(origin: origin, directory: directory, excludeTrashed: excludeTrashed, sort: sort, reverse: reverse, limit: limit, offset: offset);
+
+  @override
+  Future<List<SectionHeader>> loadSectionHeaders({
+    int? origin,
+    String? directory,
+    bool excludeTrashed = true,
+    required SectionGrouping grouping,
+    required bool reverse,
+  }) =>
+      _entries.loadSectionHeaders(origin: origin, directory: directory, excludeTrashed: excludeTrashed, grouping: grouping, reverse: reverse);
 
   @override
   Future<void> insertEntries(Set<AvesEntry> entries) => _entries.insertAll(entries);

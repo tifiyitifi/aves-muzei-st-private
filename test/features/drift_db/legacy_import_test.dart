@@ -9,6 +9,7 @@ import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/db/db_sqflite_schema.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/services/common/services.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -21,7 +22,12 @@ void main() {
     ensureSqlite3Loaded();
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    // `pContext` (used by the entry directory backfill) is resolved from GetIt;
+    // tests force a POSIX context so path handling matches the app.
+    getIt.registerLazySingleton<p.Context>(() => p.Context(style: p.Style.posix));
   });
+
+  tearDownAll(getIt.reset);
 
   late Directory tempDir;
   late String legacyPath;

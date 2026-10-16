@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/engine/collection_paging_keys.dart';
 import 'package:aves/features/meta_settings/data/def_visibility.dart';
 import 'package:aves/features/meta_settings/model/editor_keys.dart';
 import 'package:aves/features/meta_settings/model/enum/setting_widget_kind.dart';
@@ -474,5 +475,29 @@ final List<SettingDef> _advancedDefs = [
     title: (context) => context.l10n.settingsEngineTile,
     editorKey: MetaEditorKeys.settingsEngine,
     sortOrder: 10,
+  ),
+  SettingDef(
+    key: CollectionPagingKeys.engine,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsCollectionEngineTile,
+    editorKey: MetaEditorKeys.collectionEngine,
+    sortOrder: 20,
+  ),
+  SettingDef(
+    key: CollectionPagingKeys.windowSize,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsCollectionWindowTile,
+    editorKey: MetaEditorKeys.collectionWindowSize,
+    sortOrder: 30,
+  ),
+  SettingDef(
+    key: CollectionPagingKeys.prefetchScreens,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsCollectionPrefetchTile,
+    editorKey: MetaEditorKeys.collectionPrefetchScreens,
+    sortOrder: 40,
   ),
 ];

@@ -27,6 +27,14 @@ class EntriesTable extends Table {
   IntColumn get trashed => integer().nullable()();
   IntColumn get origin => integer().nullable()();
 
+  /// Raw single-level parent directory (`dirname(path)`), maintained by the
+  /// entries domain on every write and backfilled by `MigrationV3`.
+  ///
+  /// Powers indexed album grouping and single-level directory filters without
+  /// scanning paths. Display names still resolve through `entryDirRepo`, which
+  /// may disambiguate case variants against the filesystem.
+  TextColumn get directory => text().named('directory').nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

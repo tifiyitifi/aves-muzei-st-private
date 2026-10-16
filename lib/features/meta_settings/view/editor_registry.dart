@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/view/collection_paging_editors.dart';
 import 'package:aves/features/meta_settings/model/editor_keys.dart';
 import 'package:aves/features/meta_settings/model/setting_def.dart';
 import 'package:aves/features/meta_settings/view/widgets/editors/accessibility_editors.dart';
@@ -29,4 +30,7 @@ final Map<String, MetaEditorBuilder> metaEditorRegistry = {
   MetaEditorKeys.videoThumbnailMethods: (context, def) => VideoThumbnailMethodsEditor(def: def),
   MetaEditorKeys.burstPatterns: (context, def) => BurstPatternsEditor(def: def),
   MetaEditorKeys.homePage: (context, def) => HomePageEditor(def: def),
+  MetaEditorKeys.collectionEngine: (context, def) => CollectionEngineEditor(def: def),
+  MetaEditorKeys.collectionWindowSize: (context, def) => CollectionWindowSizeEditor(def: def),
+  MetaEditorKeys.collectionPrefetchScreens: (context, def) => CollectionPrefetchScreensEditor(def: def),
 };

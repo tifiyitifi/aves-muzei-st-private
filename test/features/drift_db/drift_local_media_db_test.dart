@@ -214,7 +214,8 @@ void main() {
   });
 }
 
-/// An [AppDatabaseProvider] whose first [open] fails, to exercise init retry.
+/// An [AppDatabaseProvider] whose first connection attempt fails, to exercise
+/// [AppDatabaseProvider.open]'s retry (and, through it, `init` retry).
 class _FlakyDatabaseProvider extends AppDatabaseProvider {
   final AppDatabase _delegate;
   var attempts = 0;
@@ -225,7 +226,7 @@ class _FlakyDatabaseProvider extends AppDatabaseProvider {
   bool get isInjected => true;
 
   @override
-  Future<AppDatabase> open() async {
+  Future<AppDatabase> createDatabase() async {
     if (attempts++ == 0) throw StateError('transient open failure');
     return _delegate;
   }

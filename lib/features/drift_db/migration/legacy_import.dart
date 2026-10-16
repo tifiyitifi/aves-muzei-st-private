@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -386,15 +387,55 @@ class LegacyImport {
     if (_textKeyedTables.contains(table)) {
       return _TableMismatch(table: table, legacyCount: legacyCount, driftCount: driftCount);
     }
-    final legacyIds = (await legacy.rawQuery('SELECT id FROM $table')).map((row) => row['id'] as int).toSet();
-    final driftIds = (await db.customSelect('SELECT id FROM $table').get()).map((row) => row.data['id'] as int).toSet();
+    final (missingIds, extraIds) = await _sampleIdDiff(legacy, table);
     return _TableMismatch(
       table: table,
       legacyCount: legacyCount,
       driftCount: driftCount,
-      missingIds: legacyIds.difference(driftIds).take(_diagnosticSampleSize).toList(),
-      extraIds: driftIds.difference(legacyIds).take(_diagnosticSampleSize).toList(),
+      missingIds: missingIds,
+      extraIds: extraIds,
     );
+  }
+
+  /// Samples the ids present in only one of the two tables.
+  ///
+  /// Both sides are streamed in ascending id order one page at a time and diffed
+  /// as a merge, so memory stays bounded even for a library with hundreds of
+  /// thousands of rows (loading either side's full id set risked an OOM).
+  /// Returns `(missing, extra)`: legacy-only and drift-only ids, each capped at
+  /// [_diagnosticSampleSize].
+  Future<(List<int>, List<int>)> _sampleIdDiff(sqflite.Database legacy, String table) async {
+    final legacyIds = StreamIterator(
+      _pageIds((cursor) => legacy.rawQuery(_idPageSql(table, cursor), cursor == null ? null : [cursor]).then((rows) => rows.map((row) => row['id'] as int).toList())),
+    );
+    final driftIds = StreamIterator(
+      _pageIds((cursor) => db.customSelect(_idPageSql(table, cursor), variables: cursor == null ? const [] : [Variable.withInt(cursor)]).get().then((rows) => rows.map((row) => row.data['id'] as int).toList())),
+    );
+
+    final missing = <int>[];
+    final extra = <int>[];
+    var hasLegacy = await legacyIds.moveNext();
+    var hasDrift = await driftIds.moveNext();
+    try {
+      while ((missing.length < _diagnosticSampleSize || extra.length < _diagnosticSampleSize) && (hasLegacy || hasDrift)) {
+        final legacyId = hasLegacy ? legacyIds.current : null;
+        final driftId = hasDrift ? driftIds.current : null;
+        if (driftId == null || (legacyId != null && legacyId < driftId)) {
+          missing.add(legacyId!);
+          hasLegacy = await legacyIds.moveNext();
+        } else if (legacyId == null || driftId < legacyId) {
+          extra.add(driftId);
+          hasDrift = await driftIds.moveNext();
+        } else {
+          hasLegacy = await legacyIds.moveNext();
+          hasDrift = await driftIds.moveNext();
+        }
+      }
+    } finally {
+      await legacyIds.cancel();
+      await driftIds.cancel();
+    }
+    return (missing, extra);
   }
 
   Future<void> _markDone() async {
@@ -440,6 +481,26 @@ class _LostOwnership implements Exception {
 
 /// Rows sampled per mismatched table when reporting a verification difference.
 const _diagnosticSampleSize = 16;
+
+/// Rows fetched per keyset page while sampling the ids of a mismatched table.
+const _idPageSize = 1000;
+
+/// `SELECT id` for one ascending keyset page.
+String _idPageSql(String table, int? cursor) => 'SELECT id FROM $table ${cursor == null ? '' : 'WHERE id > ?'} ORDER BY id LIMIT $_idPageSize';
+
+/// Lazily pages ascending ids from [fetch] via keyset pagination, so a caller
+/// can diff two sources without materializing either side in memory.
+Stream<int> _pageIds(Future<List<int>> Function(int? cursor) fetch) async* {
+  int? cursor;
+  while (true) {
+    final page = await fetch(cursor);
+    if (page.isEmpty) break;
+    for (final id in page) {
+      yield id;
+      cursor = id;
+    }
+  }
+}
 
 /// One table's verification difference, with a bounded id sample for diagnosis.
 class _TableMismatch {

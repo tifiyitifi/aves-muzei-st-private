@@ -254,6 +254,23 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<Map<int, List<AvesEntry>>> loadStackMembers(Set<int> ids) => _entries.loadStackMembers(ids);
 
   @override
+  Future<int> countDays({required CollectionWindowPredicate predicate}) => _entries.countDays(predicate: predicate);
+
+  @override
+  Future<List<AvesEntry>> loadDayWindow({required CollectionWindowPredicate predicate, int? dateFromMillis, int? dateToMillis, required bool reverse, required int limit, required int offset}) =>
+      _entries.loadDayWindow(predicate: predicate, dateFromMillis: dateFromMillis, dateToMillis: dateToMillis, reverse: reverse, limit: limit, offset: offset);
+
+  @override
+  Future<List<SectionHeader>> loadDaySectionHeaders({required CollectionWindowPredicate predicate, required bool reverse}) => _entries.loadDaySectionHeaders(predicate: predicate, reverse: reverse);
+
+  @override
+  Future<int> countDaysBefore({required CollectionWindowPredicate predicate, required int id, required bool reverse}) => _entries.countDaysBefore(predicate: predicate, id: id, reverse: reverse);
+
+  @override
+  Future<Map<DateTime, List<AvesEntry>>> loadDayMembers({required CollectionWindowPredicate predicate, required Set<DateTime> days, required bool reverse}) =>
+      _entries.loadDayMembers(predicate: predicate, days: days, reverse: reverse);
+
+  @override
   Future<int> countEntriesBefore({
     required CollectionWindowPredicate predicate,
     required int id,

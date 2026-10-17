@@ -85,6 +85,41 @@ abstract class LocalMediaDb {
   /// Tiles with no hidden member are absent from the map.
   Future<Map<int, List<AvesEntry>>> loadStackMembers(Set<int> ids);
 
+  /// Number of days holding matching entries: the calendar projection's total.
+  Future<int> countDays({required CollectionWindowPredicate predicate});
+
+  /// One row per day of the calendar projection, in day order, carrying the
+  /// day's representative entry.
+  Future<List<AvesEntry>> loadDayWindow({
+    required CollectionWindowPredicate predicate,
+    int? dateFromMillis,
+    int? dateToMillis,
+    required bool reverse,
+    required int limit,
+    required int offset,
+  });
+
+  /// Month headers of the calendar projection, each counting the days it holds.
+  Future<List<SectionHeader>> loadDaySectionHeaders({
+    required CollectionWindowPredicate predicate,
+    required bool reverse,
+  });
+
+  /// Row index of the entry with [id] in the calendar projection, or -1 when it
+  /// is not in the view.
+  Future<int> countDaysBefore({
+    required CollectionWindowPredicate predicate,
+    required int id,
+    required bool reverse,
+  });
+
+  /// The entries of each of [days], keyed by the day (a calendar tile's stack).
+  Future<Map<DateTime, List<AvesEntry>>> loadDayMembers({
+    required CollectionWindowPredicate predicate,
+    required Set<DateTime> days,
+    required bool reverse,
+  });
+
   /// Global index of the entry with [id] in the collection order of
   /// [predicate], or -1 when it is not in the view.
   ///

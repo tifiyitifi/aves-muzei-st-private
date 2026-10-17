@@ -396,6 +396,146 @@ class EntryStore {
     }
   }
 
+  /// The local-time day of a row, as an SQLite day key (`YYYY-MM-DD`).
+  ///
+  /// Built from [bestDateIfSetExpression], so an entry without a usable date has
+  /// no day at all: the legacy calendar grouping drops those rows (it groups by
+  /// `dateOnly(bestDate)` and keeps the non-null keys).
+  static const String _dayKey = "strftime('%Y-%m-%d', $bestDateIfSetExpression / 1000, 'unixepoch', 'localtime')";
+
+  /// The `YYYY-MM-DD` key of a day, matching [_dayKey].
+  static String dayKeyOf(DateTime day) => '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+
+  /// Number of days holding matching entries: the calendar projection's total.
+  Future<int> countDays({required CollectionWindowPredicate predicate}) async {
+    final where = _windowWhere(predicate: predicate);
+    final rows = await db.customSelect(
+      'SELECT COUNT(DISTINCT $_dayKey) AS n ${_from(predicate, dateTaken: true)} ${where.sql} AND $bestDateIfSetExpression IS NOT NULL',
+      variables: where.variables,
+    ).get();
+    return (rows.firstOrNull?.data['n'] as int?) ?? 0;
+  }
+
+  /// One row per day, in day order, carrying the day's representative entry.
+  ///
+  /// The representative mirrors the legacy date stack: the day's entries sorted
+  /// by their date, so the first is the oldest — and the newest when the view is
+  /// reversed. SQLite returns the bare columns from the row that produced the
+  /// aggregate, which is exactly that member.
+  Future<List<AvesEntry>> loadDayWindow({
+    required CollectionWindowPredicate predicate,
+    int? dateFromMillis,
+    int? dateToMillis,
+    required bool reverse,
+    required int limit,
+    required int offset,
+  }) async {
+    if (limit <= 0) return [];
+    final where = _windowWhere(predicate: predicate, dateFromMillis: dateFromMillis, dateToMillis: dateToMillis);
+    final dir = reverse ? 'ASC' : 'DESC';
+    final from = _from(predicate, dateTaken: true);
+    final rows = await db.customSelect(
+      'SELECT e.*, dt.dateMillis AS dateMillis, t.path AS trashPath, t.dateMillis AS trashDateMillis, '
+      '${reverse ? 'MAX' : 'MIN'}($bestDateIfSetExpression) AS dayMillis '
+      '$from LEFT JOIN trash t ON t.id = e.id '
+      '${where.sql} AND $bestDateIfSetExpression IS NOT NULL '
+      'GROUP BY $_dayKey ORDER BY dayMillis $dir, e.id $dir LIMIT ? OFFSET ?',
+      variables: [...where.variables, Variable(limit), Variable(offset < 0 ? 0 : offset)],
+    ).get();
+    return [for (final row in rows) _entryFromWindowRow(row.data)];
+  }
+
+  /// Month headers of the calendar projection, each counting the *days* it holds
+  /// rather than the entries, so its counts match the day rows.
+  Future<List<SectionHeader>> loadDaySectionHeaders({
+    required CollectionWindowPredicate predicate,
+    required bool reverse,
+  }) async {
+    final where = _windowWhere(predicate: predicate);
+    const bestDateSecs = '$bestDateIfSetExpression / 1000';
+    final dir = reverse ? 'ASC' : 'DESC';
+    final rows = await db.customSelect(
+      "SELECT strftime('%Y', $bestDateSecs, 'unixepoch', 'localtime') AS y, "
+      "strftime('%m', $bestDateSecs, 'unixepoch', 'localtime') AS m, "
+      'COUNT(DISTINCT $_dayKey) AS n '
+      '${_from(predicate, dateTaken: true)} ${where.sql} AND $bestDateIfSetExpression IS NOT NULL '
+      'GROUP BY y, m ORDER BY y $dir, m $dir',
+      variables: where.variables,
+    ).get();
+    return [
+      for (final row in rows)
+        SectionHeader.month(year: int.parse(row.data['y'] as String), month: int.parse(row.data['m'] as String), count: (row.data['n'] as int?) ?? 0),
+    ];
+  }
+
+  /// Row index of the entry with [id] in the calendar projection: how many days
+  /// sort strictly before the entry's day. -1 when [id] is not in the view.
+  Future<int> countDaysBefore({
+    required CollectionWindowPredicate predicate,
+    required int id,
+    required bool reverse,
+  }) async {
+    final inView = CollectionWindowPredicate(
+      conjunction: [
+        ...predicate.conjunction,
+        (sql: 'e.id = ?', variables: [Variable(id)], requires: const <WindowTable>{}),
+      ],
+      trashedOnly: predicate.trashedOnly,
+    );
+    // A day count, not an entry count: an undated entry is in the view but in no
+    // day, so it has no row index to report.
+    if (await countDays(predicate: inView) == 0) return -1;
+
+    final where = _windowWhere(predicate: predicate);
+    final from = _from(predicate, dateTaken: true);
+    // The day order is descending unless the whole list is reversed, so a day
+    // *before* the target is the newer one.
+    final comparison = reverse ? '<' : '>';
+    final targetWhere = where.sql.replaceFirst('WHERE ', 'WHERE e.id = ? AND ');
+    final rows = await db.customSelect(
+      'SELECT COUNT(DISTINCT $_dayKey) AS n $from ${where.sql} AND $bestDateIfSetExpression IS NOT NULL '
+      'AND $_dayKey $comparison (SELECT $_dayKey $from $targetWhere)',
+      variables: [...where.variables, Variable(id), ...where.variables],
+    ).get();
+    return (rows.firstOrNull?.data['n'] as int?) ?? 0;
+  }
+
+  /// The entries of each of [days], keyed by the day, in the legacy stack order
+  /// (the day's entries by date, so the representative comes first).
+  ///
+  /// Here rather than in `stackTileId` because a day stack is a property of the
+  /// calendar layout, not of the persisted stack index: it must not hide rows
+  /// from any other view.
+  Future<Map<DateTime, List<AvesEntry>>> loadDayMembers({
+    required CollectionWindowPredicate predicate,
+    required Set<DateTime> days,
+    required bool reverse,
+  }) async {
+    if (days.isEmpty) return const {};
+    final keys = [for (final day in days) dayKeyOf(day)];
+    final placeholders = keys.map((_) => '?').join(',');
+    final where = _windowWhere(predicate: predicate);
+    final rows = await db.customSelect(
+      'SELECT e.*, dt.dateMillis AS dateMillis, t.path AS trashPath, t.dateMillis AS trashDateMillis, $_dayKey AS dayKey '
+      '${_from(predicate, dateTaken: true)} LEFT JOIN trash t ON t.id = e.id '
+      '${where.sql} AND $_dayKey IN ($placeholders) '
+      'ORDER BY dayKey, $bestDateIfSetExpression ${reverse ? 'DESC' : 'ASC'}',
+      variables: [...where.variables, for (final key in keys) Variable(key)],
+    ).get();
+    final members = <DateTime, List<AvesEntry>>{};
+    for (final row in rows) {
+      final day = _dayOfKey(row.data['dayKey'] as String);
+      members.putIfAbsent(day, () => []).add(_entryFromWindowRow(row.data));
+    }
+    return members;
+  }
+
+  /// The day behind a `YYYY-MM-DD` key of [dayKeyOf], as a local date.
+  static DateTime _dayOfKey(String key) {
+    final parts = key.split('-');
+    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+  }
+
   /// `FROM` clause for the standard window aliases, joining only the tables the
   /// predicate or the query needs (`dt`/`m`/`a`).
   String _from(CollectionWindowPredicate predicate, {bool dateTaken = false, bool metadata = false, bool address = false}) {    final requires = predicate.requires;

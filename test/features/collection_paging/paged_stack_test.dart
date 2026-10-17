@@ -13,6 +13,7 @@ import 'package:aves/model/source/media_store_source.dart';
 import 'package:aves/ref/bursts.dart';
 import 'package:aves/ref/mime_types.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
@@ -66,7 +67,7 @@ void main() {
     await setUpServices();
   });
 
-  AvesEntry entry(int id, {required String path, String mime = MimeTypes.jpeg, bool trashed = false}) => AvesEntry(
+  AvesEntry entry(int id, {required String path, String mime = MimeTypes.jpeg, bool trashed = false, DateTime? taken}) => AvesEntry(
         id: id,
         uri: 'content://$id',
         path: path,
@@ -80,7 +81,7 @@ void main() {
         sourceTitle: 'title$id',
         dateAddedSecs: 1,
         dateModifiedMillis: 2,
-        sourceDateTakenMillis: 0,
+        sourceDateTakenMillis: taken?.millisecondsSinceEpoch ?? 0,
         durationMillis: 0,
         trashed: trashed,
         origin: EntryOrigins.mediaStoreContent,
@@ -147,5 +148,25 @@ void main() {
 
     // The live view has no tile for the pair, so the raw must show itself.
     expect(tilesOf(await openLens({})), {2});
+  });
+
+  test('the calendar layout shows one row per day', () async {
+    settings.setStoredCollectionTileLayout({}, TileLayout.calendar);
+    addTearDown(() => settings.setStoredCollectionTileLayout({}, TileLayout.grid));
+    await driftDb.insertEntries({
+      entry(1, path: '/cam/a.jpg', taken: DateTime(2024, 3, 5, 9)),
+      entry(2, path: '/cam/b.jpg', taken: DateTime(2024, 3, 5, 20)),
+      entry(3, path: '/cam/c.jpg', taken: DateTime(2024, 3, 7, 12)),
+    });
+
+    final lens = await openLens({});
+    // Two days under one month section, and the day's second frame hides behind
+    // its representative instead of showing as a tile of its own.
+    expect(lens.sections.values.map((section) => section.length).toList(), [2]);
+    expect(tilesOf(lens), {1, 3});
+
+    await pumpUntil(() => lens.loadedEntries.any((entry) => entry.id == 1 && entry.stackedEntries != null));
+    final day = lens.loadedEntries.firstWhere((entry) => entry.id == 1);
+    expect(day.stackedEntries?.map((entry) => entry.id).toList(), [1, 2]);
   });
 }

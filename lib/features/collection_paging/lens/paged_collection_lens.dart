@@ -14,6 +14,7 @@ import 'package:aves/features/collection_paging/windows/window_cache.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/locale/aves_locale.dart';
+import 'package:aves/locale/calendar/calendar_utils.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -232,6 +233,13 @@ class PagedCollectionLens extends CollectionLens {
   SortFactor _pagedSort = SortFactor.date;
   bool _pagedReverse = false;
 
+  /// True when the current paged view projects one row per day (the calendar
+  /// layout), so positions, totals and index lookups count days.
+  bool _pagedDayRows = false;
+
+  /// True when the layout shows one row per day under month sections.
+  bool get _dayRows => !fixedSort && tileLayout == TileLayout.calendar;
+
   /// Global index of the entry with [id] in the current view, or -1 when the
   /// view is not paged (the legacy list answers in memory) or [id] is not in
   /// the view.
@@ -245,6 +253,10 @@ class PagedCollectionLens extends CollectionLens {
       return index;
     }
     try {
+      // The calendar projection counts days, not rows.
+      if (_pagedDayRows) {
+        return await localMediaDb.countDaysBefore(predicate: predicate, id: id, reverse: _pagedReverse);
+      }
       return await localMediaDb.countEntriesBefore(predicate: predicate, id: id, sort: _pagedSort, reverse: _pagedReverse);
     } catch (error, stack) {
       _log.w('paged index lookup failed for id=$id', error, stack);
@@ -413,10 +425,12 @@ class PagedCollectionLens extends CollectionLens {
             conjunction: [...resolved.conjunction, ..._extraFragments],
             trashedOnly: resolved.trashedOnly,
           );
+    final dayRows = _dayRows;
     // Stacks ride on the same predicate as the totals and windows: a member shows
     // while its tile is in the same scope, so nothing disappears when a filter
-    // splits a group. A library without stacks skips the filter entirely.
-    final predicate = _stackEntries && await _hasStacks() ? _withStackFilter(base) : base;
+    // splits a group. A library without stacks skips the filter entirely, and the
+    // calendar projection keeps every frame of its day.
+    final predicate = _stackEntries && !dayRows && await _hasStacks() ? _withStackFilter(base) : base;
     final prefs = collectionPagingPrefs;
     await prefs.init();
     if (!_current(gen)) return;
@@ -432,14 +446,18 @@ class PagedCollectionLens extends CollectionLens {
     final reverse = settings.getEffectiveCollectionSortReverse(filters);
     final windowSize = prefs.windowSize;
     final prefetch = prefs.prefetchScreens;
-    final total = await localMediaDb.countEntries(predicate);
+    final total = dayRows
+        ? await localMediaDb.countDays(predicate: predicate)
+        : await localMediaDb.countEntries(predicate);
     if (!_current(gen)) return;
 
-    final headers = await localMediaDb.loadSectionHeaders(
-      predicate: predicate,
-      grouping: grouping,
-      reverse: reverse,
-    );
+    final headers = dayRows
+        ? await localMediaDb.loadDaySectionHeaders(predicate: predicate, reverse: reverse)
+        : await localMediaDb.loadSectionHeaders(
+            predicate: predicate,
+            grouping: grouping,
+            reverse: reverse,
+          );
     if (!_current(gen)) return;
 
     final cacheMaxWindows = 2 * (prefetch + 1) + 4;
@@ -455,18 +473,27 @@ class PagedCollectionLens extends CollectionLens {
       final range = _rangeFor(header);
       final state = _SectionState(header: header, key: key, list: list);
       state.cache = WindowCache<AvesEntry>(
-        fetch: (windowIndex, limit, offset) => localMediaDb.loadEntryWindow(
-          predicate: predicate,
-          directoryEquals: range.directoryEquals,
-          directoryEqualsNull: range.directoryEqualsNull,
-          dateFromMillis: range.dateFromMillis,
-          dateToMillis: range.dateToMillis,
-          ratingEquals: range.ratingEquals,
-          sort: sort,
-          reverse: reverse,
-          limit: limit,
-          offset: offset,
-        ),
+        fetch: (windowIndex, limit, offset) => dayRows
+            ? localMediaDb.loadDayWindow(
+                predicate: predicate,
+                dateFromMillis: range.dateFromMillis,
+                dateToMillis: range.dateToMillis,
+                reverse: reverse,
+                limit: limit,
+                offset: offset,
+              )
+            : localMediaDb.loadEntryWindow(
+                predicate: predicate,
+                directoryEquals: range.directoryEquals,
+                directoryEqualsNull: range.directoryEqualsNull,
+                dateFromMillis: range.dateFromMillis,
+                dateToMillis: range.dateToMillis,
+                ratingEquals: range.ratingEquals,
+                sort: sort,
+                reverse: reverse,
+                limit: limit,
+                offset: offset,
+              ),
         windowSize: windowSize,
         prefetchWindows: prefetch,
         maxWindows: cacheMaxWindows,
@@ -479,7 +506,11 @@ class PagedCollectionLens extends CollectionLens {
             state.list.idToLocal[entry.id] = base + i;
           }
           _reindexFlat();
-          if (_stackEntries) unawaited(_attachStackMembers(state, rows, gen));
+          if (dayRows) {
+            unawaited(_attachDayMembers(predicate, state, rows, gen));
+          } else if (_stackEntries) {
+            unawaited(_attachStackMembers(state, rows, gen));
+          }
           notifyListeners();
         },
         onEvicted: (windowIndex) {
@@ -506,6 +537,7 @@ class PagedCollectionLens extends CollectionLens {
     _pagedPredicate = predicate;
     _pagedSort = sort;
     _pagedReverse = reverse;
+    _pagedDayRows = dayRows;
     _blocked = false;
     _morphed = false;
     _pagedActive = true;
@@ -727,12 +759,54 @@ class PagedCollectionLens extends CollectionLens {
     notifyListeners();
   }
 
+  /// Attaches each calendar row's day entries, so a tile shows its day stack and
+  /// the viewer can page through the day.
+  ///
+  /// A day stack exists only in this layout — it is not the persisted stack
+  /// index, and must not hide a row from any other view — so it is read per
+  /// window, like the burst frames are.
+  Future<void> _attachDayMembers(CollectionWindowPredicate predicate, _SectionState state, List<AvesEntry> rows, int gen) async {
+    final days = <DateTime>{};
+    for (final entry in rows) {
+      final date = entry.bestDate;
+      if (date != null) days.add(calendar.ops.dateOnly(date));
+    }
+    if (days.isEmpty) return;
+
+    final Map<DateTime, List<AvesEntry>> membersByDay;
+    try {
+      membersByDay = await localMediaDb.loadDayMembers(predicate: predicate, days: days, reverse: _pagedReverse);
+    } catch (error, stack) {
+      _log.w('paged day member load failed', error, stack);
+      return;
+    }
+    if (membersByDay.isEmpty || !_current(gen)) return;
+
+    var changed = false;
+    for (final entry in rows) {
+      final date = entry.bestDate;
+      if (date == null) continue;
+      final members = membersByDay[calendar.ops.dateOnly(date)];
+      // A lone entry is not a stack, exactly like the legacy date grouping.
+      if (members == null || members.length < 2) continue;
+      final local = state.list.idToLocal[entry.id];
+      if (local == null) continue;
+      state.list.loaded[local] = entry.copyWith(stackedEntries: members);
+      changed = true;
+    }
+    if (!changed) return;
+    _reindexFlat();
+    notifyListeners();
+  }
+
   /// Maps the effective sort/section factors to a SQL grouping, or null when
   /// the combination needs the legacy path.
   SectionGrouping? _resolveGrouping() {
     if (fixedSort) return SectionGrouping.single;
-    // Calendar synthesis and mosaic measuring need realized entries.
-    if (tileLayout == TileLayout.calendar || tileLayout == TileLayout.mosaic) return null;
+    // The calendar layout shows one row per day under month sections; the mosaic
+    // layout still needs measured entries.
+    if (tileLayout == TileLayout.calendar) return SectionGrouping.month;
+    if (tileLayout == TileLayout.mosaic) return null;
     if (calendar != ACalendar.gregorian) {
       if (sectionFactor == EntrySectionFactor.month || sectionFactor == EntrySectionFactor.day) return null;
     }

@@ -242,6 +242,21 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   Future<Map<int, List<AvesEntry>>> loadStackMembers(Set<int> ids) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
+  Future<int> countDays({required CollectionWindowPredicate predicate}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<List<AvesEntry>> loadDayWindow({required CollectionWindowPredicate predicate, int? dateFromMillis, int? dateToMillis, required bool reverse, required int limit, required int offset}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<List<SectionHeader>> loadDaySectionHeaders({required CollectionWindowPredicate predicate, required bool reverse}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<int> countDaysBefore({required CollectionWindowPredicate predicate, required int id, required bool reverse}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<Map<DateTime, List<AvesEntry>>> loadDayMembers({required CollectionWindowPredicate predicate, required Set<DateTime> days, required bool reverse}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
   Future<List<AlbumSummaryRow>> loadAlbumSummaryRows(SummaryExclusion exclusion) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override

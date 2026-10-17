@@ -718,4 +718,70 @@ void main() {
       expect((await windowIds(predicate: predicateForFilters({q('SIZE>1K')})!)).toSet(), {2, 3});
     });
   });
+
+  group('calendar projection', () {
+    /// A local-time timestamp: the day buckets are computed in the device time
+    /// zone, so a UTC fixture would land on a different day.
+    int localMillis(int year, int month, int day, [int hour = 12]) => DateTime(year, month, day, hour).millisecondsSinceEpoch;
+
+    const all = CollectionWindowPredicate();
+
+    Future<void> seedCalendar() => service.insertEntries({
+          entry(1, dateTaken: localMillis(2024, 3, 5, 9)),
+          entry(2, dateTaken: localMillis(2024, 3, 5, 20)),
+          entry(3, dateTaken: localMillis(2024, 3, 7)),
+          entry(4, dateTaken: localMillis(2024, 2, 28)),
+          // No usable date at all: the legacy date grouping drops it.
+          entry(5, dateTaken: 0, modified: null),
+        });
+
+    test('a row stands for a day and carries the day\'s representative', () async {
+      await seedCalendar();
+      expect(await service.countDays(predicate: all), 3);
+
+      final window = await service.loadDayWindow(predicate: all, reverse: false, limit: 10, offset: 0);
+      // Days newest first, and the oldest entry of the day represents it.
+      expect(window.map((e) => e.id), [3, 1, 4]);
+      expect(window.firstWhere((e) => e.id == 1).bestDate?.hour, 9);
+
+      // A reversed view walks the days up and takes the newest entry instead.
+      final reversed = await service.loadDayWindow(predicate: all, reverse: true, limit: 10, offset: 0);
+      expect(reversed.map((e) => e.id), [4, 2, 3]);
+    });
+
+    test('month headers count days, and a month bounds its window', () async {
+      await seedCalendar();
+      final headers = await service.loadDaySectionHeaders(predicate: all, reverse: false);
+      expect([for (final header in headers) (header.year, header.month, header.count)], [(2024, 3, 2), (2024, 2, 1)]);
+
+      final march = await service.loadDayWindow(
+        predicate: all,
+        dateFromMillis: DateTime(2024, 3).millisecondsSinceEpoch,
+        dateToMillis: DateTime(2024, 4).millisecondsSinceEpoch,
+        reverse: false,
+        limit: 10,
+        offset: 0,
+      );
+      expect(march.map((e) => e.id), [3, 1]);
+    });
+
+    test('an entry sits at its day index', () async {
+      await seedCalendar();
+      expect(await service.countDaysBefore(predicate: all, id: 3, reverse: false), 0);
+      expect(await service.countDaysBefore(predicate: all, id: 1, reverse: false), 1);
+      expect(await service.countDaysBefore(predicate: all, id: 4, reverse: false), 2);
+      // An undated entry is in no day, so no index.
+      expect(await service.countDaysBefore(predicate: all, id: 5, reverse: false), -1);
+      expect(await service.countDaysBefore(predicate: all, id: 3, reverse: true), 2);
+    });
+
+    test('a day loads its entries in date order', () async {
+      await seedCalendar();
+      final members = await service.loadDayMembers(predicate: all, days: {DateTime(2024, 3, 5)}, reverse: false);
+      expect(members[DateTime(2024, 3, 5)]!.map((e) => e.id), [1, 2]);
+
+      final reversed = await service.loadDayMembers(predicate: all, days: {DateTime(2024, 3, 5)}, reverse: true);
+      expect(reversed[DateTime(2024, 3, 5)]!.map((e) => e.id), [2, 1]);
+    });
+  });
 }

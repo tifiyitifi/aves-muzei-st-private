@@ -35,6 +35,27 @@ class EntriesTable extends Table {
   /// may disambiguate case variants against the filesystem.
   TextColumn get directory => text().named('directory').nullable()();
 
+  /// Raw `basenameWithoutExtension(path)`, maintained by the entries domain on
+  /// every write and backfilled by `MigrationV4`.
+  ///
+  /// Gives the title search and the stack keys a SQL-visible file name: SQLite
+  /// has no reverse `instr`, so neither the base name nor the extension can be
+  /// derived from `path` inside a query.
+  TextColumn get baseName => text().named('baseName').nullable()();
+
+  /// Burst group key (`'<directory>/<burst key>'`), or NULL when no configured
+  /// pattern matches the entry's name. Maintained on every write.
+  TextColumn get stackKey => text().named('stackKey').nullable()();
+
+  /// The row a stack member hides behind, or NULL when the row shows itself
+  /// (the tile of its group, a row in no group, or a group with no single tile).
+  ///
+  /// Materialized because which member shows is a group-level decision (and, for
+  /// bursts, needs a natural name order SQLite cannot express). The paged view
+  /// hides a member only while its tile is in the same scope, so it tests
+  /// `stackTileId IS NULL OR stackTileId IN (<tile ids the predicate admits>)`.
+  IntColumn get stackTileId => integer().named('stackTileId').nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

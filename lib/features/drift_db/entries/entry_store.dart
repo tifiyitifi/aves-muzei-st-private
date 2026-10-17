@@ -4,8 +4,11 @@ import 'package:aves/features/drift_db/db_helpers.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
+import 'package:aves/features/stacking/model/stack_grouping.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/metadata/trash.dart';
+import 'package:aves/model/settings/settings.dart';
+import 'package:aves/ref/mime_types.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
@@ -23,6 +26,11 @@ class EntryStore {
   /// `.named('directory')` in `EntriesTable`, mirroring the legacy camelCase
   /// pins for raw-map access).
   static const String directoryColumn = 'directory';
+
+  /// Physical names of the maintained stack index columns (pinned via `.named`
+  /// in `EntriesTable`, see `MigrationV4`).
+  static const String baseNameColumn = 'baseName';
+  static const String stackKeyColumn = 'stackKey';
 
   final AppDatabase db;
 
@@ -452,22 +460,139 @@ class EntryStore {
       });
       inserted += slice.length;
     }
+    await reindexStacks(entries);
     _log.d('$runtimeType insert complete in ${stopwatch.elapsed.inMilliseconds}ms for ${entries.length} entries');
   }
 
   Future<void> update(int id, AvesEntry entry) async {
+    // A move changes the row's group, so the *previous* group has to be
+    // reindexed as well.
+    final oldRows = await db.customSelect('SELECT path FROM $_table WHERE id = ?', variables: [Variable(id)]).get();
+    final oldPath = oldRows.firstOrNull?.data['path'] as String?;
     await db.batch((batch) {
       batch.deleteWhere(db.entriesTable, (t) => t.id.equals(id));
       batchInsertReplace(batch, db.entriesTable, _toRowMap(entry));
     });
+    await reindexPaths([oldPath, entry.path]);
   }
 
   /// Row map for writes: the upstream serializer plus the maintained
-  /// `directory` column (see `MigrationV3`).
-  static Map<String, Object?> _toRowMap(AvesEntry entry) => {
-        ...entry.toDatabaseMap(),
-        directoryColumn: directoryOf(entry.path),
-      };
+  /// `directory`, `baseName` and `stackKey` columns (see `MigrationV3`/`V4`).
+  ///
+  /// `stackTileId` is deliberately absent: which member of a group shows is
+  /// settled over the whole group by [reindexStacks].
+  Map<String, Object?> _toRowMap(AvesEntry entry) {
+    final directory = directoryOf(entry.path);
+    final baseName = StackGrouping.baseNameOf(entry.path);
+    return {
+      ...entry.toDatabaseMap(),
+      directoryColumn: directory,
+      baseNameColumn: baseName,
+      stackKeyColumn: StackGrouping.stackKeyOf(directory: directory, baseName: baseName, patterns: burstPatterns),
+    };
+  }
+
+  /// The burst patterns stack keys are built from.
+  List<String> get burstPatterns => settings.collectionBurstPatterns;
+
+  /// Recomputes the stack tiles of the groups [entries] belong to.
+  ///
+  /// Called right after a write batch: which member of a group shows is a
+  /// group-level decision, so inserting a burst frame — or moving an entry
+  /// between groups — can hand the tile to another row.
+  Future<void> reindexStacks(Iterable<AvesEntry> entries) => reindexPaths(entries.map((entry) => entry.path));
+
+  /// [reindexStacks] over paths, for callers that only have paths.
+  Future<void> reindexPaths(Iterable<String?> paths) async {
+    final keys = <String>{};
+    final pairs = <(String?, String?)>{};
+    for (final path in paths) {
+      final directory = directoryOf(path);
+      final baseName = StackGrouping.baseNameOf(path);
+      final key = StackGrouping.stackKeyOf(directory: directory, baseName: baseName, patterns: burstPatterns);
+      if (key != null) {
+        keys.add(key);
+      } else {
+        pairs.add((directory, baseName));
+      }
+    }
+    for (final key in keys) {
+      await _applyGroupTiles(await _burstGroupRows(key), hasBurstKey: true);
+    }
+    for (final pair in pairs) {
+      await _applyGroupTiles(await _directoryPairRows(pair.$1, pair.$2), hasBurstKey: false);
+    }
+  }
+
+  /// Recomputes every stack group in the table (used by `MigrationV4`).
+  Future<void> reindexAllStacks() async {
+    final keys = await db.customSelect('SELECT DISTINCT stackKey FROM $_table WHERE stackKey IS NOT NULL').get();
+    for (final row in keys) {
+      await _applyGroupTiles(await _burstGroupRows(row.data['stackKey'] as String), hasBurstKey: true);
+    }
+    // Rows without a burst key can still form a developed-raw pair, and only
+    // those two mime groups can.
+    final mimes = [...MimeTypes.rawImages, ...MimeTypes.developedRawImages];
+    final placeholders = mimes.map((_) => '?').join(',');
+    final pairs = await db.customSelect(
+      'SELECT DISTINCT e.directory AS directory, e.baseName AS baseName FROM $_table e '
+      'LEFT JOIN metadata m ON m.id = e.id '
+      'WHERE e.stackKey IS NULL AND e.baseName IS NOT NULL AND COALESCE(m.mimeType, e.sourceMimeType) IN ($placeholders)',
+      variables: [for (final mime in mimes) Variable(mime)],
+    ).get();
+    for (final row in pairs) {
+      await _applyGroupTiles(await _directoryPairRows(row.data['directory'] as String?, row.data['baseName'] as String?), hasBurstKey: false);
+    }
+  }
+
+  /// Rows of one burst group, with the mime type the stack policy reads.
+  Future<List<StackRow>> _burstGroupRows(String stackKey) => _groupRows('e.stackKey = ?', [Variable(stackKey)]);
+
+  /// Rows sharing a directory and base name: the developed-raw pairing.
+  Future<List<StackRow>> _directoryPairRows(String? directory, String? baseName) {
+    if (baseName == null) return Future.value(const <StackRow>[]);
+    return _groupRows(
+      '${directory == null ? 'e.directory IS NULL' : 'e.directory = ?'} AND e.baseName = ?',
+      [if (directory != null) Variable(directory), Variable(baseName)],
+    );
+  }
+
+  /// Rows of one stack group, with the mime type the stack policy reads.
+  Future<List<StackRow>> _groupRows(String where, List<Variable> variables) async {
+    final rows = await db.customSelect(
+      'SELECT e.id AS id, e.path AS path, COALESCE(m.mimeType, e.sourceMimeType) AS mimeType '
+      'FROM $_table e LEFT JOIN metadata m ON m.id = e.id WHERE $where',
+      variables: variables,
+    ).get();
+    return [
+      for (final row in rows)
+        (id: row.data['id'] as int, path: row.data['path'] as String?, mimeType: row.data['mimeType'] as String?),
+    ];
+  }
+
+  /// Writes `stackTileId` for the rows of one group.
+  Future<void> _applyGroupTiles(List<StackRow> rows, {required bool hasBurstKey}) async {
+    if (rows.isEmpty) return;
+    final tiles = StackGrouping.tileIds(rows, hasBurstKey: hasBurstKey);
+    final selfShowing = <int>[];
+    final membersByTile = <int, List<int>>{};
+    for (final row in rows) {
+      final tileId = tiles[row.id];
+      if (tileId == null) {
+        selfShowing.add(row.id);
+      } else {
+        membersByTile.putIfAbsent(tileId, () => []).add(row.id);
+      }
+    }
+    await db.batch((batch) {
+      if (selfShowing.isNotEmpty) {
+        batch.update(db.entriesTable, const EntriesTableCompanion(stackTileId: Value(null)), where: (t) => t.id.isIn(selfShowing));
+      }
+      membersByTile.forEach((tileId, ids) {
+        batch.update(db.entriesTable, EntriesTableCompanion(stackTileId: Value(tileId)), where: (t) => t.id.isIn(ids));
+      });
+    });
+  }
 
   /// Raw single-level parent directory of [path], or null for path-less rows.
   ///

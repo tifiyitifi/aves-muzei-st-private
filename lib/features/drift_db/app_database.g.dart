@@ -179,6 +179,39 @@ class $EntriesTableTable extends EntriesTable
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _baseNameMeta = const VerificationMeta(
+    'baseName',
+  );
+  @override
+  late final GeneratedColumn<String> baseName = GeneratedColumn<String>(
+    'baseName',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _stackKeyMeta = const VerificationMeta(
+    'stackKey',
+  );
+  @override
+  late final GeneratedColumn<String> stackKey = GeneratedColumn<String>(
+    'stackKey',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _stackTileIdMeta = const VerificationMeta(
+    'stackTileId',
+  );
+  @override
+  late final GeneratedColumn<int> stackTileId = GeneratedColumn<int>(
+    'stackTileId',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -198,6 +231,9 @@ class $EntriesTableTable extends EntriesTable
     trashed,
     origin,
     directory,
+    baseName,
+    stackKey,
+    stackTileId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -328,6 +364,27 @@ class $EntriesTableTable extends EntriesTable
         directory.isAcceptableOrUnknown(data['directory']!, _directoryMeta),
       );
     }
+    if (data.containsKey('baseName')) {
+      context.handle(
+        _baseNameMeta,
+        baseName.isAcceptableOrUnknown(data['baseName']!, _baseNameMeta),
+      );
+    }
+    if (data.containsKey('stackKey')) {
+      context.handle(
+        _stackKeyMeta,
+        stackKey.isAcceptableOrUnknown(data['stackKey']!, _stackKeyMeta),
+      );
+    }
+    if (data.containsKey('stackTileId')) {
+      context.handle(
+        _stackTileIdMeta,
+        stackTileId.isAcceptableOrUnknown(
+          data['stackTileId']!,
+          _stackTileIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -405,6 +462,18 @@ class $EntriesTableTable extends EntriesTable
         DriftSqlType.string,
         data['${effectivePrefix}directory'],
       ),
+      baseName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}baseName'],
+      ),
+      stackKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stackKey'],
+      ),
+      stackTileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}stackTileId'],
+      ),
     );
   }
 
@@ -440,6 +509,27 @@ class EntriesTableData extends DataClass
   /// scanning paths. Display names still resolve through `entryDirRepo`, which
   /// may disambiguate case variants against the filesystem.
   final String? directory;
+
+  /// Raw `basenameWithoutExtension(path)`, maintained by the entries domain on
+  /// every write and backfilled by `MigrationV4`.
+  ///
+  /// Gives the title search and the stack keys a SQL-visible file name: SQLite
+  /// has no reverse `instr`, so neither the base name nor the extension can be
+  /// derived from `path` inside a query.
+  final String? baseName;
+
+  /// Burst group key (`'<directory>/<burst key>'`), or NULL when no configured
+  /// pattern matches the entry's name. Maintained on every write.
+  final String? stackKey;
+
+  /// The row a stack member hides behind, or NULL when the row shows itself
+  /// (the tile of its group, a row in no group, or a group with no single tile).
+  ///
+  /// Materialized because which member shows is a group-level decision (and, for
+  /// bursts, needs a natural name order SQLite cannot express). The paged view
+  /// hides a member only while its tile is in the same scope, so it tests
+  /// `stackTileId IS NULL OR stackTileId IN (<tile ids the predicate admits>)`.
+  final int? stackTileId;
   const EntriesTableData({
     required this.id,
     this.contentId,
@@ -458,6 +548,9 @@ class EntriesTableData extends DataClass
     this.trashed,
     this.origin,
     this.directory,
+    this.baseName,
+    this.stackKey,
+    this.stackTileId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -511,6 +604,15 @@ class EntriesTableData extends DataClass
     if (!nullToAbsent || directory != null) {
       map['directory'] = Variable<String>(directory);
     }
+    if (!nullToAbsent || baseName != null) {
+      map['baseName'] = Variable<String>(baseName);
+    }
+    if (!nullToAbsent || stackKey != null) {
+      map['stackKey'] = Variable<String>(stackKey);
+    }
+    if (!nullToAbsent || stackTileId != null) {
+      map['stackTileId'] = Variable<int>(stackTileId);
+    }
     return map;
   }
 
@@ -561,6 +663,15 @@ class EntriesTableData extends DataClass
       directory: directory == null && nullToAbsent
           ? const Value.absent()
           : Value(directory),
+      baseName: baseName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(baseName),
+      stackKey: stackKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(stackKey),
+      stackTileId: stackTileId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(stackTileId),
     );
   }
 
@@ -591,6 +702,9 @@ class EntriesTableData extends DataClass
       trashed: serializer.fromJson<int?>(json['trashed']),
       origin: serializer.fromJson<int?>(json['origin']),
       directory: serializer.fromJson<String?>(json['directory']),
+      baseName: serializer.fromJson<String?>(json['baseName']),
+      stackKey: serializer.fromJson<String?>(json['stackKey']),
+      stackTileId: serializer.fromJson<int?>(json['stackTileId']),
     );
   }
   @override
@@ -614,6 +728,9 @@ class EntriesTableData extends DataClass
       'trashed': serializer.toJson<int?>(trashed),
       'origin': serializer.toJson<int?>(origin),
       'directory': serializer.toJson<String?>(directory),
+      'baseName': serializer.toJson<String?>(baseName),
+      'stackKey': serializer.toJson<String?>(stackKey),
+      'stackTileId': serializer.toJson<int?>(stackTileId),
     };
   }
 
@@ -635,6 +752,9 @@ class EntriesTableData extends DataClass
     Value<int?> trashed = const Value.absent(),
     Value<int?> origin = const Value.absent(),
     Value<String?> directory = const Value.absent(),
+    Value<String?> baseName = const Value.absent(),
+    Value<String?> stackKey = const Value.absent(),
+    Value<int?> stackTileId = const Value.absent(),
   }) => EntriesTableData(
     id: id ?? this.id,
     contentId: contentId.present ? contentId.value : this.contentId,
@@ -665,6 +785,9 @@ class EntriesTableData extends DataClass
     trashed: trashed.present ? trashed.value : this.trashed,
     origin: origin.present ? origin.value : this.origin,
     directory: directory.present ? directory.value : this.directory,
+    baseName: baseName.present ? baseName.value : this.baseName,
+    stackKey: stackKey.present ? stackKey.value : this.stackKey,
+    stackTileId: stackTileId.present ? stackTileId.value : this.stackTileId,
   );
   EntriesTableData copyWithCompanion(EntriesTableCompanion data) {
     return EntriesTableData(
@@ -697,6 +820,11 @@ class EntriesTableData extends DataClass
       trashed: data.trashed.present ? data.trashed.value : this.trashed,
       origin: data.origin.present ? data.origin.value : this.origin,
       directory: data.directory.present ? data.directory.value : this.directory,
+      baseName: data.baseName.present ? data.baseName.value : this.baseName,
+      stackKey: data.stackKey.present ? data.stackKey.value : this.stackKey,
+      stackTileId: data.stackTileId.present
+          ? data.stackTileId.value
+          : this.stackTileId,
     );
   }
 
@@ -719,7 +847,10 @@ class EntriesTableData extends DataClass
           ..write('durationMillis: $durationMillis, ')
           ..write('trashed: $trashed, ')
           ..write('origin: $origin, ')
-          ..write('directory: $directory')
+          ..write('directory: $directory, ')
+          ..write('baseName: $baseName, ')
+          ..write('stackKey: $stackKey, ')
+          ..write('stackTileId: $stackTileId')
           ..write(')'))
         .toString();
   }
@@ -743,6 +874,9 @@ class EntriesTableData extends DataClass
     trashed,
     origin,
     directory,
+    baseName,
+    stackKey,
+    stackTileId,
   );
   @override
   bool operator ==(Object other) =>
@@ -764,7 +898,10 @@ class EntriesTableData extends DataClass
           other.durationMillis == this.durationMillis &&
           other.trashed == this.trashed &&
           other.origin == this.origin &&
-          other.directory == this.directory);
+          other.directory == this.directory &&
+          other.baseName == this.baseName &&
+          other.stackKey == this.stackKey &&
+          other.stackTileId == this.stackTileId);
 }
 
 class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
@@ -785,6 +922,9 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
   final Value<int?> trashed;
   final Value<int?> origin;
   final Value<String?> directory;
+  final Value<String?> baseName;
+  final Value<String?> stackKey;
+  final Value<int?> stackTileId;
   const EntriesTableCompanion({
     this.id = const Value.absent(),
     this.contentId = const Value.absent(),
@@ -803,6 +943,9 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
     this.trashed = const Value.absent(),
     this.origin = const Value.absent(),
     this.directory = const Value.absent(),
+    this.baseName = const Value.absent(),
+    this.stackKey = const Value.absent(),
+    this.stackTileId = const Value.absent(),
   });
   EntriesTableCompanion.insert({
     this.id = const Value.absent(),
@@ -822,6 +965,9 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
     this.trashed = const Value.absent(),
     this.origin = const Value.absent(),
     this.directory = const Value.absent(),
+    this.baseName = const Value.absent(),
+    this.stackKey = const Value.absent(),
+    this.stackTileId = const Value.absent(),
   });
   static Insertable<EntriesTableData> custom({
     Expression<int>? id,
@@ -841,6 +987,9 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
     Expression<int>? trashed,
     Expression<int>? origin,
     Expression<String>? directory,
+    Expression<String>? baseName,
+    Expression<String>? stackKey,
+    Expression<int>? stackTileId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -862,6 +1011,9 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
       if (trashed != null) 'trashed': trashed,
       if (origin != null) 'origin': origin,
       if (directory != null) 'directory': directory,
+      if (baseName != null) 'baseName': baseName,
+      if (stackKey != null) 'stackKey': stackKey,
+      if (stackTileId != null) 'stackTileId': stackTileId,
     });
   }
 
@@ -883,6 +1035,9 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
     Value<int?>? trashed,
     Value<int?>? origin,
     Value<String?>? directory,
+    Value<String?>? baseName,
+    Value<String?>? stackKey,
+    Value<int?>? stackTileId,
   }) {
     return EntriesTableCompanion(
       id: id ?? this.id,
@@ -904,6 +1059,9 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
       trashed: trashed ?? this.trashed,
       origin: origin ?? this.origin,
       directory: directory ?? this.directory,
+      baseName: baseName ?? this.baseName,
+      stackKey: stackKey ?? this.stackKey,
+      stackTileId: stackTileId ?? this.stackTileId,
     );
   }
 
@@ -961,6 +1119,15 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
     if (directory.present) {
       map['directory'] = Variable<String>(directory.value);
     }
+    if (baseName.present) {
+      map['baseName'] = Variable<String>(baseName.value);
+    }
+    if (stackKey.present) {
+      map['stackKey'] = Variable<String>(stackKey.value);
+    }
+    if (stackTileId.present) {
+      map['stackTileId'] = Variable<int>(stackTileId.value);
+    }
     return map;
   }
 
@@ -983,7 +1150,10 @@ class EntriesTableCompanion extends UpdateCompanion<EntriesTableData> {
           ..write('durationMillis: $durationMillis, ')
           ..write('trashed: $trashed, ')
           ..write('origin: $origin, ')
-          ..write('directory: $directory')
+          ..write('directory: $directory, ')
+          ..write('baseName: $baseName, ')
+          ..write('stackKey: $stackKey, ')
+          ..write('stackTileId: $stackTileId')
           ..write(')'))
         .toString();
   }
@@ -4476,6 +4646,9 @@ typedef $$EntriesTableTableCreateCompanionBuilder =
       Value<int?> trashed,
       Value<int?> origin,
       Value<String?> directory,
+      Value<String?> baseName,
+      Value<String?> stackKey,
+      Value<int?> stackTileId,
     });
 typedef $$EntriesTableTableUpdateCompanionBuilder =
     EntriesTableCompanion Function({
@@ -4496,6 +4669,9 @@ typedef $$EntriesTableTableUpdateCompanionBuilder =
       Value<int?> trashed,
       Value<int?> origin,
       Value<String?> directory,
+      Value<String?> baseName,
+      Value<String?> stackKey,
+      Value<int?> stackTileId,
     });
 
 class $$EntriesTableTableFilterComposer
@@ -4589,6 +4765,21 @@ class $$EntriesTableTableFilterComposer
 
   ColumnFilters<String> get directory => $composableBuilder(
     column: $table.directory,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get baseName => $composableBuilder(
+    column: $table.baseName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get stackKey => $composableBuilder(
+    column: $table.stackKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get stackTileId => $composableBuilder(
+    column: $table.stackTileId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4686,6 +4877,21 @@ class $$EntriesTableTableOrderingComposer
     column: $table.directory,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get baseName => $composableBuilder(
+    column: $table.baseName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stackKey => $composableBuilder(
+    column: $table.stackKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get stackTileId => $composableBuilder(
+    column: $table.stackTileId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$EntriesTableTableAnnotationComposer
@@ -4759,6 +4965,17 @@ class $$EntriesTableTableAnnotationComposer
 
   GeneratedColumn<String> get directory =>
       $composableBuilder(column: $table.directory, builder: (column) => column);
+
+  GeneratedColumn<String> get baseName =>
+      $composableBuilder(column: $table.baseName, builder: (column) => column);
+
+  GeneratedColumn<String> get stackKey =>
+      $composableBuilder(column: $table.stackKey, builder: (column) => column);
+
+  GeneratedColumn<int> get stackTileId => $composableBuilder(
+    column: $table.stackTileId,
+    builder: (column) => column,
+  );
 }
 
 class $$EntriesTableTableTableManager
@@ -4809,6 +5026,9 @@ class $$EntriesTableTableTableManager
                 Value<int?> trashed = const Value.absent(),
                 Value<int?> origin = const Value.absent(),
                 Value<String?> directory = const Value.absent(),
+                Value<String?> baseName = const Value.absent(),
+                Value<String?> stackKey = const Value.absent(),
+                Value<int?> stackTileId = const Value.absent(),
               }) => EntriesTableCompanion(
                 id: id,
                 contentId: contentId,
@@ -4827,6 +5047,9 @@ class $$EntriesTableTableTableManager
                 trashed: trashed,
                 origin: origin,
                 directory: directory,
+                baseName: baseName,
+                stackKey: stackKey,
+                stackTileId: stackTileId,
               ),
           createCompanionCallback:
               ({
@@ -4847,6 +5070,9 @@ class $$EntriesTableTableTableManager
                 Value<int?> trashed = const Value.absent(),
                 Value<int?> origin = const Value.absent(),
                 Value<String?> directory = const Value.absent(),
+                Value<String?> baseName = const Value.absent(),
+                Value<String?> stackKey = const Value.absent(),
+                Value<int?> stackTileId = const Value.absent(),
               }) => EntriesTableCompanion.insert(
                 id: id,
                 contentId: contentId,
@@ -4865,6 +5091,9 @@ class $$EntriesTableTableTableManager
                 trashed: trashed,
                 origin: origin,
                 directory: directory,
+                baseName: baseName,
+                stackKey: stackKey,
+                stackTileId: stackTileId,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

@@ -37,8 +37,10 @@ void main() {
     // Force the connection open so the migration runs.
     await db.customSelect('SELECT 1').get();
 
+    // The chain is forward-only, so a v2 database lands on the current version;
+    // what this test pins is that the v3 column/index work still happens.
     final version = (await db.customSelect('PRAGMA user_version').get()).single.data['user_version'];
-    expect(version, 3);
+    expect(version, 4);
 
     final rows = await db.customSelect('SELECT id, directory FROM entry ORDER BY id').get();
     expect(rows.map((r) => r.data['directory']).toList(), ['/a', '/a/b', null]);

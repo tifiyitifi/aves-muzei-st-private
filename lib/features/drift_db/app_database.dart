@@ -8,6 +8,7 @@ import 'package:aves/features/drift_db/entries/entry_table.dart';
 import 'package:aves/features/drift_db/favourites/favourite_table.dart';
 import 'package:aves/features/drift_db/migration/migration_v2.dart';
 import 'package:aves/features/drift_db/migration/migration_v3.dart';
+import 'package:aves/features/drift_db/migration/migration_v4.dart';
 import 'package:aves/features/drift_db/trash/trash_table.dart';
 import 'package:aves/features/drift_db/vaults/vault_table.dart';
 import 'package:aves/features/drift_db/video_playback/video_playback_table.dart';
@@ -52,7 +53,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -64,6 +65,7 @@ class AppDatabase extends _$AppDatabase {
           // Forward-only, per-version migration chain (iris-style).
           if (from < 2) await MigrationV2(this).run(m);
           if (from < 3) await MigrationV3(this).run(m);
+          if (from < 4) await MigrationV4(this).run(m);
         },
         beforeOpen: (details) async {
           // The main isolate and the analysis background isolate each open
@@ -81,5 +83,6 @@ class AppDatabase extends _$AppDatabase {
   /// versions introduce indexes.
   Future<void> _createIndexes() async {
     await MigrationV3.createNewIndexes(this);
+    await MigrationV4.createNewIndexes(this);
   }
 }

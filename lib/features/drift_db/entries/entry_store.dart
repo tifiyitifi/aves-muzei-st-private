@@ -170,7 +170,7 @@ class EntryStore {
     final where = _windowWhere(predicate: predicate);
     final from = _from(predicate, dateTaken: true);
     final rows = await db.customSelect(
-      'SELECT COUNT(*) AS n, COALESCE(SUM(e.sizeBytes), 0) AS s, MAX($_bestDate) AS md $from ${where.sql}',
+      'SELECT COUNT(*) AS n, COALESCE(SUM(e.sizeBytes), 0) AS s, MAX($bestDateExpression) AS md $from ${where.sql}',
       variables: where.variables,
     ).get();
     final data = rows.firstOrNull?.data;
@@ -238,9 +238,6 @@ class EntryStore {
     return [for (final row in rows) _entryFromWindowRow(row.data)];
   }
 
-  /// `bestDate`, mirroring `AvesEntry.bestDate` (and the ORDER BY below).
-  static const String _bestDate = 'COALESCE(dt.dateMillis, e.sourceDateTakenMillis, e.dateModifiedMillis, 0)';
-
   /// Sort key of the collection order: one expression per key part, each with
   /// its default direction.
   ///
@@ -253,7 +250,7 @@ class EntryStore {
   /// Null for the chip sorts, which have no window ordering.
   static List<({String expr, bool descDefault})>? _sortKey(SortFactor sort) => switch (sort) {
         SortFactor.date => const [
-            (expr: _bestDate, descDefault: true),
+            (expr: bestDateExpression, descDefault: true),
             (expr: 'e.title', descDefault: true),
             (expr: 'e.id', descDefault: true),
           ],
@@ -263,17 +260,17 @@ class EntryStore {
           ],
         SortFactor.rating => const [
             (expr: 'COALESCE(m.rating, 0)', descDefault: true),
-            (expr: _bestDate, descDefault: true),
+            (expr: bestDateExpression, descDefault: true),
             (expr: 'e.id', descDefault: true),
           ],
         SortFactor.size => const [
             (expr: 'COALESCE(e.sizeBytes, 0)', descDefault: true),
-            (expr: _bestDate, descDefault: true),
+            (expr: bestDateExpression, descDefault: true),
             (expr: 'e.id', descDefault: true),
           ],
         SortFactor.duration => const [
             (expr: 'COALESCE(e.durationMillis, 0)', descDefault: true),
-            (expr: _bestDate, descDefault: true),
+            (expr: bestDateExpression, descDefault: true),
             (expr: 'e.id', descDefault: true),
           ],
         SortFactor.chipName || SortFactor.count => null,
@@ -362,7 +359,7 @@ class EntryStore {
         return [for (final row in rows) SectionHeader.album(directory: row.data['k'] as String?, count: (row.data['n'] as int?) ?? 0)];
       case SectionGrouping.month:
       case SectionGrouping.day:
-        const bestDateSecs = 'COALESCE(dt.dateMillis, e.sourceDateTakenMillis, e.dateModifiedMillis, 0) / 1000';
+        const bestDateSecs = '$bestDateExpression / 1000';
         final parts = grouping == SectionGrouping.month ? "strftime('%Y', $bestDateSecs, 'unixepoch', 'localtime') AS y, strftime('%m', $bestDateSecs, 'unixepoch', 'localtime') AS m" : "strftime('%Y', $bestDateSecs, 'unixepoch', 'localtime') AS y, strftime('%m', $bestDateSecs, 'unixepoch', 'localtime') AS m, strftime('%d', $bestDateSecs, 'unixepoch', 'localtime') AS d";
         final dir = reverse ? 'ASC' : 'DESC';
         final rows = await db.customSelect(
@@ -424,7 +421,7 @@ class EntryStore {
       variables.add(Variable(directoryEquals));
     }
     if (dateFromMillis != null || dateToMillis != null) {
-      const bestDate = 'COALESCE(dt.dateMillis, e.sourceDateTakenMillis, e.dateModifiedMillis, 0)';
+      const bestDate = bestDateExpression;
       if (dateFromMillis != null) {
         conditions.add('$bestDate >= ?');
         variables.add(Variable(dateFromMillis));

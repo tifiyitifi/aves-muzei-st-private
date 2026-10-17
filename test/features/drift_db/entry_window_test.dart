@@ -1,8 +1,10 @@
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
+import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/entry/sort.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/container/set_or.dart';
@@ -10,11 +12,15 @@ import 'package:aves/model/filters/container/tag_group.dart';
 import 'package:aves/model/filters/covered/location.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/covered/tag.dart';
+import 'package:aves/model/filters/date.dart';
+import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/missing.dart';
 import 'package:aves/model/filters/path.dart';
 import 'package:aves/model/filters/rating.dart';
+import 'package:aves/model/filters/recent.dart';
 import 'package:aves/model/filters/type.dart';
+import 'package:aves/model/filters/weekday.dart';
 import 'package:aves/model/metadata/address.dart';
 import 'package:aves/model/metadata/catalog.dart';
 import 'package:aves/ref/mime_types.dart';
@@ -60,6 +66,8 @@ void main() {
     bool trashed = false,
     int origin = EntryOrigins.mediaStoreContent,
     String mime = 'image/jpeg',
+    int? modified = 2,
+    int dateAdded = 1,
   }) {
     final album = dir ?? '/album';
     return AvesEntry(
@@ -74,8 +82,8 @@ void main() {
       sourceRotationDegrees: 0,
       sizeBytes: size,
       sourceTitle: 'title$id',
-      dateAddedSecs: 1,
-      dateModifiedMillis: 2,
+      dateAddedSecs: dateAdded,
+      dateModifiedMillis: modified,
       sourceDateTakenMillis: dateTaken,
       durationMillis: 0,
       trashed: trashed,
@@ -93,6 +101,32 @@ void main() {
   }
 
   int millis(int year, int month, [int day = 15]) => DateTime.utc(year, month, day).millisecondsSinceEpoch;
+
+  /// Inserts [entries] and mirrors the persisted metadata back onto the Dart
+  /// objects, so the legacy in-memory `filter.test` can be evaluated for exactly
+  /// the rows the database holds.
+  Future<void> seed(List<AvesEntry> entries, {Set<CatalogMetadata> catalog = const {}, Set<AddressDetails> addresses = const {}}) async {
+    await service.insertEntries(entries.toSet());
+    if (catalog.isNotEmpty) await service.saveCatalogMetadata(catalog);
+    if (addresses.isNotEmpty) await service.saveAddresses(addresses);
+    for (final metadata in catalog) {
+      // The setter also mirrors `catalogDateMillis`, like `CatalogStore`.
+      entries.firstWhere((e) => e.id == metadata.id).catalogMetadata = metadata;
+    }
+    for (final address in addresses) {
+      entries.firstWhere((e) => e.id == address.id).addressDetails = address;
+    }
+  }
+
+  /// The SQL predicate must select exactly the rows the legacy in-memory filters
+  /// select: the contract behind "browsing a huge library looks the same".
+  Future<void> expectMatchesInMemory(Set<CollectionFilter> filters, List<AvesEntry> entries) async {
+    final predicate = predicateForFilters(filters);
+    expect(predicate, isNotNull, reason: 'filters should compile: $filters');
+    final selected = (await windowIds(predicate: predicate!)).toSet();
+    final expected = entries.where((e) => filters.every((f) => f.test(e))).map((e) => e.id).toSet();
+    expect(selected, expected, reason: 'SQL and in-memory disagreed for $filters');
+  }
 
   group('countEntries', () {
     test('counts all non-trashed entries by default', () async {
@@ -382,6 +416,89 @@ void main() {
       // hiding "not in /a" leaves only /a
       final predicate = predicateForFilters({}, hidden: {StoredAlbumFilter('/a', null, reversed: true)})!;
       expect(await windowIds(predicate: predicate), [1]);
+    });
+  });
+
+  group('date atoms', () {
+    // 2024-03-05 is a Tuesday.
+    final day = DateTime(2024, 3, 5, 10);
+
+    Future<List<AvesEntry>> dateEntries() async {
+      final entries = [
+        entry(1, dateTaken: DateTime(2024, 3, 5, 10).millisecondsSinceEpoch),
+        entry(2, dateTaken: DateTime(2024, 3, 6, 10).millisecondsSinceEpoch),
+        entry(3, dateTaken: DateTime(2023, 3, 5, 10).millisecondsSinceEpoch),
+        // No usable date at all: no catalogued, source nor modification date.
+        entry(4, modified: null),
+      ];
+      await seed(entries);
+      return entries;
+    }
+
+    test('date filters agree with the in-memory test', () async {
+      final entries = await dateEntries();
+      for (final level in DateLevel.values) {
+        final filter = DateFilter(ACalendar.gregorian, level, day);
+        await expectMatchesInMemory({filter}, entries);
+        await expectMatchesInMemory({filter.reverse()}, entries);
+      }
+    });
+
+    test('a year-month-day filter selects exactly that day', () async {
+      final entries = await dateEntries();
+      final filter = DateFilter(ACalendar.gregorian, DateLevel.ymd, day);
+      await expectMatchesInMemory({filter}, entries);
+      expect(await windowIds(predicate: predicateForFilters({filter})!), [1]);
+    });
+
+    test('non-gregorian calendars keep the legacy path', () {
+      for (final calendar in [ACalendar.hijriTbla, ACalendar.hijriUmalqura, ACalendar.persian]) {
+        expect(predicateForFilters({DateFilter(calendar, DateLevel.ymd, day)}), isNull, reason: '$calendar');
+      }
+    });
+
+    test('weekday filters agree with the in-memory test', () async {
+      final entries = await dateEntries();
+      for (final weekday in [1, 7, day.weekday]) {
+        final filter = WeekDayFilter(weekday);
+        await expectMatchesInMemory({filter}, entries);
+        await expectMatchesInMemory({filter.reverse()}, entries);
+      }
+    });
+
+    test('recently added agrees around the 24h boundary', () async {
+      RecentlyAddedFilter.updateNow();
+      final now = RecentlyAddedFilter.nowSecs;
+      final entries = [
+        entry(1, dateAdded: now - 1),
+        entry(2, dateAdded: now - 86399),
+        entry(3, dateAdded: now - 86400),
+        entry(4, dateAdded: now - 100000),
+        entry(5, dateAdded: 0),
+      ];
+      await seed(entries);
+      await expectMatchesInMemory({RecentlyAddedFilter.instance}, entries);
+      await expectMatchesInMemory({RecentlyAddedFilter.instance.reverse()}, entries);
+      expect((await windowIds(predicate: predicateForFilters({RecentlyAddedFilter.instance})!)).toSet(), {1, 2});
+    });
+
+    test('orders dates like the legacy in-memory sort, including 0 and -1 fallbacks', () async {
+      final entries = [
+        entry(1, dateTaken: 5000, modified: 2),
+        entry(2, dateTaken: 0, modified: 2),
+        entry(3, dateTaken: 0, modified: 3000),
+        entry(4, dateTaken: -1, modified: 1000),
+        entry(5, dateTaken: 0, modified: null),
+      ];
+      // A catalogued date outranks the source date.
+      await seed(entries, catalog: {CatalogMetadata(id: 2, dateMillis: 9000)});
+
+      // `sourceDateTakenMillis` 0/-1 are "unknown", so those entries sort by
+      // their modification date instead of as if they were from 1970.
+      final memoryOrder = (List.of(entries)..sort(AvesEntrySort.compareByDate)).map((e) => e.id).toList();
+      expect(memoryOrder, [2, 1, 3, 4, 5]);
+      expect(await windowIds(sort: SortFactor.date), memoryOrder);
+      expect(await windowIds(sort: SortFactor.date, reverse: true), memoryOrder.reversed);
     });
   });
 

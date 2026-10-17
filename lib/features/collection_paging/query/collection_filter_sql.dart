@@ -1,4 +1,5 @@
 import 'package:aves/geo/states.dart';
+import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/container/set_and.dart';
@@ -7,13 +8,16 @@ import 'package:aves/model/filters/container/tag_group.dart';
 import 'package:aves/model/filters/covered/location.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/covered/tag.dart';
+import 'package:aves/model/filters/date.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/missing.dart';
 import 'package:aves/model/filters/path.dart';
 import 'package:aves/model/filters/rating.dart';
+import 'package:aves/model/filters/recent.dart';
 import 'package:aves/model/filters/type.dart';
+import 'package:aves/model/filters/weekday.dart';
 import 'package:aves/ref/mime_types.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:drift/drift.dart';
@@ -28,6 +32,25 @@ enum WindowTable { dateTaken, metadata, address }
 /// One AND-ed SQL fragment over the standard window aliases
 /// (`e` entry, `dt` dateTaken, `m` metadata, `a` address).
 typedef WindowFragment = ({String sql, List<Variable> variables, Set<WindowTable> requires});
+
+/// SQL mirror of `AvesEntry.bestDate`: the catalogued date, else the source
+/// date, else the modification date — each one only when it is neither `0` nor
+/// `-1`, which `dateTimeFromMillis` treats as "unknown".
+///
+/// NULL when the entry has no usable date; [bestDateExpression] adds the epoch
+/// fallback the ordering uses.
+const String bestDateIfSetExpression = 'COALESCE(NULLIF(NULLIF(dt.dateMillis, 0), -1), NULLIF(NULLIF(e.sourceDateTakenMillis, 0), -1), NULLIF(NULLIF(e.dateModifiedMillis, 0), -1))';
+
+/// [bestDateIfSetExpression] with `0` for an absent date.
+///
+/// This is the single ordering/aggregate/grouping key, and matches
+/// `AvesEntrySort.compareByDate`, which also substitutes the epoch: an entry
+/// whose catalogued date is unknown falls back to its source or modification
+/// date instead of sorting as if it were from 1970.
+const String bestDateExpression = 'COALESCE($bestDateIfSetExpression, 0)';
+
+/// [bestDateIfSetExpression] in whole seconds, for `strftime` calendar fields.
+const String _bestDateSeconds = '$bestDateIfSetExpression / 1000';
 
 /// Translates a filter into SQL equivalent to `filter.test(entry)`.
 ///
@@ -80,6 +103,12 @@ WindowFragment? _positiveFragment(CollectionFilter filter) {
       return _ratingFragment(rating, op);
     case TypeFilter():
       return _typeFragment(filter);
+    case DateFilter():
+      return _dateFragment(filter);
+    case WeekDayFilter(weekday: final weekday):
+      return _weekDayFragment(weekday);
+    case RecentlyAddedFilter():
+      return _recentlyAddedFragment();
     case MissingFilter():
       return _missingFragment(filter);
     case PathFilter(path: final path):
@@ -273,6 +302,68 @@ WindowFragment? _missingFragment(MissingFilter filter) {
   }
   return null;
 }
+
+WindowFragment? _dateFragment(DateFilter filter) {
+  // Only the Gregorian calendar maps to SQLite's date functions; the hijri and
+  // persian ops convert through their own tables.
+  if (filter.calendar != ACalendar.gregorian) return null;
+  // `DateFilter` captures `date ?? now` at construction; re-reading `now` here
+  // can only differ across midnight, and the legacy in-memory list is rebuilt on
+  // the same lifecycle events.
+  final date = filter.date ?? DateTime.now();
+  const year = "CAST(strftime('%Y', $_bestDateSeconds, 'unixepoch', 'localtime') AS INTEGER)";
+  const month = "CAST(strftime('%m', $_bestDateSeconds, 'unixepoch', 'localtime') AS INTEGER)";
+  const day = "CAST(strftime('%d', $_bestDateSeconds, 'unixepoch', 'localtime') AS INTEGER)";
+  // `DateFilter` tests `entry.bestDate`, which is null for entries without any
+  // usable date: those match no date at all.
+  final conditions = <String>['$bestDateIfSetExpression IS NOT NULL'];
+  final variables = <Variable>[];
+  void match(String expr, int value) {
+    conditions.add('$expr = ?');
+    variables.add(Variable(value));
+  }
+
+  switch (filter.level) {
+    case DateLevel.y:
+      match(year, date.year);
+    case DateLevel.ym:
+      match(year, date.year);
+      match(month, date.month);
+    case DateLevel.ymd:
+      match(year, date.year);
+      match(month, date.month);
+      match(day, date.day);
+    case DateLevel.md:
+      // Any year.
+      match(month, date.month);
+      match(day, date.day);
+    case DateLevel.m:
+      match(month, date.month);
+    case DateLevel.d:
+      match(day, date.day);
+  }
+  return (sql: '(${conditions.join(' AND ')})', variables: variables, requires: const {WindowTable.dateTaken});
+}
+
+WindowFragment? _weekDayFragment(int weekday) {
+  if (weekday < 1 || weekday > 7) return null;
+  // `DateTime.weekday` is 1=Monday..7=Sunday while SQLite's `%w` is
+  // 0=Sunday..6=Saturday.
+  const weekDay = "CAST(strftime('%w', $_bestDateSeconds, 'unixepoch', 'localtime') AS INTEGER)";
+  return (
+    sql: '($bestDateIfSetExpression IS NOT NULL AND (((($weekDay + 6) % 7) + 1)) = ?)',
+    variables: [Variable(weekday)],
+    requires: const {WindowTable.dateTaken},
+  );
+}
+
+WindowFragment _recentlyAddedFragment() => (
+      // `(nowSecs - (dateAddedSecs ?? 0)) < 24h`; the odd-looking first clause
+      // mirrors that an absent or zero date added is never "recent".
+      sql: '(COALESCE(e.dateAddedSecs, 0) != 0 AND ? - e.dateAddedSecs < 86400)',
+      variables: [Variable(RecentlyAddedFilter.nowSecs)],
+      requires: const {},
+    );
 
 WindowFragment? _pathFragment(String normalizedPath) {
   // `PathFilter.path` is normalised with a trailing separator; the test is

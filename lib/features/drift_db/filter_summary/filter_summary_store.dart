@@ -19,8 +19,8 @@ class FilterSummaryStore {
 
   new(this.db);
 
-  /// `COALESCE(dt.dateMillis, e.sourceDateTakenMillis, e.dateModifiedMillis, 0)`
-  static const String _bestDate = 'COALESCE(dt.dateMillis, e.sourceDateTakenMillis, e.dateModifiedMillis, 0)';
+  /// `bestDate` mirrors `AvesEntry.bestDate` (and `EntryStore.loadWindow`).
+  static const String _bestDate = bestDateExpression;
 
   static const String _joins = 'FROM entry e LEFT JOIN dateTaken dt ON dt.id = e.id LEFT JOIN metadata m ON m.id = e.id LEFT JOIN address a ON a.id = e.id';
 

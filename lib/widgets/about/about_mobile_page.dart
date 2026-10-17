@@ -1,3 +1,4 @@
+import 'package:aves/features/known_issues/view/known_issues_section.dart';
 import 'package:aves/widgets/about/app_ref.dart';
 import 'package:aves/widgets/about/bug_report.dart';
 import 'package:aves/widgets/about/credits.dart';
@@ -29,6 +30,8 @@ class AboutMobilePage extends StatelessWidget {
                   delegate: SliverChildListDelegate(
                     [
                       const AppReference(),
+                      const Divider(),
+                      const KnownIssuesSection(),
                       const Divider(),
                       const BugReport(),
                       const Divider(),

@@ -1,3 +1,4 @@
+import 'package:aves/features/known_issues/view/known_issues_section.dart';
 import 'package:aves/model/device.dart';
 import 'package:aves/theme/themes.dart';
 import 'package:aves/widgets/about/app_ref.dart';
@@ -68,7 +69,7 @@ class _Content extends StatefulWidget {
   State<_Content> createState() => _ContentState();
 }
 
-enum _Section { links, credits, translators, licenses }
+enum _Section { links, knownIssues, credits, translators, licenses }
 
 class _ContentState extends State<_Content> {
   final FocusNode _railFocusNode = FocusNode();
@@ -143,6 +144,8 @@ class _ContentState extends State<_Content> {
     switch (key) {
       case .links:
         return Text('${context.l10n.appName} ${device.packageVersion}');
+      case .knownIssues:
+        return Text(context.l10n.aboutKnownIssuesSectionTitle);
       case .credits:
         return Text(context.l10n.aboutCreditsSectionTitle);
       case .translators:
@@ -165,6 +168,11 @@ class _ContentState extends State<_Content> {
                 ),
               )
               .toList(),
+        );
+      case .knownIssues:
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: KnownIssuesSection.buildBody(context),
         );
       case .credits:
         return Padding(

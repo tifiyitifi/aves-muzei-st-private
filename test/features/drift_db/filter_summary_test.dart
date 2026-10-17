@@ -240,7 +240,7 @@ void main() {
     });
 
     test('reports an unexpressible hidden filter instead of dropping it', () async {
-      final exclusion = buildSummaryExclusion(hidden: {QueryFilter('title', ACalendar.gregorian)}, lockedVaultDirs: {});
+      final exclusion = buildSummaryExclusion(hidden: {QueryFilter(r'/title/', ACalendar.gregorian)}, lockedVaultDirs: {});
       // The summary stays approximate (the filter is skipped) but flags it, so
       // the window predicate can fall back to the legacy path.
       expect(exclusion.complete, isFalse);

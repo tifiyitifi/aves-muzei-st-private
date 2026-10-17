@@ -18,7 +18,6 @@ void main() {
   setUpAll(() async {
     ensureSqlite3Loaded();
     await setUpAllServices();
-    settings.collectionBurstPatterns = [BurstPatterns.samsung];
   });
 
   tearDownAll(getIt.reset);
@@ -27,6 +26,8 @@ void main() {
   late DriftLocalMediaDb service;
 
   setUp(() async {
+    // Reset per test: the rebuild test changes the patterns.
+    settings.collectionBurstPatterns = [BurstPatterns.samsung];
     db = AppDatabase(NativeDatabase.memory());
     service = DriftLocalMediaDb(database: db);
     await service.init();
@@ -85,5 +86,60 @@ void main() {
     // shows itself.
     await service.updateEntry(1, entry(1, path: '/cam/other.jpg'));
     expect(await tiles(), {1: null, 2: null});
+  });
+
+  test('deleting the tile re-homes the group', () async {
+    await service.insertEntries({
+      entry(1, path: '/cam/20151021_072800_001.jpg'),
+      entry(2, path: '/cam/20151021_072800_002.jpg'),
+      entry(3, path: '/cam/20151021_072800_003.jpg'),
+    });
+    expect(await tiles(), {1: null, 2: 1, 3: 1});
+
+    // The deleted row cannot be seen afterwards, so the group is settled from its
+    // captured path: the next frame takes the tile instead of the whole group
+    // showing itself.
+    await service.removeIds({1});
+    expect(await tiles(), {2: null, 3: 2});
+  });
+
+  test('deleting a frame keeps the tile', () async {
+    await service.insertEntries({
+      entry(1, path: '/cam/20151021_072800_001.jpg'),
+      entry(2, path: '/cam/20151021_072800_002.jpg'),
+    });
+    expect(await tiles(), {1: null, 2: 1});
+
+    await service.removeIds({2});
+    expect(await tiles(), {1: null});
+  });
+
+  test('deleting the developed image leaves the raw standing alone', () async {
+    await service.insertEntries({
+      entry(1, path: '/cam/IMG_1.dng', mime: MimeTypes.dng),
+      entry(2, path: '/cam/IMG_1.jpg'),
+    });
+    expect(await tiles(), {1: 2, 2: null});
+
+    await service.removeIds({2});
+    expect(await tiles(), {1: null});
+  });
+
+  test('a pattern change rebuilds the keys and re-settles the tiles', () async {
+    await service.insertEntries({
+      entry(1, path: '/cam/20151021_072800_001.jpg'),
+      entry(2, path: '/cam/20151021_072800_002.jpg'),
+    });
+    expect(await tiles(), {1: null, 2: 1});
+
+    // The frames no longer share a key, so each shows itself.
+    settings.collectionBurstPatterns = [];
+    await service.rebuildStackKeys();
+    expect(await tiles(), {1: null, 2: null});
+
+    // Restoring the pattern folds them again, on untouched rows.
+    settings.collectionBurstPatterns = [BurstPatterns.samsung];
+    await service.rebuildStackKeys();
+    expect(await tiles(), {1: null, 2: 1});
   });
 }

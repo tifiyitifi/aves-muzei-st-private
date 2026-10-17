@@ -127,8 +127,11 @@ void main() {
       expect(predicate.conjunction, isEmpty);
     });
 
-    test('a live query needs the legacy path', () {
-      expect(predicateForFilters({QueryFilter('a', ACalendar.gregorian, live: true)}), isNull);
+    test('a live title query compiles, a live regex keeps the legacy path', () {
+      // The query bar types a live filter: a title search still compiles, and
+      // only the `/regex/` form has no SQL translation.
+      expect(predicateForFilters({QueryFilter('a', ACalendar.gregorian, live: true)}), isNotNull);
+      expect(predicateForFilters({QueryFilter(r'/a/', ACalendar.gregorian, live: true)}), isNull);
     });
 
     test('hidden filters become an exclusion fragment', () {
@@ -153,7 +156,7 @@ void main() {
 
     test('an uncompilable hidden filter keeps the legacy path', () {
       // Never silently ignore a hidden filter: it must not vanish from the view.
-      expect(predicateForFilters({}, hidden: {QueryFilter('a', ACalendar.gregorian)}), isNull);
+      expect(predicateForFilters({}, hidden: {QueryFilter(r'/a/', ACalendar.gregorian)}), isNull);
     });
   });
 }

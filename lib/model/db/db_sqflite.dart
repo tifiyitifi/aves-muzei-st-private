@@ -236,6 +236,9 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   Future<bool> hasStackedEntries() => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
+  Future<void> rebuildStackKeys() => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
   Future<Map<int, List<AvesEntry>>> loadStackMembers(Set<int> ids) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override

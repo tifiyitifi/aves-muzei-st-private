@@ -27,6 +27,13 @@ class QueryFilter extends CollectionFilter {
   /// parsing the string a second time.
   late final QueryField? field = _parseField(query.toUpperCase());
 
+  /// The title search this query resolves to, resolved once.
+  ///
+  /// Null when the query is a `/regex/` or a field query: both keep the legacy
+  /// path. Exposed like [field], so the compiler mirrors [_resolveTest] without
+  /// parsing the string a second time.
+  late final QueryTitle? title = _parseTitle();
+
   late final EntryPredicate _test = _resolveTest();
 
   @override
@@ -116,6 +123,20 @@ class QueryFilter extends CollectionFilter {
       if (test != null) return test;
     }
 
+    // default to title search
+    final title = this.title!;
+    bool testTitle(AvesEntry entry) => entry.bestTitle?.toUpperCase().contains(title.text) == true;
+    return title.negated ? (entry) => !testTitle(entry) : testTitle;
+  }
+
+  /// Parses the plain title form: an optional `-` negation and an optional
+  /// `"..."` wrapper, over the uppercased query. Null for a `/regex/` and for a
+  /// field query that has a predicate.
+  QueryTitle? _parseTitle() {
+    if (_regexRegex.allMatches(query).length == 1) return null;
+    final field = this.field;
+    if (field != null && _testForField(field) != null) return null;
+
     var upQuery = query.toUpperCase();
 
     // allow NOT queries starting with `-`
@@ -130,9 +151,7 @@ class QueryFilter extends CollectionFilter {
       upQuery = exactMatches.first.group(1)!;
     }
 
-    // default to title search
-    bool testTitle(AvesEntry entry) => entry.bestTitle?.toUpperCase().contains(upQuery) == true;
-    return not ? (entry) => !testTitle(entry) : testTitle;
+    return QueryTitle(text: upQuery, negated: not);
   }
 
   /// The in-memory test of a parsed field query, or null when the key has none
@@ -243,4 +262,16 @@ class QueryField {
   final String? text;
 
   const new({required this.key, required this.op, this.value = 0, this.text});
+}
+
+/// A plain title query, resolved once by [QueryFilter].
+///
+/// [text] is the uppercased needle and [negated] tells whether a `-` prefix
+/// inverts the match; the legacy test reads `AvesEntry.bestTitle` as a
+/// case-insensitive substring.
+class QueryTitle {
+  final String text;
+  final bool negated;
+
+  const new({required this.text, required this.negated});
 }

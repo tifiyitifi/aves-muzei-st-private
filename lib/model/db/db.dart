@@ -75,6 +75,9 @@ abstract class LocalMediaDb {
   /// without stacks (no burst pattern, no developed-raw pair).
   Future<bool> hasStackedEntries();
 
+  /// Rebuilds the burst index after the configured burst patterns changed.
+  Future<void> rebuildStackKeys();
+
   /// The stacks the tiles [ids] show, keyed by the tile's id.
   ///
   /// Each list starts with the tile itself and is ordered the way the legacy

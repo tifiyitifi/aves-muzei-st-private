@@ -563,18 +563,11 @@ void main() {
   group('query field filters', () {
     QueryFilter q(String query, {ACalendar calendar = ACalendar.gregorian}) => QueryFilter(query, calendar);
 
-    test('a query without a field form keeps the legacy path', () {
+    test('a regular-expression query keeps the legacy path', () {
       for (final query in [
-        // title searches
-        'holiday',
-        '-holiday',
-        '"exact title"',
-        // a regular expression
+        // a regular expression, valid or not
         r'/^a.*b$/',
-        // they look like field queries but fall back to the title search
-        'EXT<jpg',
-        'WIDTH<abc',
-        '-WIDTH>100',
+        '/(/',
       ]) {
         expect(predicateForFilters({q(query)}), isNull, reason: query);
       }
@@ -597,6 +590,46 @@ void main() {
       expect(q('/^Holiday/').test(holiday), isTrue);
       expect(q('/^beach\$/').test(holiday), isFalse);
       expect(q('/(/').test(holiday), isFalse);
+    });
+
+    test('title searches compile and match the in-memory test', () async {
+      final entries = [
+        entry(1, path: '/a/Holiday Photo.jpg'),
+        entry(2, path: '/a/beach.jpg'),
+        // no path: `bestTitle` falls back to the source title
+        entry(3, pathLess: true),
+        entry(4, path: '/a/raw.jpg'),
+        entry(5, path: '/a/empty-title.jpg'),
+        // a string that looks like a field query without one is a title search
+        entry(6, path: '/a/EXT<jpg.jpg'),
+      ];
+      await seed(
+        entries,
+        catalog: {
+          CatalogMetadata(id: 4, xmpTitle: 'Catalogued Sunset'),
+          // an empty catalogued title does not win over the file name
+          CatalogMetadata(id: 5, xmpTitle: ''),
+        },
+      );
+
+      for (final query in [
+        'holiday',
+        'HOLIDAY photo',
+        '-holiday',
+        '"Holiday Photo"',
+        // the catalogued title wins over the file name
+        'sunset',
+        'raw',
+        // an empty catalogued title falls back to the file name
+        'empty',
+        // and a path-less entry to its source title
+        'title3',
+        'EXT<jpg',
+        'WIDTH<abc',
+        '-WIDTH>100',
+      ]) {
+        await expectMatchesInMemory({q(query)}, entries);
+      }
     });
 
     test('a non-Gregorian field query keeps the legacy path', () {

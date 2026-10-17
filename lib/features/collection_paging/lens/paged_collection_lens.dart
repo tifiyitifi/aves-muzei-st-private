@@ -137,7 +137,12 @@ class PagedCollectionLens extends CollectionLens {
     // keeps the public factors current and rebuilds the legacy structures.
     // Ours only triggers a windowed reload; it skips morphed lenses because
     // the superclass handler alone is correct there.
-    _layoutFactorSub = settings.updateStream.where(_isPagedLayoutFactorEvent).listen((_) {
+    _layoutFactorSub = settings.updateStream.where(_isPagedLayoutFactorEvent).listen((event) {
+      if (event.key == SettingKeys.collectionBurstPatternsKey) {
+        // The stored burst keys are derived from the patterns, so the index is
+        // rebuilt in the background and the view refreshes again once it lands.
+        unawaited(_rebuildStackIndex());
+      }
       if (!_morphed) refresh();
     });
     if (fixedSelection == null) {
@@ -645,6 +650,19 @@ class PagedCollectionLens extends CollectionLens {
       _log.w('paged stack probe failed', error, stack);
       return false;
     }
+  }
+
+  /// Rebuilds the burst index after the patterns changed, then refreshes so the
+  /// view picks up the re-settled tiles.
+  Future<void> _rebuildStackIndex() async {
+    try {
+      await localMediaDb.rebuildStackKeys();
+    } catch (error, stack) {
+      _log.w('paged stack rebuild failed', error, stack);
+      return;
+    }
+    if (_disposed || _morphed) return;
+    refresh();
   }
 
   /// Appends the stack filter to [predicate]: a member hides only *while* its

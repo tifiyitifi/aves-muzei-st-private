@@ -121,7 +121,9 @@ WindowFragment? _positiveFragment(CollectionFilter filter) {
     case PathFilter(path: final path):
       return _pathFragment(path);
     case QueryFilter():
-      return _queryFragment(filter);
+      // A `/regex/` has no SQL translation and keeps the legacy path; a field
+      // query or the plain title form compiles.
+      return _queryFragment(filter) ?? _titleFragment(filter.title);
     case FavouriteFilter():
       return (sql: 'EXISTS (SELECT 1 FROM favourites f WHERE f.id = e.id)', variables: const [], requires: const {});
     default:
@@ -430,11 +432,12 @@ WindowFragment? _pathFragment(String normalizedPath) {
   );
 }
 
-/// Compiles the `KEY<op>value` forms of a query filter.
+/// Compiles the `KEY<op>value` forms of a query filter, or null when the string
+/// is not one of them (a `/regex/`, or the plain title form [_titleFragment]
+/// takes) or when the key has no SQL translation.
 ///
-/// Regular-expression and title searches have no SQL translation and keep the
-/// legacy path, as does a non-Gregorian calendar (its year/month/day come from
-/// a Dart-side conversion).
+/// A non-Gregorian calendar keeps the legacy path: its year/month/day come from
+/// a Dart-side conversion.
 WindowFragment? _queryFragment(QueryFilter filter) {
   final field = filter.field;
   if (field == null) return null;
@@ -508,6 +511,27 @@ WindowFragment? _extensionFragment(String? text) {
     variables: [Variable('.${extension.toLowerCase()}')],
     requires: const {},
   );
+}
+
+/// `AvesEntry.bestTitle` uppercased: a non-empty catalogued title, else the file
+/// name, else the source title.
+///
+/// SQLite's `UPPER` folds ASCII only, which is the one place a title search can
+/// part from Dart's Unicode `toUpperCase` (a title carrying a ligature, a
+/// dotless `ı` or a `ß`, with a needle that folds to the same ASCII letters).
+const String _bestTitleExpression = "UPPER(COALESCE(NULLIF(m.xmpTitle, ''), e.baseName, e.title))";
+
+/// The plain title form: a case-insensitive substring of the title, inverted by
+/// a `-` prefix. Null leaves the query on the legacy path (a `/regex/`).
+///
+/// `INSTR` keeps the needle literal, where `LIKE` would read `%` and `_` as
+/// wildcards the in-memory `contains` does not. NULL stays NULL (`> 0` is
+/// unknown), so an entry without a title still misses — and a negated query
+/// still matches it, exactly like the Dart test.
+WindowFragment? _titleFragment(QueryTitle? title) {
+  if (title == null) return null;
+  final positive = (sql: 'INSTR($_bestTitleExpression, ?) > 0', variables: [Variable(title.text)], requires: const {WindowTable.metadata});
+  return title.negated ? _negated(positive) : positive;
 }
 
 /// The SQL operator of a query comparison, or null for an unknown one.

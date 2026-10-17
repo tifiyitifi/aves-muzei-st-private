@@ -21,6 +21,7 @@ const _log = AreaKeyLog(LogKeys.db);
 class EntryStore {
   static const _table = 'entry';
   static const _insertSliceMaxCount = 10000; // number of entries
+  static const _rebuildSliceMaxCount = 5000; // number of rows per index rebuild slice
 
   /// Physical name of the maintained directory column (pinned via
   /// `.named('directory')` in `EntriesTable`, mirroring the legacy camelCase
@@ -33,6 +34,9 @@ class EntryStore {
   static const String stackKeyColumn = 'stackKey';
 
   final AppDatabase db;
+
+  /// In-flight burst-key rebuild, so concurrent views share a single pass.
+  Future<void>? _rebuild;
 
   new(this.db);
 
@@ -495,11 +499,30 @@ class EntryStore {
   /// The burst patterns stack keys are built from.
   List<String> get burstPatterns => settings.collectionBurstPatterns;
 
+  /// The paths of the rows [ids], read before a caller deletes them.
+  ///
+  /// A delete is the one change the write path cannot see afterwards — the rows
+  /// carry their group identity — so the captured paths are fed back to
+  /// [reindexPaths] to settle the groups that lose a row.
+  Future<List<String?>> pathsOf(Set<int> ids) async {
+    final paths = <String?>[];
+    for (final slice in ids.slices(500)) {
+      final placeholders = slice.map((_) => '?').join(',');
+      final rows = await db.customSelect(
+        'SELECT path FROM $_table WHERE id IN ($placeholders)',
+        variables: [for (final id in slice) Variable(id)],
+      ).get();
+      paths.addAll([for (final row in rows) row.data['path'] as String?]);
+    }
+    return paths;
+  }
+
   /// Recomputes the stack tiles of the groups [entries] belong to.
   ///
-  /// Called right after a write batch: which member of a group shows is a
-  /// group-level decision, so inserting a burst frame — or moving an entry
-  /// between groups — can hand the tile to another row.
+  /// Called right after a write batch, and after a delete through [pathsOf]:
+  /// which member of a group shows is a group-level decision, so inserting a
+  /// burst frame, moving an entry between groups, or deleting the row that held
+  /// the tile can hand the tile to another row.
   Future<void> reindexStacks(Iterable<AvesEntry> entries) => reindexPaths(entries.map((entry) => entry.path));
 
   /// [reindexStacks] over paths, for callers that only have paths.
@@ -543,6 +566,54 @@ class EntryStore {
     for (final row in pairs) {
       await _applyGroupTiles(await _directoryPairRows(row.data['directory'] as String?, row.data['baseName'] as String?), hasBurstKey: false);
     }
+  }
+
+  /// Recomputes every row's burst key after the configured patterns changed, then
+  /// settles the tiles again.
+  ///
+  /// A row's key depends only on its own name, but a change of patterns can
+  /// reshape every group, so this is a full rewrite. It runs in bounded slices,
+  /// skips rows whose key stands, and serializes concurrent callers (every paged
+  /// view asks for it) onto one pass.
+  Future<void> rebuildStackKeys() {
+    final running = _rebuild;
+    if (running != null) return running;
+    return _rebuild = _doRebuildStackKeys().whenComplete(() => _rebuild = null);
+  }
+
+  Future<void> _doRebuildStackKeys() async {
+    final patterns = burstPatterns;
+    var lastId = 0;
+    var changed = false;
+    while (true) {
+      final rows = await db.customSelect(
+        'SELECT id, path, $stackKeyColumn AS stackKey FROM $_table WHERE id > ? ORDER BY id LIMIT $_rebuildSliceMaxCount',
+        variables: [Variable(lastId)],
+      ).get();
+      if (rows.isEmpty) break;
+      lastId = rows.last.data['id'] as int;
+      final updates = <int, String?>{};
+      for (final row in rows) {
+        final path = row.data['path'] as String?;
+        final key = StackGrouping.stackKeyOf(directory: directoryOf(path), baseName: StackGrouping.baseNameOf(path), patterns: patterns);
+        final id = row.data['id'] as int;
+        if (key != row.data['stackKey']) {
+          updates[id] = key;
+        }
+      }
+      if (updates.isEmpty) continue;
+      changed = true;
+      await db.batch((batch) {
+        updates.forEach((id, key) {
+          batch.update(db.entriesTable, EntriesTableCompanion(stackKey: Value(key)), where: (t) => t.id.equals(id));
+        });
+      });
+    }
+    if (!changed) return;
+    // Group shapes changed, so every tile is settled from scratch: a row that
+    // left a group must not keep pointing at a member that stayed behind.
+    await db.update(db.entriesTable).write(const EntriesTableCompanion(stackTileId: Value(null)));
+    await reindexAllStacks();
   }
 
   /// Whether any entry hides behind a stack tile.

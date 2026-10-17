@@ -147,6 +147,10 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<void> removeIds(Set<int> ids, {Set<EntryDataType>? dataTypes}) async {
     if (ids.isEmpty) return;
     final types = dataTypes ?? EntryDataType.values.toSet();
+    // A delete is invisible to the write path (the rows are gone), so the group
+    // identity of the deleted rows is captured first: losing the tile of a group
+    // hands it to another frame, and losing the last of a pair clears it.
+    final paths = types.contains(EntryDataType.basic) ? await _entries.pathsOf(ids) : const <String?>[];
     await _db.batch((batch) {
       for (final id in ids) {
         if (types.contains(EntryDataType.basic)) {
@@ -166,6 +170,9 @@ class DriftLocalMediaDb implements LocalMediaDb {
         }
       }
     });
+    if (paths.isNotEmpty) {
+      await _entries.reindexPaths(paths);
+    }
   }
 
   // entries
@@ -239,6 +246,9 @@ class DriftLocalMediaDb implements LocalMediaDb {
 
   @override
   Future<bool> hasStackedEntries() => _entries.hasStacks();
+
+  @override
+  Future<void> rebuildStackKeys() => _entries.rebuildStackKeys();
 
   @override
   Future<Map<int, List<AvesEntry>>> loadStackMembers(Set<int> ids) => _entries.loadStackMembers(ids);

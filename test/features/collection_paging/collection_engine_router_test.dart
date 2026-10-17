@@ -83,8 +83,8 @@ void main() {
     test('unsupported filters keep the legacy path', () async {
       await configure(engine: CollectionEngine.paged, threshold: 5);
       final decision = await router.resolve(
-        // A title query has no SQL translation (bestTitle needs a basename).
-        filters: {QueryFilter('holiday', ACalendar.gregorian)},
+        // A `/regex/` title match has no SQL translation.
+        filters: {QueryFilter(r'/holiday/', ACalendar.gregorian)},
         database: driftDb,
       );
       expect(decision.route, CollectionRoute.legacy);

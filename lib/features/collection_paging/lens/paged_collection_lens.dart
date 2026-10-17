@@ -99,6 +99,9 @@ class PagedCollectionLens extends CollectionLens {
   /// but still defines which rows the view contains).
   final List<WindowFragment> _extraFragments;
 
+  /// Whether the view folds each stack into the single tile it shows.
+  final bool _stackEntries;
+
   StreamSubscription<SettingsChangedEvent>? _layoutFactorSub;
   VoidCallback? _vaultsListener;
 
@@ -109,8 +112,10 @@ class PagedCollectionLens extends CollectionLens {
     super.fixedSort,
     super.fixedSelection,
     PagedCatalogWorker Function({required CollectionSource source})? catalogWorkerFactory,
+    bool stackEntries = true,
     List<WindowFragment> extraFragments = const [],
   })  : _catalogWorkerFactory = catalogWorkerFactory ?? PagedCatalogWorker.new,
+        _stackEntries = stackEntries,
         _extraFragments = extraFragments,
         super(listenToSource: false) {
     _pagedSubs.addAll([
@@ -397,12 +402,16 @@ class PagedCollectionLens extends CollectionLens {
     // A view may add its own atoms (the slideshow's video exclusion): they are
     // not collection filters but they still define the rows the view contains,
     // so they ride on the same predicate the totals and windows use.
-    final predicate = _extraFragments.isEmpty
+    final base = _extraFragments.isEmpty
         ? resolved
         : CollectionWindowPredicate(
             conjunction: [...resolved.conjunction, ..._extraFragments],
             trashedOnly: resolved.trashedOnly,
           );
+    // Stacks ride on the same predicate as the totals and windows: a member shows
+    // while its tile is in the same scope, so nothing disappears when a filter
+    // splits a group. A library without stacks skips the filter entirely.
+    final predicate = _stackEntries && await _hasStacks() ? _withStackFilter(base) : base;
     final prefs = collectionPagingPrefs;
     await prefs.init();
     if (!_current(gen)) return;
@@ -465,6 +474,7 @@ class PagedCollectionLens extends CollectionLens {
             state.list.idToLocal[entry.id] = base + i;
           }
           _reindexFlat();
+          if (_stackEntries) unawaited(_attachStackMembers(state, rows, gen));
           notifyListeners();
         },
         onEvicted: (windowIndex) {
@@ -625,6 +635,78 @@ class PagedCollectionLens extends CollectionLens {
       case SectionGrouping.single:
         return (directoryEquals: null, directoryEqualsNull: false, dateFromMillis: null, dateToMillis: null, ratingEquals: null);
     }
+  }
+
+  /// Probes whether the library hides anything behind a stack tile.
+  Future<bool> _hasStacks() async {
+    try {
+      return await localMediaDb.hasStackedEntries();
+    } catch (error, stack) {
+      _log.w('paged stack probe failed', error, stack);
+      return false;
+    }
+  }
+
+  /// Appends the stack filter to [predicate]: a member hides only *while* its
+  /// tile is in the same scope, so it comes back when a filter or the bin takes
+  /// the tile away instead of disappearing.
+  ///
+  /// The inner query is uncorrelated and aliases the entry table `e` again so the
+  /// compiled fragments apply verbatim; SQLite materializes it as a set, which
+  /// keeps the total a scan rather than a probe per row.
+  CollectionWindowPredicate _withStackFilter(CollectionWindowPredicate predicate) {
+    final joins = [
+      if (predicate.requires.contains(WindowTable.dateTaken)) 'LEFT JOIN dateTaken dt ON dt.id = e.id',
+      if (predicate.requires.contains(WindowTable.metadata)) 'LEFT JOIN metadata m ON m.id = e.id',
+      if (predicate.requires.contains(WindowTable.address)) 'LEFT JOIN address a ON a.id = e.id',
+    ].join(' ');
+    final conditions = <String>[
+      predicate.trashedOnly ? 'e.trashed != 0' : 'e.trashed = 0',
+      for (final fragment in predicate.conjunction) fragment.sql,
+    ];
+    return CollectionWindowPredicate(
+      conjunction: [
+        ...predicate.conjunction,
+        (
+          // `NOT IN` (the ids are primary keys, so no NULL can poison it): a
+          // member shows exactly when its tile is not in this scope.
+          sql: '(e.stackTileId IS NULL OR e.stackTileId NOT IN (SELECT e.id FROM entry e ${joins.isEmpty ? '' : '$joins '}WHERE ${conditions.join(' AND ')}))',
+          variables: [for (final fragment in predicate.conjunction) ...fragment.variables],
+          requires: predicate.requires,
+        ),
+      ],
+      trashedOnly: predicate.trashedOnly,
+    );
+  }
+
+  /// Attaches the members of the stacks the window's tiles show, so a tile can
+  /// render its stack badge and the viewer can page through its frames.
+  ///
+  /// Fired after the window is on screen rather than blocking it: one frame
+  /// without its badge costs less than making every window wait for a query.
+  Future<void> _attachStackMembers(_SectionState state, List<AvesEntry> rows, int gen) async {
+    final ids = {for (final entry in rows) entry.id};
+    if (ids.isEmpty) return;
+    final Map<int, List<AvesEntry>> stacks;
+    try {
+      stacks = await localMediaDb.loadStackMembers(ids);
+    } catch (error, stack) {
+      _log.w('paged stack member load failed', error, stack);
+      return;
+    }
+    if (stacks.isEmpty || !_current(gen)) return;
+    var changed = false;
+    stacks.forEach((tileId, members) {
+      final local = state.list.idToLocal[tileId];
+      if (local == null) return;
+      final tile = state.list.loaded[local];
+      if (tile == null) return;
+      state.list.loaded[local] = tile.copyWith(stackedEntries: members);
+      changed = true;
+    });
+    if (!changed) return;
+    _reindexFlat();
+    notifyListeners();
   }
 
   /// Maps the effective sort/section factors to a SQL grouping, or null when

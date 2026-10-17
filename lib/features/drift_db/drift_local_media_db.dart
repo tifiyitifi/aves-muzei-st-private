@@ -238,6 +238,12 @@ class DriftLocalMediaDb implements LocalMediaDb {
       _entries.loadSectionHeaders(predicate: predicate, grouping: grouping, reverse: reverse);
 
   @override
+  Future<bool> hasStackedEntries() => _entries.hasStacks();
+
+  @override
+  Future<Map<int, List<AvesEntry>>> loadStackMembers(Set<int> ids) => _entries.loadStackMembers(ids);
+
+  @override
   Future<int> countEntriesBefore({
     required CollectionWindowPredicate predicate,
     required int id,

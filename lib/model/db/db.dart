@@ -69,6 +69,19 @@ abstract class LocalMediaDb {
     required bool reverse,
   });
 
+  /// Whether any entry hides behind a stack tile.
+  ///
+  /// A cheap probe that lets a view skip the stack filter entirely on a library
+  /// without stacks (no burst pattern, no developed-raw pair).
+  Future<bool> hasStackedEntries();
+
+  /// The stacks the tiles [ids] show, keyed by the tile's id.
+  ///
+  /// Each list starts with the tile itself and is ordered the way the legacy
+  /// stack shows it (a burst by natural name, a developed image before its raws).
+  /// Tiles with no hidden member are absent from the map.
+  Future<Map<int, List<AvesEntry>>> loadStackMembers(Set<int> ids);
+
   /// Global index of the entry with [id] in the collection order of
   /// [predicate], or -1 when it is not in the view.
   ///

@@ -545,6 +545,55 @@ class EntryStore {
     }
   }
 
+  /// Whether any entry hides behind a stack tile.
+  Future<bool> hasStacks() async {
+    final rows = await db.customSelect('SELECT 1 FROM $_table WHERE stackTileId IS NOT NULL LIMIT 1').get();
+    return rows.isNotEmpty;
+  }
+
+  /// The stacks the tiles [ids] show, keyed by the tile's id.
+  ///
+  /// A hidden member points at its tile through `stackTileId`, so one indexed
+  /// lookup covers burst frames and hidden raw siblings alike. Each list starts
+  /// with the tile and is ordered the way the legacy stack shows it: a burst by
+  /// natural name, a developed image before its raws.
+  Future<Map<int, List<AvesEntry>>> loadStackMembers(Set<int> ids) async {
+    if (ids.isEmpty) return const {};
+    final placeholders = ids.map((_) => '?').join(',');
+    final rows = await db.customSelect(
+      'SELECT e.*, COALESCE(m.mimeType, e.sourceMimeType) AS stackMime FROM $_table e '
+      'LEFT JOIN metadata m ON m.id = e.id '
+      'WHERE e.id IN ($placeholders) OR e.stackTileId IN ($placeholders)',
+      variables: [for (final id in ids) Variable(id), for (final id in ids) Variable(id)],
+    ).get();
+    final byTile = <int, List<({AvesEntry entry, String? mimeType, bool isBurst})>>{};
+    for (final row in rows) {
+      final entry = AvesEntry.fromMap(row.data);
+      final tileId = (row.data['stackTileId'] as int?) ?? entry.id;
+      byTile
+          .putIfAbsent(tileId, () => [])
+          .add((entry: entry, mimeType: row.data['stackMime'] as String?, isBurst: row.data['stackKey'] != null));
+    }
+    final stacks = <int, List<AvesEntry>>{};
+    byTile.forEach((tileId, group) {
+      // A lone row is not a stack.
+      if (group.length < 2) return;
+      final sorted = List.of(group);
+      if (group.first.isBurst) {
+        sorted.sort((a, b) => StackGrouping.compareNames(pathA: a.entry.path, pathB: b.entry.path));
+      } else {
+        sorted.sort((a, b) {
+          final c = _developedRank(b.mimeType).compareTo(_developedRank(a.mimeType));
+          return c != 0 ? c : StackGrouping.compareNames(pathA: a.entry.path, pathB: b.entry.path);
+        });
+      }
+      stacks[tileId] = [for (final row in sorted) row.entry];
+    });
+    return stacks;
+  }
+
+  static int _developedRank(String? mimeType) => mimeType != null && MimeTypes.developedRawImages.contains(mimeType) ? 1 : 0;
+
   /// Rows of one burst group, with the mime type the stack policy reads.
   Future<List<StackRow>> _burstGroupRows(String stackKey) => _groupRows('e.stackKey = ?', [Variable(stackKey)]);
 

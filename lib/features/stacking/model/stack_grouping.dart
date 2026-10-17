@@ -33,6 +33,10 @@ class StackGrouping {
     return key != null ? '$directory/$key' : null;
   }
 
+  /// The order a burst group is shown in (`AvesEntrySort.compareByName`, over
+  /// file names): natural, then by extension.
+  static int compareNames({required String? pathA, required String? pathB}) => _compareByName((id: -1, path: pathA, mimeType: null), (id: -1, path: pathB, mimeType: null));
+
   /// The `stackTileId` of every row of one group.
   ///
   /// The tile maps to null, so it needs no test to show; the members map to the

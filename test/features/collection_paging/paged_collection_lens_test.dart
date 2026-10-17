@@ -143,6 +143,21 @@ void main() {
       expect(lens.loadedEntries.map((e) => e.id), [3]);
     });
 
+    test('an explicit legacy engine morphs even above the threshold', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2), entry(3)});
+      await collectionPagingPrefs.setEngine(CollectionEngine.legacy);
+      await collectionPagingPrefs.setLargeThreshold(1);
+      // A scope the SQL layer cannot express would block under `auto`: the
+      // explicit engine asks for the full load, so it is honoured instead.
+      final lens = PagedCollectionLens(source: source, filters: {QueryFilter(r'/./', ACalendar.gregorian)});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedBlocked || (!lens.pagedActive && lens.entryCount == 3));
+      expect(lens.pagedBlocked, isFalse);
+      expect(lens.pagedActive, isFalse);
+      expect(lens.entryCount, 3);
+    });
+
     test('unsupported filters block instead of crashing', () async {
       final service = await drift();
       await service.insertEntries({entry(1), entry(2), entry(3)});
@@ -169,6 +184,28 @@ void main() {
       expect(copy.sortedEntries.length, 2);
       expect(copy.globalIndexOf(lens.loadedEntries.first), 0);
       expect(copy.entryAt(1).id, 1);
+    });
+
+    test('copying with other filters resolves that scope instead of serving this one', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2, dir: '/other')});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(10);
+      final lens = PagedCollectionLens(source: source, filters: {StoredAlbumFilter('/album', null)});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => allReal(lens) && lens.entryCount == 1);
+      expect(lens.sortedEntries.single.id, 1);
+
+      // A named scope must be resolved like any other collection: serving it
+      // from this lens's windows would silently show the wrong album.
+      final scoped = lens.copyWith(filters: {StoredAlbumFilter('/other', null)});
+      addTearDown(scoped.dispose);
+      expect(scoped, isA<PagedCollectionLens>());
+      expect(scoped, isNot(isA<PagedViewerCopy>()));
+      expect(scoped.filters, {StoredAlbumFilter('/other', null)});
+      final scopedLens = scoped as PagedCollectionLens;
+      await settle(scopedLens, done: () => allReal(scopedLens) && scopedLens.entryCount == 1);
+      expect(scopedLens.sortedEntries.single.id, 2);
     });
 
     test('trash scope pages with restore details', () async {

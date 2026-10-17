@@ -145,6 +145,19 @@ class PagedViewerCopy extends CollectionLens {
     return null;
   }
 
+  /// Whether a video lies outward from [from] in each direction, for the media
+  /// session's skip flags: the same bounded outward search as the viewer's own
+  /// next/previous video actions, so the two can never disagree.
+  ///
+  /// A walk of the lazy list cannot answer this: a position past the loaded
+  /// windows reads as a skeleton, which is never a video, so the search would
+  /// run to the end of the collection and report "no neighbour".
+  Future<({bool previous, bool next})> neighborVideos(int from) async {
+    final previous = await findNeighborVideo(from, -1) != null;
+    final next = await findNeighborVideo(from, 1) != null;
+    return (previous: previous, next: next);
+  }
+
   @override
   void refresh() {
     // Inert: the parent owns windows and reloads.

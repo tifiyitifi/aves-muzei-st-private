@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
 import 'package:aves/features/collection_paging/view/paged_slideshow.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -138,7 +139,7 @@ class _ScreenSaverPageState extends State<ScreenSaverPage> with WidgetsBindingOb
         }
         _slideshowCollection = session.collection;
       } else {
-        _slideshowCollection = _legacySlideshowCollection();
+        _slideshowCollection = await _legacySlideshowCollection();
       }
       setState(() {});
     } finally {
@@ -147,7 +148,15 @@ class _ScreenSaverPageState extends State<ScreenSaverPage> with WidgetsBindingOb
   }
 
   /// Legacy slideshow collection: a shuffled snapshot of the scope's entries.
-  CollectionLens _legacySlideshowCollection() {
+  ///
+  /// Only when the library may be materialized. On a huge one the scope is
+  /// either unsupported (locked vault, non-Gregorian sections) or the paged
+  /// session would have taken it, so an empty snapshot shows the empty state
+  /// instead of loading the whole library just to shuffle it.
+  Future<CollectionLens> _legacySlideshowCollection() async {
+    if (!await const CollectionEngineRouter().allowFullLoad()) {
+      return CollectionLens(source: source, listenToSource: false, fixedSort: true, fixedSelection: const []);
+    }
     final originalCollection = CollectionLens(
       source: source,
       filters: settings.screenSaverCollectionFilters,

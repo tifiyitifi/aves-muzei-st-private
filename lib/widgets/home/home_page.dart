@@ -274,7 +274,12 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
             // Huge libraries start paged (entry-free essentials only) instead of
             // materializing everything; small ones keep the legacy full load.
             final decision = await const CollectionEngineRouter().resolve(filters: CollectionSource.fullScope);
-            if (decision.route == CollectionRoute.paged) {
+            // A legacy decision is only honoured when a full load is provably
+            // safe: an unsupported scope (locked vault, non-Gregorian sections)
+            // on a huge library bootstraps paged instead, and the collection view
+            // then explains why it cannot be shown, rather than materializing the
+            // whole library here.
+            if (decision.route == CollectionRoute.paged || !await const CollectionEngineRouter().allowFullLoad()) {
               await PagedBootstrap.ensure(source);
             } else {
               final loadTopEntriesFirst = settings.homeNavItem.route == CollectionPage.routeName && settings.homeCustomCollection.isEmpty;
@@ -289,7 +294,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           // A huge screen saver scope must not be fully loaded either: the paged
           // path bootstraps entry-free and plays a window-backed permutation.
           final screenSaverDecision = await const CollectionEngineRouter().resolve(filters: settings.screenSaverCollectionFilters);
-          if (screenSaverDecision.route == CollectionRoute.paged) {
+          if (screenSaverDecision.route == CollectionRoute.paged || !await const CollectionEngineRouter().allowFullLoad()) {
             await PagedBootstrap.ensure(source);
           } else {
             await source.init(scope: settings.screenSaverCollectionFilters);
@@ -306,7 +311,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
               // the paged path bootstraps entry-free and resolves the opened
               // entry's index from the database.
               final viewDecision = await const CollectionEngineRouter().resolve(filters: albumFilters);
-              if (viewDecision.route == CollectionRoute.paged) {
+              if (viewDecision.route == CollectionRoute.paged || !await const CollectionEngineRouter().allowFullLoad()) {
                 await PagedBootstrap.ensure(source);
               } else {
                 // analysis is necessary to display neighbour items when the initial item is a new one
@@ -455,8 +460,13 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
               lens.dispose();
               collection = await _legacyViewCollection(source, filters, viewerEntry, (resolved) => viewerEntry = resolved);
             }
-          } else {
+          } else if (await const CollectionEngineRouter().allowFullLoad()) {
             collection = await _legacyViewCollection(source, filters, viewerEntry, (resolved) => viewerEntry = resolved);
+          } else {
+            // The album cannot be windowed (e.g. a locked vault) and the library
+            // must not be materialized to show one item: open the entry alone.
+            debugPrint('view: album $album cannot be paged and a full load is not safe, showing $viewerEntry alone');
+            collection = null;
           }
         }
 

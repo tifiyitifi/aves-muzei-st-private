@@ -137,6 +137,35 @@ void main() {
       expect(decision.reason, isNotNull);
     });
   });
+
+  group('CollectionEngineRouter.allowFullLoad', () {
+    test('answers for the whole library, not for the scope', () async {
+      await driftDb.insertEntries({for (var id = 1; id <= 10; id++) entry(id)});
+
+      await configure(engine: CollectionEngine.auto, threshold: 11);
+      expect(await router.allowFullLoad(database: driftDb), isTrue);
+
+      await configure(engine: CollectionEngine.auto, threshold: 10);
+      expect(await router.allowFullLoad(database: driftDb), isFalse);
+    });
+
+    test('honours an explicit legacy engine above the threshold', () async {
+      await driftDb.insertEntries({for (var id = 1; id <= 10; id++) entry(id)});
+      await configure(engine: CollectionEngine.legacy, threshold: 1);
+      expect(await router.allowFullLoad(database: driftDb), isTrue);
+    });
+
+    test('a paged preference does not forbid a provably small full load', () async {
+      await driftDb.insertEntries({entry(1)});
+      await configure(engine: CollectionEngine.paged, threshold: 100000);
+      expect(await router.allowFullLoad(database: driftDb), isTrue);
+    });
+
+    test('an unprovable size is not a safe full load', () async {
+      await configure(engine: CollectionEngine.auto, threshold: 1);
+      expect(await router.allowFullLoad(database: _FailingDb()), isFalse);
+    });
+  });
 }
 
 class _FailingDb extends FakeAvesDb {

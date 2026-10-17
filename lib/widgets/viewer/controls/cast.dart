@@ -21,6 +21,17 @@ mixin CastMixin {
   DLNADevice? _renderer;
   HttpServer? _mediaServer;
 
+  /// Entries whose URL was already handed to the renderer, oldest first.
+  ///
+  /// The media server resolves a request by id, and a renderer re-requests the
+  /// entry it is playing (a seek, a retry) long after the caller moved on. On a
+  /// windowed collection the pool handed to [initCast] is a snapshot that may
+  /// have evicted that row by then, so what was actually cast is remembered
+  /// here. Bounded: only the entries a session played, newest last.
+  final Map<int, AvesEntry> _handedOver = {};
+
+  static const _maxHandedOver = 32;
+
   bool get isCasting => _renderer != null && _mediaServer != null;
 
   Future<void> initCast(BuildContext context, List<AvesEntry> entries) async {
@@ -43,7 +54,7 @@ mixin CastMixin {
         return Response.notFound('invalid url=${request.url}');
       }
 
-      final entry = entries.firstWhereOrNull((v) => v.id == id);
+      final entry = _handedOver[id] ?? entries.firstWhereOrNull((v) => v.id == id);
       if (entry == null) {
         return Response.notFound('no resource for url=${request.url}');
       }
@@ -67,6 +78,7 @@ mixin CastMixin {
     if (isCasting) {
       debugPrint('cast: stop');
     }
+    _handedOver.clear();
 
     await _mediaServer?.close();
     _mediaServer = null;
@@ -125,6 +137,14 @@ mixin CastMixin {
     final server = _mediaServer;
     final renderer = _renderer;
     if (server == null || renderer == null) return;
+
+    // Remember the entry before the renderer can request it: the media server
+    // resolves by id, and a windowed collection may evict the row meanwhile.
+    _handedOver.remove(entry.id);
+    _handedOver[entry.id] = entry;
+    if (_handedOver.length > _maxHandedOver) {
+      _handedOver.remove(_handedOver.keys.first);
+    }
 
     try {
       debugPrint('cast: set entry=$entry');

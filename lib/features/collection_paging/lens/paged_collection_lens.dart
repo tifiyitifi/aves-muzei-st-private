@@ -386,14 +386,16 @@ class PagedCollectionLens extends CollectionLens {
 
   bool _current(int gen) => gen == _reloadGen && !_disposed;
 
-  /// Legacy path inside the paged lens: only taken when the whole library fits
-  /// below the threshold (or the source is already fully loaded), so a full
-  /// load is provably safe. Display calls delegate to `super` afterwards.
+  /// Legacy path inside the paged lens: only taken when a full load is provably
+  /// safe (see `CollectionEngineRouter.allowFullLoad`), so a huge library is
+  /// never materialized here — not even for a scope the SQL layer cannot
+  /// express, which then shows the unsupported notice instead. Display calls
+  /// delegate to `super` afterwards.
   Future<void> _enterLegacy(EngineDecision decision, int gen) async {
     if (source.loadedScope != CollectionSource.fullScope) {
-      final full = await localMediaDb.countEntries();
+      final allowed = await const CollectionEngineRouter().allowFullLoad();
       if (!_current(gen)) return;
-      if (full >= collectionPagingPrefs.largeThreshold) {
+      if (!allowed) {
         _enterBlocked();
         return;
       }
@@ -889,19 +891,35 @@ class PagedCollectionLens extends CollectionLens {
     if (_morphed && fixedSelection == null) {
       return super.copyWith(source: source, filters: filters, fixedSelection: fixedSelection, listenToSource: listenToSource);
     }
-    // Viewer copies share the live windows instead of snapshotting loaded
-    // rows, so swiping past the loaded neighbourhood keeps resolving.
-    if (fixedSelection == null && _pagedActive && !_blocked) {
+    // A caller that names other filters (or a fixed selection) asks for a lens
+    // over *that* scope, so it is resolved like any other collection: serving it
+    // from this lens's windows would silently show the wrong entries. The view's
+    // own atoms ride along, exactly as `resolve` would apply them here.
+    if (filters != null || fixedSelection != null) {
+      return PagedCollectionLens(
+        source: source ?? this.source,
+        filters: filters ?? this.filters,
+        id: id,
+        fixedSort: fixedSort,
+        fixedSelection: fixedSelection,
+        stackEntries: _stackEntries,
+        extraFragments: _extraFragments,
+      );
+    }
+    // Viewer copies share the live windows instead of snapshotting loaded rows,
+    // so swiping past the loaded neighbourhood keeps resolving.
+    if (_pagedActive && !_blocked) {
       return PagedViewerCopy(parent: this);
     }
-    // The paged lens manages its own subscriptions; viewer copies are inert.
-    fixedSelection ??= loadedEntries;
+    // Not a windowed view right now: hand the loaded rows over.
     return PagedCollectionLens(
       source: source ?? this.source,
-      filters: filters ?? this.filters,
+      filters: this.filters,
       id: id,
       fixedSort: fixedSort,
-      fixedSelection: fixedSelection,
+      fixedSelection: loadedEntries,
+      stackEntries: _stackEntries,
+      extraFragments: _extraFragments,
     );
   }
 }

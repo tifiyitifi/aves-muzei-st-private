@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/props.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -75,8 +76,19 @@ class VideoConductor {
 
   Future<void> _onControllerStatusChanged(AvesEntry entry, AvesVideoController controller, PlaybackStatus status) async {
     bool canSkipToNext = false, canSkipToPrevious = false;
-    final entries = _collection?.sortedEntries;
-    if (entries != null) {
+    final collection = _collection;
+    if (collection is PagedViewerCopy) {
+      // The windowed list cannot be walked (every miss reads a skeleton, never a
+      // video), so the copy searches outward through the database, exactly like
+      // the viewer's own next/previous video actions.
+      final index = collection.globalIndexOf(entry);
+      if (index != -1) {
+        final (previous: hasPrevious, next: hasNext) = await collection.neighborVideos(index);
+        canSkipToPrevious = hasPrevious;
+        canSkipToNext = hasNext;
+      }
+    } else if (collection != null) {
+      final entries = collection.sortedEntries;
       final currentIndex = entries.indexOf(entry);
       if (currentIndex != -1) {
         bool isVideo(AvesEntry entry) => entry.isVideo;

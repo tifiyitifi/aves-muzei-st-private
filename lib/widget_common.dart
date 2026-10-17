@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/app_flavor.dart';
+import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
 import 'package:aves/features/collection_paging/view/paged_widget_candidates.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/sort.dart';
@@ -107,6 +108,12 @@ Future<AvesEntry?> _getWidgetEntry(int widgetId, bool reuseEntry) async {
       settings.setWidgetUri(widgetId, entry.uri);
     }
     return entry;
+  }
+
+  if (!await const CollectionEngineRouter().allowFullLoad()) {
+    // The scope cannot be paged and the library must not be materialized to pick
+    // one picture: leave the widget on its placeholder until it can be served.
+    return null;
   }
 
   final source = MediaStoreSource();

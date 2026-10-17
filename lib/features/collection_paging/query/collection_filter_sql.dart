@@ -506,10 +506,10 @@ WindowFragment? _extensionFragment(String? text) {
   final length = extension.length;
   // The suffix must be a whole dot segment: a name precedes the dot (a basename
   // of exactly `.ext` has no extension in Dart) and that name is not a
-  // separator.
+  // separator — the same `pContext.separator` `_pathFragment` compares against.
   return (
-    sql: "(LENGTH(e.path) > ${length + 1} AND SUBSTR(LOWER(e.path), -${length + 1}) = ? AND SUBSTR(LOWER(e.path), -${length + 2}, 1) != '/')",
-    variables: [Variable('.${extension.toLowerCase()}')],
+    sql: "(LENGTH(e.path) > ${length + 1} AND SUBSTR(LOWER(e.path), -${length + 1}) = ? AND SUBSTR(LOWER(e.path), -${length + 2}, 1) != ?)",
+    variables: [Variable('.${extension.toLowerCase()}'), Variable(pContext.separator)],
     requires: const {},
   );
 }

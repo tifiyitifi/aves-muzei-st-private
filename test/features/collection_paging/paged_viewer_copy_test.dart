@@ -159,6 +159,27 @@ void main() {
       expect(await viewer.findNeighborVideo(5, 1), isNull);
     });
 
+    test('reports the outward video neighbours in both directions', () async {
+      final lens = await settleLens({
+        for (var i = 1; i <= 5; i++) entry(i, dateTaken: millis(i)),
+        entry(6, dateTaken: millis(6), video: true),
+        entry(7, dateTaken: millis(7), video: true),
+      });
+      final viewer = lens.copyWith(listenToSource: false) as PagedViewerCopy;
+      addTearDown(viewer.dispose);
+      // display order is date desc: 7, 6 (videos) then 5..1
+      expect(viewer.entryCount, 7);
+
+      // the newest video: the other video is next, nothing before it
+      expect(await viewer.neighborVideos(0), (previous: false, next: true));
+      // the older video: the newer one is before it, the images are after
+      expect(await viewer.neighborVideos(1), (previous: true, next: false));
+      // an image in the middle: both videos are newer, no video older
+      expect(await viewer.neighborVideos(3), (previous: true, next: false));
+      // the oldest image: the videos are behind it, nothing ahead
+      expect(await viewer.neighborVideos(6), (previous: true, next: false));
+    });
+
     test('does not own entries or outlive its parent', () async {
       // explicit lifecycle (no addTearDown): this test disposes on purpose
       await driftDb.insertEntries({for (var i = 1; i <= 3; i++) entry(i, dateTaken: millis(i))});

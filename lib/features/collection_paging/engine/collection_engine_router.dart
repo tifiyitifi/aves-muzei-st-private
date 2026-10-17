@@ -115,4 +115,34 @@ class CollectionEngineRouter {
     }
     return EngineDecision.legacy(total: total, reason: 'below the large-collection threshold');
   }
+
+  /// Whether the whole library may be materialized in memory right now.
+  ///
+  /// This is the one rule the paging feature rests on: a library at or above the
+  /// threshold is never fully loaded, whichever view asks for it — the [resolve]
+  /// decision only covers the *scope*, while a legacy view materializes the whole
+  /// library (see `PagedCollectionLens._enterLegacy`). An explicit
+  /// [CollectionEngine.legacy] is honoured above the threshold, since that is the
+  /// user's own choice.
+  ///
+  /// Every caller that would otherwise load the source or walk it in memory asks
+  /// here first, so no single entry point can reintroduce the OOM the paged path
+  /// exists to prevent. A failed probe answers `false`: a size that cannot be
+  /// proven small is not a safe full load.
+  Future<bool> allowFullLoad({LocalMediaDb? database}) async {
+    final prefs = collectionPagingPrefs;
+    await prefs.init();
+
+    if (prefs.engine == CollectionEngine.legacy) {
+      return true;
+    }
+    try {
+      final db = database ?? localMediaDb;
+      await db.init();
+      return await db.countEntries() < prefs.largeThreshold;
+    } catch (error, stack) {
+      _log.w('full-load probe failed, keeping the windowed path', error, stack);
+      return false;
+    }
+  }
 }

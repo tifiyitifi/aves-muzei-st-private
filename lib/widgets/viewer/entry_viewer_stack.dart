@@ -651,8 +651,14 @@ class _EntryViewerStackState extends State<EntryViewerStack> with EntryViewContr
 
   Future<void> _cast(bool enabled) async {
     if (enabled) {
-      final entries = collection?.sortedEntries;
-      if (entries != null) {
+      final collection = this.collection;
+      if (collection != null) {
+        // The media server resolves requests by id, so it needs a materialized
+        // pool: a paged copy cannot be walked (every miss would kick a window and
+        // read a skeleton), and its loaded neighbourhood is what the viewer is
+        // showing anyway. Whatever is cast afterwards is remembered by the
+        // controller itself.
+        final entries = collection is PagedViewerCopy ? collection.loadedEntries : collection.sortedEntries;
         await viewerController.initCast(context, entries);
         final entry = entryNotifier.value;
         if (entry != null) {

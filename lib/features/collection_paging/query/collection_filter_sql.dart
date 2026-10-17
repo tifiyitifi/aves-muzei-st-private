@@ -10,8 +10,12 @@ import 'package:aves/model/filters/covered/tag.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
+import 'package:aves/model/filters/missing.dart';
+import 'package:aves/model/filters/path.dart';
 import 'package:aves/model/filters/rating.dart';
+import 'package:aves/model/filters/type.dart';
 import 'package:aves/ref/mime_types.dart';
+import 'package:aves/services/common/services.dart';
 import 'package:drift/drift.dart';
 
 /// Tables a window fragment reads besides `entry` (alias `e`).
@@ -74,6 +78,12 @@ WindowFragment? _positiveFragment(CollectionFilter filter) {
       return _mimeFragment(mime);
     case RatingFilter(rating: final rating, op: final op):
       return _ratingFragment(rating, op);
+    case TypeFilter():
+      return _typeFragment(filter);
+    case MissingFilter():
+      return _missingFragment(filter);
+    case PathFilter(path: final path):
+      return _pathFragment(path);
     case FavouriteFilter():
       return (sql: 'EXISTS (SELECT 1 FROM favourites f WHERE f.id = e.id)', variables: const [], requires: const {});
     default:
@@ -184,6 +194,98 @@ WindowFragment? _ratingFragment(int rating, String op) {
   };
   if (sql == null) return null;
   return (sql: sql, variables: [Variable(rating)], requires: requires);
+}
+
+/// `MetadataTable.flags` bits, mirroring `CatalogMetadata`'s flag layout.
+///
+/// The layout is owned by `CatalogMetadata`; these copies let the compiler test
+/// a flag without loading a row, and
+/// `test/features/collection_paging/collection_filter_sql_test.dart` derives
+/// every bit from `CatalogMetadata.toMap()` so the two cannot drift.
+const int _flagAnimated = 1 << 0;
+const int _flagGeotiff = 1 << 2;
+const int _flag360 = 1 << 3;
+const int _flagMotionPhoto = 1 << 5;
+const int _flagHdr = 1 << 6;
+const int _flagSlowMotion = 1 << 7;
+
+WindowFragment _flagFragment(int mask) => (
+      sql: '(COALESCE(m.flags, 0) & $mask) != 0',
+      variables: const [],
+      requires: const {WindowTable.metadata},
+    );
+
+/// `AvesEntry.mimeType` (catalogued mime, else source mime) starts with
+/// [prefix].
+///
+/// Case-sensitive on purpose: the `MimeTypes` prefix tests are `startsWith`,
+/// which SQLite's `LIKE` would make case-insensitive.
+String _mimeStartsWith(String prefix) => "substr(COALESCE(m.mimeType, e.sourceMimeType), 1, ${prefix.length}) = '$prefix'";
+
+WindowFragment? _typeFragment(TypeFilter filter) {
+  // The persisted `itemType` values are private to `TypeFilter`; compare against
+  // its public instances so the fork never spells them out.
+  final itemType = filter.itemType;
+  if (itemType == TypeFilter.animated.itemType) return _flagFragment(_flagAnimated);
+  if (itemType == TypeFilter.geotiff.itemType) return _flagFragment(_flagGeotiff);
+  if (itemType == TypeFilter.hdr.itemType) return _flagFragment(_flagHdr);
+  if (itemType == TypeFilter.motionPhoto.itemType) return _flagFragment(_flagMotionPhoto);
+  if (itemType == TypeFilter.panorama.itemType) return _mimeAndFlag('image', _flag360);
+  if (itemType == TypeFilter.slowMotion.itemType) return _mimeAndFlag('video', _flagSlowMotion);
+  if (itemType == TypeFilter.sphericalVideo.itemType) return _mimeAndFlag('video', _flag360);
+  if (itemType == TypeFilter.raw.itemType) {
+    // `MimeTypes.rawImages.contains(mimeType)`, exact case.
+    final placeholders = MimeTypes.rawImages.map((_) => '?').join(',');
+    return (
+      sql: 'COALESCE(m.mimeType, e.sourceMimeType) IN ($placeholders)',
+      variables: [for (final mime in MimeTypes.rawImages) Variable(mime)],
+      requires: const {WindowTable.metadata},
+    );
+  }
+  return null;
+}
+
+WindowFragment _mimeAndFlag(String prefix, int mask) {
+  final flag = _flagFragment(mask);
+  return (sql: '(${_mimeStartsWith(prefix)} AND ${flag.sql})', variables: flag.variables, requires: flag.requires);
+}
+
+WindowFragment? _missingFragment(MissingFilter filter) {
+  final metadataType = filter.metadataType;
+  if (metadataType == MissingFilter.date.metadataType) {
+    // The *catalogued* date, not `bestDate`: `(catalogMetadata?.dateMillis ?? 0) == 0`.
+    return (sql: 'COALESCE(m.dateMillis, 0) = 0', variables: const [], requires: const {WindowTable.metadata});
+  }
+  if (metadataType == MissingFilter.title.metadataType) {
+    return (sql: "COALESCE(m.xmpTitle, '') = ''", variables: const [], requires: const {WindowTable.metadata});
+  }
+  if (metadataType == MissingFilter.fineAddress.metadataType) {
+    // `hasGps && !hasFineAddress`: has a coordinate but neither a place nor a
+    // full country name (the two conditions are two-valued, so COALESCE is only
+    // for symmetry with the rest of the compiler).
+    const placeExpr = "COALESCE(NULLIF(a.locality, ''), a.adminArea)";
+    const fineAddress = "(($placeExpr IS NOT NULL AND $placeExpr != '') OR LENGTH(COALESCE(a.countryName, '')) > 3)";
+    return (
+      sql: '((COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0) AND COALESCE($fineAddress, 0) = 0)',
+      variables: const [],
+      requires: const {WindowTable.metadata, WindowTable.address},
+    );
+  }
+  return null;
+}
+
+WindowFragment? _pathFragment(String normalizedPath) {
+  // `PathFilter.path` is normalised with a trailing separator; the test is
+  // `directory == root || directory is a descendant`, matched case-sensitively
+  // (`LIKE` would fold case, `startsWith` does not).
+  final separator = pContext.separator;
+  final root = normalizedPath.endsWith(separator) ? normalizedPath.substring(0, normalizedPath.length - 1) : normalizedPath;
+  final childPrefix = '$root$separator';
+  return (
+    sql: '(e.directory = ? OR substr(e.directory, 1, ?) = ?)',
+    variables: [Variable(root), Variable(childPrefix.length), Variable(childPrefix)],
+    requires: const {},
+  );
 }
 
 /// Fragment excluding video entries: the `MimeFilter.video` complement the

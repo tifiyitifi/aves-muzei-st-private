@@ -11,9 +11,13 @@ import 'package:aves/model/filters/covered/location.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/covered/tag.dart';
 import 'package:aves/model/filters/mime.dart';
+import 'package:aves/model/filters/missing.dart';
+import 'package:aves/model/filters/path.dart';
 import 'package:aves/model/filters/rating.dart';
+import 'package:aves/model/filters/type.dart';
 import 'package:aves/model/metadata/address.dart';
 import 'package:aves/model/metadata/catalog.dart';
+import 'package:aves/ref/mime_types.dart';
 import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
@@ -246,6 +250,91 @@ void main() {
       expect(await windowIds(predicate: predicate), [1]);
     });
 
+    test('a path filter matches the root and its descendants only', () async {
+      await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/a/b'), entry(3, dir: '/ab'), entry(4, dir: '/c')});
+      // `/ab` must not match `/a`, and `/a/b` is a descendant of `/a`.
+      expect((await windowIds(predicate: predicateForFilters({PathFilter('/a')})!)).toSet(), {1, 2});
+      expect(await windowIds(predicate: predicateForFilters({PathFilter('/a/b')})!), [2]);
+      expect(await windowIds(predicate: predicateForFilters({PathFilter('/a').reverse()})), isNotEmpty);
+    });
+
+    test('type filters read the metadata flags and the mime', () async {
+      final rawMime = MimeTypes.rawImages.first;
+      await service.insertEntries({entry(1, mime: 'video/mp4'), entry(2), entry(3, mime: rawMime)});
+      await service.saveCatalogMetadata({CatalogMetadata(id: 1, isSlowMotion: true)});
+
+      expect(await windowIds(predicate: predicateForFilters({TypeFilter.slowMotion})!), [1]);
+      expect(await windowIds(predicate: predicateForFilters({TypeFilter.raw})!), [3]);
+      // No entry carries the animated flag.
+      expect(await windowIds(predicate: predicateForFilters({TypeFilter.animated})!), isEmpty);
+      // The complement keeps the rest (a bare NOT would drop the NULL flag row).
+      expect((await windowIds(predicate: predicateForFilters({TypeFilter.animated.reverse()})!)).toSet(), {1, 2, 3});
+    });
+
+    test('missing date and title include rows without metadata', () async {
+      await service.insertEntries({entry(1), entry(2), entry(3)});
+      await service.saveCatalogMetadata({
+        CatalogMetadata(id: 1, xmpTitle: 'titled', dateMillis: 1700000000000),
+        CatalogMetadata(id: 3, xmpSubjects: 'x'),
+      });
+      // Entry 2 has no metadata row at all: neither date nor title.
+      expect((await windowIds(predicate: predicateForFilters({MissingFilter.date})!)).toSet(), {2, 3});
+      expect((await windowIds(predicate: predicateForFilters({MissingFilter.title})!)).toSet(), {2, 3});
+    });
+
+    test('missing fine address needs a coordinate without a place', () async {
+      await service.insertEntries({entry(1), entry(2), entry(3)});
+      await service.saveCatalogMetadata({
+        CatalogMetadata(id: 1, latitude: 1, longitude: 1),
+        CatalogMetadata(id: 2, latitude: 2, longitude: 2),
+      });
+      await service.saveAddresses({
+        const AddressDetails(id: 1, countryName: 'France', adminArea: 'Paris'),
+        const AddressDetails(id: 2, countryName: 'FR'),
+      });
+      // 1 has a place; 2 has only a two-letter country; 3 has no coordinate.
+      expect(await windowIds(predicate: predicateForFilters({MissingFilter.fineAddress})!), [2]);
+    });
+  });
+
+  group('countEntriesBefore', () {
+    // The index must equal the position in the very list loadWindow walks, for
+    // every sort factor and both directions: it is what a viewer opens on.
+    for (final sort in [SortFactor.date, SortFactor.path, SortFactor.size, SortFactor.rating, SortFactor.duration, SortFactor.albumItemName]) {
+      for (final reverse in [false, true]) {
+        test('matches the window order for $sort (reverse=$reverse)', () async {
+          await service.insertEntries({
+            entry(1, dir: '/a', dateTaken: 30, size: 10),
+            entry(2, dir: '/b', dateTaken: 10, size: 30),
+            entry(3, dir: '/a', dateTaken: 20, size: 20),
+            entry(4, dir: '/b', dateTaken: 40, size: 5),
+          });
+          await service.saveCatalogMetadata({
+            CatalogMetadata(id: 1, rating: 5),
+            CatalogMetadata(id: 2, rating: 2),
+            CatalogMetadata(id: 3, rating: 2),
+          });
+          final predicate = const CollectionWindowPredicate();
+          final ordered = await windowIds(predicate: predicate, sort: sort, reverse: reverse);
+
+          for (var index = 0; index < ordered.length; index++) {
+            expect(await service.countEntriesBefore(predicate: predicate, id: ordered[index], sort: sort, reverse: reverse), index, reason: 'sort=$sort reverse=$reverse id=${ordered[index]}');
+          }
+        });
+      }
+    }
+
+    test('respects the predicate and reports absent entries as -1', () async {
+      await service.insertEntries({entry(1, dir: '/a', dateTaken: 10), entry(2, dir: '/b', dateTaken: 20), entry(3, dir: '/b', dateTaken: 30)});
+      final album = lsAlbum('/b');
+      // within /b the order is 3, 2
+      expect(await service.countEntriesBefore(predicate: album, id: 3, sort: SortFactor.date, reverse: false), 0);
+      expect(await service.countEntriesBefore(predicate: album, id: 2, sort: SortFactor.date, reverse: false), 1);
+      // entry 1 is not part of the album view
+      expect(await service.countEntriesBefore(predicate: album, id: 1, sort: SortFactor.date, reverse: false), -1);
+      // unknown ids are absent
+      expect(await service.countEntriesBefore(predicate: album, id: 999, sort: SortFactor.date, reverse: false), -1);
+    });
   });
 
   group('reversed filters', () {

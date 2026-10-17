@@ -5,6 +5,8 @@ import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/container/set_and.dart';
 import 'package:aves/model/filters/container/set_or.dart';
 import 'package:aves/model/filters/container/tag_group.dart';
+import 'package:aves/model/filters/aspect_ratio.dart';
+import 'package:aves/model/filters/coordinate.dart';
 import 'package:aves/model/filters/covered/location.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/covered/tag.dart';
@@ -14,6 +16,7 @@ import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/missing.dart';
 import 'package:aves/model/filters/path.dart';
+import 'package:aves/model/filters/query.dart';
 import 'package:aves/model/filters/rating.dart';
 import 'package:aves/model/filters/recent.dart';
 import 'package:aves/model/filters/type.dart';
@@ -109,6 +112,10 @@ WindowFragment? _positiveFragment(CollectionFilter filter) {
       return _weekDayFragment(weekday);
     case RecentlyAddedFilter():
       return _recentlyAddedFragment();
+    case AspectRatioFilter(threshold: final threshold, op: final op):
+      return _aspectRatioFragment(threshold, op);
+    case CoordinateFilter():
+      return _coordinateFragment(filter);
     case MissingFilter():
       return _missingFragment(filter);
     case PathFilter(path: final path):
@@ -364,6 +371,53 @@ WindowFragment _recentlyAddedFragment() => (
       variables: [Variable(RecentlyAddedFilter.nowSecs)],
       requires: const {},
     );
+
+WindowFragment? _aspectRatioFragment(double threshold, String op) {
+  final comparison = switch (op) {
+    QueryFilter.opEqual => '=',
+    QueryFilter.opLower => '<',
+    QueryFilter.opGreater => '>',
+    _ => null,
+  };
+  if (comparison == null) return null;
+  // `AvesEntry.displayAspectRatio`: width/height, swapped when rotated, and `1`
+  // when either side is unknown. `isRotated` is `degrees % 180 == 90`; Dart's `%`
+  // is non-negative for a positive divisor while SQLite's follows C, hence the
+  // extra `+ 180`.
+  const rotation = 'COALESCE(m.rotationDegrees, e.sourceRotationDegrees, 0)';
+  const width = 'COALESCE(e.width, 0)';
+  const height = 'COALESCE(e.height, 0)';
+  const ratio = 'CASE WHEN $width = 0 OR $height = 0 THEN 1.0 '
+      'WHEN (($rotation % 180) + 180) % 180 = 90 THEN CAST($height AS REAL) / $width '
+      'ELSE CAST($width AS REAL) / $height END';
+  return (
+    sql: '($ratio $comparison ?)',
+    variables: [Variable(threshold)],
+    requires: const {WindowTable.metadata},
+  );
+}
+
+WindowFragment _coordinateFragment(CoordinateFilter filter) {
+  final sw = filter.sw;
+  final ne = filter.ne;
+  // `GeoUtils.contains`: a latitude box, then a longitude box that wraps around
+  // the antimeridian when the west edge is east of the east edge.
+  final longitude = sw.longitude <= ne.longitude ? '(m.longitude >= ? AND m.longitude <= ?)' : '(m.longitude >= ? OR m.longitude <= ?)';
+  return (
+    sql: '((${_hasGpsExpression()}) AND m.latitude >= ? AND m.latitude <= ? AND $longitude)',
+    variables: [
+      Variable(sw.latitude),
+      Variable(ne.latitude),
+      Variable(sw.longitude),
+      Variable(ne.longitude),
+    ],
+    requires: const {WindowTable.metadata},
+  );
+}
+
+/// `AvesEntry.hasGps`: a coordinate is only meaningful when it is not the
+/// default `(0, 0)`.
+String _hasGpsExpression() => 'COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0';
 
 WindowFragment? _pathFragment(String normalizedPath) {
   // `PathFilter.path` is normalised with a trailing separator; the test is

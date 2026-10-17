@@ -5,10 +5,12 @@ import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/entry/sort.dart';
+import 'package:aves/model/filters/aspect_ratio.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/container/set_or.dart';
 import 'package:aves/model/filters/container/tag_group.dart';
+import 'package:aves/model/filters/coordinate.dart';
 import 'package:aves/model/filters/covered/location.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/covered/tag.dart';
@@ -17,6 +19,7 @@ import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/missing.dart';
 import 'package:aves/model/filters/path.dart';
+import 'package:aves/model/filters/query.dart';
 import 'package:aves/model/filters/rating.dart';
 import 'package:aves/model/filters/recent.dart';
 import 'package:aves/model/filters/type.dart';
@@ -29,6 +32,7 @@ import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as p;
 
 import '../../helpers/sqlite3_loader.dart';
@@ -68,6 +72,9 @@ void main() {
     String mime = 'image/jpeg',
     int? modified = 2,
     int dateAdded = 1,
+    int width = 10,
+    int height = 20,
+    int rotation = 0,
   }) {
     final album = dir ?? '/album';
     return AvesEntry(
@@ -77,9 +84,9 @@ void main() {
       contentId: 100 + id,
       pageId: null,
       sourceMimeType: mime,
-      width: 10,
-      height: 20,
-      sourceRotationDegrees: 0,
+      width: width,
+      height: height,
+      sourceRotationDegrees: rotation,
       sizeBytes: size,
       sourceTitle: 'title$id',
       dateAddedSecs: dateAdded,
@@ -502,4 +509,52 @@ void main() {
     });
   });
 
+  group('geometry atoms', () {
+    test('aspect ratio filters agree with the in-memory test', () async {
+      final entries = [
+        entry(1, width: 20, height: 10),
+        entry(2, width: 10, height: 20),
+        // Rotated: the displayed ratio swaps width and height.
+        entry(3, width: 10, height: 20, rotation: 90),
+        // Unknown size: the ratio is 1.
+        entry(4, width: 0, height: 20),
+        // A negative angle: Dart's `%` keeps it in [0, 180) while SQLite's does
+        // not, so the compiler adds a second `+ 180`.
+        entry(5, width: 10, height: 20, rotation: -90),
+      ];
+      await seed(entries);
+
+      for (final filter in [
+        AspectRatioFilter.landscape,
+        AspectRatioFilter.portrait,
+        AspectRatioFilter(1, QueryFilter.opEqual),
+        AspectRatioFilter.landscape.reverse(),
+      ]) {
+        await expectMatchesInMemory({filter}, entries);
+      }
+      // 2, 2 (rotated) and 2 (negative rotation) are landscape.
+      expect((await windowIds(predicate: predicateForFilters({AspectRatioFilter.landscape})!)).toSet(), {1, 3, 5});
+      expect(await windowIds(predicate: predicateForFilters({AspectRatioFilter.portrait})!), [2]);
+    });
+
+    test('coordinate filters agree with the in-memory test', () async {
+      final entries = [entry(1), entry(2), entry(3), entry(4)];
+      await seed(entries, catalog: {
+        CatalogMetadata(id: 1, latitude: 48.85, longitude: 2.35),
+        CatalogMetadata(id: 2, latitude: -33.87, longitude: 151.21),
+        // The default (0, 0) is not a coordinate.
+        CatalogMetadata(id: 3, latitude: 0, longitude: 0),
+        CatalogMetadata(id: 4, latitude: 10, longitude: 179),
+      });
+
+      final paris = CoordinateFilter(LatLng(48.0, 2.0), LatLng(49.0, 3.0));
+      // The west edge is east of the east edge: the box wraps the antimeridian.
+      final wrapping = CoordinateFilter(LatLng(-90, 170), LatLng(90, -170));
+      for (final filter in [paris, wrapping, paris.reverse()]) {
+        await expectMatchesInMemory({filter}, entries);
+      }
+      expect(await windowIds(predicate: predicateForFilters({paris})!), [1]);
+      expect(await windowIds(predicate: predicateForFilters({wrapping})!), [4]);
+    });
+  });
 }

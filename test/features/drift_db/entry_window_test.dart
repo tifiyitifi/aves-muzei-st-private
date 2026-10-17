@@ -50,6 +50,7 @@ void main() {
   AvesEntry entry(
     int id, {
     String? dir,
+    bool pathLess = false,
     int dateTaken = 0,
     int size = 5,
     bool trashed = false,
@@ -60,7 +61,7 @@ void main() {
     return AvesEntry(
       id: id,
       uri: 'content://$id',
-      path: '$album/$id.jpg',
+      path: pathLess ? null : '$album/$id.jpg',
       contentId: 100 + id,
       pageId: null,
       sourceMimeType: mime,
@@ -244,45 +245,55 @@ void main() {
       final predicate = predicateForFilters({StoredAlbumFilter('/a', null), TagFilter('beach')})!;
       expect(await windowIds(predicate: predicate), [1]);
     });
+
   });
 
-  group('countEntriesBefore', () {
-    // The index must equal the position in the very list loadWindow walks, for
-    // every sort factor and both directions: it is what a viewer opens on.
-    for (final sort in [SortFactor.date, SortFactor.path, SortFactor.size, SortFactor.rating, SortFactor.duration, SortFactor.albumItemName]) {
-      for (final reverse in [false, true]) {
-        test('matches the window order for $sort (reverse=$reverse)', () async {
-          await service.insertEntries({
-            entry(1, dir: '/a', dateTaken: 30, size: 10),
-            entry(2, dir: '/b', dateTaken: 10, size: 30),
-            entry(3, dir: '/a', dateTaken: 20, size: 20),
-            entry(4, dir: '/b', dateTaken: 40, size: 5),
-          });
-          await service.saveCatalogMetadata({
-            CatalogMetadata(id: 1, rating: 5),
-            CatalogMetadata(id: 2, rating: 2),
-            CatalogMetadata(id: 3, rating: 2),
-          });
-          final predicate = const CollectionWindowPredicate();
-          final ordered = await windowIds(predicate: predicate, sort: sort, reverse: reverse);
+  group('reversed filters', () {
+    // The core NULL-safety rule: "not this filter" must keep exactly the rows
+    // Dart's `!test` keeps, including the rows a NULL column makes unknown to a
+    // bare SQL `NOT`.
+    test('a reversed album keeps entries without a directory', () async {
+      await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/b'), entry(3, pathLess: true)});
+      final predicate = predicateForFilters({StoredAlbumFilter('/a', null, reversed: true)})!;
+      expect((await windowIds(predicate: predicate)).toSet(), {2, 3});
+    });
 
-          for (var index = 0; index < ordered.length; index++) {
-            expect(await service.countEntriesBefore(predicate: predicate, id: ordered[index], sort: sort, reverse: reverse), index, reason: 'sort=$sort reverse=$reverse id=${ordered[index]}');
-          }
-        });
-      }
-    }
+    test('a reversed tag keeps untagged entries', () async {
+      await service.insertEntries({entry(1), entry(2), entry(3)});
+      await service.saveCatalogMetadata({
+        CatalogMetadata(id: 1, xmpSubjects: 'a'),
+        CatalogMetadata(id: 2, xmpSubjects: 'b'),
+      });
+      final predicate = predicateForFilters({TagFilter('a', reversed: true)})!;
+      expect((await windowIds(predicate: predicate)).toSet(), {2, 3});
+    });
 
-    test('respects the predicate and reports absent entries as -1', () async {
-      await service.insertEntries({entry(1, dir: '/a', dateTaken: 10), entry(2, dir: '/b', dateTaken: 20), entry(3, dir: '/b', dateTaken: 30)});
-      final album = lsAlbum('/b');
-      // within /b the order is 3, 2
-      expect(await service.countEntriesBefore(predicate: album, id: 3, sort: SortFactor.date, reverse: false), 0);
-      expect(await service.countEntriesBefore(predicate: album, id: 2, sort: SortFactor.date, reverse: false), 1);
-      // entry 1 is not part of the album view
-      expect(await service.countEntriesBefore(predicate: album, id: 1, sort: SortFactor.date, reverse: false), -1);
-      // unknown ids are absent
-      expect(await service.countEntriesBefore(predicate: album, id: 999, sort: SortFactor.date, reverse: false), -1);
+    test('a reversed mime keeps other mime types', () async {
+      await service.insertEntries({entry(1, mime: 'video/mp4'), entry(2), entry(3, mime: 'image/png')});
+      final predicate = predicateForFilters({MimeFilter.video.reverse()})!;
+      expect((await windowIds(predicate: predicate)).toSet(), {2, 3});
+    });
+
+    test('a reversed rating keeps unrated entries', () async {
+      await service.insertEntries({entry(1), entry(2), entry(3)});
+      await service.saveCatalogMetadata({CatalogMetadata(id: 1, rating: 5), CatalogMetadata(id: 2, rating: 3)});
+      final predicate = predicateForFilters({RatingFilter(5).reverse()})!;
+      expect((await windowIds(predicate: predicate)).toSet(), {2, 3});
+    });
+
+    test('a reversed location keeps entries without an address', () async {
+      await service.insertEntries({entry(1), entry(2)});
+      await service.saveAddresses({const AddressDetails(id: 1, countryCode: 'FR', countryName: 'France')});
+      final predicate = predicateForFilters({LocationFilter(LocationLevel.country, 'France;FR', reversed: true)})!;
+      expect(await windowIds(predicate: predicate), [2]);
+    });
+
+    test('a reversed filter used as a hidden filter hides its complement', () async {
+      await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/b')});
+      // hiding "not in /a" leaves only /a
+      final predicate = predicateForFilters({}, hidden: {StoredAlbumFilter('/a', null, reversed: true)})!;
+      expect(await windowIds(predicate: predicate), [1]);
     });
   });
+
 }

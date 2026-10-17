@@ -14,7 +14,6 @@ import 'package:aves/features/drift_db/entries/entry_store.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/drift_db/favourites/favourite_store.dart';
 import 'package:aves/features/drift_db/filter_summary/filter_summary_store.dart';
-import 'package:aves/features/drift_db/filter_summary/hidden_exclusion.dart';
 import 'package:aves/features/drift_db/filter_summary/summary_rows.dart';
 import 'package:aves/features/drift_db/migration/legacy_import.dart';
 import 'package:aves/features/drift_db/migration/legacy_import_progress.dart';

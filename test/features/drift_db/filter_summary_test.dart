@@ -1,12 +1,14 @@
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/features/drift_db/filter_summary/filter_summary_store.dart';
-import 'package:aves/features/drift_db/filter_summary/hidden_exclusion.dart';
+import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/filters/covered/location.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/covered/tag.dart';
+import 'package:aves/model/filters/query.dart';
 import 'package:aves/model/metadata/address.dart';
 import 'package:aves/model/metadata/catalog.dart';
 import 'package:aves/services/common/services.dart';
@@ -218,21 +220,31 @@ void main() {
     test('is empty without hidden filters or vaults', () {
       final exclusion = buildSummaryExclusion(hidden: {}, lockedVaultDirs: {});
       expect(exclusion.isEmpty, true);
+      expect(exclusion.complete, isTrue);
     });
 
-    test('skips reversed and unsupported filters', () async {
-      await service.insertEntries({entry(1, dir: '/a')});
-      // Located entry: hiding "unlocated" must not touch it.
-      await service.saveCatalogMetadata({metadata(1, latitude: 1, longitude: 1)});
-      final exclusion = buildSummaryExclusion(
-        hidden: {
-          StoredAlbumFilter('/a', null, reversed: true),
-          LocationFilter(LocationLevel.place, ''),
-        },
-        lockedVaultDirs: {},
-      );
-      // reversed album filter is not expressible: skipped, so the album stays
+    test('hides the complement of a reversed hidden filter', () async {
+      await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/b')});
+      // "not in /a" hides entry 2; a bare `NOT` would also drop rows whose
+      // directory is NULL, which the Dart test keeps.
+      final exclusion = buildSummaryExclusion(hidden: {StoredAlbumFilter('/a', null, reversed: true)}, lockedVaultDirs: {});
+      expect(exclusion.complete, isTrue);
       expect((await store.albumRows(exclusion)).map((r) => r.directory), ['/a']);
+    });
+
+    test('hiding unlocated entries keeps located ones', () async {
+      await service.insertEntries({entry(1), entry(2)});
+      await service.saveCatalogMetadata({metadata(1, latitude: 1, longitude: 1)});
+      final exclusion = buildSummaryExclusion(hidden: {LocationFilter(LocationLevel.place, '')}, lockedVaultDirs: {});
+      expect((await store.albumRows(exclusion)).single.count, 1);
+    });
+
+    test('reports an unexpressible hidden filter instead of dropping it', () async {
+      final exclusion = buildSummaryExclusion(hidden: {QueryFilter('title', ACalendar.gregorian)}, lockedVaultDirs: {});
+      // The summary stays approximate (the filter is skipped) but flags it, so
+      // the window predicate can fall back to the legacy path.
+      expect(exclusion.complete, isFalse);
+      expect(exclusion.isEmpty, isTrue);
     });
   });
 }

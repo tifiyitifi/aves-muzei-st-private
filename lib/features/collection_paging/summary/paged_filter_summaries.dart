@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
-import 'package:aves/features/drift_db/filter_summary/hidden_exclusion.dart';
 import 'package:aves/features/drift_db/filter_summary/summary_rows.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/geo/states.dart';

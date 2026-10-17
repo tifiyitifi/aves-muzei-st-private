@@ -89,8 +89,36 @@ void main() {
       expect(predicate.requires, contains(WindowTable.metadata));
     });
 
-    test('a reversed album needs the legacy path', () {
-      expect(predicateForFilters({StoredAlbumFilter('/a', null, reversed: true)}), isNull);
+    test('a reversed album is negated NULL-safely', () {
+      // A bare `NOT (e.directory = ?)` would drop rows whose directory is NULL;
+      // Dart's `!test` keeps them, so the negation is "is not true".
+      final predicate = predicateForFilters({StoredAlbumFilter('/a', null, reversed: true)})!;
+      expect(predicate.conjunction.single.sql, 'COALESCE((e.directory = ?), 0) = 0');
+      expect(predicate.conjunction.single.variables.single.value, '/a');
+    });
+
+    test('reversed atoms keep working through the same rule', () {
+      for (final filter in [
+        TagFilter('sunset', reversed: true),
+        MimeFilter.video.reverse(),
+        RatingFilter(4).reverse(),
+        LocationFilter(LocationLevel.country, 'France;FR', reversed: true),
+      ]) {
+        final predicate = predicateForFilters({filter});
+        expect(predicate, isNotNull, reason: '$filter should compile');
+        expect(predicate!.conjunction.single.sql, startsWith('COALESCE(('), reason: '$filter should be negated');
+      }
+    });
+
+    test('a reversed group negates the whole union', () {
+      final group = AlbumGroupFilter(
+        Uri.parse('/group'),
+        SetOrFilter({StoredAlbumFilter('/a', null), StoredAlbumFilter('/b', null)}),
+        reversed: true,
+      );
+      final predicate = predicateForFilters({group})!;
+      expect(predicate.conjunction.single.sql, startsWith('COALESCE(('));
+      expect(predicate.conjunction.single.sql, contains(' OR '));
     });
 
     test('trash maps to the trashed-only predicate', () {
@@ -105,15 +133,27 @@ void main() {
 
     test('hidden filters become an exclusion fragment', () {
       final predicate = predicateForFilters({}, hidden: {StoredAlbumFilter('/hidden', null)})!;
+      // Hiding an album = keeping the entries whose directory is not that album.
+      expect(predicate.conjunction.single.sql, 'COALESCE((e.directory = ?), 0) = 0');
+      expect(predicate.conjunction.single.variables.single.value, '/hidden');
+      // A hidden filter can be any clause, so every optional join is declared.
+      expect(predicate.requires, containsAll({WindowTable.dateTaken, WindowTable.metadata, WindowTable.address}));
+    });
+
+    test('locked vaults are excluded by directory', () {
+      final predicate = predicateForFilters({}, lockedVaultDirs: {'/secret'})!;
       expect(predicate.conjunction.single.sql, contains('NOT IN'));
-      expect(predicate.requires, contains(WindowTable.metadata));
-      expect(predicate.requires, contains(WindowTable.address));
+      expect(predicate.conjunction.single.variables.single.value, '/secret');
+    });
+
+    test('a reversed hidden filter is compiled, not ignored', () {
+      final predicate = predicateForFilters({}, hidden: {StoredAlbumFilter('/hidden', null, reversed: true)})!;
+      expect(predicate.conjunction.single.sql, contains('COALESCE'));
     });
 
     test('an uncompilable hidden filter keeps the legacy path', () {
       // Never silently ignore a hidden filter: it must not vanish from the view.
-      expect(predicateForFilters({}, hidden: {RatingFilter(5)}), isNull);
-      expect(predicateForFilters({}, hidden: {StoredAlbumFilter('/hidden', null, reversed: true)}), isNull);
+      expect(predicateForFilters({}, hidden: {QueryFilter('a', ACalendar.gregorian)}), isNull);
     });
   });
 }

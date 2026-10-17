@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
-import 'package:aves/features/drift_db/filter_summary/hidden_exclusion.dart';
 import 'package:aves/features/drift_db/filter_summary/summary_rows.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/db/db.dart';

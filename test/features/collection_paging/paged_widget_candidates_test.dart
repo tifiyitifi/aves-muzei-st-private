@@ -4,9 +4,10 @@ import 'package:aves/features/collection_paging/query/shuffle_permutation.dart';
 import 'package:aves/features/collection_paging/view/paged_widget_candidates.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
+import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
-import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/model/filters/query.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -102,7 +103,7 @@ void main() {
       await collectionPagingPrefs.setLargeThreshold(1);
 
       final resolution = await PagedWidgetCandidates.resolve(
-        filters: {StoredAlbumFilter('/a', null, reversed: true)},
+        filters: {QueryFilter('holiday', ACalendar.gregorian)},
         mostRecent: true,
         database: database,
       );

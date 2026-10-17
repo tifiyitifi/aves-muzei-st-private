@@ -4,9 +4,11 @@ import 'package:aves/features/collection_paging/engine/collection_paging_prefs.d
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
+import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/model/filters/query.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -81,7 +83,8 @@ void main() {
     test('unsupported filters keep the legacy path', () async {
       await configure(engine: CollectionEngine.paged, threshold: 5);
       final decision = await router.resolve(
-        filters: {StoredAlbumFilter('/a', null, reversed: true)},
+        // A title query has no SQL translation (bestTitle needs a basename).
+        filters: {QueryFilter('holiday', ACalendar.gregorian)},
         database: driftDb,
       );
       expect(decision.route, CollectionRoute.legacy);

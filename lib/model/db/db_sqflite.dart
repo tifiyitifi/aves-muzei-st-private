@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
@@ -249,6 +250,10 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
 
   @override
   Future<List<SectionHeader>> loadDaySectionHeaders({required CollectionWindowPredicate predicate, required bool reverse}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<Float32List> loadRatioChannel({required CollectionWindowPredicate predicate, String? directoryEquals, bool directoryEqualsNull = false, int? dateFromMillis, int? dateToMillis, int? ratingEquals, required SortFactor sort, required bool reverse}) =>
+      throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
   Future<int> countDaysBefore({required CollectionWindowPredicate predicate, required int id, required bool reverse}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');

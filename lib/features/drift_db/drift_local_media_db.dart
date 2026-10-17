@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/addresses/address_store.dart';
@@ -262,6 +263,10 @@ class DriftLocalMediaDb implements LocalMediaDb {
 
   @override
   Future<List<SectionHeader>> loadDaySectionHeaders({required CollectionWindowPredicate predicate, required bool reverse}) => _entries.loadDaySectionHeaders(predicate: predicate, reverse: reverse);
+
+  @override
+  Future<Float32List> loadRatioChannel({required CollectionWindowPredicate predicate, String? directoryEquals, bool directoryEqualsNull = false, int? dateFromMillis, int? dateToMillis, int? ratingEquals, required SortFactor sort, required bool reverse}) =>
+      _entries.loadRatioChannel(predicate: predicate, directoryEquals: directoryEquals, directoryEqualsNull: directoryEqualsNull, dateFromMillis: dateFromMillis, dateToMillis: dateToMillis, ratingEquals: ratingEquals, sort: sort, reverse: reverse);
 
   @override
   Future<int> countDaysBefore({required CollectionWindowPredicate predicate, required int id, required bool reverse}) => _entries.countDaysBefore(predicate: predicate, id: id, reverse: reverse);

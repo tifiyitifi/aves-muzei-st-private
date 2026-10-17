@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/drift_db/filter_summary/summary_rows.dart';
@@ -102,6 +104,19 @@ abstract class LocalMediaDb {
   /// Month headers of the calendar projection, each counting the days it holds.
   Future<List<SectionHeader>> loadDaySectionHeaders({
     required CollectionWindowPredicate predicate,
+    required bool reverse,
+  });
+
+  /// The display aspect ratios of a section's rows, in collection order, as a
+  /// compact channel for the mosaic layout.
+  Future<Float32List> loadRatioChannel({
+    required CollectionWindowPredicate predicate,
+    String? directoryEquals,
+    bool directoryEqualsNull,
+    int? dateFromMillis,
+    int? dateToMillis,
+    int? ratingEquals,
+    required SortFactor sort,
     required bool reverse,
   });
 

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/db_helpers.dart';
@@ -394,6 +396,49 @@ class EntryStore {
       case SectionGrouping.single:
         return [SectionHeader.single(count: await count(predicate: predicate))];
     }
+  }
+
+  /// The display aspect ratio of every row the predicate and the section bounds
+  /// admit, in collection order, as a compact channel.
+  ///
+  /// The mosaic layout packs a *whole section*, so it needs every ratio at once —
+  /// but not the rows: four bytes each keeps a million within a few MB, where the
+  /// entries themselves would not fit. The layout's row packing (the shared
+  /// `MosaicSectionLayoutBuilder.computeMosaicRows`) runs over this list
+  /// unchanged.
+  ///
+  /// `Float32List` rounds, where the in-memory getter does not; the layout works
+  /// in pixels, so the precision is far below what it can show.
+  Future<Float32List> loadRatioChannel({
+    required CollectionWindowPredicate predicate,
+    String? directoryEquals,
+    bool directoryEqualsNull = false,
+    int? dateFromMillis,
+    int? dateToMillis,
+    int? ratingEquals,
+    required SortFactor sort,
+    required bool reverse,
+  }) async {
+    final key = _sortKey(sort);
+    if (key == null) throw UnimplementedError('ratio channels are not defined for chip sorts: $sort');
+    final where = _windowWhere(
+      predicate: predicate,
+      directoryEquals: directoryEquals,
+      directoryEqualsNull: directoryEqualsNull,
+      dateFromMillis: dateFromMillis,
+      dateToMillis: dateToMillis,
+      ratingEquals: ratingEquals,
+    );
+    final orderBy = 'ORDER BY ${key.map((k) => '${k.expr} ${_dir(descDefault: k.descDefault, reverse: reverse)}').join(', ')}';
+    final rows = await db.customSelect(
+      'SELECT $displayAspectRatioExpression AS ratio ${_from(predicate, dateTaken: true, metadata: true)} ${where.sql} $orderBy',
+      variables: where.variables,
+    ).get();
+    final ratios = Float32List(rows.length);
+    for (var i = 0; i < rows.length; i++) {
+      ratios[i] = (rows[i].data['ratio'] as num?)?.toDouble() ?? 1;
+    }
+    return ratios;
   }
 
   /// The local-time day of a row, as an SQLite day key (`YYYY-MM-DD`).

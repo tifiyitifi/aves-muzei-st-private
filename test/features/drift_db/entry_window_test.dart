@@ -784,4 +784,29 @@ void main() {
       expect(reversed[DateTime(2024, 3, 5)]!.map((e) => e.id), [2, 1]);
     });
   });
+
+  group('ratio channel', () {
+    test('the channel mirrors displayAspectRatio in collection order', () async {
+      final entries = [
+        entry(1, dateTaken: 40, width: 400, height: 200),
+        // A rotation swaps the sides.
+        entry(2, dateTaken: 30, width: 400, height: 200, rotation: 90),
+        // Unknown dimensions read as `1`.
+        entry(3, dateTaken: 20, width: 0, height: 0),
+        entry(4, dateTaken: 10, width: 300, height: 400),
+      ];
+      await seed(entries);
+
+      // The mosaic packs a whole section, so the channel holds every row of it.
+      final channel = await service.loadRatioChannel(predicate: const CollectionWindowPredicate(), sort: SortFactor.date, reverse: false);
+      expect(channel, [2.0, 0.5, 1.0, 0.75]);
+      // 対拍 against the in-memory getter, in the same row order.
+      final window = await service.loadEntryWindow(sort: SortFactor.date, reverse: false, limit: 10, offset: 0);
+      expect([for (final e in window) e.displayAspectRatio], channel);
+
+      // A reversed view flips the row order, not the ratios.
+      final reversed = await service.loadRatioChannel(predicate: const CollectionWindowPredicate(), sort: SortFactor.date, reverse: true);
+      expect(reversed, [0.75, 1.0, 0.5, 2.0]);
+    });
+  });
 }

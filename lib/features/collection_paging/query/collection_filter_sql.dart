@@ -376,21 +376,22 @@ WindowFragment _recentlyAddedFragment() => (
       requires: const {},
     );
 
+/// `AvesEntry.displayAspectRatio`: width/height, swapped when rotated, and `1`
+/// when either side is unknown. `isRotated` is `degrees % 180 == 90`; Dart's `%`
+/// is non-negative for a positive divisor while SQLite's follows C, hence the
+/// extra `+ 180`.
+///
+/// Shared by the aspect-ratio filter and the mosaic layout's ratio channel, so
+/// the two can never disagree about what a tile looks like.
+const String displayAspectRatioExpression = 'CASE WHEN COALESCE(e.width, 0) = 0 OR COALESCE(e.height, 0) = 0 THEN 1.0 '
+    'WHEN ((COALESCE(m.rotationDegrees, e.sourceRotationDegrees, 0) % 180) + 180) % 180 = 90 THEN CAST(COALESCE(e.height, 0) AS REAL) / COALESCE(e.width, 0) '
+    'ELSE CAST(COALESCE(e.width, 0) AS REAL) / COALESCE(e.height, 0) END';
+
 WindowFragment? _aspectRatioFragment(double threshold, String op) {
   final comparison = _comparison(op);
   if (comparison == null) return null;
-  // `AvesEntry.displayAspectRatio`: width/height, swapped when rotated, and `1`
-  // when either side is unknown. `isRotated` is `degrees % 180 == 90`; Dart's `%`
-  // is non-negative for a positive divisor while SQLite's follows C, hence the
-  // extra `+ 180`.
-  const rotation = 'COALESCE(m.rotationDegrees, e.sourceRotationDegrees, 0)';
-  const width = 'COALESCE(e.width, 0)';
-  const height = 'COALESCE(e.height, 0)';
-  const ratio = 'CASE WHEN $width = 0 OR $height = 0 THEN 1.0 '
-      'WHEN (($rotation % 180) + 180) % 180 = 90 THEN CAST($height AS REAL) / $width '
-      'ELSE CAST($width AS REAL) / $height END';
   return (
-    sql: '($ratio $comparison ?)',
+    sql: '($displayAspectRatioExpression $comparison ?)',
     variables: [Variable(threshold)],
     requires: const {WindowTable.metadata},
   );

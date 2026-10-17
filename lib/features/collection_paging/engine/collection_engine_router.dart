@@ -57,7 +57,7 @@ class EngineDecision {
 /// Rules, in order:
 /// 1. Explicit [CollectionEngine.legacy] always wins.
 /// 2. Scopes the SQL layer cannot express (anything but empty/album),
-///    active hidden filters, locked vaults, mosaic layout, and non-Gregorian
+///    active hidden filters, locked vaults, and non-Gregorian
 ///    month/day sections keep the legacy path.
 /// 3. Explicit [CollectionEngine.paged] forces the paged path.
 /// 4. [CollectionEngine.auto] probes the total and pages at or above the size
@@ -91,9 +91,6 @@ class CollectionEngineRouter {
     }
     if (vaults.vaultDirectories.any(vaults.isLocked)) {
       return const EngineDecision.legacy(reason: 'locked vaults need the in-memory path');
-    }
-    if (settings.getEffectiveCollectionTileLayout(filters) == TileLayout.mosaic) {
-      return const EngineDecision.legacy(reason: 'mosaic layout needs measured entries');
     }
     final sectionFactor = settings.getEffectiveCollectionSectionFactor(filters);
     if ((sectionFactor == EntrySectionFactor.month || sectionFactor == EntrySectionFactor.day) && settings.calendar != ACalendar.gregorian) {

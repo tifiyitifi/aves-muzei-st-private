@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/source/collection_lens.dart';
 import 'package:aves/model/source/section_keys.dart';
@@ -30,6 +31,14 @@ class SectionedEntryListLayoutProvider extends SectionedListLayoutProvider<AvesE
 
   @override
   bool get showHeaders => collection.showHeaders;
+
+  @override
+  MosaicRatioResolver? get mosaicRatioResolver {
+    final lens = collection;
+    // The paged engine packs from the channel it measured; the in-memory lens
+    // holds every ratio already and keeps the shared packing.
+    return lens is PagedCollectionLens && lens.pagedActive ? lens.mosaicRatios : null;
+  }
 
   @override
   Map<SectionKey, List<AvesEntry>> get sections => collection.sections;

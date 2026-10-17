@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/view/paged_mosaic_section_layout_builder.dart';
 import 'package:aves/model/source/section_keys.dart';
 import 'package:aves/widgets/common/grid/sections/calendar/section_layout_builder.dart';
 import 'package:aves/widgets/common/grid/sections/fixed/section_layout_builder.dart';
@@ -10,6 +11,10 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 typedef CoverRatioResolver<T> = double Function(T item);
+
+/// Ratios a fork engine measured for a section, in row order, or null while they
+/// load. Null means the shared builder packs the section from its own items.
+typedef MosaicRatioResolver = List<double>? Function(SectionKey sectionKey);
 
 abstract class const SectionedListLayoutProvider<T>({
   super.key,
@@ -33,6 +38,25 @@ abstract class const SectionedListLayoutProvider<T>({
       update: (context, _) {
         switch (tileLayout) {
           case .mosaic:
+            final ratioResolver = mosaicRatioResolver;
+            if (ratioResolver != null) {
+              return PagedMosaicSectionLayoutBuilder<T>(
+                sections: sections,
+                showHeaders: showHeaders,
+                getHeaderExtent: getHeaderExtent,
+                buildHeader: buildHeader,
+                scrollableWidth: scrollableWidth,
+                tileLayout: tileLayout,
+                columnCount: columnCount,
+                spacing: spacing,
+                horizontalPadding: horizontalPadding,
+                tileWidth: tileWidth,
+                tileHeight: tileHeight,
+                tileBuilder: tileBuilder,
+                tileAnimationDelay: tileAnimationDelay,
+                ratioResolver: ratioResolver,
+              ).updateLayouts(context);
+            }
             return MosaicSectionLayoutBuilder<T>(
               sections: sections,
               showHeaders: showHeaders,
@@ -93,6 +117,11 @@ abstract class const SectionedListLayoutProvider<T>({
   }
 
   double get contentWidth => scrollableWidth - (horizontalPadding * 2);
+
+  /// Hook for a fork engine that packs sections from a measured ratio channel
+  /// rather than from the section's items (see
+  /// `PagedMosaicSectionLayoutBuilder`). Null keeps the shared packing.
+  MosaicRatioResolver? get mosaicRatioResolver => null;
 
   bool get showHeaders;
 

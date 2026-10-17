@@ -67,15 +67,15 @@ void main() {
     await setUpServices();
   });
 
-  AvesEntry entry(int id, {required String path, String mime = MimeTypes.jpeg, bool trashed = false, DateTime? taken}) => AvesEntry(
+  AvesEntry entry(int id, {required String path, String mime = MimeTypes.jpeg, bool trashed = false, DateTime? taken, int width = 10, int height = 20}) => AvesEntry(
         id: id,
         uri: 'content://$id',
         path: path,
         contentId: 100 + id,
         pageId: null,
         sourceMimeType: mime,
-        width: 10,
-        height: 20,
+        width: width,
+        height: height,
         sourceRotationDegrees: 0,
         sizeBytes: 5,
         sourceTitle: 'title$id',
@@ -168,5 +168,24 @@ void main() {
     await pumpUntil(() => lens.loadedEntries.any((entry) => entry.id == 1 && entry.stackedEntries != null));
     final day = lens.loadedEntries.firstWhere((entry) => entry.id == 1);
     expect(day.stackedEntries?.map((entry) => entry.id).toList(), [1, 2]);
+  });
+
+  test('the mosaic layout packs a section from its ratio channel', () async {
+    settings.setStoredCollectionTileLayout({}, TileLayout.mosaic);
+    addTearDown(() => settings.setStoredCollectionTileLayout({}, TileLayout.grid));
+    await driftDb.insertEntries({
+      entry(1, path: '/cam/a.jpg', taken: DateTime(2024, 3, 5), width: 400, height: 200),
+      entry(2, path: '/cam/b.jpg', taken: DateTime(2024, 3, 4), width: 200, height: 400),
+      entry(3, path: '/cam/c.jpg', taken: DateTime(2024, 3, 3), width: 300, height: 400),
+    });
+
+    final lens = await openLens({});
+    // The mosaic shows the entries themselves, windowed like the grid.
+    expect(tilesOf(lens), {1, 2, 3});
+
+    // The engine measures the section without reading it: the ratios arrive in
+    // collection order, for the layout to pack with.
+    await pumpUntil(() => lens.sections.keys.every((key) => lens.mosaicRatios(key) != null));
+    expect(lens.mosaicRatios(lens.sections.keys.single), [2.0, 0.5, 0.75]);
   });
 }

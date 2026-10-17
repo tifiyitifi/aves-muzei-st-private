@@ -225,6 +225,11 @@ class PagedCollectionLens extends CollectionLens {
     return result;
   }
 
+  /// The ratios the mosaic layout packs [key] with, or null while they load.
+  ///
+  /// Read by `PagedMosaicSectionLayoutBuilder` through the layout provider.
+  List<double>? mosaicRatios(SectionKey key) => _mosaicRatios[key];
+
   /// Live total for viewer copies.
   int get totalCount => _total;
 
@@ -239,6 +244,13 @@ class PagedCollectionLens extends CollectionLens {
 
   /// True when the layout shows one row per day under month sections.
   bool get _dayRows => !fixedSort && tileLayout == TileLayout.calendar;
+
+  /// True when the layout packs sections from a measured ratio channel.
+  bool get _mosaic => !fixedSort && tileLayout == TileLayout.mosaic;
+
+  /// Display ratios per section, for the mosaic packing. Cleared on every
+  /// resolve; a section is absent until its channel lands.
+  final Map<SectionKey, List<double>> _mosaicRatios = {};
 
   /// Global index of the entry with [id] in the current view, or -1 when the
   /// view is not paged (the legacy list answers in memory) or [id] is not in
@@ -426,6 +438,7 @@ class PagedCollectionLens extends CollectionLens {
             trashedOnly: resolved.trashedOnly,
           );
     final dayRows = _dayRows;
+    final mosaic = _mosaic;
     // Stacks ride on the same predicate as the totals and windows: a member shows
     // while its tile is in the same scope, so nothing disappears when a filter
     // splits a group. A library without stacks skips the filter entirely, and the
@@ -528,6 +541,16 @@ class PagedCollectionLens extends CollectionLens {
       list.cache = state.cache;
       states.add(state);
       lists[key] = list;
+    }
+
+    _mosaicRatios.clear();
+    if (mosaic) {
+      // The mosaic packs a whole section, so its ratios are measured per section
+      // and the layout waits for them (a section renders as its header until
+      // then) instead of packing skeletons that would reflow on the next fill.
+      for (final state in states) {
+        unawaited(_loadSectionRatios(predicate, state, sort, reverse, gen));
+      }
     }
 
     _total = total;
@@ -799,14 +822,37 @@ class PagedCollectionLens extends CollectionLens {
     notifyListeners();
   }
 
+  /// Measures one section for the mosaic packing, without reading its entries
+  /// (which may still be skeletons).
+  Future<void> _loadSectionRatios(CollectionWindowPredicate predicate, _SectionState state, SortFactor sort, bool reverse, int gen) async {
+    final range = _rangeFor(state.header);
+    final List<double> ratios;
+    try {
+      ratios = await localMediaDb.loadRatioChannel(
+        predicate: predicate,
+        directoryEquals: range.directoryEquals,
+        directoryEqualsNull: range.directoryEqualsNull,
+        dateFromMillis: range.dateFromMillis,
+        dateToMillis: range.dateToMillis,
+        ratingEquals: range.ratingEquals,
+        sort: sort,
+        reverse: reverse,
+      );
+    } catch (error, stack) {
+      _log.w('paged ratio channel load failed', error, stack);
+      return;
+    }
+    if (!_current(gen)) return;
+    _mosaicRatios[state.key] = ratios;
+    notifyListeners();
+  }
+
   /// Maps the effective sort/section factors to a SQL grouping, or null when
   /// the combination needs the legacy path.
   SectionGrouping? _resolveGrouping() {
     if (fixedSort) return SectionGrouping.single;
-    // The calendar layout shows one row per day under month sections; the mosaic
-    // layout still needs measured entries.
+    // The calendar layout shows one row per day under month sections.
     if (tileLayout == TileLayout.calendar) return SectionGrouping.month;
-    if (tileLayout == TileLayout.mosaic) return null;
     if (calendar != ACalendar.gregorian) {
       if (sectionFactor == EntrySectionFactor.month || sectionFactor == EntrySectionFactor.day) return null;
     }

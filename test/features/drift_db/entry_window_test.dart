@@ -65,8 +65,10 @@ void main() {
     int id, {
     String? dir,
     bool pathLess = false,
+    String? path,
+    bool nullContentId = false,
     int dateTaken = 0,
-    int size = 5,
+    int? size = 5,
     bool trashed = false,
     int origin = EntryOrigins.mediaStoreContent,
     String mime = 'image/jpeg',
@@ -80,8 +82,8 @@ void main() {
     return AvesEntry(
       id: id,
       uri: 'content://$id',
-      path: pathLess ? null : '$album/$id.jpg',
-      contentId: 100 + id,
+      path: pathLess ? null : (path ?? '$album/$id.jpg'),
+      contentId: nullContentId ? null : 100 + id,
       pageId: null,
       sourceMimeType: mime,
       width: width,
@@ -555,6 +557,132 @@ void main() {
       }
       expect(await windowIds(predicate: predicateForFilters({paris})!), [1]);
       expect(await windowIds(predicate: predicateForFilters({wrapping})!), [4]);
+    });
+  });
+
+  group('query field filters', () {
+    QueryFilter q(String query, {ACalendar calendar = ACalendar.gregorian}) => QueryFilter(query, calendar);
+
+    test('a query without a field form keeps the legacy path', () {
+      for (final query in [
+        // title searches
+        'holiday',
+        '-holiday',
+        '"exact title"',
+        // a regular expression
+        r'/^a.*b$/',
+        // they look like field queries but fall back to the title search
+        'EXT<jpg',
+        'WIDTH<abc',
+        '-WIDTH>100',
+      ]) {
+        expect(predicateForFilters({q(query)}), isNull, reason: query);
+      }
+    });
+
+    test('title and regular-expression forms still match in memory', () {
+      final holiday = entry(1, path: '/a/Holiday Photo.jpg');
+      final other = entry(2, path: '/a/beach.jpg');
+
+      // A plain query is a case-insensitive title substring search.
+      expect(q('holiday').test(holiday), isTrue);
+      expect(q('HOLIDAY photo').test(holiday), isTrue);
+      expect(q('holiday').test(other), isFalse);
+      // A `-` prefix negates it.
+      expect(q('-holiday').test(holiday), isFalse);
+      expect(q('-holiday').test(other), isTrue);
+      // `"..."` keeps the wrapped text untrimmed.
+      expect(q('"Holiday Photo"').test(holiday), isTrue);
+      // `/.../` is a title regular expression, and an invalid one matches nothing.
+      expect(q('/^Holiday/').test(holiday), isTrue);
+      expect(q('/^beach\$/').test(holiday), isFalse);
+      expect(q('/(/').test(holiday), isFalse);
+    });
+
+    test('a non-Gregorian field query keeps the legacy path', () {
+      for (final calendar in [ACalendar.hijriTbla, ACalendar.hijriUmalqura, ACalendar.persian]) {
+        expect(predicateForFilters({q('YEAR=1446', calendar: calendar)}), isNull, reason: '$calendar');
+      }
+    });
+
+    test('EXT selects the last dot segment of the basename', () async {
+      final entries = [
+        entry(1, path: '/a/1.jpg'),
+        entry(2, path: '/a/2.JPG'),
+        entry(3, path: '/a/3.jpeg'),
+        entry(4, path: '/a/4.tar.gz'),
+        // A basename that is only the extension has no extension in Dart.
+        entry(5, path: '/a/.jpg'),
+        entry(6, pathLess: true),
+      ];
+      await seed(entries);
+
+      await expectMatchesInMemory({q('EXT=jpg')}, entries);
+      // The key and the value are both uppercased by the query.
+      await expectMatchesInMemory({q('ext=jpg')}, entries);
+      expect((await windowIds(predicate: predicateForFilters({q('EXT=jpg')})!)).toSet(), {1, 2});
+      // A value that keeps a dot can never equal a real extension.
+      await expectMatchesInMemory({q('EXT=tar.gz')}, entries);
+      await expectMatchesInMemory({q('EXT=.jpg')}, entries);
+      await expectMatchesInMemory({q('EXT=jpg').reverse()}, entries);
+    });
+
+    test('ID selects by content id', () async {
+      final entries = [entry(1), entry(2), entry(3, nullContentId: true)];
+      await seed(entries);
+
+      await expectMatchesInMemory({q('ID=101')}, entries);
+      await expectMatchesInMemory({q('ID=103')}, entries);
+      await expectMatchesInMemory({q('ID=101').reverse()}, entries);
+      expect(await windowIds(predicate: predicateForFilters({q('ID=101')})!), [1]);
+    });
+
+    test('WIDTH and HEIGHT read the displayed size', () async {
+      final entries = [
+        entry(1, width: 20, height: 10),
+        // Rotated: the displayed sides are swapped.
+        entry(2, width: 10, height: 20, rotation: 90),
+        entry(3, width: 0, height: 0),
+      ];
+      await seed(entries);
+
+      for (final query in ['WIDTH>15', 'WIDTH=20', 'WIDTH<15', 'HEIGHT>15', 'HEIGHT=10', 'HEIGHT<15']) {
+        await expectMatchesInMemory({q(query)}, entries);
+      }
+      expect((await windowIds(predicate: predicateForFilters({q('WIDTH>15')})!)).toSet(), {1, 2});
+    });
+
+    test('YEAR, MONTH and DAY read the date, and an absent date counts as 0', () async {
+      final entries = [
+        entry(1, dateTaken: DateTime(2024, 3, 5, 10).millisecondsSinceEpoch),
+        entry(2, dateTaken: DateTime(2023, 3, 6, 10).millisecondsSinceEpoch),
+        // No usable date at all.
+        entry(3, modified: null),
+      ];
+      await seed(entries);
+
+      for (final query in ['YEAR=2024', 'YEAR<2024', 'YEAR>2024', 'MONTH=3', 'MONTH<3', 'MONTH>3', 'DAY=5', 'DAY<5', 'DAY>5']) {
+        await expectMatchesInMemory({q(query)}, entries);
+      }
+      expect(await windowIds(predicate: predicateForFilters({q('YEAR=2024')})!), [1]);
+      // The undated entry reads as `0`, exactly like the legacy in-memory test.
+      expect(await windowIds(predicate: predicateForFilters({q('DAY<5')})!), [3]);
+    });
+
+    test('SIZE reads the resolved byte count', () async {
+      final entries = [
+        entry(1, size: 10),
+        entry(2, size: 2048),
+        entry(3, size: 1048576),
+        // An absent size reads as 0.
+        entry(4, size: null),
+      ];
+      await seed(entries);
+
+      for (final query in ['SIZE=10', 'SIZE>1K', 'SIZE<1M', 'SIZE>1M', 'SIZE>10X']) {
+        await expectMatchesInMemory({q(query)}, entries);
+      }
+      expect((await windowIds(predicate: predicateForFilters({q('SIZE>1K')})!)).toSet(), {2, 3});
     });
   });
 }

@@ -88,8 +88,11 @@ SummaryExclusion buildSummaryExclusion({
 ///
 /// Supported atoms: stored albums, album/tag groups, tags, dynamic albums
 /// (unwrapped), locations (country/state/place), mime types, ratings,
-/// favourites, the `AND`/`OR` containers, and the reverse of every one of them;
-/// the whole set intersects with `AND`.
+/// favourites, path, type, missing, Gregorian dates/weekdays, recently-added,
+/// aspect ratio, coordinates, the `AND`/`OR` containers, the `KEY<op>value`
+/// form of a query, and the reverse of every one of them; the whole set
+/// intersects with `AND`. A query that resolved to a regular expression or a
+/// title search, and a non-Gregorian calendar, stay on the legacy path.
 CollectionWindowPredicate? predicateForFilters(
   Set<CollectionFilter> filters, {
   Set<CollectionFilter> hidden = const {},

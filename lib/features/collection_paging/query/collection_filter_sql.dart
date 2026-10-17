@@ -120,6 +120,8 @@ WindowFragment? _positiveFragment(CollectionFilter filter) {
       return _missingFragment(filter);
     case PathFilter(path: final path):
       return _pathFragment(path);
+    case QueryFilter():
+      return _queryFragment(filter);
     case FavouriteFilter():
       return (sql: 'EXISTS (SELECT 1 FROM favourites f WHERE f.id = e.id)', variables: const [], requires: const {});
     default:
@@ -373,12 +375,7 @@ WindowFragment _recentlyAddedFragment() => (
     );
 
 WindowFragment? _aspectRatioFragment(double threshold, String op) {
-  final comparison = switch (op) {
-    QueryFilter.opEqual => '=',
-    QueryFilter.opLower => '<',
-    QueryFilter.opGreater => '>',
-    _ => null,
-  };
+  final comparison = _comparison(op);
   if (comparison == null) return null;
   // `AvesEntry.displayAspectRatio`: width/height, swapped when rotated, and `1`
   // when either side is unknown. `isRotated` is `degrees % 180 == 90`; Dart's `%`
@@ -432,6 +429,94 @@ WindowFragment? _pathFragment(String normalizedPath) {
     requires: const {},
   );
 }
+
+/// Compiles the `KEY<op>value` forms of a query filter.
+///
+/// Regular-expression and title searches have no SQL translation and keep the
+/// legacy path, as does a non-Gregorian calendar (its year/month/day come from
+/// a Dart-side conversion).
+WindowFragment? _queryFragment(QueryFilter filter) {
+  final field = filter.field;
+  if (field == null) return null;
+
+  final comparison = _comparison(field.op);
+  if (comparison == null) return null;
+
+  switch (field.key) {
+    case QueryFilter.keyContentExtension:
+      return _extensionFragment(field.text);
+    case QueryFilter.keyContentId:
+      // `AvesEntry.contentId` is nullable: a NULL row never equals the value.
+      return (sql: 'e.contentId $comparison ?', variables: [Variable(field.value)], requires: const {});
+    case QueryFilter.keyContentWidth:
+      return _displayedSizeFragment(isWidth: true, comparison: comparison, value: field.value);
+    case QueryFilter.keyContentHeight:
+      return _displayedSizeFragment(isWidth: false, comparison: comparison, value: field.value);
+    case QueryFilter.keyContentYear:
+    case QueryFilter.keyContentMonth:
+    case QueryFilter.keyContentDay:
+      // Only the Gregorian calendar maps to SQLite's date functions.
+      if (filter.calendar != ACalendar.gregorian) return null;
+      final format = switch (field.key) {
+        QueryFilter.keyContentYear => '%Y',
+        QueryFilter.keyContentMonth => '%m',
+        _ => '%d',
+      };
+      // The legacy field query reads an absent date as `0`, so `DAY<5` matches an
+      // undated entry; COALESCE keeps the SQL equal to that.
+      return (
+        sql: "(COALESCE(CAST(strftime('$format', $_bestDateSeconds, 'unixepoch', 'localtime') AS INTEGER), 0) $comparison ?)",
+        variables: [Variable(field.value)],
+        requires: const {WindowTable.dateTaken},
+      );
+    case QueryFilter.keyContentSize:
+      // `AvesEntry.sizeBytes ?? 0`.
+      return (sql: '(COALESCE(e.sizeBytes, 0) $comparison ?)', variables: [Variable(field.value)], requires: const {});
+    default:
+      return null;
+  }
+}
+
+/// `AvesEntry.displaySize`: the two sides swap when the entry is rotated.
+WindowFragment _displayedSizeFragment({required bool isWidth, required String comparison, required int value}) {
+  const rotation = 'COALESCE(m.rotationDegrees, e.sourceRotationDegrees, 0)';
+  const width = 'COALESCE(e.width, 0)';
+  const height = 'COALESCE(e.height, 0)';
+  final unrotated = isWidth ? width : height;
+  final rotated = isWidth ? height : width;
+  final size = 'CASE WHEN (($rotation % 180) + 180) % 180 = 90 THEN $rotated ELSE $unrotated END';
+  return (sql: '($size $comparison ?)', variables: [Variable(value)], requires: const {WindowTable.metadata});
+}
+
+/// `AvesEntry.extension` is `pContext.extension(path)`: the last dot segment of
+/// the basename, and empty for a basename that is only a dot name.
+///
+/// The legacy field query compares it uppercased, so the SQL side compares a
+/// lowercased path. `LIKE` is avoided on purpose, as it would fold case.
+WindowFragment? _extensionFragment(String? text) {
+  final extension = text?.substring(1);
+  if (extension == null || extension.isEmpty) return null;
+  // The legacy query keeps the dot the user typed, so a value that still
+  // contains one can never equal a real extension.
+  if (extension.contains('.')) return (sql: '0 = 1', variables: const [], requires: const {});
+  final length = extension.length;
+  // The suffix must be a whole dot segment: a name precedes the dot (a basename
+  // of exactly `.ext` has no extension in Dart) and that name is not a
+  // separator.
+  return (
+    sql: "(LENGTH(e.path) > ${length + 1} AND SUBSTR(LOWER(e.path), -${length + 1}) = ? AND SUBSTR(LOWER(e.path), -${length + 2}, 1) != '/')",
+    variables: [Variable('.${extension.toLowerCase()}')],
+    requires: const {},
+  );
+}
+
+/// The SQL operator of a query comparison, or null for an unknown one.
+String? _comparison(String op) => switch (op) {
+      QueryFilter.opEqual => '=',
+      QueryFilter.opLower => '<',
+      QueryFilter.opGreater => '>',
+      _ => null,
+    };
 
 /// Fragment excluding video entries: the `MimeFilter.video` complement the
 /// slideshow uses when it skips videos.

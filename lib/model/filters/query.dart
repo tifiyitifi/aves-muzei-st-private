@@ -19,7 +19,15 @@ class QueryFilter extends CollectionFilter {
   final String query;
   final ACalendar calendar;
   final bool colorful, live;
-  late final EntryPredicate _test;
+
+  /// The `KEY<op>value` form of this query, resolved once.
+  ///
+  /// Null when the query resolved to a regular expression or a plain title
+  /// search. Exposed so the database compiler translates a field query without
+  /// parsing the string a second time.
+  late final QueryField? field = _parseField(query.toUpperCase());
+
+  late final EntryPredicate _test = _resolveTest();
 
   @override
   List<Object?> get props => [query, calendar, live, reversed];
@@ -38,47 +46,7 @@ class QueryFilter extends CollectionFilter {
   static const opLower = '<';
   static const opGreater = '>';
 
-  new(this.query, this.calendar, {this.colorful = true, this.live = false, super.reversed = false}) {
-    // allow regex queries wrapped with `/.../`
-    var matches = _regexRegex.allMatches(query);
-    if (matches.length == 1) {
-      try {
-        final regex = RegExp(matches.first.group(1)!);
-        _test = (entry) {
-          final title = entry.bestTitle;
-          return title != null && regex.hasMatch(title);
-        };
-      } on FormatException catch (_) {
-        // invalid regex
-        _test = (entry) => false;
-      }
-      return;
-    }
-
-    var upQuery = query.toUpperCase();
-
-    final test = fieldTest(upQuery);
-    if (test != null) {
-      _test = test;
-      return;
-    }
-
-    // allow NOT queries starting with `-`
-    final not = upQuery.startsWith('-');
-    if (not) {
-      upQuery = upQuery.substring(1);
-    }
-
-    // allow untrimmed queries wrapped with `"..."`
-    matches = _exactRegex.allMatches(upQuery);
-    if (matches.length == 1) {
-      upQuery = matches.first.group(1)!;
-    }
-
-    // default to title search
-    bool testTitle(AvesEntry entry) => entry.bestTitle?.toUpperCase().contains(upQuery) == true;
-    _test = not ? (entry) => !testTitle(entry) : testTitle;
-  }
+  new(this.query, this.calendar, {this.colorful = true, this.live = false, super.reversed = false});
 
   factory fromMap(Map<String, Object?> json) {
     return QueryFilter(
@@ -124,115 +92,155 @@ class QueryFilter extends CollectionFilter {
   @override
   String get key => '$type-$reversed-${calendar.name}-$query';
 
-  EntryPredicate? fieldTest(String upQuery) {
-    var match = _fieldPattern.firstMatch(upQuery);
+  /// Resolves the query string once, in the legacy order: `/regex/`, then a
+  /// `KEY<op>value` field query, then the default title search.
+  EntryPredicate _resolveTest() {
+    // allow regex queries wrapped with `/.../`
+    final regexMatches = _regexRegex.allMatches(query);
+    if (regexMatches.length == 1) {
+      try {
+        final regex = RegExp(regexMatches.first.group(1)!);
+        return (entry) {
+          final title = entry.bestTitle;
+          return title != null && regex.hasMatch(title);
+        };
+      } on FormatException catch (_) {
+        // invalid regex
+        return (entry) => false;
+      }
+    }
+
+    final field = this.field;
+    if (field != null) {
+      final test = _testForField(field);
+      if (test != null) return test;
+    }
+
+    var upQuery = query.toUpperCase();
+
+    // allow NOT queries starting with `-`
+    final not = upQuery.startsWith('-');
+    if (not) {
+      upQuery = upQuery.substring(1);
+    }
+
+    // allow untrimmed queries wrapped with `"..."`
+    final exactMatches = _exactRegex.allMatches(upQuery);
+    if (exactMatches.length == 1) {
+      upQuery = exactMatches.first.group(1)!;
+    }
+
+    // default to title search
+    bool testTitle(AvesEntry entry) => entry.bestTitle?.toUpperCase().contains(upQuery) == true;
+    return not ? (entry) => !testTitle(entry) : testTitle;
+  }
+
+  /// The in-memory test of a parsed field query, or null when the key has none
+  /// for the operation (which sends the query to the title search).
+  EntryPredicate? _testForField(QueryField field) {
+    switch (field.key) {
+      case keyContentExtension:
+        final extension = field.text;
+        if (extension == null) return null;
+        return (entry) => entry.extension?.toUpperCase() == extension;
+      case keyContentId:
+        final contentId = field.value;
+        return (entry) => entry.contentId == contentId;
+      case keyContentYear:
+        return _numericTest(field.op, (entry) => _datePart(entry, 0), field.value);
+      case keyContentMonth:
+        return _numericTest(field.op, (entry) => _datePart(entry, 1), field.value);
+      case keyContentDay:
+        return _numericTest(field.op, (entry) => _datePart(entry, 2), field.value);
+      case keyContentWidth:
+        return _numericTest(field.op, (entry) => entry.displaySize.width, field.value);
+      case keyContentHeight:
+        return _numericTest(field.op, (entry) => entry.displaySize.height, field.value);
+      case keyContentSize:
+        return _numericTest(field.op, (entry) => entry.sizeBytes ?? 0, field.value);
+      default:
+        return null;
+    }
+  }
+
+  /// A calendar component of the entry's date (`0` year, `1` month, `2` day),
+  /// or `0` when it has no usable date.
+  ///
+  /// The legacy field query reads an absent date as `0`, which is why `DAY<5`
+  /// matches an undated entry.
+  int _datePart(AvesEntry entry, int index) {
+    final date = entry.bestDate;
+    if (date == null) return 0;
+    final (year, month, day) = calendar.ops.getYearMonthDay(date);
+    return switch (index) {
+      0 => year,
+      1 => month,
+      _ => day,
+    };
+  }
+
+  static EntryPredicate? _numericTest(String op, num Function(AvesEntry) valueOf, num target) {
+    return switch (op) {
+      opEqual => (entry) => valueOf(entry) == target,
+      opLower => (entry) => valueOf(entry) < target,
+      opGreater => (entry) => valueOf(entry) > target,
+      _ => null,
+    };
+  }
+
+  /// Parses the `KEY<op>value` form, resolving its value once (bytes for
+  /// `SIZE`), or null when the string is not a field query.
+  ///
+  /// A key whose value cannot be parsed, and a key without a predicate for the
+  /// operation, fall back to the title search exactly as before.
+  QueryField? _parseField(String upQuery) {
+    final match = _fieldPattern.firstMatch(upQuery);
     if (match == null) return null;
 
     final key = match.group(1)?.trim();
     final op = match.group(2)?.trim();
-    var valueString = match.group(3)?.trim();
+    final valueString = match.group(3)?.trim();
     if (key == null || op == null || valueString == null) return null;
-
-    final valueInt = int.tryParse(valueString);
 
     switch (key) {
       case keyContentExtension:
-        if (op == opEqual) {
-          final extension = '.$valueString';
-          return (entry) => entry.extension?.toUpperCase() == extension;
-        }
+        if (op != opEqual) return null;
+        return QueryField(key: key, op: op, text: '.$valueString');
       case keyContentId:
-        if (valueInt == null) return null;
-        if (op == opEqual) {
-          return (entry) => entry.contentId == valueInt;
-        }
+        if (op != opEqual) return null;
+        final contentId = int.tryParse(valueString);
+        if (contentId == null) return null;
+        return QueryField(key: key, op: op, value: contentId);
       case keyContentYear:
-        if (valueInt == null) return null;
-        final calOps = calendar.ops;
-        int getYear(AvesEntry entry) {
-          final date = entry.bestDate;
-          return date != null ? calOps.getYearMonthDay(date).$1 : 0;
-        }
-        switch (op) {
-          case opEqual:
-            return (entry) => getYear(entry) == valueInt;
-          case opLower:
-            return (entry) => getYear(entry) < valueInt;
-          case opGreater:
-            return (entry) => getYear(entry) > valueInt;
-        }
       case keyContentMonth:
-        if (valueInt == null) return null;
-        final calOps = calendar.ops;
-        int getMonth(AvesEntry entry) {
-          final date = entry.bestDate;
-          return date != null ? calOps.getYearMonthDay(date).$2 : 0;
-        }
-        switch (op) {
-          case opEqual:
-            return (entry) => getMonth(entry) == valueInt;
-          case opLower:
-            return (entry) => getMonth(entry) < valueInt;
-          case opGreater:
-            return (entry) => getMonth(entry) > valueInt;
-        }
       case keyContentDay:
-        if (valueInt == null) return null;
-        final calOps = calendar.ops;
-        int getDay(AvesEntry entry) {
-          final date = entry.bestDate;
-          return date != null ? calOps.getYearMonthDay(date).$3 : 0;
-        }
-        switch (op) {
-          case opEqual:
-            return (entry) => getDay(entry) == valueInt;
-          case opLower:
-            return (entry) => getDay(entry) < valueInt;
-          case opGreater:
-            return (entry) => getDay(entry) > valueInt;
-        }
       case keyContentWidth:
-        if (valueInt == null) return null;
-        switch (op) {
-          case opEqual:
-            return (entry) => entry.displaySize.width == valueInt;
-          case opLower:
-            return (entry) => entry.displaySize.width < valueInt;
-          case opGreater:
-            return (entry) => entry.displaySize.width > valueInt;
-        }
       case keyContentHeight:
-        if (valueInt == null) return null;
-        switch (op) {
-          case opEqual:
-            return (entry) => entry.displaySize.height == valueInt;
-          case opLower:
-            return (entry) => entry.displaySize.height < valueInt;
-          case opGreater:
-            return (entry) => entry.displaySize.height > valueInt;
-        }
+        final value = int.tryParse(valueString);
+        if (value == null) return null;
+        return QueryField(key: key, op: op, value: value);
       case keyContentSize:
-        match = _fileSizePattern.firstMatch(valueString);
-        if (match == null) return null;
-
-        valueString = match.group(1)?.trim();
-        if (valueString == null) return null;
-        final valueInt = int.tryParse(valueString);
-        if (valueInt == null) return null;
-
-        final multiplierString = match.group(2)?.trim();
-        final bytes = applyFileSizeSuffix(multiplierString, valueInt);
-
-        switch (op) {
-          case opEqual:
-            return (entry) => (entry.sizeBytes ?? 0) == bytes;
-          case opLower:
-            return (entry) => (entry.sizeBytes ?? 0) < bytes;
-          case opGreater:
-            return (entry) => (entry.sizeBytes ?? 0) > bytes;
-        }
+        final sizeMatch = _fileSizePattern.firstMatch(valueString);
+        final digits = sizeMatch?.group(1)?.trim();
+        if (digits == null) return null;
+        final value = int.tryParse(digits);
+        if (value == null) return null;
+        return QueryField(key: key, op: op, value: applyFileSizeSuffix(sizeMatch?.group(2)?.trim(), value));
+      default:
+        return null;
     }
-
-    return null;
   }
+}
+
+/// A `KEY<op>value` query, resolved once by [QueryFilter].
+///
+/// [value] is the resolved number (bytes for `SIZE`); [text] carries the
+/// resolved payload of the one text-valued key (`EXT`, dot included).
+class QueryField {
+  final String key;
+  final String op;
+  final int value;
+  final String? text;
+
+  const new({required this.key, required this.op, this.value = 0, this.text});
 }

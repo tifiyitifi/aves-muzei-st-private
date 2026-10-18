@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/covered/tag.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/placeholder.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
+import 'package:aves/model/source/filter_summary_provider.dart';
 import 'package:aves/theme/durations.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/theme/themes.dart';
@@ -35,7 +38,7 @@ class _TagEditorPageState extends State<TagEditorPage> {
   final FocusNode _newTagTextFocusNode = FocusNode();
   final ValueNotifier<String?> _expandedSectionNotifier = ValueNotifier(null);
   late final Map<AvesEntry, Set<CollectionFilter>> filtersByEntry;
-  late final List<CollectionFilter> _topTags;
+  List<CollectionFilter> _topTags = const [];
   final List<CollectionFilter> _userAddedFilters = [];
 
   static final List<PlaceholderFilter> _placeholders = [
@@ -240,13 +243,29 @@ class _TagEditorPageState extends State<TagEditorPage> {
   }
 
   void _initTopTags() {
+    final source = context.read<CollectionSource?>();
+    final provider = source?.summaries;
+    if (source != null && provider != null && source.visibleEntries.isEmpty) {
+      // A windowed library holds no entries: the tag summary domain already
+      // aggregates the scope, so the quick picks come from it.
+      unawaited(_loadTopTags(provider));
+      return;
+    }
     final Map<String, int> entryCountByTag = {};
-    final visibleEntries = context.read<CollectionSource?>()?.visibleEntries;
+    final visibleEntries = source?.visibleEntries;
     visibleEntries?.forEach((entry) {
       entry.tags.forEach((tag) => entryCountByTag[tag] = (entryCountByTag[tag] ?? 0) + 1);
     });
-    List<MapEntry<CollectionFilter, int>> sortedTopTags = _sortCurrentTags(entryCountByTag.map((key, value) => MapEntry(TagFilter(key), value)));
-    _topTags = sortedTopTags.map((kv) => kv.key).toList();
+    _topTags = _sortCurrentTags(entryCountByTag.map((key, value) => MapEntry(TagFilter(key), value))).map((kv) => kv.key).toList();
+  }
+
+  Future<void> _loadTopTags(FilterSummaryProvider provider) async {
+    await provider.ensureTags();
+    if (!mounted) return;
+    final counts = {for (final tag in provider.tags) TagFilter(tag): provider.tagCount(TagFilter(tag))};
+    setState(() {
+      _topTags = _sortCurrentTags(counts).map((kv) => kv.key).toList();
+    });
   }
 
   List<MapEntry<CollectionFilter, int>> _sortCurrentTags(Map<CollectionFilter, int> entryCountByTag) {

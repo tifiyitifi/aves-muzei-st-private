@@ -285,6 +285,9 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   Future<List<PlaceSummaryRow>> loadPlaceSummaryRows(SummaryExclusion exclusion) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
+  Future<List<String>> loadMimeTypes(SummaryExclusion exclusion) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
   Future<void> insertEntries(Set<AvesEntry> entries) async {
     if (entries.isEmpty) return;
     final stopwatch = Stopwatch()..start();

@@ -209,6 +209,9 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<List<PlaceSummaryRow>> loadPlaceSummaryRows(SummaryExclusion exclusion) => _summaries.placeRows(exclusion);
 
   @override
+  Future<List<String>> loadMimeTypes(SummaryExclusion exclusion) => _summaries.mimeTypes(exclusion);
+
+  @override
   Future<int> countEntries([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) => _entries.count(predicate: predicate);
 
   @override

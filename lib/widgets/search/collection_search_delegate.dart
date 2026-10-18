@@ -21,6 +21,7 @@ import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/album.dart';
 import 'package:aves/model/source/collection_lens.dart';
 import 'package:aves/model/source/collection_source.dart';
+import 'package:aves/model/source/filter_summary_provider.dart';
 import 'package:aves/model/source/location/country.dart';
 import 'package:aves/model/source/location/place.dart';
 import 'package:aves/model/source/tag.dart';
@@ -44,6 +45,14 @@ class CollectionSearchDelegate extends AvesSearchDelegate with FeedbackMixin, Va
   final FocusNode _suggestionsTopFocusNode = FocusNode();
   final ScrollController _suggestionsScrollController = ScrollController();
   late final List<MimeFilter> _mimeTypeFilters;
+
+  /// The summaries of an entry-free (paged) source, which serve the format list
+  /// instead of the missing entries; null on the legacy path.
+  late final FilterSummaryProvider? _summaryProvider;
+
+  /// The in-flight format load, started on first read and kept stable so the
+  /// row's builder does not resubscribe on every rebuild.
+  Future<void>? _mimeLoad;
 
   @override
   FocusNode? get suggestionsFocusNode => _suggestionsTopFocusNode;
@@ -79,8 +88,12 @@ class CollectionSearchDelegate extends AvesSearchDelegate with FeedbackMixin, Va
          routeName: SearchPage.routeName,
        ) {
     query = initialQuery ?? '';
+    _summaryProvider = source.summaries;
     _mimeTypeFilters = source.visibleEntries.map((entry) => entry.mimeType).toSet().map(MimeFilter.new).toList()..sort();
   }
+
+  /// Loads the format domain of a windowed source on first use.
+  Future<void> _ensureMimeTypes() => _mimeLoad ??= _summaryProvider?.ensureMimes() ?? Future<void>.value();
 
   @override
   void dispose() {
@@ -221,6 +234,22 @@ class CollectionSearchDelegate extends AvesSearchDelegate with FeedbackMixin, Va
   }
 
   Widget _buildMimeTypeFilters(BuildContext context, CollectionFilterPredicate containQuery) {
+    final provider = _summaryProvider;
+    // A windowed source holds no entries: its formats come from the summary
+    // domain, which reads them from the database in the background.
+    if (provider != null && source.visibleEntries.isEmpty) {
+      return FutureBuilder<void>(
+        future: _ensureMimeTypes(),
+        builder: (context, snapshot) {
+          final filters = provider.mimeTypes.map(MimeFilter.new).where(containQuery).toList()..sort();
+          return _buildFilterRow(
+            context: context,
+            title: context.l10n.searchFormatSectionTitle,
+            filters: filters,
+          );
+        },
+      );
+    }
     final filters = _mimeTypeFilters.where(containQuery).toList();
     return _buildFilterRow(
       context: context,

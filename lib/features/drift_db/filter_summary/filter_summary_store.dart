@@ -147,4 +147,22 @@ SELECT id, SUBSTR(rest, 1, INSTR(rest, ';') - 1), SUBSTR(rest, INSTR(rest, ';') 
         ),
     ];
   }
+
+  /// The scope's distinct mime types, catalogued mime first, mirroring
+  /// `AvesEntry.mimeType`.
+  ///
+  /// The search page's format filters come from here when the source holds no
+  /// entries (a windowed library), where scanning the entries would find none.
+  Future<List<String>> mimeTypes(SummaryExclusion exclusion) async {
+    const mimeExpr = 'COALESCE(m.mimeType, e.sourceMimeType)';
+    final rows = await db
+        .customSelect(
+          'SELECT DISTINCT $mimeExpr AS k '
+          "$_joins ${_where(exclusion)} AND $mimeExpr IS NOT NULL AND $mimeExpr != '' "
+          'ORDER BY k ASC',
+          variables: _variables(exclusion),
+        )
+        .get();
+    return [for (final row in rows) row.data['k'] as String];
+  }
 }

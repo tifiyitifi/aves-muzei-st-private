@@ -176,6 +176,11 @@ abstract class LocalMediaDb {
 
   Future<List<PlaceSummaryRow>> loadPlaceSummaryRows(SummaryExclusion exclusion);
 
+  /// The scope's distinct mime types, catalogued mime first, mirroring
+  /// `AvesEntry.mimeType`. Powers the search page's format filters on
+  /// entry-free (paged) collections, where the entries cannot be scanned.
+  Future<List<String>> loadMimeTypes(SummaryExclusion exclusion);
+
   Future<void> insertEntries(Set<AvesEntry> entries);
 
   Future<void> updateEntry(int id, AvesEntry entry);

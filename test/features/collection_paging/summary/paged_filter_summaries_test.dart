@@ -94,9 +94,29 @@ void main() {
       final s = summaries();
       expect(s.albumDirectories, isEmpty);
       expect(s.tags, isEmpty);
+      expect(s.mimeTypes, isEmpty);
       expect(s.albumCount(StoredAlbumFilter('/a', null)), 0);
       expect(s.albumRecentEntry(StoredAlbumFilter('/a', null)), isNull);
       expect(s.tagCount(TagFilter('x')), 0);
+    });
+
+    test('the formats load lazily from the database', () async {
+      await database.insertEntries({entry(1), entry(2, sourceDateTaken: 100)});
+      await database.saveCatalogMetadata({CatalogMetadata(id: 2, mimeType: 'image/heic')});
+      final s = summaries();
+
+      // Empty until touched, then served from the database: the search page has
+      // no entries to scan on a windowed library.
+      expect(s.mimeTypes, isEmpty);
+      await settle(() => s.mimeTypes.isNotEmpty);
+      expect(s.mimeTypes, ['image/heic', 'image/jpeg']);
+    });
+
+    test('ensureMimes preloads the formats', () async {
+      await database.insertEntries({entry(1)});
+      final s = summaries();
+      await s.ensureMimes();
+      expect(s.mimeTypes, ['image/jpeg']);
     });
 
     test('resolves an album group aggregate on first touch', () async {

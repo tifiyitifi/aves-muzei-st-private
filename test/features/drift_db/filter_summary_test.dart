@@ -78,6 +78,7 @@ void main() {
     int dateMillis = 0,
     double? latitude,
     double? longitude,
+    String? mimeType,
   }) =>
       CatalogMetadata(
         id: id,
@@ -85,6 +86,7 @@ void main() {
         xmpSubjects: subjects,
         latitude: latitude,
         longitude: longitude,
+        mimeType: mimeType,
       );
 
   AddressDetails address(
@@ -245,6 +247,28 @@ void main() {
       // the window predicate can fall back to the legacy path.
       expect(exclusion.complete, isFalse);
       expect(exclusion.isEmpty, isTrue);
+    });
+  });
+
+  group('mimeTypes', () {
+    test('lists distinct mimes, catalogued mime winning over the source one', () async {
+      await service.insertEntries({entry(1), entry(2), entry(3)});
+      // Entry 2 was catalogued as HEIC; 3 has a metadata row without a mime.
+      await service.saveCatalogMetadata({metadata(2, mimeType: 'image/heic'), metadata(3)});
+
+      // The search page's format filters come from here, so the list must
+      // mirror `AvesEntry.mimeType`: catalogued mime first, source mime else.
+      expect(await store.mimeTypes(noExclusion()), ['image/heic', 'image/jpeg']);
+    });
+
+    test('excludes trashed entries, hidden albums and locked vaults', () async {
+      await service.insertEntries({entry(1), entry(2, trashed: true), entry(3, dir: '/hidden'), entry(4, dir: '/secret')});
+      final exclusion = buildSummaryExclusion(hidden: {StoredAlbumFilter('/hidden', null)}, lockedVaultDirs: {'/secret'});
+      expect(await store.mimeTypes(exclusion), ['image/jpeg']);
+    });
+
+    test('returns an empty list on an empty database', () async {
+      expect(await store.mimeTypes(noExclusion()), isEmpty);
     });
   });
 }

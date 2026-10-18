@@ -24,9 +24,16 @@ abstract class FilterSummaryProvider {
   /// without a full collection load.
   Future<void> ensureLocations();
 
+  /// Preloads the formats domain, so [mimeTypes] serves without a full
+  /// collection load. Used by the search page on entry-free sources.
+  Future<void> ensureMimes();
+
   List<String> get albumDirectories;
 
   List<String> get tags;
+
+  /// The scope's mime types, ascending, mirroring `AvesEntry.mimeType`.
+  List<String> get mimeTypes;
 
   /// `'name;code'` display strings, mirroring `LocationMixin` derivations.
   List<String> get countries;

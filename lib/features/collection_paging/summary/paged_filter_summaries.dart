@@ -30,7 +30,7 @@ const _log = AreaKeyLog('log.collection_paging');
 
 /// Domains load independently: albums eagerly (drawer + albums page), tags and
 /// locations on first touch.
-enum SummaryDomain { albums, tags, locations }
+enum SummaryDomain { albums, tags, locations, mime }
 
 /// DB-backed [FilterSummaryProvider] for entry-free (paged) collections.
 ///
@@ -58,6 +58,7 @@ class PagedFilterSummaries implements FilterSummaryProvider {
   Map<String, CountrySummaryRow> _countries = {};
   Map<String, StateSummaryRow> _states = {};
   Map<String, PlaceSummaryRow> _places = {};
+  List<String> _mimeTypes = [];
   Map<String, AvesEntry> _recentByFilterKey = {};
 
   /// Aggregates for container filters (album/tag groups, dynamic albums) that
@@ -92,6 +93,7 @@ class PagedFilterSummaries implements FilterSummaryProvider {
     _countries = {};
     _states = {};
     _places = {};
+    _mimeTypes = [];
     _containers = {};
     // Values may be shared between filters: dispose by identity.
     final seen = <AvesEntry>{};
@@ -115,6 +117,9 @@ class PagedFilterSummaries implements FilterSummaryProvider {
   @override
   Future<void> ensureLocations() => ensureLoaded(SummaryDomain.locations);
 
+  @override
+  Future<void> ensureMimes() => ensureLoaded(SummaryDomain.mime);
+
   Future<void> ensureLoaded(SummaryDomain domain) async {
     if (_loaded.contains(domain) || _loading.contains(domain)) return;
     _loading.add(domain);
@@ -129,6 +134,8 @@ class PagedFilterSummaries implements FilterSummaryProvider {
           await _loadTags(exclusion);
         case SummaryDomain.locations:
           await _loadLocations(exclusion);
+        case SummaryDomain.mime:
+          await _loadMimes(exclusion);
       }
       _loaded.add(domain);
       _fire(domain);
@@ -151,6 +158,10 @@ class PagedFilterSummaries implements FilterSummaryProvider {
         source.eventBus.fire(CountriesChangedEvent());
         source.eventBus.fire(StatesChangedEvent());
         source.eventBus.fire(PlacesChangedEvent());
+      case SummaryDomain.mime:
+        // The format list has no domain event: the search page awaits
+        // [ensureMimes] itself and rebuilds its own row.
+        break;
     }
   }
 
@@ -192,6 +203,10 @@ class PagedFilterSummaries implements FilterSummaryProvider {
         LocationFilter(LocationLevel.state, _nameAndCode(_stateName(row), _stateCode(row) ?? '')).key: row.recentId,
       for (final row in places) LocationFilter(LocationLevel.place, row.place).key: row.recentId,
     });
+  }
+
+  Future<void> _loadMimes(SummaryExclusion exclusion) async {
+    _mimeTypes = await database.loadMimeTypes(exclusion);
   }
 
   /// Resolves pinned covers plus recent entries for [filters] in bounded
@@ -278,6 +293,12 @@ class PagedFilterSummaries implements FilterSummaryProvider {
   List<String> get places {
     _kick(SummaryDomain.locations);
     return _places.keys.toList()..sort(compareAsciiUpperCase);
+  }
+
+  @override
+  List<String> get mimeTypes {
+    _kick(SummaryDomain.mime);
+    return _mimeTypes;
   }
 
   // per-filter aggregates

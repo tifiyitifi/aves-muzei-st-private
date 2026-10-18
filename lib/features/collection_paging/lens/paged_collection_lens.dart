@@ -696,16 +696,41 @@ class PagedCollectionLens extends CollectionLens {
     }
   }
 
+  /// How many rows of the current view still need cataloguing.
+  Future<int> _probeScopedUncatalogued() async {
+    final predicate = _pagedPredicate;
+    if (predicate == null) return 0;
+    try {
+      return await localMediaDb.countUncatalogued(predicate);
+    } catch (error, stack) {
+      _log.w('paged scoped catalog backlog probe failed', error, stack);
+      return 0;
+    }
+  }
+
   /// Sweeps the backlog: the view's own scope first, then the rest of the
   /// library — unless the analysis service owns that rest, in which case the app
   /// worker serves only the view so the two never race on the same rows.
+  ///
+  /// A view large enough to be worth it preempts the service: the sweep is
+  /// cancelled, the view is served with the device to itself, and the service is
+  /// re-enqueued to resume the backlog. A small view is served alongside the
+  /// running sweep instead, since stopping it would waste more work than the
+  /// view is worth.
   Future<void> _sweepBacklog(PagedCatalogWorker worker, int uncatalogued) async {
-    if (shouldDelegateCatalogToService(canUseAnalysisService: settings.canUseAnalysisService, uncatalogued: uncatalogued)) {
-      await startPagedAnalysisService();
-      await worker.run(scope: _pagedPredicate, scopedOnly: true);
+    final delegated = shouldDelegateCatalogToService(canUseAnalysisService: settings.canUseAnalysisService, uncatalogued: uncatalogued);
+    if (!delegated) {
+      await worker.run(scope: _pagedPredicate);
       return;
     }
-    await worker.run(scope: _pagedPredicate);
+    if (shouldPreemptCatalogService(serviceDelegated: delegated, scopedUncatalogued: await _probeScopedUncatalogued())) {
+      await cancelPagedAnalysisService();
+      await worker.run(scope: _pagedPredicate, scopedOnly: true);
+      await startPagedAnalysisService();
+      return;
+    }
+    await startPagedAnalysisService();
+    await worker.run(scope: _pagedPredicate, scopedOnly: true);
   }
 
   void _detachCatalogWorker() {

@@ -24,3 +24,16 @@ Future<void> startPagedAnalysisService() async {
   }
   await AnalysisService.startService(force: false, paged: true);
 }
+
+/// Stops the analysis service's sweep, so the app can take the device for the
+/// current view before handing the backlog back.
+Future<void> cancelPagedAnalysisService() => AnalysisService.cancelService();
+
+/// Whether taking the device back from the analysis service is worth it.
+///
+/// Preempting costs a WorkManager round trip and, while the service is
+/// mid-batch, the rows it has computed but not committed yet — up to
+/// `TagMixin.commitCountThreshold`. Below that many uncatalogued rows in the
+/// view the trade loses more work than it saves, so the service is left alone
+/// and the view's few rows are served alongside it.
+bool shouldPreemptCatalogService({required bool serviceDelegated, required int scopedUncatalogued}) => serviceDelegated && scopedUncatalogued >= TagMixin.commitCountThreshold;

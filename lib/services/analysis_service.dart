@@ -49,6 +49,21 @@ class AnalysisService {
       await reportService.recordError(e, stack);
     }
   }
+
+  /// Cancels the pending or running analysis.
+  ///
+  /// Used to take the device back for a scoped pass: the caller cancels, runs
+  /// its own scope, then [startService]s again so the service resumes the
+  /// backlog. A failure is reported, not thrown: the caller's scoped pass is
+  /// still worth running, it just keeps sharing the device with the service.
+  static Future<void> cancelService() async {
+    await reportService.log('Cancel analysis service');
+    try {
+      await _platform.invokeMethod('cancelAnalysis');
+    } on PlatformException catch (e, stack) {
+      await reportService.recordError(e, stack);
+    }
+  }
 }
 
 const _channel = AvesMethodChannel('deckers.thibault/aves/analysis_service_background');

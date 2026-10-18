@@ -32,6 +32,8 @@ class AnalysisHandler<T>(private val activity: T, private val onAnalysisComplete
         when (call.method) {
             "registerCallback" -> ioScope.launch { Coresult.safe(call, result, ::registerCallback) }
             "startAnalysis" -> Coresult.safe(call, result, ::startAnalysis)
+            // off the main thread: awaiting the cancellation below blocks
+            "cancelAnalysis" -> ioScope.launch { Coresult.safe(call, result, ::cancelAnalysis) }
             else -> result.notImplemented()
         }
     }
@@ -93,6 +95,15 @@ class AnalysisHandler<T>(private val activity: T, private val onAnalysisComplete
         ).enqueue()
 
         attachToActivity()
+        result.success(null)
+    }
+
+    private fun cancelAnalysis(call: MethodCall, result: MethodChannel.Result) {
+        // Wait for the cancellation to land before replying: a re-enqueue under
+        // the same unique name right after would otherwise be swallowed by
+        // `ExistingWorkPolicy.KEEP` against work that is still being cancelled.
+        // The Dart side only re-enqueues once this call returns.
+        WorkManager.getInstance(activity).cancelUniqueWork(ANALYSIS_WORK_NAME).result.get()
         result.success(null)
     }
 

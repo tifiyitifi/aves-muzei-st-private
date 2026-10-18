@@ -18,4 +18,20 @@ void main() {
       expect(shouldDelegateCatalogToService(canUseAnalysisService: false, uncatalogued: TagMixin.commitCountThreshold * 100), isFalse);
     });
   });
+
+  group('shouldPreemptCatalogService', () {
+    test('preempts a view at least one commit batch wide', () {
+      expect(shouldPreemptCatalogService(serviceDelegated: true, scopedUncatalogued: TagMixin.commitCountThreshold), isTrue);
+      expect(shouldPreemptCatalogService(serviceDelegated: true, scopedUncatalogued: TagMixin.commitCountThreshold + 1), isTrue);
+    });
+
+    test('leaves a view smaller than a commit batch to the service', () {
+      expect(shouldPreemptCatalogService(serviceDelegated: true, scopedUncatalogued: TagMixin.commitCountThreshold - 1), isFalse);
+      expect(shouldPreemptCatalogService(serviceDelegated: true, scopedUncatalogued: 0), isFalse);
+    });
+
+    test('never preempts when the service does not own the backlog', () {
+      expect(shouldPreemptCatalogService(serviceDelegated: false, scopedUncatalogued: TagMixin.commitCountThreshold * 100), isFalse);
+    });
+  });
 }

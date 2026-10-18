@@ -252,6 +252,26 @@ class EntryStore {
     return [for (final row in rows) _entryFromWindowRow(row.data)];
   }
 
+  /// One keyset page of the rows matching [predicate], in id order.
+  ///
+  /// A whole-scope walk (the stats aggregate) needs every row exactly once, but
+  /// cannot hold them: id order is the only order a keyset can follow without an
+  /// offset scan, so [afterId] is exclusive and pass 0 to start. Rows carry what
+  /// a window row carries, so an entry built here equals a windowed one.
+  Future<List<AvesEntry>> loadWalkWindow({
+    required CollectionWindowPredicate predicate,
+    required int afterId,
+    required int limit,
+  }) async {
+    if (limit <= 0) return [];
+    final where = _windowWhere(predicate: predicate);
+    final rows = await db.customSelect(
+      'SELECT e.*, dt.dateMillis AS dateMillis ${_from(predicate, dateTaken: true)} ${where.sql} AND e.id > ? ORDER BY e.id LIMIT ?',
+      variables: [...where.variables, Variable(afterId), Variable(limit)],
+    ).get();
+    return [for (final row in rows) _entryFromWindowRow(row.data)];
+  }
+
   /// Sort key of the collection order: one expression per key part, each with
   /// its default direction.
   ///

@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:aves/features/collection_paging/stats/collection_stats.dart';
+import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/covered/location.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
@@ -42,6 +44,7 @@ class const StatsPage({
   required final Set<AvesEntry> entries,
   required final CollectionSource source,
   final CollectionLens? parentCollection,
+  final PagedStatsSource? pagedStats,
 }) extends StatefulWidget {
   static const routeName = '/collection/stats';
 
@@ -54,10 +57,19 @@ class _StatsPageState extends State<StatsPage> with FeedbackMixin, VaultAwareMix
   final Map<String, int> _entryCountPerTag = {}, _entryCountPerAlbum = {};
   final Map<int, int> _entryCountPerRating = Map.fromEntries(List.generate(7, (i) => MapEntry(5 - i, 0)));
   late final ValueNotifier<bool> _isPageAnimatingNotifier;
+  final ValueNotifier<double?> _pagedProgress = ValueNotifier(null);
   int _totalSizeBytes = 0;
   int _totalDurationMillis = 0;
 
+  /// The streamed aggregate of a windowed scope, null on the in-memory path and
+  /// while it loads.
+  CollectionStats? _stats;
+
   Set<AvesEntry> get entries => widget.entries;
+
+  /// Rows the scope holds: the aggregate's total on the paged path, the size of
+  /// the in-memory set otherwise.
+  int get _entryCount => _stats?.entryCount ?? entries.length;
 
   @override
   void initState() {
@@ -68,6 +80,25 @@ class _StatsPageState extends State<StatsPage> with FeedbackMixin, VaultAwareMix
       if (!mounted) return;
       _isPageAnimatingNotifier.value = false;
     });
+
+    final pagedStats = widget.pagedStats;
+    if (pagedStats != null) {
+      // A windowed scope cannot be walked in memory: the numbers are folded from
+      // bounded database chunks instead, and the page shows how far it is.
+      unawaited(
+        pagedStats.load(onProgress: (done, total) {
+          _pagedProgress.value = total > 0 ? (done / total).clamp(0.0, 1.0) : null;
+        }).then((stats) {
+          if (!mounted) return;
+          setState(() => _applyPagedStats(stats));
+        }, onError: (error, stack) {
+          if (!mounted) return;
+          showFeedback(context, FeedbackType.warn, context.l10n.genericFailureFeedback);
+          setState(() => _applyPagedStats(CollectionStats.empty));
+        }),
+      );
+      return;
+    }
 
     entries.forEach((entry) {
       _totalSizeBytes += entry.sizeBytes ?? 0;
@@ -105,9 +136,24 @@ class _StatsPageState extends State<StatsPage> with FeedbackMixin, VaultAwareMix
     });
   }
 
+  /// Copies a streamed aggregate into the fields the page renders, so both paths
+  /// feed the same widgets.
+  void _applyPagedStats(CollectionStats stats) {
+    _stats = stats;
+    _totalSizeBytes = stats.totalSizeBytes;
+    _totalDurationMillis = stats.totalDurationMillis;
+    _entryCountPerCountry.addAll(stats.entryCountPerCountry);
+    _entryCountPerState.addAll(stats.entryCountPerState);
+    _entryCountPerPlace.addAll(stats.entryCountPerPlace);
+    _entryCountPerTag.addAll(stats.entryCountPerTag);
+    _entryCountPerAlbum.addAll(stats.entryCountPerAlbum);
+    _entryCountPerRating.addAll(stats.entryCountPerRating);
+  }
+
   @override
   void dispose() {
     _isPageAnimatingNotifier.dispose();
+    _pagedProgress.dispose();
     super.dispose();
   }
 
@@ -124,7 +170,9 @@ class _StatsPageState extends State<StatsPage> with FeedbackMixin, VaultAwareMix
         if (!animating) {
           final durations = context.watch<DurationsData>();
 
-          if (entries.isEmpty) {
+          if (widget.pagedStats != null && _stats == null) {
+            child = _buildPagedProgress(context);
+          } else if (_entryCount == 0) {
             child = EmptyContent(
               icon: AIcons.image,
               text: l10n.collectionEmptyImages,
@@ -132,7 +180,7 @@ class _StatsPageState extends State<StatsPage> with FeedbackMixin, VaultAwareMix
           } else {
             final chartAnimationDuration = context.read<DurationsData>().chartTransition;
 
-            final byMimeTypes = groupBy<AvesEntry, String>(entries, (entry) => entry.mimeType).map<String, int>((k, v) => MapEntry(k, v.length));
+            final byMimeTypes = _stats?.entryCountPerMimeType ?? groupBy<AvesEntry, String>(entries, (entry) => entry.mimeType).map<String, int>((k, v) => MapEntry(k, v.length));
             final imagesByMimeTypes = Map.fromEntries(byMimeTypes.entries.where((kv) => kv.key.startsWith('image')));
             final videoByMimeTypes = Map.fromEntries(byMimeTypes.entries.where((kv) => kv.key.startsWith('video')));
             final mimeDonuts = Wrap(
@@ -177,6 +225,7 @@ class _StatsPageState extends State<StatsPage> with FeedbackMixin, VaultAwareMix
                       mimeDonuts,
                       Histogram(
                         entries: entries,
+                        summary: _stats?.histogram,
                         animationDuration: chartAnimationDuration,
                         onFilterSelection: (filter) => _onFilterSelection(context, filter),
                       ),
@@ -187,7 +236,7 @@ class _StatsPageState extends State<StatsPage> with FeedbackMixin, VaultAwareMix
                         _buildTotalDurationIndicator(),
                       ],
                       const SizedBox(height: 16),
-                      _LocationIndicator(entries: entries),
+                      _LocationIndicator(entries: entries, stats: _stats),
                       ..._buildFilterSection<String>(context, l10n.statsTopCountriesSectionTitle, _entryCountPerCountry, (v) => LocationFilter(LocationLevel.country, v)),
                       ..._buildFilterSection<String>(context, l10n.statsTopStatesSectionTitle, _entryCountPerState, (v) => LocationFilter(LocationLevel.state, v)),
                       ..._buildFilterSection<String>(context, l10n.statsTopPlacesSectionTitle, _entryCountPerPlace, (v) => LocationFilter(LocationLevel.place, v)),
@@ -273,7 +322,7 @@ class _StatsPageState extends State<StatsPage> with FeedbackMixin, VaultAwareMix
   }) {
     if (entryCountMap.isEmpty) return [];
 
-    final totalEntryCount = entries.length;
+    final totalEntryCount = _entryCount;
     final hasMore = maxRowCount != null && entryCountMap.length > maxRowCount;
     final onHeaderPressed = hasMore
         ? () => Navigator.maybeOf(context)?.push(
@@ -386,20 +435,54 @@ class _StatsPageState extends State<StatsPage> with FeedbackMixin, VaultAwareMix
     Navigator.maybeOf(context)?.push(
       MaterialPageRoute(
         settings: const RouteSettings(name: ExportCollectionStatsPage.routeName),
-        builder: (context) => ExportCollectionStatsPage(entries: entries),
+        builder: (context) => ExportCollectionStatsPage(entries: entries, pagedSource: widget.pagedStats),
+      ),
+    );
+  }
+
+  /// Progress of a windowed scope's walk: the rows folded so far, so a library
+  /// of millions shows how much is left instead of an idle spinner.
+  Widget _buildPagedProgress(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: ValueListenableBuilder<double?>(
+          valueListenable: _pagedProgress,
+          builder: (context, progress, child) {
+            if (progress == null) return const CircularProgressIndicator();
+            return Column(
+              mainAxisSize: .min,
+              children: [
+                LinearPercentIndicator(
+                  percent: progress,
+                  lineHeight: 8,
+                  animation: false,
+                  backgroundColor: Themes.secondLayerColor(context),
+                  progressColor: Theme.of(context).colorScheme.primary,
+                  barRadius: const Radius.circular(4),
+                ),
+                const SizedBox(height: 8),
+                LinearPercentIndicatorText(percent: progress),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
 }
 
-class const _LocationIndicator({required final Set<AvesEntry> entries}) extends StatelessWidget {
+class const _LocationIndicator({
+  required final Set<AvesEntry> entries,
+  final CollectionStats? stats,
+}) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final catalogued = entries.where((entry) => entry.isCatalogued);
-    final withGps = catalogued.where((entry) => entry.hasGps);
-    final withGpsCount = withGps.length;
-    final withGpsPercent = withGpsCount / entries.length;
+    // Fork: a windowed collection's counts come from its streamed aggregate.
+    final entryCount = stats?.entryCount ?? entries.length;
+    final withGpsCount = stats?.withGpsCount ?? entries.where((entry) => entry.isCatalogued && entry.hasGps).length;
+    final withGpsPercent = entryCount == 0 ? 0.0 : withGpsCount / entryCount;
     final textScaler = MediaQuery.textScalerOf(context);
     final lineHeight = textScaler.scale(16);
     final barRadius = Radius.circular(lineHeight / 2);

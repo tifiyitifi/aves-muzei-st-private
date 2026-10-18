@@ -1,4 +1,5 @@
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/container/set_or.dart';
@@ -240,10 +241,10 @@ abstract class ChipSetActionDelegate<T extends CollectionFilter> with FeedbackMi
     return selection.isSelecting ? selection.selectedItems.map((v) => v.filter).toSet() : {};
   }
 
-  Iterable<AvesEntry> _selectedEntries(BuildContext context) {
-    final source = context.read<CollectionSource>();
-    final visibleEntries = source.visibleEntries;
-
+  /// The filters the chip surface's entry-set actions apply to: the user's
+  /// selection, else the current group's children. Empty means the whole
+  /// library.
+  Set<CollectionFilter> _scopeFilters(BuildContext context) {
     final filters = <CollectionFilter>{};
     // use user selected filters, if any
     filters.addAll(getSelectedFilters(context));
@@ -259,6 +260,14 @@ abstract class ChipSetActionDelegate<T extends CollectionFilter> with FeedbackMi
         }
       }
     }
+    return filters;
+  }
+
+  Iterable<AvesEntry> _selectedEntries(BuildContext context) {
+    final source = context.read<CollectionSource>();
+    final visibleEntries = source.visibleEntries;
+
+    final filters = _scopeFilters(context);
 
     if (filters.isNotEmpty) {
       return visibleEntries.where((entry) => filters.any((f) => f.test(entry)));
@@ -347,14 +356,22 @@ abstract class ChipSetActionDelegate<T extends CollectionFilter> with FeedbackMi
   }
 
   Future<void> _goToStats(BuildContext context) async {
-    final entries = _selectedEntries(context).toSet();
+    final source = context.read<CollectionSource>();
+    // Several filters mean a union, and a windowed source holds no entries at
+    // all: both are folded from the database instead of an empty entry list.
+    final scopeFilters = _scopeFilters(context);
+    final pagedFilters = scopeFilters.length > 1 ? {SetOrFilter(scopeFilters)} : scopeFilters;
+    final pagedStats = await pagedStatsSourceFor(pagedFilters);
+    if (!context.mounted) return;
+    final entries = pagedStats != null ? const <AvesEntry>{} : _selectedEntries(context).toSet();
     await Navigator.maybeOf(context)?.push(
       MaterialPageRoute(
         settings: const RouteSettings(name: StatsPage.routeName),
         builder: (context) {
           return StatsPage(
             entries: entries,
-            source: context.read<CollectionSource>(),
+            source: source,
+            pagedStats: pagedStats,
           );
         },
       ),

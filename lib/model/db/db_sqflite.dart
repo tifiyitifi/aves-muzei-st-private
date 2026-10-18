@@ -213,6 +213,14 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
       throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
+  Future<List<AvesEntry>> loadWalkWindow({
+    CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
+    required int afterId,
+    required int limit,
+  }) =>
+      throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
   Future<List<SectionHeader>> loadSectionHeaders({
     CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     required SectionGrouping grouping,

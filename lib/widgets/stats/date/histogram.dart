@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:aves/features/collection_paging/stats/collection_stats.dart';
 import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/locale/calendar/calendar_utils.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -26,6 +27,7 @@ class const Histogram({
   required final Set<AvesEntry> entries,
   required final Duration animationDuration,
   required final AFilterCallback onFilterSelection,
+  final DateHistogramData? summary,
 }) extends StatefulWidget {
   @override
   State<Histogram> createState() => _HistogramState();
@@ -47,6 +49,18 @@ class _HistogramState extends State<Histogram> with AutomaticKeepAliveClientMixi
   @override
   void initState() {
     super.initState();
+
+    // Fork: a windowed collection cannot be sorted in memory, so its buckets
+    // come from the database, normalized by this same rule.
+    final summary = widget.summary;
+    if (summary != null) {
+      _level = summary.level;
+      _firstDate = summary.firstDate;
+      _lastDate = summary.lastDate;
+      _entryCountPerDate.addAll(summary.entryCountPerDate);
+      _buildSeriesData();
+      return;
+    }
 
     final entriesByDateDescending = List.of(widget.entries)..sort(AvesEntrySort.compareByDate);
     var lastDate = entriesByDateDescending.firstWhereOrNull((entry) => entry.bestDate != null)?.bestDate;
@@ -78,27 +92,31 @@ class _HistogramState extends State<Histogram> with AutomaticKeepAliveClientMixi
 
         final dates = entriesByDateDescending.map((entry) => entry.bestDate).nonNulls;
         _entryCountPerDate.addAll(groupBy<DateTime, DateTime>(dates, normalizeDate).map((k, v) => MapEntry(k, v.length)));
-        if (_entryCountPerDate.isNotEmpty) {
-          // discrete points
-          _seriesData = _entryCountPerDate.entries.map((kv) {
-            return _EntryByDate(date: kv.key, entryCount: kv.value);
-          }).toList();
-
-          // smooth curve
-          _interpolatedDataLoader = compute<_DataInterpolationArg, List<_EntryByDate>?>(
-            _computeInterpolatedData,
-            _DataInterpolationArg(
-              calendar: calendar,
-              firstDate: _firstDate,
-              lastDate: _lastDate,
-              level: _level,
-              entryCountPerDate: _entryCountPerDate,
-            ),
-          );
-          _areaChartLoader = _interpolatedDataLoader.then((_) => Future.delayed(animationDuration * timeDilation));
-        }
+        _buildSeriesData();
       }
     }
+  }
+
+  /// Builds the discrete points and the smooth curve from [_entryCountPerDate].
+  void _buildSeriesData() {
+    if (_entryCountPerDate.isEmpty) return;
+    // discrete points
+    _seriesData = _entryCountPerDate.entries.map((kv) {
+      return _EntryByDate(date: kv.key, entryCount: kv.value);
+    }).toList();
+
+    // smooth curve
+    _interpolatedDataLoader = compute<_DataInterpolationArg, List<_EntryByDate>?>(
+      _computeInterpolatedData,
+      _DataInterpolationArg(
+        calendar: settings.calendar,
+        firstDate: _firstDate,
+        lastDate: _lastDate,
+        level: _level,
+        entryCountPerDate: _entryCountPerDate,
+      ),
+    );
+    _areaChartLoader = _interpolatedDataLoader.then((_) => Future.delayed(animationDuration * timeDilation));
   }
 
   @override

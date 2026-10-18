@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
 import 'package:aves/features/collection_paging/view/collection_targets.dart';
 import 'package:aves/locale/intl.dart';
 import 'package:aves/model/device.dart';
@@ -851,9 +852,15 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     );
   }
 
-  void _goToStats(BuildContext context) {
+  Future<void> _goToStats(BuildContext context) async {
+    final selection = context.read<Selection<AvesEntry>>();
     final collection = context.read<CollectionLens>();
-    final entries = _getTargetItems(context);
+    // Browsing a windowed collection: its loaded rows are a neighbourhood, not
+    // the scope, so the numbers are folded from the database instead. A
+    // selection is bounded by what the user picked, so it stays in memory.
+    final pagedStats = !selection.isSelecting && collection is PagedCollectionLens && collection.pagedActive ? await pagedStatsSourceFor(collection.filters) : null;
+    if (!context.mounted) return;
+    final entries = pagedStats != null ? const <AvesEntry>{} : _getTargetItems(context);
 
     Navigator.maybeOf(context)?.push(
       MaterialPageRoute(
@@ -862,6 +869,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
           entries: entries,
           source: collection.source,
           parentCollection: collection,
+          pagedStats: pagedStats,
         ),
       ),
     );

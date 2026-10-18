@@ -515,10 +515,11 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
         return buildRoute((context) => const TagListPage(initialGroup: null));
       case MapPage.routeName:
         return buildRoute((context) {
-          // Windowed like the collection page: the map renders a grid of the
-          // scope's entries, and a plain lens would be empty on a huge library
-          // (its source is entry-free on purpose).
-          final mapCollection = PagedCollectionLens(
+          // Not windowed: the map walks the whole scope to cluster its markers
+          // and to build item tracks, so a lazy list would page the library in
+          // from under it. A huge library therefore keeps the in-memory path,
+          // which shows no marker (see Known Issues).
+          final mapCollection = CollectionLens(
             source: source,
             filters: {
               LocationFilter.located,

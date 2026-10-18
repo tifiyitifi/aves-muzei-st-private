@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
 import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/locale/intl.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -32,9 +33,14 @@ class ExportCollectionStatsPage extends StatefulWidget {
 
   final Set<AvesEntry> entries;
 
+  /// Fork: a windowed collection streams its rows instead of holding them, so
+  /// the export walks the database in bounded chunks.
+  final PagedStatsSource? pagedSource;
+
   const new({
     super.key,
     required this.entries,
+    this.pagedSource,
   });
 
   @override
@@ -42,21 +48,39 @@ class ExportCollectionStatsPage extends StatefulWidget {
 }
 
 class _ExportCollectionStatsPageState extends State<ExportCollectionStatsPage> with FeedbackMixin {
+  /// Ceiling on the streamed export's text. The content is held once before it
+  /// is written, so a scope whose output would not fit is refused rather than
+  /// risking the write: the same message the clipboard path shows for its own
+  /// platform limit.
+  static const _maxExportLength = 16 * 1024 * 1024;
+
   static const List<ExportableEntryField> _entryFieldOptions = ExportableEntryField.values;
   final Set<ExportableEntryField> _selectedFields = {};
   static const List<String> _exportMimeTypeOptions = [MimeTypes.csv, MimeTypes.json];
   late String _exportMimeType;
   final ValueNotifier<bool> _isValidNotifier = ValueNotifier(false);
 
+  /// First row of a windowed scope, for the field previews.
+  AvesEntry? _sample;
+  bool _isExporting = false;
+
   Set<AvesEntry> get entries => widget.entries;
 
-  AvesEntry get sample => entries.first;
+  AvesEntry? get sample => _sample ?? entries.firstOrNull;
 
   @override
   void initState() {
     super.initState();
     _exportMimeType = MimeTypes.csv;
     _validate();
+
+    final pagedSource = widget.pagedSource;
+    if (pagedSource != null) {
+      unawaited(pagedSource.firstEntry().then((entry) {
+        if (!mounted) return;
+        setState(() => _sample = entry);
+      }));
+    }
   }
 
   @override
@@ -106,17 +130,20 @@ class _ExportCollectionStatsPageState extends State<ExportCollectionStatsPage> w
               child: ValueListenableBuilder<bool>(
                 valueListenable: _isValidNotifier,
                 builder: (context, isValid, child) {
+                  final canSubmit = isValid && !_isExporting;
                   return Wrap(
                     alignment: .end,
+                    crossAxisAlignment: .center,
                     spacing: 16,
                     children: [
+                      if (_isExporting) const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
                       AvesOutlinedButton(
                         label: context.l10n.entryActionCopyToClipboard,
-                        onPressed: isValid ? () => _submit(context, ExportTarget.clipboard) : null,
+                        onPressed: canSubmit ? () => _submit(context, ExportTarget.clipboard) : null,
                       ),
                       AvesOutlinedButton(
                         label: context.l10n.saveTooltip,
-                        onPressed: isValid ? () => _submit(context, ExportTarget.file) : null,
+                        onPressed: canSubmit ? () => _submit(context, ExportTarget.file) : null,
                       ),
                     ],
                   );
@@ -130,7 +157,8 @@ class _ExportCollectionStatsPageState extends State<ExportCollectionStatsPage> w
   }
 
   Widget _toTile(ExportableEntryField field) {
-    final preview = _exportEntryField(field, sample)?.toString() ?? '';
+    final entry = sample;
+    final preview = entry != null ? _exportEntryField(field, entry)?.toString() ?? '' : '';
     return SwitchListTile(
       value: _selectedFields.contains(field),
       subtitle: preview.isNotEmpty ? Text(preview) : null,
@@ -163,12 +191,29 @@ class _ExportCollectionStatsPageState extends State<ExportCollectionStatsPage> w
     final index = ExportableEntryField.values.indexOf;
     final fieldList = fieldSet.sorted((a, b) => index(a).compareTo(index(b)));
 
-    String content = '';
-    switch (mimeType) {
-      case MimeTypes.csv:
-        content = _exportToCsv(fieldList, context);
-      case MimeTypes.json:
-        content = _exportToJson(fieldList);
+    final String content;
+    if (widget.pagedSource != null) {
+      setState(() => _isExporting = true);
+      final streamed = await _streamContent(fieldList, context);
+      if (!mounted) return;
+      setState(() => _isExporting = false);
+      if (streamed == null) {
+        await showWarningDialog(
+          context: context,
+          message: context.l10n.tooManyItemsErrorDialogMessage,
+        );
+        return;
+      }
+      content = streamed;
+    } else {
+      switch (mimeType) {
+        case MimeTypes.csv:
+          content = _exportToCsv(fieldList, context);
+        case MimeTypes.json:
+          content = _exportToJson(fieldList);
+        default:
+          content = '';
+      }
     }
 
     final bool? success;
@@ -199,6 +244,32 @@ class _ExportCollectionStatsPageState extends State<ExportCollectionStatsPage> w
         showFeedback(context, FeedbackType.warn, context.l10n.genericFailureFeedback);
       }
     }
+  }
+
+  /// Builds the export text from a windowed scope, one chunk at a time.
+  ///
+  /// Null when the output outgrows [_maxExportLength]: the caller refuses the
+  /// export instead of risking the write.
+  Future<String?> _streamContent(List<ExportableEntryField> fields, BuildContext context) async {
+    final asJson = _exportMimeType == MimeTypes.json;
+    final headers = fields.map((v) => v.getText(context)).toList();
+    final buffer = StringBuffer(asJson ? '[' : '');
+    var first = true;
+    await for (final chunk in widget.pagedSource!.streamEntries()) {
+      for (final entry in chunk) {
+        if (asJson) {
+          if (!first) buffer.write(',');
+          buffer.write(jsonEncode(Map.fromEntries(fields.map((field) => MapEntry(field.name, _exportEntryField(field, entry))))));
+        } else {
+          if (first) buffer.writeln(csv.encode([headers]));
+          buffer.writeln(csv.encode([fields.map((field) => _exportEntryField(field, entry)?.toString() ?? '').toList()]));
+        }
+        first = false;
+      }
+      if (buffer.length > _maxExportLength) return null;
+    }
+    if (asJson) buffer.write(']');
+    return buffer.toString();
   }
 
   String _exportToCsv(List<ExportableEntryField> fields, BuildContext context) {

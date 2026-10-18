@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
 import 'package:aves/model/device.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/path.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -110,17 +114,25 @@ class ExplorerActionDelegate with FeedbackMixin {
   }
 
   void _goToStats(BuildContext context) {
-    final collection = CollectionLens(
-      source: context.read<CollectionSource>(),
-      filters: {_getPathFilter()},
-    );
+    final source = context.read<CollectionSource>();
+    final filters = {_getPathFilter()};
+    // The scope is entry-free on a huge library, so its stats are folded from
+    // the database rather than from an empty lens.
+    unawaited(_openStats(context, source, filters));
+  }
+
+  Future<void> _openStats(BuildContext context, CollectionSource source, Set<CollectionFilter> filters) async {
+    final pagedStats = await pagedStatsSourceFor(filters);
+    if (!context.mounted) return;
+    final entries = pagedStats != null ? const <AvesEntry>{} : CollectionLens(source: source, filters: filters).sortedEntries.toSet();
 
     Navigator.maybeOf(context)?.push(
       MaterialPageRoute(
         settings: const RouteSettings(name: StatsPage.routeName),
         builder: (context) => StatsPage(
-          entries: collection.sortedEntries.toSet(),
-          source: collection.source,
+          entries: entries,
+          source: source,
+          pagedStats: pagedStats,
         ),
       ),
     );

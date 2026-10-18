@@ -64,6 +64,17 @@ abstract class LocalMediaDb {
     required int offset,
   });
 
+  /// One keyset page of the rows matching [predicate], in id order.
+  ///
+  /// Walks a whole scope without materializing it (the stats aggregate): every
+  /// row is returned exactly once, in bounded chunks. [afterId] is exclusive,
+  /// pass 0 to start.
+  Future<List<AvesEntry>> loadWalkWindow({
+    CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
+    required int afterId,
+    required int limit,
+  });
+
   /// Loads one header per group of the window predicate, in display order.
   Future<List<SectionHeader>> loadSectionHeaders({
     CollectionWindowPredicate predicate = const CollectionWindowPredicate(),

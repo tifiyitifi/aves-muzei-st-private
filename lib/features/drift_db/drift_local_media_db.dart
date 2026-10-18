@@ -238,6 +238,14 @@ class DriftLocalMediaDb implements LocalMediaDb {
       );
 
   @override
+  Future<List<AvesEntry>> loadWalkWindow({
+    CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
+    required int afterId,
+    required int limit,
+  }) =>
+      _entries.loadWalkWindow(predicate: predicate, afterId: afterId, limit: limit);
+
+  @override
   Future<List<SectionHeader>> loadSectionHeaders({
     CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     required SectionGrouping grouping,

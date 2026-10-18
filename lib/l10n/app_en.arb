@@ -1263,5 +1263,18 @@
       }
     }
   },
-  "albumCatalogBadgeOverflow": "999+"
+  "albumCatalogBadgeOverflow": "999+",
+  "collectionSelectAllCapped": "This view has {total} items. Only the first {count} were selected.",
+  "@collectionSelectAllCapped": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "total": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  }
 }

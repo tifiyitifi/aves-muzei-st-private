@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/view/collection_select_all.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/container/set_and.dart';
@@ -784,7 +785,8 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
       case .select:
         context.read<Selection<AvesEntry>>().select();
       case .selectAll:
-        context.read<Selection<AvesEntry>>().addToSelection(collection.sortedEntries);
+        // Bounded on a windowed collection, which cannot hold its whole scope.
+        await selectAllInCollection(context, collection);
       case .selectNone:
         context.read<Selection<AvesEntry>>().clearSelection();
       // browsing

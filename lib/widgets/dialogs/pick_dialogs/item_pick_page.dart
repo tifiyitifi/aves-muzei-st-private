@@ -52,6 +52,7 @@ class _ItemPickPageState extends State<ItemPickPage> {
       child: AvesScaffold(
         body: SelectionProvider<AvesEntry>(
           toSelectableItems: (entry) => entry.toSelectableItems(),
+          keyOf: (entry) => entry.id,
           child: QueryProvider(
             startEnabled: settings.getShowTitleQuery(context.currentRouteName!),
             initialQuery: liveFilter?.query,

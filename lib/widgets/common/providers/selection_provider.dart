@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 class const SelectionProvider<T>({
   super.key,
   final Set<T> Function(T item)? toSelectableItems,
+  final SelectionKeyOf<T>? keyOf,
   required final Widget child,
 }) extends StatelessWidget {
   @override
@@ -12,6 +13,7 @@ class const SelectionProvider<T>({
     return ChangeNotifierProvider<Selection<T>>(
       create: (context) => Selection<T>(
         toSelectableItems: toSelectableItems,
+        keyOf: keyOf,
       ),
       child: child,
     );

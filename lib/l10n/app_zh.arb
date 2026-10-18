@@ -274,6 +274,7 @@
     "catalogPromptCatalogueButton": "开始编目",
     "albumCatalogBadgeTooltip": "还有 {count} 个条目尚未编目。点击开始编目。",
     "albumCatalogBadgeOverflow": "999+",
+    "collectionSelectAllCapped": "该视图共有 {total} 个条目，仅选中前 {count} 个。",
     "collectionActionShowTitleSearch": "显示标题搜索框",
     "collectionActionHideTitleSearch": "隐藏标题搜索框",
     "collectionActionAddShortcut": "添加快捷方式",

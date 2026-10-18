@@ -218,15 +218,77 @@ class PagedCollectionLens extends CollectionLens {
 
   /// Loaded real entries in display order. Shared with viewer copies, which
   /// must never walk the lazy list.
-  List<AvesEntry> get loadedEntries {
-    final result = <AvesEntry>[];
-    for (final state in _sectionStates) {
-      final keys = state.list.loaded.keys.toList()..sort();
-      for (final key in keys) {
-        result.add(state.list.loaded[key]!);
-      }
+  List<AvesEntry> get loadedEntries => [for (final state in _sectionStates) ...state.list.loadedItems];
+
+  /// Rows "select all" takes from a windowed view at most.
+  ///
+  /// A selection is an in-memory set of entries, so a scope of a million rows
+  /// cannot be selected whole. This cap is generous enough for a whole album or
+  /// a filtered view, and the UI warns when it truncated the selection, so a
+  /// bulk action never runs on a silently partial set.
+  static const selectAllLimit = 2000;
+
+  /// The rows "select all" takes from this view: what is already loaded, plus
+  /// the scope's leading rows in the view's sort order while under [limit].
+  ///
+  /// The loaded rows are always included, even when the view is scrolled past
+  /// the scope's head, so the tiles the user is looking at light up. At most
+  /// [limit] distinct rows come back.
+  Future<Set<AvesEntry>> selectAllItems({int limit = selectAllLimit}) async {
+    final result = <AvesEntry>{...loadedEntries};
+    final predicate = _pagedPredicate;
+    // The calendar projection's rows are days, not entries: only the loaded rows
+    // are taken there.
+    if (!pagedActive || predicate == null || _pagedDayRows || result.length >= limit) return result;
+    final List<AvesEntry> head;
+    try {
+      head = await localMediaDb.loadEntryWindow(
+        predicate: predicate,
+        sort: _pagedSort,
+        reverse: _pagedReverse,
+        limit: limit - result.length,
+        offset: 0,
+      );
+    } catch (error, stack) {
+      _log.w('paged select-all head load failed', error, stack);
+      return result;
     }
+    if (_disposed) return result;
+    result.addAll(await _attachHeadExtras(head));
     return result;
+  }
+
+  /// Attaches the deep metadata of head rows, which the window SELECT does not
+  /// read: without it a head row would read as untagged, unlocated and unstacked
+  /// to whatever action took the selection.
+  ///
+  /// Bounded chunks, like every other read here, so a cap of thousands of rows
+  /// costs a handful of indexed lookups instead of one oversized query.
+  Future<List<AvesEntry>> _attachHeadExtras(List<AvesEntry> rows) async {
+    if (rows.isEmpty) return rows;
+    final byId = {for (final row in rows) row.id: row};
+    try {
+      for (final slice in byId.keys.toList().slices(500)) {
+        final ids = slice.toSet();
+        final metaById = {for (final m in await localMediaDb.loadCatalogMetadataById(ids)) m.id: m};
+        final addressById = {for (final a in await localMediaDb.loadAddressesById(ids)) a.id: a};
+        final stacksById = _stackEntries ? await localMediaDb.loadStackMembers(ids) : const <int, List<AvesEntry>>{};
+        for (final id in ids) {
+          final row = byId[id];
+          if (row == null) continue;
+          row.catalogMetadata = metaById[id];
+          row.addressDetails = addressById[id];
+          final members = stacksById[id];
+          // Stack members ride on a new instance: the field is not settable.
+          if (members != null) byId[id] = row.copyWith(stackedEntries: members);
+        }
+      }
+    } catch (error, stack) {
+      // A failed attach must not cost the selection: the rows themselves are
+      // real, they just read as uncatalogued.
+      _log.w('paged select-all extras load failed', error, stack);
+    }
+    return byId.values.toList();
   }
 
   /// The ratios the mosaic layout packs [key] with, or null while they load.

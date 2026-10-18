@@ -394,6 +394,38 @@ void main() {
       expect(await service.countUncatalogued(), 1);
     });
 
+    test('select all takes the loaded rows plus the scope head, under a cap', () async {
+      final service = await drift();
+      await service.insertEntries({for (var i = 1; i <= 10; i++) entry(i, dateTaken: i * 10)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 10);
+      // Load the tail row: it is not in the scope's head, so the assertion
+      // below proves the loaded rows always make it in.
+      lens.sortedEntries[9];
+      await settle(lens, done: () => lens.loadedEntries.any((entry) => entry.id == 1));
+
+      final items = await lens.selectAllItems(limit: 4);
+
+      // Bounded by the cap: the loaded row plus the scope's first three rows.
+      expect(items.map((entry) => entry.id).toSet(), {1, 10, 9, 8});
+    });
+
+    test('select all takes the whole view when it fits under the cap', () async {
+      final service = await drift();
+      await service.insertEntries({for (var i = 1; i <= 10; i++) entry(i, dateTaken: i * 10)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 10);
+
+      final items = await lens.selectAllItems(limit: 100);
+      expect(items.length, 10);
+    });
+
     test('places backlog runs lazily when locations load', () async {
       final service = await drift();
       await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 3))});

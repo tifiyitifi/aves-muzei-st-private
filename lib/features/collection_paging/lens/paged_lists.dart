@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/collection_paging/windows/window_cache.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/selection.dart';
 import 'package:aves/model/source/section_keys.dart';
 
 /// A section's rows as a fixed-length lazy list: positions always resolve
@@ -18,7 +19,7 @@ import 'package:aves/model/source/section_keys.dart';
 ///   `_sanitizeSelection` from dropping still-valid selections.
 /// - `indexOf` answers a *position*: only loaded rows (and this section's
 ///   skeleton, at the section start) resolve; everything else is -1.
-class PagedSectionList extends ListBase<AvesEntry> {
+class PagedSectionList extends ListBase<AvesEntry> implements SelectionLazySource<AvesEntry> {
   final SectionKey sectionKey;
 
   final int count;
@@ -60,6 +61,14 @@ class PagedSectionList extends ListBase<AvesEntry> {
     return skeleton;
   }
 
+  /// The section's real rows, ascending. Read by selection queries, which must
+  /// not walk the positions (see [SelectionLazySource]).
+  @override
+  Iterable<AvesEntry> get loadedItems {
+    final keys = loaded.keys.toList()..sort();
+    return [for (final key in keys) loaded[key]!];
+  }
+
   @override
   void operator []=(int index, AvesEntry value) => throw UnsupportedError('paged section lists are read-only');
 
@@ -89,7 +98,7 @@ class PagedSectionList extends ListBase<AvesEntry> {
 /// Global index -> section via prefix sums (binary search), so random access
 /// stays logarithmic in the section count while sections stay independently
 /// windowed. Same contains/indexOf contract as [PagedSectionList].
-class PagedFlatList extends ListBase<AvesEntry> {
+class PagedFlatList extends ListBase<AvesEntry> implements SelectionLazySource<AvesEntry> {
   final List<PagedSectionList> sections;
 
   /// Global start index per section, ascending.
@@ -145,6 +154,11 @@ class PagedFlatList extends ListBase<AvesEntry> {
     final (section, local) = locate(index);
     return section[local];
   }
+
+  /// Every loaded row of the collection, in global index order. Read by
+  /// selection queries, which must not walk the positions.
+  @override
+  Iterable<AvesEntry> get loadedItems => [for (final section in sections) ...section.loadedItems];
 
   @override
   void operator []=(int index, AvesEntry value) => throw UnsupportedError('paged flat lists are read-only');

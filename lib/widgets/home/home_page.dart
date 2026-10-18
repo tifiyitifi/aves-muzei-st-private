@@ -515,7 +515,10 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
         return buildRoute((context) => const TagListPage(initialGroup: null));
       case MapPage.routeName:
         return buildRoute((context) {
-          final mapCollection = CollectionLens(
+          // Windowed like the collection page: the map renders a grid of the
+          // scope's entries, and a plain lens would be empty on a huge library
+          // (its source is entry-free on purpose).
+          final mapCollection = PagedCollectionLens(
             source: source,
             filters: {
               LocationFilter.located,

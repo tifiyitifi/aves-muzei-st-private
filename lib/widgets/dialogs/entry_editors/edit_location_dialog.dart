@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:ui';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/locale/number.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/location.dart';
@@ -207,7 +208,9 @@ class _EditEntryLocationDialogState extends State<EditEntryLocationDialog> with 
   CollectionLens? _createPickCollection() {
     final baseCollection = widget.collection;
     return baseCollection != null
-        ? CollectionLens(
+        // Windowed like the collection page: a plain lens would be empty on a
+        // huge library, whose source is entry-free on purpose.
+        ? PagedCollectionLens(
             source: baseCollection.source,
             filters: {
               ...baseCollection.filters.whereNot((filter) => filter == LocationFilter.unlocated),

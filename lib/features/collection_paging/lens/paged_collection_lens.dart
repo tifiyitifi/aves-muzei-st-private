@@ -521,11 +521,10 @@ class PagedCollectionLens extends CollectionLens {
             state.list.idToLocal[entry.id] = base + i;
           }
           _reindexFlat();
-          if (dayRows) {
-            unawaited(_attachDayMembers(predicate, state, rows, gen));
-          } else if (_stackEntries) {
-            unawaited(_attachStackMembers(state, rows, gen));
-          }
+          // Deep metadata first, then the layout's own derivations: a windowed
+          // row must end up with what an in-memory row has, or the info sheet,
+          // tile badges and place surfaces read as empty.
+          unawaited(_attachWindowExtras(predicate, state, rows, dayRows: dayRows, gen: gen));
           notifyListeners();
         },
         onEvicted: (windowIndex) {
@@ -752,6 +751,54 @@ class PagedCollectionLens extends CollectionLens {
       ],
       trashedOnly: predicate.trashedOnly,
     );
+  }
+
+  /// Attaches the deep metadata of a freshly filled window, then whatever the
+  /// layout derives from it (day stacks / stack members).
+  ///
+  /// The window SELECT reads the entry row plus its catalogued date and trash
+  /// details only, so tags, ratings, titles, coordinates and the catalogued mime
+  /// would otherwise read as absent: the info sheet would drop its location
+  /// section, tiles would lose their rating/type badges, and an entry's mime
+  /// would fall back to the source one. Two indexed lookups per window (bounded
+  /// by the window size) close that gap, making a windowed row equivalent to an
+  /// in-memory one.
+  ///
+  /// Metadata is attached *before* the day/stack passes because those replace the
+  /// row with `copyWith(stackedEntries:)`, which carries the metadata over — the
+  /// order is what keeps it from being dropped.
+  Future<void> _attachWindowExtras(CollectionWindowPredicate predicate, _SectionState state, List<AvesEntry> rows, {required bool dayRows, required int gen}) async {
+    final ids = {for (final entry in rows) entry.id};
+    if (ids.isNotEmpty) {
+      var changed = false;
+      try {
+        final metaById = {for (final m in await localMediaDb.loadCatalogMetadataById(ids)) m.id: m};
+        final addressById = {for (final a in await localMediaDb.loadAddressesById(ids)) a.id: a};
+        if (!_current(gen)) return;
+        for (final entry in rows) {
+          final meta = metaById[entry.id];
+          if (meta != null) {
+            entry.catalogMetadata = meta;
+            changed = true;
+          }
+          final address = addressById[entry.id];
+          if (address != null) {
+            entry.addressDetails = address;
+            changed = true;
+          }
+        }
+      } catch (error, stack) {
+        // A metadata failure must not cost the window its tiles: the day/stack
+        // passes below still run.
+        _log.w('paged window metadata load failed', error, stack);
+      }
+      if (changed) notifyListeners();
+    }
+    if (dayRows) {
+      await _attachDayMembers(predicate, state, rows, gen);
+    } else if (_stackEntries) {
+      await _attachStackMembers(state, rows, gen);
+    }
   }
 
   /// Attaches the members of the stacks the window's tiles show, so a tile can

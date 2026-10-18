@@ -1,4 +1,5 @@
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/model/device.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/path.dart';
@@ -68,7 +69,9 @@ class ExplorerActionDelegate with FeedbackMixin {
   Future<void> _addShortcut(BuildContext context) async {
     final filter = _getPathFilter();
     final defaultName = filter.getLabel(context);
-    final collection = CollectionLens(
+    // Windowed like the collection page: the cover picker renders a grid, and a
+    // plain lens would be empty on a huge library (entry-free source).
+    final collection = PagedCollectionLens(
       source: context.read<CollectionSource>(),
       filters: {filter},
     );

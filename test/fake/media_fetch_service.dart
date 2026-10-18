@@ -6,6 +6,11 @@ import 'package:test/fake.dart';
 class FakeMediaFetchService extends Fake implements MediaFetchService {
   Set<AvesEntry> entries = {};
 
+  /// Decoder caches live on the platform; nothing to clear here. Called when a
+  /// catalogued mime/rotation replaces the source one on an entry.
+  @override
+  Future<void> clearDecoders() async {}
+
   @override
   Future<AvesEntry?> getEntry(String uri, String? mimeType, {bool allowUnsized = false}) async {
     return entries.firstWhereOrNull((v) => v.uri == uri);

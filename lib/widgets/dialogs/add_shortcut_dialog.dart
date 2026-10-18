@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/query.dart';
@@ -120,7 +121,10 @@ class _AddShortcutDialogState extends State<AddShortcutDialog> {
             pickFilters.add(QueryFilter(filter.query, _collection.calendar));
           });
           return ItemPickPage(
-            collection: CollectionLens(
+            // The picker grid must serve windows like the collection page: on a
+            // huge library the source is entry-free on purpose, and a plain lens
+            // would show nothing.
+            collection: PagedCollectionLens(
               source: _collection.source,
               filters: pickFilters,
             ),

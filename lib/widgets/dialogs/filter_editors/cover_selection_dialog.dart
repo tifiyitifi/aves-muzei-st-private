@@ -1,11 +1,11 @@
 import 'dart:math';
 
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/image_providers/app_icon_image_provider.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
-import 'package:aves/model/source/collection_lens.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/basic/color_indicator.dart';
@@ -330,7 +330,9 @@ class _CoverSelectionDialogState extends State<CoverSelectionDialog> {
       MaterialPageRoute(
         settings: const RouteSettings(name: ItemPickPage.routeName),
         builder: (context) => ItemPickPage(
-          collection: CollectionLens(
+          // Windowed like the collection page: a plain lens would be empty on a
+          // huge library, whose source is entry-free on purpose.
+          collection: PagedCollectionLens(
             source: context.read<CollectionSource>(),
             filters: {filter},
           ),

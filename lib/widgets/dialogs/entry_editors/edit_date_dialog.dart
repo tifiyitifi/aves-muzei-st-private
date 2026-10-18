@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/locale/calendar/delegate/hijri.dart';
 import 'package:aves/locale/calendar/delegate/persian.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -300,7 +301,9 @@ class _EditEntryDateDialogState extends State<EditEntryDateDialog> {
   CollectionLens? _createPickCollection() {
     final baseCollection = widget.collection;
     return baseCollection != null
-        ? CollectionLens(
+        // Windowed like the collection page: a plain lens would be empty on a
+        // huge library, whose source is entry-free on purpose.
+        ? PagedCollectionLens(
             source: baseCollection.source,
             filters: baseCollection.filters,
           )

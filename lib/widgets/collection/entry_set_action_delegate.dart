@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/view/collection_targets.dart';
 import 'package:aves/locale/intl.dart';
 import 'package:aves/model/device.dart';
 import 'package:aves/model/dynamic_albums.dart';
@@ -289,8 +291,11 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
 
   Set<AvesEntry> _getTargetItems(BuildContext context) {
     final selection = context.read<Selection<AvesEntry>>();
-    final groupedEntries = (selection.isSelecting ? selection.selectedItems : context.read<CollectionLens>().sortedEntries);
-    return groupedEntries.expand((entry) => entry.stackedEntries ?? {entry}).toSet();
+    return collectionTargetItems(
+      collection: context.read<CollectionLens>(),
+      isSelecting: selection.isSelecting,
+      selectedItems: selection.selectedItems,
+    );
   }
 
   Future<void> _share(BuildContext context) async {
@@ -822,18 +827,24 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
 
   void _goToSlideshow(BuildContext context) {
     final collection = context.read<CollectionLens>();
-    final entries = _getTargetItems(context);
+    final selection = context.read<Selection<AvesEntry>>();
+    // A windowed collection must not be materialized into a fixed selection (the
+    // walk would read one skeleton per position): the slideshow gets the
+    // collection itself and shuffles the whole thing through its paged copy.
+    final slideshowCollection = !selection.isSelecting && collection is PagedCollectionLens && collection.pagedActive
+        ? collection.copyWith(listenToSource: false)
+        : CollectionLens(
+            source: collection.source,
+            filters: collection.filters,
+            fixedSelection: _getTargetItems(context).toList(),
+          );
 
     Navigator.maybeOf(context)?.push(
       MaterialPageRoute(
         settings: const RouteSettings(name: SlideshowPage.routeName),
         builder: (context) {
           return SlideshowPage(
-            collection: CollectionLens(
-              source: collection.source,
-              filters: collection.filters,
-              fixedSelection: entries.toList(),
-            ),
+            collection: slideshowCollection,
           );
         },
       ),

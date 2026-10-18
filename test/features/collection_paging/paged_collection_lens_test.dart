@@ -17,6 +17,7 @@ import 'package:aves/model/source/location/place.dart';
 import 'package:aves/model/filters/query.dart';
 import 'package:aves/model/filters/trash.dart';
 import 'package:aves/model/metadata/trash.dart';
+import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/media_store_source.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:drift/native.dart';
@@ -29,6 +30,11 @@ import '../../helpers/sqlite3_loader.dart';
 /// Paged lens behaviour against an in-memory Drift database: auto morphing,
 /// windowed reads with skeletons, blocking, and viewer copies.
 void main() {
+  // Attaching a windowed row's metadata goes through `AvesEntry.catalogMetadata`,
+  // which evicts cached images (needs the binding) when the catalogued mime or
+  // rotation differs from the source ones.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   setUpAll(() async {
     ensureSqlite3Loaded();
     SharedPreferencesStorePlatform.instance = InMemorySharedPreferencesStore.empty();
@@ -61,6 +67,7 @@ void main() {
     await driftDb.clearEntries();
     await driftDb.clearCatalogMetadata();
     await driftDb.clearDates();
+    await driftDb.clearAddresses();
     await driftDb.clearTrashDetails();
     source = MediaStoreSource();
     source.canAnalyze = false;
@@ -184,6 +191,37 @@ void main() {
       expect(copy.sortedEntries.length, 2);
       expect(copy.globalIndexOf(lens.loadedEntries.first), 0);
       expect(copy.entryAt(1).id, 1);
+    });
+
+    test('window rows carry the deep metadata an in-memory row carries', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 2))});
+      await service.saveCatalogMetadata({
+        CatalogMetadata(id: 1, rating: 4, xmpSubjects: 'red;blue', latitude: 48.8, longitude: 2.3, mimeType: 'image/heic'),
+      });
+      await service.saveAddresses({const AddressDetails(id: 1, countryCode: 'FR', countryName: 'France', adminArea: 'IDF', locality: 'Paris')});
+      // The bootstrap wipes catalog metadata when the device timezone offset
+      // moved; pin it so the metadata this test seeds survives.
+      settings.catalogTimeZoneOffsetMillis = DateTime.now().timeZoneOffset.inMilliseconds;
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(10);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => allReal(lens) && lens.loadedEntries.any((entry) => entry.id == 1 && entry.catalogMetadata != null));
+
+      // The catalogued row reads exactly like a legacy in-memory row: tags,
+      // rating, coordinates, catalogued mime and address are all there.
+      final catalogued = lens.loadedEntries.firstWhere((entry) => entry.id == 1);
+      expect(catalogued.rating, 4);
+      expect(catalogued.tags, {'red', 'blue'});
+      expect(catalogued.hasGps, isTrue);
+      expect(catalogued.mimeType, 'image/heic');
+      expect(catalogued.addressDetails?.locality, 'Paris');
+
+      // ...and a row with no metadata row stays uncatalogued rather than wrong.
+      final uncatalogued = lens.loadedEntries.firstWhere((entry) => entry.id == 2);
+      expect(uncatalogued.catalogMetadata, isNull);
+      expect(uncatalogued.addressDetails, isNull);
     });
 
     test('copying with other filters resolves that scope instead of serving this one', () async {

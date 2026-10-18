@@ -158,9 +158,13 @@ class Vaults {
 
     // recover untracked vault items
     final source = context.read<CollectionSource>();
-    final newEntries = await recoverUntrackedItems(source, dirPath);
+    final newEntries = await recoverUntrackedItems(dirPath);
     if (newEntries.isNotEmpty) {
-      source.addEntries(newEntries);
+      // A windowed source holds no entries by design: the database is its store,
+      // and adding them here would hand the entry-set actions a partial scope.
+      if (source.loadedScope == CollectionSource.fullScope) {
+        source.addEntries(newEntries);
+      }
       await localMediaDb.insertEntries(newEntries);
       unawaited(source.analyze(null, entries: newEntries));
     }
@@ -169,13 +173,16 @@ class Vaults {
     _onLockStateChanged();
   }
 
-  Future<Set<AvesEntry>> recoverUntrackedItems(CollectionSource source, String dirPath) async {
+  Future<Set<AvesEntry>> recoverUntrackedItems(String dirPath) async {
     final newEntries = <AvesEntry>{};
 
     final vaultName = detailsForPath(dirPath)?.name;
     if (vaultName == null) return newEntries;
 
-    final knownPaths = source.allEntries.where((v) => v.origin == EntryOrigins.vault && v.directory == dirPath).map((v) => v.path).nonNulls.toSet();
+    // The database, not the source, is the ledger of what is already tracked: a
+    // windowed source holds no entries at all, and would otherwise treat every
+    // file in the vault as untracked and re-add it under a fresh id.
+    final knownPaths = (await localMediaDb.loadEntries(origin: EntryOrigins.vault, directory: dirPath)).map((v) => v.path).nonNulls.toSet();
     final untrackedPaths = await storageService.getUntrackedVaultPaths(vaultName, knownPaths);
     if (untrackedPaths.isNotEmpty) {
       debugPrint('Recovering ${untrackedPaths.length} untracked vault items');

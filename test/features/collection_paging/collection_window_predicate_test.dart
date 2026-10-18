@@ -143,10 +143,15 @@ void main() {
       expect(predicate.requires, containsAll({WindowTable.dateTaken, WindowTable.metadata, WindowTable.address}));
     });
 
-    test('locked vaults are excluded by directory', () {
+    test('a locked vault excludes its directory and everything under it', () {
       final predicate = predicateForFilters({}, lockedVaultDirs: {'/secret'})!;
-      expect(predicate.conjunction.single.sql, contains('NOT IN'));
-      expect(predicate.conjunction.single.variables.single.value, '/secret');
+      final fragment = predicate.conjunction.single;
+      // A vault's content is recognized by prefix (`vaults.isVaultEntryUri`), so
+      // hiding the directory alone would leak a file nested inside it. The
+      // trailing separator keeps a sibling album out of the test.
+      expect(fragment.sql, contains('e.directory = ?'));
+      expect(fragment.sql, contains('substr(e.directory, 1, ?) = ?'));
+      expect(fragment.variables.map((v) => v.value), ['/secret', '/secret/'.length, '/secret/']);
     });
 
     test('a reversed hidden filter is compiled, not ignored', () {

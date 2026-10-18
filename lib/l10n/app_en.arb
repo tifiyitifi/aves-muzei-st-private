@@ -1214,5 +1214,6 @@
       }
     }
   },
-  "collectionPagedUnsupportedFilter": "This view needs the full in-memory path and is not available for very large collections. See About → Known Issues."
+  "collectionPagedUnsupportedFilter": "This view needs the full in-memory path and is not available for very large collections. See About → Known Issues.",
+  "collectionPagedUnsupportedAction": "This action needs the full in-memory path and is not available for very large collections. See About → Known Issues."
 }

@@ -72,8 +72,30 @@ class FakeAvesDb extends Fake implements LocalMediaDb {
 
   // vaults
 
+  final Set<VaultDetails> vaults = {};
+
   @override
-  Future<Set<VaultDetails>> loadAllVaults() => SynchronousFuture({});
+  Future<Set<VaultDetails>> loadAllVaults() => SynchronousFuture(vaults);
+
+  @override
+  Future<void> addVaults(Set<VaultDetails> rows) {
+    vaults.addAll(rows);
+    return SynchronousFuture(null);
+  }
+
+  @override
+  Future<void> removeVaults(Set<VaultDetails> rows) {
+    vaults.removeAll(rows);
+    return SynchronousFuture(null);
+  }
+
+  @override
+  Future<void> updateVault(String oldName, VaultDetails row) {
+    vaults
+      ..removeWhere((v) => v.name == oldName)
+      ..add(row);
+    return SynchronousFuture(null);
+  }
 
   // trash
 

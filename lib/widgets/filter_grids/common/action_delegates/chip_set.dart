@@ -1,4 +1,5 @@
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -339,17 +340,18 @@ abstract class ChipSetActionDelegate<T extends CollectionFilter> with FeedbackMi
   }
 
   Future<void> _goToSlideshow(BuildContext context) async {
-    final entries = _selectedEntries(context).toList();
+    final source = context.read<CollectionSource>();
+    final scopeFilters = _scopeFilters(context);
+    final pagedFilters = scopeFilters.length > 1 ? {SetOrFilter(scopeFilters)} : scopeFilters;
+    // A windowed source holds no entries, so a fixed selection would be an empty
+    // slideshow: the lens serves the scope from the database, and morphs to the
+    // exact legacy behaviour on a small library.
+    final slideshowCollection = PagedCollectionLens(source: source, filters: pagedFilters);
     await Navigator.maybeOf(context)?.push(
       MaterialPageRoute(
         settings: const RouteSettings(name: SlideshowPage.routeName),
         builder: (context) {
-          return SlideshowPage(
-            collection: CollectionLens(
-              source: context.read<CollectionSource>(),
-              fixedSelection: entries,
-            ),
-          );
+          return SlideshowPage(collection: slideshowCollection);
         },
       ),
     );

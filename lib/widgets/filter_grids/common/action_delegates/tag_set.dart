@@ -1,4 +1,5 @@
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/view/paged_scope_guard.dart';
 import 'package:aves/model/filters/container/tag_group.dart';
 import 'package:aves/model/filters/covered/tag.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -130,6 +131,10 @@ class TagChipSetActionDelegate extends ChipSetActionDelegate<TagBaseFilter> {
   Future<void> _remove(BuildContext context) async {
     final l10n = context.l10n;
 
+    // The targets come from the in-memory source: a library too large to load
+    // has none, so the removal would strip nothing.
+    if (await pagedScopeUnsupported(context)) return;
+
     if (!await showConfirmationDialog(
       context: context,
       message: l10n.genericDangerWarningDialogMessage,
@@ -214,6 +219,10 @@ class TagChipSetActionDelegate extends ChipSetActionDelegate<TagBaseFilter> {
   }
 
   Future<void> _doRenameTag(BuildContext context, TagFilter tagFilter, String newName) async {
+    // Renaming a tag rewrites its entries: a library too large to load holds
+    // none, so the rewrite would touch nothing.
+    if (await pagedScopeUnsupported(context)) return;
+
     final source = context.read<CollectionSource>();
     final todoEntries = source.visibleEntries.where(tagFilter.test).toSet();
 

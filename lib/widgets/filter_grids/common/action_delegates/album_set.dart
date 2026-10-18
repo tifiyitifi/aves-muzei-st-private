@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:io';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/view/paged_scope_guard.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/dynamic_albums.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -299,6 +300,9 @@ class AlbumChipSetActionDelegate extends ChipSetActionDelegate<AlbumBaseFilter> 
     required bool enableBin,
   }) async {
     if (!await unlockFilters(context, filters)) return;
+    // The targets come from the in-memory source: a library too large to load
+    // has none, so the action would delete nothing.
+    if (await pagedScopeUnsupported(context)) return;
 
     final source = context.read<CollectionSource>();
     final todoEntries = source.visibleEntries.where((entry) => filters.any((f) => f.test(entry))).toSet();
@@ -494,6 +498,10 @@ class AlbumChipSetActionDelegate extends ChipSetActionDelegate<AlbumBaseFilter> 
   }
 
   Future<void> _doRenameStoredAlbum(BuildContext context, StoredAlbumFilter albumFilter, String newName) async {
+    // Renaming an album moves its entries: a library too large to load holds
+    // none, so the move would carry nothing.
+    if (await pagedScopeUnsupported(context)) return;
+
     final l10n = context.l10n;
     final messenger = ScaffoldMessenger.of(context);
     final source = context.read<CollectionSource>();

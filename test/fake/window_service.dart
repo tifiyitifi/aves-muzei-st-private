@@ -11,6 +11,9 @@ class FakeWindowService extends Fake implements WindowService {
   Future<void> keepScreenOn(bool on) => SynchronousFuture(null);
 
   @override
+  Future<void> secureScreen(bool on) => SynchronousFuture(null);
+
+  @override
   Future<bool> isCrossWindowBlurEnabled() => SynchronousFuture(false);
 
   @override

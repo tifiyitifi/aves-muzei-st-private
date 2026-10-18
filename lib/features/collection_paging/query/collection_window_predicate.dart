@@ -1,6 +1,7 @@
 import 'package:aves/features/collection_paging/query/collection_filter_sql.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/trash.dart';
+import 'package:aves/services/common/services.dart';
 import 'package:drift/drift.dart';
 
 export 'package:aves/features/collection_paging/query/collection_filter_sql.dart';
@@ -59,13 +60,22 @@ SummaryExclusion buildSummaryExclusion({
   var complete = true;
 
   if (lockedVaultDirs.isNotEmpty) {
-    // Batched: one `NOT IN` covers every locked vault directory. Entries with
-    // no directory are never inside a vault, so they are kept.
-    final placeholders = lockedVaultDirs.map((_) => '?').join(',');
-    conditions.add('(e.directory IS NULL OR e.directory NOT IN ($placeholders))');
+    // Prefix test, not a directory equality: a vault's content is recognized by
+    // `vaults.isVaultEntryUri` as everything *under* the vault directory, so
+    // hiding the directory alone would leak a file that ended up nested in it.
+    // The trailing separator keeps a sibling whose name starts with the same
+    // prefix (a vault `a` and a vault `ab`) out of the test.
+    final tests = <String>[];
     for (final dir in lockedVaultDirs) {
-      variables.add(Variable(dir));
+      final prefix = dir.endsWith(pContext.separator) ? dir : '$dir${pContext.separator}';
+      // Entries with no directory are never inside a vault, so they are kept.
+      tests.add('(e.directory = ? OR substr(e.directory, 1, ?) = ?)');
+      variables
+        ..add(Variable(dir))
+        ..add(Variable(prefix.length))
+        ..add(Variable(prefix));
     }
+    conditions.add('(e.directory IS NULL OR NOT (${tests.join(' OR ')}))');
   }
 
   for (final filter in hidden) {

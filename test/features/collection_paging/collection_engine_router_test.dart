@@ -10,6 +10,9 @@ import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/query.dart';
 import 'package:aves/model/settings/settings.dart';
+import 'package:aves/model/vaults/details.dart';
+import 'package:aves/model/vaults/vaults.dart';
+import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
@@ -43,11 +46,11 @@ void main() {
     await setUpServices();
   });
 
-  AvesEntry entry(int id) {
+  AvesEntry entry(int id, {String? directory}) {
     return AvesEntry(
       id: id,
       uri: 'content://$id',
-      path: '/album/$id.jpg',
+      path: '${directory ?? '/album'}/$id.jpg',
       contentId: 100 + id,
       pageId: null,
       sourceMimeType: 'image/jpeg',
@@ -127,6 +130,28 @@ void main() {
         expect(decision.total, 1);
       } finally {
         settings.hiddenFilters = old;
+      }
+    });
+
+    test('a locked vault still pages, and its rows stay hidden', () async {
+      // The vault's rows live in the database (they are inserted when it is
+      // unlocked), so a locked vault needs the predicate's exclusion rather than
+      // the in-memory path.
+      const details = VaultDetails(name: 'v', autoLockScreenOff: true, useBin: false, lockType: VaultLockType.system);
+      await vaults.create(details);
+      final vaultDir = details.path;
+      try {
+        await driftDb.insertEntries({entry(1), entry(2, directory: vaultDir), entry(3, directory: '$vaultDir/sub')});
+        vaults.lock({vaultDir});
+        // The probe counts the visible rows, so the threshold is the visible one.
+        await configure(engine: CollectionEngine.auto, threshold: 1);
+
+        final decision = await router.resolve(filters: {}, database: driftDb);
+        expect(decision.route, CollectionRoute.paged);
+        // The vault's own row and a file nested under it are both hidden.
+        expect(decision.total, 1);
+      } finally {
+        await vaults.remove({vaultDir});
       }
     });
 

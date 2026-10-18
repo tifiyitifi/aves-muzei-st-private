@@ -33,6 +33,13 @@ class FakeStorageService extends Fake implements StorageService {
   @override
   Future<Set<String>> getUntrackedTrashPaths(Iterable<String> knownPaths) => SynchronousFuture({});
 
+  /// Vault files the platform would report, filtered against what the app
+  /// already tracks — the same contract as the platform handler.
+  Set<String> vaultItemPaths = {};
+
+  @override
+  Future<Set<String>> getUntrackedVaultPaths(String vaultName, Iterable<String> knownPaths) => SynchronousFuture(vaultItemPaths.where((path) => !knownPaths.contains(path)).toSet());
+
   @override
   Future<String> getVaultRoot() => SynchronousFuture('/vault/');
 }

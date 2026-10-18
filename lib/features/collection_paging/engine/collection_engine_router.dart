@@ -56,9 +56,8 @@ class EngineDecision {
 ///
 /// Rules, in order:
 /// 1. Explicit [CollectionEngine.legacy] always wins.
-/// 2. Scopes the SQL layer cannot express (anything but empty/album),
-///    active hidden filters, locked vaults, and non-Gregorian
-///    month/day sections keep the legacy path.
+/// 2. Scopes the SQL layer cannot express (anything but empty/album), active
+///    hidden filters, and non-Gregorian month/day sections keep the legacy path.
 /// 3. Explicit [CollectionEngine.paged] forces the paged path.
 /// 4. [CollectionEngine.auto] probes the total and pages at or above the size
 ///    threshold.
@@ -82,15 +81,14 @@ class CollectionEngineRouter {
     final predicate = predicateForFilters(
       filters,
       hidden: settings.hiddenFilters,
-      // Locked vaults are excluded below anyway; passing them keeps the
-      // exclusion fragment correct if that bail is ever relaxed.
+      // A locked vault hides its directory, and everything under it, through the
+      // same predicate as any other scope: the vault's rows stay in the database
+      // while it is locked (they are inserted when it is unlocked), so they need
+      // the exclusion rather than the in-memory path.
       lockedVaultDirs: vaults.vaultDirectories.where(vaults.isLocked).toSet(),
     );
     if (predicate == null) {
       return const EngineDecision.legacy(reason: 'filters need the in-memory path');
-    }
-    if (vaults.vaultDirectories.any(vaults.isLocked)) {
-      return const EngineDecision.legacy(reason: 'locked vaults need the in-memory path');
     }
     final sectionFactor = settings.getEffectiveCollectionSectionFactor(filters);
     if ((sectionFactor == EntrySectionFactor.month || sectionFactor == EntrySectionFactor.day) && settings.calendar != ACalendar.gregorian) {

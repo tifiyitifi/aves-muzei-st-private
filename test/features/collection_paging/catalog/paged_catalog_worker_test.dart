@@ -2,6 +2,7 @@ import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dar
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
+import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
@@ -178,7 +179,7 @@ void main() {
       expect(locatedIds.toSet(), {1, 2});
       expect((await database.loadAddresses()).length, 2);
       expect(addressEvents, greaterThan(0));
-      expect(await database.loadUnaddressedGpsIds(afterId: 0, limit: 10), isEmpty);
+      expect(await database.loadUnaddressedGpsIds(after: LocalMediaDb.backlogStart, limit: 10), isEmpty);
     });
 
     test('runPlaces skips when locating is unavailable', () async {
@@ -222,7 +223,7 @@ void main() {
       expect(locatedIds.toSet(), {1, 2});
       expect((await database.loadAddresses()).length, 2);
       expect(addressEvents, greaterThan(0));
-      expect(await database.loadUnlocatedGpsIds(afterId: 0, limit: 10), isEmpty);
+      expect(await database.loadUnlocatedGpsIds(after: LocalMediaDb.backlogStart, limit: 10), isEmpty);
     });
   });
 }

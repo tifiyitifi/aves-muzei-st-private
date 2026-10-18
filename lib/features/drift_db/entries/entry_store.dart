@@ -7,6 +7,7 @@ import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/features/stacking/model/stack_grouping.dart';
+import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -137,19 +138,21 @@ class EntryStore {
   }
 
   /// Keyset page over entries missing metadata rows, for the background
-  /// catalog worker. [afterId] is exclusive (pass 0 to start); reruns skip
-  /// finished rows, so an interrupted run resumes instead of restarting.
+  /// catalog worker, in album-then-id order. [after] is exclusive (pass
+  /// [backlogStart] to begin); reruns skip finished rows, so an interrupted run
+  /// resumes instead of restarting.
   ///
   /// [predicate] limits the page to one scope, so a view can be catalogued
   /// before the rest of the library.
-  Future<List<int>> loadUncataloguedEntryIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) async {
+  Future<List<BacklogCursor>> loadUncataloguedEntryIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required BacklogCursor after, required int limit}) async {
     if (limit <= 0) return [];
-    final where = _backlogWhere(predicate, conditions: ['m.id IS NULL', 'e.id > ?'], variables: [Variable(afterId)]);
+    final cursor = _afterCursor(after);
+    final where = _backlogWhere(predicate, conditions: ['m.id IS NULL', cursor.condition], variables: cursor.variables);
     final rows = await db.customSelect(
-      'SELECT e.id AS id ${_from(predicate, metadata: true)} WHERE ${where.conditions.join(' AND ')} ORDER BY e.id LIMIT ?',
+      'SELECT $_cursorColumns ${_from(predicate, metadata: true)} WHERE ${where.conditions.join(' AND ')} ORDER BY $_cursorOrder LIMIT ?',
       variables: [...where.variables, Variable(limit)],
     ).get();
-    return [for (final row in rows) row.data['id'] as int];
+    return _cursorsOf(rows);
   }
 
   /// Keyset page over GPS entries missing address rows (the locate backlog).
@@ -157,18 +160,19 @@ class EntryStore {
   /// Same coordinate test as `AvesEntry.hasGps`: a row counts when either
   /// coordinate is non-zero, so entries without a metadata row at all are
   /// skipped here (they surface through [loadUncataloguedEntryIds] first).
-  Future<List<int>> loadUnaddressedGpsIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) async {
+  Future<List<BacklogCursor>> loadUnaddressedGpsIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required BacklogCursor after, required int limit}) async {
     if (limit <= 0) return [];
+    final cursor = _afterCursor(after);
     final where = _backlogWhere(
       predicate,
-      conditions: ['a.id IS NULL', '(COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0)', 'e.id > ?'],
-      variables: [Variable(afterId)],
+      conditions: ['a.id IS NULL', '(COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0)', cursor.condition],
+      variables: cursor.variables,
     );
     final rows = await db.customSelect(
-      'SELECT e.id AS id ${_from(predicate, metadata: true, address: true)} WHERE ${where.conditions.join(' AND ')} ORDER BY e.id LIMIT ?',
+      'SELECT $_cursorColumns ${_from(predicate, metadata: true, address: true)} WHERE ${where.conditions.join(' AND ')} ORDER BY $_cursorOrder LIMIT ?',
       variables: [...where.variables, Variable(limit)],
     ).get();
-    return [for (final row in rows) row.data['id'] as int];
+    return _cursorsOf(rows);
   }
 
   /// Keyset page over GPS entries missing *fine* addresses (the locate-places
@@ -180,19 +184,39 @@ class EntryStore {
   /// geocoding. Memory-side `hasFineAddress` additionally treats long
   /// `countryName`s as fine; such rows are selected here but no-op inside
   /// `locatePlace`, so the pass stays idempotent.
-  Future<List<int>> loadUnlocatedGpsIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) async {
+  Future<List<BacklogCursor>> loadUnlocatedGpsIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required BacklogCursor after, required int limit}) async {
     if (limit <= 0) return [];
+    final cursor = _afterCursor(after);
     final where = _backlogWhere(
       predicate,
-      conditions: ['(a.id IS NULL OR (a.locality IS NULL AND a.adminArea IS NULL))', '(COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0)', 'e.id > ?'],
-      variables: [Variable(afterId)],
+      conditions: ['(a.id IS NULL OR (a.locality IS NULL AND a.adminArea IS NULL))', '(COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0)', cursor.condition],
+      variables: cursor.variables,
     );
     final rows = await db.customSelect(
-      'SELECT e.id AS id ${_from(predicate, metadata: true, address: true)} WHERE ${where.conditions.join(' AND ')} ORDER BY e.id LIMIT ?',
+      'SELECT $_cursorColumns ${_from(predicate, metadata: true, address: true)} WHERE ${where.conditions.join(' AND ')} ORDER BY $_cursorOrder LIMIT ?',
       variables: [...where.variables, Variable(limit)],
     ).get();
-    return [for (final row in rows) row.data['id'] as int];
+    return _cursorsOf(rows);
   }
+
+  /// The sweep's ordering: the album bucket first (an empty string for a null
+  /// directory, matching the maintained column), then the id. Album order keeps
+  /// a sweep from leaving an album half catalogued, and gives a resumed run a
+  /// natural place to continue.
+  static const String _cursorOrder = "COALESCE(e.directory, ''), e.id";
+
+  /// The cursor's own columns, aliased to match the sweep's ordering.
+  static const String _cursorColumns = "e.id AS id, COALESCE(e.directory, '') AS dir";
+
+  /// The exclusive keyset test of [after], as a condition plus its variables.
+  static ({String condition, List<Variable> variables}) _afterCursor(BacklogCursor after) => (
+        condition: "(COALESCE(e.directory, '') > ? OR (COALESCE(e.directory, '') = ? AND e.id > ?))",
+        variables: [Variable(after.directory), Variable(after.directory), Variable(after.id)],
+      );
+
+  static List<BacklogCursor> _cursorsOf(List<QueryRow> rows) => [
+        for (final row in rows) (directory: row.data['dir'] as String, id: row.data['id'] as int),
+      ];
 
   /// Composes a backlog query's own conditions with the scope's filter atoms.
   ///

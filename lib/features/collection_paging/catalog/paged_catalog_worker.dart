@@ -136,7 +136,7 @@ class PagedCatalogWorker {
     final predicate = scope ?? const CollectionWindowPredicate();
     final total = await database.countUncatalogued(predicate);
     if (total == 0) return;
-    var afterId = 0;
+    var after = LocalMediaDb.backlogStart;
     var done = 0;
     var stopCheckCount = 0;
     final pending = <CatalogMetadata>{};
@@ -150,10 +150,10 @@ class PagedCatalogWorker {
     source.state = SourceState.cataloguing;
     source.setProgress(done: 0, total: total);
     while (!_stopRequested) {
-      final ids = await database.loadUncataloguedEntryIds(predicate: predicate, afterId: afterId, limit: chunkSize);
-      if (ids.isEmpty) break;
-      afterId = ids.last;
-      for (final entry in await _materialize(ids.toSet())) {
+      final page = await database.loadUncataloguedEntryIds(predicate: predicate, after: after, limit: chunkSize);
+      if (page.isEmpty) break;
+      after = page.last;
+      for (final entry in await _materialize({for (final cursor in page) cursor.id})) {
         try {
           await catalogEntry(entry);
           if (entry.isCatalogued) pending.add(entry.catalogMetadata!);
@@ -168,7 +168,7 @@ class PagedCatalogWorker {
           if (_stopRequested) break;
         }
       }
-      done += ids.length;
+      done += page.length;
       source.setProgress(done: done, total: total);
       // Cooperative yield between chunks.
       await Future<void>.delayed(Duration.zero);
@@ -187,7 +187,7 @@ class PagedCatalogWorker {
 
   Future<void> _runCountriesPass(int chunkSize, CollectionWindowPredicate? scope) async {
     final predicate = scope ?? const CollectionWindowPredicate();
-    var afterId = 0;
+    var after = LocalMediaDb.backlogStart;
     var done = 0;
     final pending = <AddressDetails>{};
     Future<void> flush() async {
@@ -200,10 +200,10 @@ class PagedCatalogWorker {
     source.state = SourceState.locatingCountries;
     source.setProgress(done: 0, total: 0);
     while (!_stopRequested) {
-      final ids = await database.loadUnaddressedGpsIds(predicate: predicate, afterId: afterId, limit: chunkSize);
-      if (ids.isEmpty) break;
-      afterId = ids.last;
-      for (final entry in await _materialize(ids.toSet())) {
+      final page = await database.loadUnaddressedGpsIds(predicate: predicate, after: after, limit: chunkSize);
+      if (page.isEmpty) break;
+      after = page.last;
+      for (final entry in await _materialize({for (final cursor in page) cursor.id})) {
         try {
           final address = await locateCountry(entry);
           if (address != null) pending.add(address);
@@ -214,7 +214,7 @@ class PagedCatalogWorker {
         }
         if (pending.length >= LocationMixin.commitCountThreshold) await flush();
       }
-      done += ids.length;
+      done += page.length;
       source.setProgress(done: done, total: 0);
       await Future<void>.delayed(Duration.zero);
     }
@@ -237,7 +237,7 @@ class PagedCatalogWorker {
   }
 
   Future<void> _runPlaces(int chunkSize) async {
-    var afterId = 0;
+    var after = LocalMediaDb.backlogStart;
     var done = 0;
     final pending = <AddressDetails>{};
     Future<void> flush() async {
@@ -250,10 +250,10 @@ class PagedCatalogWorker {
     source.state = SourceState.locatingPlaces;
     source.setProgress(done: 0, total: 0);
     while (!_stopRequested) {
-      final ids = await database.loadUnlocatedGpsIds(afterId: afterId, limit: chunkSize);
-      if (ids.isEmpty) break;
-      afterId = ids.last;
-      for (final entry in await _materialize(ids.toSet())) {
+      final page = await database.loadUnlocatedGpsIds(after: after, limit: chunkSize);
+      if (page.isEmpty) break;
+      after = page.last;
+      for (final entry in await _materialize({for (final cursor in page) cursor.id})) {
         try {
           final address = await locatePlaces(entry);
           if (address != null) pending.add(address);
@@ -264,7 +264,7 @@ class PagedCatalogWorker {
         }
         if (pending.length >= LocationMixin.commitCountThreshold) await flush();
       }
-      done += ids.length;
+      done += page.length;
       source.setProgress(done: done, total: 0);
       await Future<void>.delayed(Duration.zero);
     }

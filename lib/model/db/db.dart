@@ -15,7 +15,17 @@ import 'package:aves/model/vaults/details.dart';
 import 'package:aves/model/viewer/video_playback.dart';
 import 'package:aves_model/aves_model.dart';
 
+/// One position of a backlog sweep (the catalog/locate passes).
+///
+/// Sweeps advance album by album, so the position is the row's directory bucket
+/// (empty when the directory is null, matching the sweep's ordering) plus its
+/// id. A sweep that stops early resumes from here instead of re-walking the
+/// rows it already finished.
+typedef BacklogCursor = ({String directory, int id});
+
 abstract class LocalMediaDb {
+  /// The first position of a backlog sweep, before every row.
+  static const BacklogCursor backlogStart = (directory: '', id: 0);
   int get nextId;
 
   Future<String> get path;
@@ -212,9 +222,10 @@ abstract class LocalMediaDb {
   Future<int> countUncatalogued([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]);
 
   /// Keyset page over entries missing metadata rows, for the background
-  /// catalog worker. [afterId] is exclusive, and [predicate] limits the page to
-  /// one scope so a view can be catalogued before the rest of the library.
-  Future<List<int>> loadUncataloguedEntryIds({CollectionWindowPredicate predicate, required int afterId, required int limit});
+  /// catalog worker, in album-then-id order. [after] is exclusive (pass the
+  /// start cursor to begin), and [predicate] limits the page to one scope so a
+  /// view can be catalogued before the rest of the library.
+  Future<List<BacklogCursor>> loadUncataloguedEntryIds({CollectionWindowPredicate predicate, required BacklogCursor after, required int limit});
 
   // address
 
@@ -230,12 +241,12 @@ abstract class LocalMediaDb {
 
   /// Keyset page over GPS entries missing address rows (the locate backlog).
   /// [afterId] is exclusive.
-  Future<List<int>> loadUnaddressedGpsIds({CollectionWindowPredicate predicate, required int afterId, required int limit});
+  Future<List<BacklogCursor>> loadUnaddressedGpsIds({CollectionWindowPredicate predicate, required BacklogCursor after, required int limit});
 
   /// Keyset page over GPS entries missing *fine* addresses (the locate-places
   /// backlog): rows with no address row, or a country-only row.
   /// [afterId] is exclusive.
-  Future<List<int>> loadUnlocatedGpsIds({CollectionWindowPredicate predicate, required int afterId, required int limit});
+  Future<List<BacklogCursor>> loadUnlocatedGpsIds({CollectionWindowPredicate predicate, required BacklogCursor after, required int limit});
 
   // vaults
 

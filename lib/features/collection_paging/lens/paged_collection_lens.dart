@@ -8,6 +8,7 @@ import 'package:aves/features/collection_paging/lens/paged_lists.dart';
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
+import 'package:aves/model/db/db.dart';
 import 'package:aves/features/collection_paging/summary/paged_filter_summaries.dart';
 import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
 import 'package:aves/features/collection_paging/windows/window_cache.dart';
@@ -685,7 +686,7 @@ class PagedCollectionLens extends CollectionLens {
     final worker = _catalogWorker;
     if (worker == null) return;
     try {
-      if ((await localMediaDb.loadUnlocatedGpsIds(afterId: 0, limit: 1)).isEmpty) return;
+      if ((await localMediaDb.loadUnlocatedGpsIds(after: LocalMediaDb.backlogStart, limit: 1)).isEmpty) return;
     } catch (error, stack) {
       _log.w('paged places backlog probe failed', error, stack);
       return;

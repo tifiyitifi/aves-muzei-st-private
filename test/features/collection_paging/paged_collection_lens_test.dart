@@ -387,7 +387,7 @@ void main() {
       await settle(lens, done: () => lens.entryCount == 2 && lens.pagedActive);
       // eager passes (catalog + countries) run on enter, places do not
       for (var i = 0; i < 200; i++) {
-        if ((await service.loadUnaddressedGpsIds(afterId: 0, limit: 10)).isEmpty) break;
+        if ((await service.loadUnaddressedGpsIds(after: LocalMediaDb.backlogStart, limit: 10)).isEmpty) break;
         await Future<void>.delayed(const Duration(milliseconds: 25));
       }
       expect(locatedIds, isEmpty);

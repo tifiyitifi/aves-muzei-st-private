@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/model/settings/enums/accessibility_timeout.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/colors.dart';
@@ -39,6 +40,12 @@ mixin FeedbackMixin {
   }
 
   void showFeedback(BuildContext context, FeedbackType type, String message, [SnackBarAction? action]) {
+    final run = EntryFeedRun.current;
+    if (run != null) {
+      // A run folds every batch's feedback into one summary, shown when it ends.
+      run.recordFeedback(type, message, action);
+      return;
+    }
     ScaffoldMessengerState? scaffoldMessenger;
     try {
       scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -142,6 +149,13 @@ mixin FeedbackMixin {
     VoidCallback? onCancel,
     Future<void> Function(Set<T> processed)? onDone,
   }) async {
+    final run = EntryFeedRun.current;
+    if (run != null) {
+      // A run shows one overlay for the whole action: forward this batch's events
+      // into it and let the batch's own `onDone` run, as the legacy code would.
+      await run.forward<T>(opStream: opStream, onCancel: onCancel, onDone: onDone);
+      return;
+    }
     final opCompleter = Completer();
     await showAvesDialog<void>(
       context: context,

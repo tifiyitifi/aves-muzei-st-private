@@ -102,16 +102,27 @@ class MaterializedEntryFeed implements EntryFeed {
 /// position and kicks a window for each, which on a huge library freezes the UI
 /// and hands the action placeholder entries. The loaded neighbourhood is the
 /// target set there instead.
-EntryFeed entryFeedFor(CollectionLens collection, Selection<AvesEntry> selection) {
-  final mark = selection.mark;
-  if (mark is CollectionSelectionMark && collection is PagedCollectionLens) {
-    final feed = collection.declaredFeed(mark);
-    if (feed != null) return feed;
+///
+/// [wholeView] is for an action that covers the view itself rather than a
+/// selection ("empty the bin"): the view's scope is declared whole, so a windowed
+/// collection does not leave everything past the loaded neighbourhood behind.
+EntryFeed entryFeedFor(CollectionLens collection, Selection<AvesEntry> selection, {bool wholeView = false}) {
+  if (collection is PagedCollectionLens) {
+    if (wholeView) {
+      final feed = collection.wholeViewFeed();
+      if (feed != null) return feed;
+    } else {
+      final mark = selection.mark;
+      if (mark is CollectionSelectionMark) {
+        final feed = collection.declaredFeed(mark);
+        if (feed != null) return feed;
+      }
+    }
   }
   return MaterializedEntryFeed(
     collectionTargetItems(
       collection: collection,
-      isSelecting: selection.isSelecting,
+      isSelecting: !wholeView && selection.isSelecting,
       selectedItems: selection.selectedItems,
     ),
   );

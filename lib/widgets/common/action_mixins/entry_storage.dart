@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/favourites.dart';
 import 'package:aves/model/entry/extensions/keys.dart';
@@ -43,11 +44,14 @@ import 'package:provider/provider.dart';
 mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, EntryEditorMixin {
   // returns whether it completed the action (with or without failures)
   Future<bool> doExport(BuildContext context, Set<AvesEntry> targetEntries, EntryConvertOptions options) async {
-    final destinationAlbumFilter = await pickAlbum(
-      context: context,
-      moveType: MoveType.export,
-      chipTypes: {AlbumChipType.stored},
-      initialGroup: null,
+    final destinationAlbumFilter = await EntryFeedRun.decide(
+      'export.destination',
+      () => pickAlbum(
+        context: context,
+        moveType: MoveType.export,
+        chipTypes: {AlbumChipType.stored},
+        initialGroup: null,
+      ),
     );
     if (destinationAlbumFilter == null || destinationAlbumFilter is! StoredAlbumFilter) return false;
 
@@ -89,15 +93,18 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
     // case insensitive comparison
     final uniqueNames = names.toSet();
     if (uniqueNames.length < names.length) {
-      final value = await showAvesDialog<NameConflictStrategy>(
-        context: context,
-        builder: (context) => AvesSingleSelectionDialog<NameConflictStrategy>(
-          initialValue: nameConflictStrategy,
-          options: Map.fromEntries(NameConflictStrategy.values.map((v) => MapEntry(v, v.getName(context)))),
-          message: l10n.nameConflictDialogSingleSourceMessage,
-          confirmationButtonLabel: l10n.continueButtonLabel,
+      final value = await EntryFeedRun.decide(
+        'export.nameConflict',
+        () => showAvesDialog<NameConflictStrategy>(
+          context: context,
+          builder: (context) => AvesSingleSelectionDialog<NameConflictStrategy>(
+            initialValue: nameConflictStrategy,
+            options: Map.fromEntries(NameConflictStrategy.values.map((v) => MapEntry(v, v.getName(context)))),
+            message: l10n.nameConflictDialogSingleSourceMessage,
+            confirmationButtonLabel: l10n.continueButtonLabel,
+          ),
+          routeSettings: const RouteSettings(name: AvesSingleSelectionDialog.routeName),
         ),
-        routeSettings: const RouteSettings(name: AvesSingleSelectionDialog.routeName),
       );
       if (value == null) return false;
       nameConflictStrategy = value;
@@ -226,7 +233,7 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
     }
 
     final entries = entriesByDestination.values.expand((v) => v).toSet();
-    final todoCount = entries.length;
+    final todoCount = EntryFeedRun.displayCount(entries.length);
     if (todoCount == 0) return true;
 
     final toBin = moveType == MoveType.toBin;
@@ -260,15 +267,18 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
       // case insensitive comparison
       final uniqueNames = names.toSet();
       if (uniqueNames.length < names.length) {
-        final value = await showAvesDialog<NameConflictStrategy>(
-          context: context,
-          builder: (context) => AvesSingleSelectionDialog<NameConflictStrategy>(
-            initialValue: nameConflictStrategy,
-            options: Map.fromEntries(NameConflictStrategy.values.map((v) => MapEntry(v, v.getName(context)))),
-            message: originAlbums.length == 1 ? l10n.nameConflictDialogSingleSourceMessage : l10n.nameConflictDialogMultipleSourceMessage,
-            confirmationButtonLabel: l10n.continueButtonLabel,
+        final value = await EntryFeedRun.decide(
+          'move.nameConflict',
+          () => showAvesDialog<NameConflictStrategy>(
+            context: context,
+            builder: (context) => AvesSingleSelectionDialog<NameConflictStrategy>(
+              initialValue: nameConflictStrategy,
+              options: Map.fromEntries(NameConflictStrategy.values.map((v) => MapEntry(v, v.getName(context)))),
+              message: originAlbums.length == 1 ? l10n.nameConflictDialogSingleSourceMessage : l10n.nameConflictDialogMultipleSourceMessage,
+              confirmationButtonLabel: l10n.continueButtonLabel,
+            ),
+            routeSettings: const RouteSettings(name: AvesSingleSelectionDialog.routeName),
           ),
-          routeSettings: const RouteSettings(name: AvesSingleSelectionDialog.routeName),
         );
         if (value == null) return false;
         nameConflictStrategy = value;
@@ -323,7 +333,7 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
         }
 
         // use navigation context for top-level messaging
-        final successCount = successOps.length;
+        final successCount = EntryFeedRun.displaySuccessCount(successOps.length);
         if (successCount < todoCount) {
           final count = todoCount - successCount;
           showFeedback(
@@ -332,7 +342,7 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
             copy ? l10n.collectionCopyFailureFeedback(count) : l10n.collectionMoveFailureFeedback(count),
           );
         } else {
-          final count = movedOps.length;
+          final count = EntryFeedRun.displayAppliedCount(movedOps.length);
 
           SnackBarAction? action;
           if (count > 0 && appMode == .main) {
@@ -388,11 +398,14 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
   }) async {
     if (moveType == MoveType.toBin) {
       final l10n = context.l10n;
-      if (!await showSkippableConfirmationDialog(
-        context: context,
-        type: ConfirmationDialog.moveToBin,
-        message: l10n.binEntriesConfirmationDialogMessage(entries.length),
-        confirmationButtonLabel: l10n.deleteButtonLabel,
+      if (!await EntryFeedRun.confirm(
+        'move.toBin',
+        () => showSkippableConfirmationDialog(
+          context: context,
+          type: ConfirmationDialog.moveToBin,
+          message: l10n.binEntriesConfirmationDialogMessage(EntryFeedRun.displayCount(entries.length)),
+          confirmationButtonLabel: l10n.deleteButtonLabel,
+        ),
       )) {
         return false;
       }

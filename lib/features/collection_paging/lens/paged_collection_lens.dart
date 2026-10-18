@@ -11,6 +11,7 @@ import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/collection_paging/selection/declared_entry_feed.dart';
+import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/features/collection_paging/selection/selection_mark.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/features/collection_paging/summary/paged_filter_summaries.dart';
@@ -224,36 +225,55 @@ class PagedCollectionLens extends CollectionLens {
 
   /// The scope this view declares, for a whole-view selection.
   ///
-  /// Null when the view cannot declare one: not paged, no SQL predicate, or the
-  /// calendar projection, whose rows are days rather than entries.
-  CollectionWindowPredicate? get selectionScope {
-    final predicate = _pagedPredicate;
-    if (!pagedActive || predicate == null || _pagedDayRows) return null;
-    return predicate;
+  /// Null when the view cannot declare one: not paged, or no SQL predicate.
+  SelectionScope? get selectionScope {
+    final tiles = _pagedPredicate;
+    final entries = _pagedEntryPredicate;
+    if (!pagedActive || tiles == null || entries == null) return null;
+    return SelectionScope(tiles: tiles, entries: entries, dayRows: _pagedDayRows);
   }
 
   /// A mark over this whole view, or null when the view cannot declare one.
   ///
-  /// The count is seeded with the view's own total, so the app bar is right
-  /// before the database confirms it.
+  /// Both counts are seeded with the view's own totals, so the app bar and an
+  /// action's dialogs are right before the database confirms them.
   CollectionSelectionMark? newSelectionMark() {
     final scope = selectionScope;
     if (scope == null) return null;
-    return CollectionSelectionMark(scope: scope, count: _total);
+    return CollectionSelectionMark(scope: scope, count: _total, expandedCount: _entryTotal);
   }
 
   /// The feed a mark resolves to on this view, or null when the view cannot
   /// declare one.
   ///
-  /// The predicate and the row count are read once, here: the feed walks a frozen
+  /// The predicate and the counts are read once, here: the feed walks a frozen
   /// scope, so a file added while the action runs is not swept in even though it
   /// matches the same mark.
   DeclaredEntryFeed? declaredFeed(CollectionSelectionMark mark) {
     if (selectionScope == null) return null;
     return DeclaredEntryFeed(
       mark: mark,
-      predicate: mark.predicate,
-      snapshotCount: mark.count,
+      tilePredicate: mark.tilePredicate,
+      tileCount: mark.walkCount,
+      count: mark.expandedCount,
+      stackEntries: _stackEntries,
+    );
+  }
+
+  /// The feed an action that covers the view itself resolves to ("empty the
+  /// bin"), or null when the view cannot declare one.
+  ///
+  /// Nothing is unmarked: the action targets the whole scope rather than a
+  /// selection, and the loaded neighbourhood would leave the rest behind.
+  DeclaredEntryFeed? wholeViewFeed() {
+    final scope = selectionScope;
+    if (scope == null) return null;
+    final mark = CollectionSelectionMark(scope: scope, count: _total, expandedCount: _entryTotal);
+    return DeclaredEntryFeed(
+      mark: mark,
+      tilePredicate: mark.tilePredicate,
+      tileCount: mark.walkCount,
+      count: mark.expandedCount,
       stackEntries: _stackEntries,
     );
   }
@@ -268,6 +288,17 @@ class PagedCollectionLens extends CollectionLens {
 
   /// The predicate/sort the current paged view resolved to; null until paged.
   CollectionWindowPredicate? _pagedPredicate;
+
+  /// The same view with stacks *expanded*: the rows a selection covers.
+  ///
+  /// Equal to [_pagedPredicate] unless the view collapses stacks, in which case
+  /// it also holds the members a tile hides — the rows the legacy selection
+  /// counted and an action touched.
+  CollectionWindowPredicate? _pagedEntryPredicate;
+
+  /// Rows the view expands to, stack members included; [_total] counts tiles.
+  int _entryTotal = 0;
+
   SortFactor _pagedSort = SortFactor.date;
   bool _pagedReverse = false;
 
@@ -386,6 +417,14 @@ class PagedCollectionLens extends CollectionLens {
 
   @override
   void refresh() {
+    // A run updates the source batch by batch: reloading the view per batch would
+    // re-resolve counts, headers and summaries thousands of times. One reload at
+    // the end of the run is enough.
+    final run = EntryFeedRun.current;
+    if (run != null) {
+      run.needsViewRefresh = true;
+      return;
+    }
     if (fixedSelection != null) {
       _installFixedSelection();
       notifyListeners();
@@ -648,6 +687,9 @@ class PagedCollectionLens extends CollectionLens {
     _flat = PagedFlatList(List.unmodifiable(lists.values.toList()));
     sections = Map.unmodifiable(lists);
     _pagedPredicate = predicate;
+    _pagedEntryPredicate = base;
+    // The calendar projection counts days, so its entry total needs its own read.
+    _entryTotal = dayRows || !identical(base, predicate) ? await localMediaDb.countEntries(base) : total;
     _pagedSort = sort;
     _pagedReverse = reverse;
     _pagedDayRows = dayRows;

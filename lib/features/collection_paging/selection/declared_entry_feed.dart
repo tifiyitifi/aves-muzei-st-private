@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
@@ -9,29 +10,38 @@ import 'package:collection/collection.dart';
 
 /// The feed a marked view resolves to: bounded batches walked from the database.
 ///
-/// The scope is frozen when the feed is created — both the predicate value and
-/// how many rows the scope held then — so a file added while the action runs is
-/// never swept in, even though it matches the same marker. The walk is
-/// id-ordered and keyset-paged, so a whole library costs one indexed query per
-/// batch instead of an offset scan per section.
+/// The scope is frozen when the feed is created — the predicate value, how many
+/// tiles it held and how many rows the selection expands to — so a file added
+/// while the action runs is never swept in, even though it matches the same
+/// marker. The walk is id-ordered and keyset-paged, so a whole library costs one
+/// indexed query per batch instead of an offset scan per section.
 class DeclaredEntryFeed implements EntryFeed {
   final CollectionSelectionMark mark;
-  final CollectionWindowPredicate predicate;
-  final int snapshotCount;
+
+  /// The frozen scope an action walks: the view's tiles with the unmarked rows
+  /// excluded.
+  final CollectionWindowPredicate tilePredicate;
+
+  /// How many tiles the frozen scope holds. The walk stops after them, which is
+  /// what keeps a file added while the action runs out of it.
+  final int tileCount;
+
+  /// Rows the action touches: the tiles plus the stack members they hide.
+  @override
+  final int count;
+
   final bool stackEntries;
 
   new({
     required this.mark,
-    required this.predicate,
-    required this.snapshotCount,
+    required this.tilePredicate,
+    required this.tileCount,
+    required this.count,
     required this.stackEntries,
   });
 
   @override
   bool get declared => true;
-
-  @override
-  int get count => snapshotCount;
 
   @override
   bool contains(AvesEntry entry) => mark.isMarked(entry);
@@ -40,11 +50,11 @@ class DeclaredEntryFeed implements EntryFeed {
   Stream<List<AvesEntry>> batches() async* {
     var walked = 0;
     var afterId = 0;
-    while (walked < snapshotCount) {
+    while (walked < tileCount) {
       final rows = await localMediaDb.loadWalkWindow(
-        predicate: predicate,
+        predicate: tilePredicate,
         afterId: afterId,
-        limit: min(entryFeedBatchSize, snapshotCount - walked),
+        limit: min(entryFeedBatchSize, tileCount - walked),
       );
       if (rows.isEmpty) break;
       afterId = rows.last.id;
@@ -64,7 +74,7 @@ class DeclaredEntryFeed implements EntryFeed {
 
   @override
   Future<Set<AvesEntry>> materialize({int limit = EntryFeed.materializeLimit}) async {
-    if (snapshotCount > limit) throw EntryFeedTooLargeException(snapshotCount, limit);
+    if (count > limit) throw EntryFeedTooLargeException(count, limit);
     final result = <AvesEntry>{};
     await for (final batch in batches()) {
       result.addAll(batch);

@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/model/device.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/props.dart';
@@ -28,7 +29,8 @@ mixin PermissionAwareMixin {
     final apiByDir = await storagePermissionService.getEditionApis(storageDirs, insertion: insertion);
     final restrictedDirectories = apiByDir.entries.where((kv) => kv.value.isEmpty).map((kv) => kv.key).toSet();
     if (restrictedDirectories.isNotEmpty) {
-      await showRestrictedDirectoryDialog(context, restrictedDirectories.first);
+      // One notice per action, even when the action runs batch by batch.
+      await EntryFeedRun.once('restrictedDirectory', () => showRestrictedDirectoryDialog(context, restrictedDirectories.first));
       return false;
     }
 

@@ -116,8 +116,19 @@ class Selection<T> extends ChangeNotifier {
     _detachMark();
     _selectedItems.clear();
     _mark = mark;
-    if (mark is Listenable) (mark as Listenable).addListener(notifyListeners);
+    if (mark is Listenable) (mark as Listenable).addListener(_onMarkChanged);
     _isSelecting = true;
+    notifyListeners();
+  }
+
+  /// A mark that empties leaves selection mode, exactly as a legacy selection
+  /// emptied by the view does.
+  void _onMarkChanged() {
+    final mark = _mark;
+    if (mark != null && mark.count == 0) {
+      browse();
+      return;
+    }
     notifyListeners();
   }
 
@@ -215,7 +226,7 @@ class Selection<T> extends ChangeNotifier {
 
   void _detachMark() {
     final mark = _mark;
-    if (mark is Listenable) (mark as Listenable).removeListener(notifyListeners);
+    if (mark is Listenable) (mark as Listenable).removeListener(_onMarkChanged);
     _mark = null;
   }
 }

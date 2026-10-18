@@ -4,6 +4,7 @@ import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dar
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
+import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/locale/aves_locale.dart';
@@ -20,6 +21,7 @@ import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/media_store_source.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
@@ -438,6 +440,92 @@ void main() {
         ids.addAll(batch.map((entry) => entry.id));
       }
       expect(ids.toSet(), {for (var i = 2; i <= 10; i++) i});
+    });
+
+    test('a feed walks a frozen scope: a row added later is not swept in', () async {
+      final service = await drift();
+      await service.insertEntries({for (var i = 1; i <= 6; i++) entry(i, dateTaken: i * 10)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 6);
+
+      final feed = lens.declaredFeed(lens.newSelectionMark()!)!;
+      expect(feed.count, 6);
+
+      // The row matches the same mark, but it arrived after the action started:
+      // the walk stops where the scope did.
+      await service.insertEntries({entry(7, dateTaken: 70)});
+
+      final ids = <int>[];
+      await for (final batch in feed.batches()) {
+        ids.addAll(batch.map((entry) => entry.id));
+      }
+      expect(ids.toSet(), {for (var i = 1; i <= 6; i++) i});
+    });
+
+    test('a whole-view feed covers the view, not the loaded neighbourhood', () async {
+      final service = await drift();
+      await service.insertEntries({for (var i = 1; i <= 10; i++) entry(i, dateTaken: i * 10)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 10);
+
+      // Nothing is unmarked: "empty the bin" targets the scope itself.
+      final feed = lens.wholeViewFeed()!;
+      expect(feed.declared, isTrue);
+      expect(feed.count, 10);
+      expect(feed.contains(entry(1)), isTrue);
+    });
+
+    test('the view reload is deferred while a run is active', () async {
+      final service = await drift();
+      await service.insertEntries({for (var i = 1; i <= 6; i++) entry(i, dateTaken: i * 10)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 6);
+
+      final run = EntryFeedRun(lens.wholeViewFeed()!);
+      await EntryFeedRun.install(run, () async {
+        // A batch changing the source would reload the view; the run takes that
+        // over so it happens once, when the action ends.
+        lens.refresh();
+        await pumpEventQueue();
+      });
+
+      expect(run.needsViewRefresh, isTrue);
+    });
+
+    test('the calendar layout declares a whole-view selection of its entries', () async {
+      settings.setStoredCollectionTileLayout({}, TileLayout.calendar);
+      addTearDown(() => settings.setStoredCollectionTileLayout({}, TileLayout.grid));
+      final service = await drift();
+      // Five entries on one day, five on the next.
+      await service.insertEntries({for (var i = 1; i <= 10; i++) entry(i, dateTaken: i <= 5 ? 1000 : 1000 + 86400000)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 2);
+
+      final mark = lens.newSelectionMark()!;
+      // The view shows two days; the selection covers their ten entries, so the
+      // app bar compares days while an action reports entries.
+      expect(mark.count, 2);
+      expect(mark.expandedCount, 10);
+
+      final feed = lens.declaredFeed(mark)!;
+      expect(feed.count, 10);
+      final ids = <int>[];
+      await for (final batch in feed.batches()) {
+        ids.addAll(batch.map((entry) => entry.id));
+      }
+      expect(ids.toSet(), {for (var i = 1; i <= 10; i++) i});
     });
 
     test('places backlog runs lazily when locations load', () async {

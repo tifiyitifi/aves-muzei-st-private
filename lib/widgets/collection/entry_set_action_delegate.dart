@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed.dart';
+import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
 import 'package:aves/locale/intl.dart';
 import 'package:aves/model/device.dart';
@@ -246,14 +247,16 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
       case .share:
         _share(context);
       case .delete:
+        _runOverFeed(context, () => _delete(context));
       case .emptyBin:
-        _delete(context);
+        // Emptying the bin covers the view itself, not a selection.
+        _runOverFeed(context, () => _delete(context), wholeView: true);
       case .restore:
-        _move(context, moveType: MoveType.fromBin);
+        _runOverFeed(context, () => _move(context, moveType: MoveType.fromBin));
       case .copy:
-        _move(context, moveType: MoveType.copy);
+        _runOverFeed(context, () => _move(context, moveType: MoveType.copy));
       case .move:
-        _move(context, moveType: MoveType.move);
+        _runOverFeed(context, () => _move(context, moveType: MoveType.move));
       case .rename:
         _rename(context);
       case .convert:
@@ -263,30 +266,43 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
       case .exportGpx:
         _exportGpx(context);
       case .toggleFavourite:
-        _toggleFavourite(context);
+        _runOverFeed(context, () => _toggleFavourite(context));
       case .rotateCCW:
-        _rotate(context, clockwise: false);
+        _runOverFeed(context, () => _rotate(context, clockwise: false));
       case .rotateCW:
-        _rotate(context, clockwise: true);
+        _runOverFeed(context, () => _rotate(context, clockwise: true));
       case .flip:
-        _flip(context);
+        _runOverFeed(context, () => _flip(context));
       case .editDate:
-        editDate(context);
+        _runOverFeed(context, () => editDate(context));
       case .editLocation:
         _editLocation(context);
       case .editTitleDescription:
-        _editTitleDescription(context);
+        _runOverFeed(context, () => _editTitleDescription(context));
       case .editRating:
-        _editRating(context);
+        _runOverFeed(context, () => _editRating(context));
       case .editTags:
         _editTags(context);
       case .removeMetadata:
-        _removeMetadata(context);
+        _runOverFeed(context, () => _removeMetadata(context));
       // fab
       case .pickCollectionFilters:
         _pickCollectionFilters(context);
       case .pickMultipleMedia:
         _pickMultipleMedia(context);
+    }
+  }
+
+  /// Runs a batchable entry-set action over the feed the selection resolves to.
+  ///
+  /// A materialized feed (the legacy selection, a small view) runs once, exactly
+  /// as before. A declared one runs the *same* action code per batch, and the
+  /// run's single summary is shown here, because this delegate owns the feedback
+  /// surface the action would otherwise use.
+  Future<void> _runOverFeed(BuildContext context, Future<void> Function() body, {bool wholeView = false}) async {
+    final summary = await runOverFeed(context, body, wholeView: wholeView);
+    if (summary != null && context.mounted) {
+      showFeedback(context, summary.type, summary.message, summary.action);
     }
   }
 
@@ -298,6 +314,11 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   /// tells the user the limit, instead of risking the memory a whole scope
   /// would take.
   Future<Set<AvesEntry>?> _getTargetEntries(BuildContext context) async {
+    final run = EntryFeedRun.current;
+    if (run != null) {
+      // A run drives the legacy code once per batch, so the batch is the target.
+      return run.batch.toSet();
+    }
     final feed = entryFeedFor(context.read<CollectionLens>(), context.read<Selection<AvesEntry>>());
     try {
       return await feed.materialize();
@@ -366,13 +387,16 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     final l10n = context.l10n;
     final source = context.read<CollectionSource>();
     final storageDirs = entries.map((entry) => entry.storageDirectory).nonNulls.toSet();
-    final todoCount = entries.length;
+    final todoCount = EntryFeedRun.displayCount(entries.length);
 
-    if (!await showSkippableConfirmationDialog(
-      context: context,
-      type: ConfirmationDialog.deleteForever,
-      message: l10n.deleteEntriesConfirmationDialogMessage(todoCount),
-      confirmationButtonLabel: l10n.deleteButtonLabel,
+    if (!await EntryFeedRun.confirm(
+      'delete.forever',
+      () => showSkippableConfirmationDialog(
+        context: context,
+        type: ConfirmationDialog.deleteForever,
+        message: l10n.deleteEntriesConfirmationDialogMessage(todoCount),
+        confirmationButtonLabel: l10n.deleteButtonLabel,
+      ),
     )) {
       return false;
     }
@@ -393,7 +417,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
         await source.removeEntries(deletedUris, includeTrash: true);
         source.resumeMonitoring();
 
-        final successCount = successOps.length;
+        final successCount = EntryFeedRun.displaySuccessCount(successOps.length);
         if (successCount < todoCount) {
           final count = todoCount - successCount;
           showFeedback(context, FeedbackType.warn, context.l10n.collectionDeleteFailureFeedback(count));
@@ -544,7 +568,10 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
 
   Future<void> _toggleFavourite(BuildContext context) async {
     final entries = (await _getTargetEntries(context)) ?? {};
-    if (entries.every((entry) => entry.isFavourite)) {
+    // The direction is decided once per run: a selection that mixes favourites
+    // must not flip between batches.
+    final remove = await EntryFeedRun.decide('toggleFavourite.remove', () async => entries.every((entry) => entry.isFavourite));
+    if (remove ?? false) {
       await favourites.removeEntries(entries);
     } else {
       await favourites.add(entries);
@@ -559,7 +586,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     bool showResult = true,
   }) async {
     final selectionDirs = todoEntries.map((entry) => entry.directory).nonNulls.toSet();
-    final todoCount = todoEntries.length;
+    final todoCount = EntryFeedRun.displayCount(todoEntries.length);
 
     if (!await checkStoragePermissionForAlbums(context, selectionDirs, entries: todoEntries)) return;
 
@@ -613,12 +640,12 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
 
         if (showResult) {
           final l10n = context.l10n;
-          final successCount = successOps.length;
+          final successCount = EntryFeedRun.displaySuccessCount(successOps.length);
           if (successCount < todoCount) {
             final count = todoCount - successCount;
             showFeedback(context, FeedbackType.warn, l10n.collectionEditFailureFeedback(count));
           } else {
-            final count = editedOps.length;
+            final count = EntryFeedRun.displayAppliedCount(editedOps.length);
             showFeedback(context, FeedbackType.info, l10n.collectionEditSuccessFeedback(count));
           }
         }
@@ -646,17 +673,23 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     final l10n = context.l10n;
     final message = l10n.unsupportedTypeDialogMessage(unsupportedTypes.length, unsupportedTypes.join(', '));
     if (supported.isEmpty) {
-      await showWarningDialog(
-        context: context,
-        message: message,
+      await EntryFeedRun.once(
+        'unsupported.notice',
+        () => showWarningDialog(
+          context: context,
+          message: message,
+        ),
       );
       return null;
     }
 
-    if (!await showConfirmationDialog(
-      context: context,
-      message: message,
-      ok: l10n.continueButtonLabel,
+    if (!await EntryFeedRun.confirm(
+      'unsupported.confirm',
+      () => showConfirmationDialog(
+        context: context,
+        message: message,
+        ok: l10n.continueButtonLabel,
+      ),
     )) {
       return null;
     }
@@ -691,7 +724,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
 
     if (modifier == null) {
       final collection = context.read<CollectionLens>();
-      modifier = await selectDateModifier(context, entries, collection);
+      modifier = await EntryFeedRun.decide('editDate.modifier', () => selectDateModifier(context, entries!, collection));
     }
     if (modifier == null) return;
 
@@ -750,25 +783,28 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     final entries = await _getEditableTargetItems(context, canEdit: (entry) => entry.canEditTitleDescription);
     if (entries == null || entries.isEmpty) return;
 
-    final modifier = await selectTitleDescriptionModifier(context, entries);
+    final modifier = await EntryFeedRun.decide('editTitleDescription.modifier', () => selectTitleDescriptionModifier(context, entries));
     if (modifier == null) return;
 
     await _edit(context, entries, (entry) => entry.editTitleDescription(modifier));
   }
 
-  Future<void> quickRate(BuildContext context, int rating) => _editRating(context, rating: rating);
+  Future<void> quickRate(BuildContext context, int rating) => _runOverFeed(context, () => _editRating(context, rating: rating));
 
   Future<void> _editRating(BuildContext context, {int? rating}) async {
     final entries = await _getEditableTargetItems(context, canEdit: (entry) => entry.canEditRating);
     if (entries == null || entries.isEmpty) return;
 
-    rating ??= await selectRating(context, entries);
+    rating ??= await EntryFeedRun.decide('editRating.rating', () => selectRating(context, entries));
     if (rating == null) return;
 
     await _edit(context, entries, (entry) => entry.editRating(rating));
   }
 
-  Future<void> quickTag(BuildContext context, CollectionFilter filter) async {
+  Future<void> quickTag(BuildContext context, CollectionFilter filter) => _runOverFeed(context, () => _applyTag(context, filter));
+
+  /// Adds one tag to every target; the run drives it batch by batch.
+  Future<void> _applyTag(BuildContext context, CollectionFilter filter) async {
     final entries = await _getEditableTargetItems(context, canEdit: (entry) => entry.canEditTags);
     if (entries == null || entries.isEmpty) return;
 
@@ -821,7 +857,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     final entries = await _getEditableTargetItems(context, canEdit: (entry) => entry.isMetadataRemovalSupported);
     if (entries == null || entries.isEmpty) return;
 
-    final types = await selectMetadataToRemove(context, entries);
+    final types = await EntryFeedRun.decide('removeMetadata.types', () => selectMetadataToRemove(context, entries));
     if (types == null || types.isEmpty) return;
 
     await _edit(context, entries, (entry) => entry.removeMetadata(types));

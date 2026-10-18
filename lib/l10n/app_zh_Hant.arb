@@ -283,6 +283,8 @@
     "catalogPromptDontAskAgain": "不再詢問",
     "catalogPromptLaterButton": "稍後",
     "catalogPromptCatalogueButton": "開始編目",
+    "albumCatalogBadgeTooltip": "還有 {count} 個項目尚未編目。點一下開始編目。",
+    "albumCatalogBadgeOverflow": "999+",
     "collectionActionShowTitleSearch": "顯示標題過濾器",
     "collectionActionHideTitleSearch": "隱藏標題過濾器",
     "collectionActionEmptyBin": "清空資源回收筒",

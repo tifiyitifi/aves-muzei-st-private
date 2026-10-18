@@ -272,6 +272,8 @@
     "catalogPromptDontAskAgain": "不再询问",
     "catalogPromptLaterButton": "稍后",
     "catalogPromptCatalogueButton": "开始编目",
+    "albumCatalogBadgeTooltip": "还有 {count} 个条目尚未编目。点击开始编目。",
+    "albumCatalogBadgeOverflow": "999+",
     "collectionActionShowTitleSearch": "显示标题搜索框",
     "collectionActionHideTitleSearch": "隐藏标题搜索框",
     "collectionActionAddShortcut": "添加快捷方式",

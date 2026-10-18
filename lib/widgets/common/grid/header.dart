@@ -130,7 +130,7 @@ class const SectionHeader<T>({
     required double maxWidth,
     required String title,
     bool hasLeading = false,
-    bool hasTrailing = false,
+    double trailingWidth = 0,
   }) {
     final textScaler = MediaQuery.textScalerOf(context);
     final leadingFontSize = leadingSize.height;
@@ -148,7 +148,9 @@ class const SectionHeader<T>({
             // force a higher first line to match leading icon/selector dimension
             style: TextStyle(height: 2.3 * textScaleFactor),
           ),
-          if (hasTrailing) TextSpan(text: '\u200A' * 17),
+          if (trailingWidth > 0)
+            // 23 hair spaces match a width of 40.0
+            TextSpan(text: '\u200A' * (trailingWidth * 23 / 40).ceil()),
           TextSpan(
             text: title,
             style: _headerTextStyle(context),

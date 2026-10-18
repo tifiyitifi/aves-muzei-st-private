@@ -322,6 +322,15 @@ class PagedFilterSummaries implements FilterSummaryProvider {
     return _container(filter)?.maxBestDate ?? 0;
   }
 
+  /// Rows of [directory] still missing catalog metadata, for the album header
+  /// badge. Zero while the albums domain is unloaded, which the badge reads as
+  /// "nothing to do".
+  ///
+  /// Reads the cache without kicking a load: a paged lens loads the albums
+  /// domain when it enters, and the badge is built from a header, where
+  /// scheduling a load would mutate source state mid-build.
+  int albumUncatalogued(String directory) => _albums[directory]?.uncatalogued ?? 0;
+
   @override
   AvesEntry? albumRecentEntry(AlbumBaseFilter filter) => filter is StoredAlbumFilter || _isContainer(filter) ? _recentByFilterKey[filter.key] : null;
 

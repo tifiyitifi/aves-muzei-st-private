@@ -1253,5 +1253,15 @@
   },
   "catalogPromptDontAskAgain": "Don't ask again",
   "catalogPromptLaterButton": "Later",
-  "catalogPromptCatalogueButton": "Catalogue"
+  "catalogPromptCatalogueButton": "Catalogue",
+  "albumCatalogBadgeTooltip": "{count} items not catalogued yet. Tap to catalogue.",
+  "@albumCatalogBadgeTooltip": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "albumCatalogBadgeOverflow": "999+"
 }

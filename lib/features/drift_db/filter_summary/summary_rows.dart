@@ -16,6 +16,13 @@ class AlbumSummaryRow {
   /// groups by media kind on entry-free (paged) sources.
   final bool hasImage, hasVideo;
 
+  /// Rows of the album with no catalog metadata row yet, reported by the album
+  /// header's badge. Unlike the backlog itself this follows the summary's own
+  /// scope, so trashed and hidden rows are not counted: the badge answers "what
+  /// would cataloguing this album gain the user", not "what does a sweep have
+  /// left".
+  final int uncatalogued;
+
   const new({
     required this.directory,
     required this.count,
@@ -24,6 +31,7 @@ class AlbumSummaryRow {
     required this.recentId,
     required this.hasImage,
     required this.hasVideo,
+    required this.uncatalogued,
   });
 }
 

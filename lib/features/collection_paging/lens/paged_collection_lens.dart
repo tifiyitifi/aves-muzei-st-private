@@ -19,6 +19,7 @@ import 'package:aves/features/logging/log.dart';
 import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/locale/calendar/calendar_utils.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -686,6 +687,22 @@ class PagedCollectionLens extends CollectionLens {
     if (uncatalogued == 0) return;
     await _sweepBacklog(worker, uncatalogued);
   }
+
+  /// Catalogues one album's rows, on demand from its section header badge.
+  ///
+  /// Unlike [runCatalogBacklog] this is a one-shot, album-scoped pass: the badge
+  /// names a single album, so the worker stops at its rows instead of carrying
+  /// on into the rest of the library.
+  Future<void> catalogAlbum(String directory) async {
+    final worker = _catalogWorker;
+    if (worker == null || worker.isRunning) return;
+    final predicate = predicateForFilters({StoredAlbumFilter(directory, null)});
+    if (predicate == null) return;
+    await worker.run(scope: predicate, scopedOnly: true);
+  }
+
+  /// Rows of [directory] that still need cataloguing, for its header badge.
+  int albumUncatalogued(String directory) => _summaries?.albumUncatalogued(directory) ?? 0;
 
   Future<int> _probeUncatalogued() async {
     try {

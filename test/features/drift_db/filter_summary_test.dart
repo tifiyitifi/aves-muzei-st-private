@@ -167,6 +167,18 @@ void main() {
       expect(kinds['/both'], (true, true));
     });
 
+    test('reports the rows still missing catalog metadata', () async {
+      await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/a'), entry(3, dir: '/b'), entry(4, dir: '/b', trashed: true)});
+      await service.saveCatalogMetadata({metadata(1), metadata(3)});
+
+      // The album header badge answers "what would cataloguing this album
+      // gain": a metadata row marks a row done, and trashed rows are not part
+      // of the album at all.
+      final counts = {for (final row in await store.albumRows(noExclusion())) row.directory: row.uncatalogued};
+      expect(counts['/a'], 1);
+      expect(counts['/b'], 0);
+    });
+
     test('counts an animated AVIF as a video, like the in-memory row', () async {
       await service.insertEntries({entry(1, dir: '/avif')});
       await service.saveCatalogMetadata({CatalogMetadata(id: 1, mimeType: 'image/avif', isAnimated: true)});

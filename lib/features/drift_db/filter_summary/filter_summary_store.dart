@@ -46,6 +46,7 @@ class FilterSummaryStore {
           'SELECT DISTINCT e.directory AS k, COUNT(*) OVER w AS n, COALESCE(SUM(e.sizeBytes) OVER w, 0) AS s, MAX($_bestDate) OVER w AS md, '
           'MAX(CASE WHEN $_isImage THEN 1 ELSE 0 END) OVER w AS img, '
           'MAX(CASE WHEN $_isVideo THEN 1 ELSE 0 END) OVER w AS vid, '
+          'COALESCE(SUM(CASE WHEN m.id IS NULL THEN 1 ELSE 0 END) OVER w, 0) AS unc, '
           'FIRST_VALUE(e.id) OVER (PARTITION BY e.directory ORDER BY $_bestDate DESC, e.id DESC) AS rid '
           '$_joins ${_where(exclusion)} AND e.directory IS NOT NULL WINDOW w AS (PARTITION BY e.directory) ORDER BY k ASC',
           variables: _variables(exclusion),
@@ -61,6 +62,7 @@ class FilterSummaryStore {
           recentId: row.data['rid'] as int,
           hasImage: ((row.data['img'] as int?) ?? 0) != 0,
           hasVideo: ((row.data['vid'] as int?) ?? 0) != 0,
+          uncatalogued: (row.data['unc'] as int?) ?? 0,
         ),
     ];
   }

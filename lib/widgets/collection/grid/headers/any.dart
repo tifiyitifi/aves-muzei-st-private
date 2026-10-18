@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:aves/features/collection_paging/view/album_catalog_badge.dart';
 import 'package:aves/locale/calendar/calendar_utils.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -86,6 +87,7 @@ class const CollectionSectionHeader({
       directory: directory,
       albumName: directory != null ? source.getStoredAlbumDisplayName(context, directory) : null,
       selectable: selectable,
+      trailing: buildAlbumCatalogBadge(collection, directory),
     );
   }
 

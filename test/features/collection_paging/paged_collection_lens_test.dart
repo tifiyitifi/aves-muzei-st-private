@@ -357,6 +357,43 @@ void main() {
       expect((await service.loadCatalogMetadata()).length, 2);
     });
 
+    test('reports and catalogues one album on demand from its header badge', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/a'), entry(3, dir: '/b')});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(10);
+      final catalogued = <int>[];
+      var catalog = false;
+      final lens = PagedCollectionLens(
+        source: source,
+        filters: {},
+        catalogWorkerFactory: ({required source}) => PagedCatalogWorker(
+          source: source,
+          // The eager backlog is a no-op, so the badge keeps pending rows to
+          // report; flipping the flag arms the on-demand pass.
+          catalogEntry: (entry) async {
+            if (!catalog) return;
+            catalogued.add(entry.id);
+            entry.catalogMetadata = CatalogMetadata(id: entry.id);
+          },
+        ),
+      );
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.albumUncatalogued('/a') == 2);
+
+      // The badge reads each album's own pending rows.
+      expect(lens.albumUncatalogued('/a'), 2);
+      expect(lens.albumUncatalogued('/b'), 1);
+      expect(lens.albumUncatalogued('/missing'), 0);
+
+      // A tap sweeps that album alone, leaving the rest of the library to the
+      // backlog: only the rows of '/a' were catalogued.
+      catalog = true;
+      await lens.catalogAlbum('/a');
+      expect(catalogued..sort(), [1, 2]);
+      expect(await service.countUncatalogued(), 1);
+    });
+
     test('places backlog runs lazily when locations load', () async {
       final service = await drift();
       await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 3))});

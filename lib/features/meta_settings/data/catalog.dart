@@ -508,4 +508,12 @@ final List<SettingDef> _advancedDefs = [
     editorKey: MetaEditorKeys.collectionThreshold,
     sortOrder: 50,
   ),
+  SettingDef(
+    key: CollectionPagingKeys.askBeforeCatalog,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsCollectionAskBeforeCatalogTile,
+    editorKey: MetaEditorKeys.collectionAskBeforeCatalog,
+    sortOrder: 60,
+  ),
 ];

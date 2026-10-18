@@ -42,6 +42,11 @@ class CollectionPagingPrefs extends ChangeNotifier {
   /// Hard ceiling for the threshold: above this a full load is never attempted.
   static const int maxLargeThreshold = 10000000;
 
+  /// Whether the background catalogue asks before sweeping a large backlog.
+  /// On by default: cataloguing a huge library is long invisible work, so it
+  /// starts with a question rather than silently.
+  static const bool defaultAskBeforeCatalog = true;
+
   CollectionEngine _engine = CollectionEngine.defaultEngine;
 
   int _windowSize = defaultWindowSize;
@@ -49,6 +54,8 @@ class CollectionPagingPrefs extends ChangeNotifier {
   int _prefetchScreens = defaultPrefetchScreens;
 
   int _largeThreshold = defaultLargeThreshold;
+
+  bool _askBeforeCatalog = defaultAskBeforeCatalog;
 
   bool _loaded = false;
 
@@ -64,6 +71,8 @@ class CollectionPagingPrefs extends ChangeNotifier {
 
   int get largeThreshold => _largeThreshold;
 
+  bool get askBeforeCatalog => _askBeforeCatalog;
+
   /// Whether persisted values have been read. Getters return defaults before.
   bool get isLoaded => _loaded;
 
@@ -75,6 +84,7 @@ class CollectionPagingPrefs extends ChangeNotifier {
       _windowSize = clampWindowSize(prefs.getInt(CollectionPagingKeys.windowSize) ?? defaultWindowSize);
       _prefetchScreens = (prefs.getInt(CollectionPagingKeys.prefetchScreens) ?? defaultPrefetchScreens).clamp(0, maxPrefetchScreens);
       _largeThreshold = clampLargeThreshold(prefs.getInt(CollectionPagingKeys.largeThreshold) ?? defaultLargeThreshold);
+      _askBeforeCatalog = prefs.getBool(CollectionPagingKeys.askBeforeCatalog) ?? defaultAskBeforeCatalog;
     } catch (error, stack) {
       _log.w('failed to load collection paging prefs, using defaults', error, stack);
     }
@@ -126,6 +136,17 @@ class CollectionPagingPrefs extends ChangeNotifier {
       await (await SharedPreferences.getInstance()).setInt(CollectionPagingKeys.largeThreshold, clamped);
     } catch (error, stack) {
       _log.e('failed to persist collection large threshold=$clamped', error, stack);
+    }
+  }
+
+  Future<void> setAskBeforeCatalog(bool ask) async {
+    if (ask == _askBeforeCatalog) return;
+    _askBeforeCatalog = ask;
+    notifyListeners();
+    try {
+      await (await SharedPreferences.getInstance()).setBool(CollectionPagingKeys.askBeforeCatalog, ask);
+    } catch (error, stack) {
+      _log.e('failed to persist collection ask-before-catalog=$ask', error, stack);
     }
   }
 

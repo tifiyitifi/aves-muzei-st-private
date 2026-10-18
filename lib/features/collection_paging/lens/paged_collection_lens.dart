@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/catalog/catalog_prompt.dart';
 import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dart';
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/collection_paging/lens/paged_lists.dart';
@@ -662,12 +663,30 @@ class PagedCollectionLens extends CollectionLens {
   Future<void> _runCatalogBacklog() async {
     final worker = _catalogWorker;
     if (worker == null || worker.isRunning) return;
+    final int uncatalogued;
     try {
-      if (await localMediaDb.countUncatalogued() == 0) return;
+      uncatalogued = await localMediaDb.countUncatalogued();
     } catch (error, stack) {
       _log.w('paged catalog backlog probe failed', error, stack);
       return;
     }
+    if (uncatalogued == 0) return;
+    if (catalogPrompt.shouldAsk(askBeforeCatalog: collectionPagingPrefs.askBeforeCatalog, uncatalogued: uncatalogued)) {
+      // A backlog this large is long invisible work, so it waits for an answer
+      // instead of starting silently. The lens only raises the question: the UI
+      // layer owns dialogs, and answers it by calling [runCatalogBacklog].
+      catalogPrompt.markAsked(uncatalogued);
+      return;
+    }
+    await runCatalogBacklog();
+  }
+
+  /// Sweeps the catalog backlog now, starting with this view's own scope.
+  ///
+  /// Public because the prompt's answer is what starts a held-back sweep.
+  Future<void> runCatalogBacklog() async {
+    final worker = _catalogWorker;
+    if (worker == null || worker.isRunning) return;
     // The view's own scope goes first: it is what the user is looking at, and
     // the unscoped pass picks up the rest of the backlog afterwards.
     await worker.run(scope: _pagedPredicate);

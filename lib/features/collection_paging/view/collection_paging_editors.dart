@@ -139,3 +139,26 @@ class CollectionThresholdEditor extends StatelessWidget {
     );
   }
 }
+
+/// Custom editor for the "ask before cataloguing" toggle.
+///
+/// Like its siblings, it reads and writes [collectionPagingPrefs] directly: the
+/// key lives outside both settings stores, so the paged engine can read it
+/// whatever store is authoritative.
+class CollectionAskBeforeCatalogEditor extends StatelessWidget {
+  final SettingDef def;
+
+  const new({super.key, required this.def});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: collectionPagingPrefs,
+      builder: (context, child) => SwitchListTile(
+        title: Text(def.title(context)),
+        value: collectionPagingPrefs.askBeforeCatalog,
+        onChanged: collectionPagingPrefs.setAskBeforeCatalog,
+      ),
+    );
+  }
+}

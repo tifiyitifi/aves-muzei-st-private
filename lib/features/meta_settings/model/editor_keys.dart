@@ -21,4 +21,5 @@ abstract final class MetaEditorKeys {
   static const String collectionWindowSize = 'collection_window_size';
   static const String collectionPrefetchScreens = 'collection_prefetch_screens';
   static const String collectionThreshold = 'collection_threshold';
+  static const String collectionAskBeforeCatalog = 'collection_ask_before_catalog';
 }

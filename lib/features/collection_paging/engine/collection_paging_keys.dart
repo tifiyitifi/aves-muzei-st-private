@@ -12,6 +12,9 @@ abstract final class CollectionPagingKeys {
 
   static const String largeThreshold = 'collection_paging.large_threshold';
 
+  /// Whether the background catalogue asks before sweeping a large backlog.
+  static const String askBeforeCatalog = 'collection_paging.ask_before_catalog';
+
   /// Persisted MediaStore generation cursor for change-based sync.
   static const String mediaGeneration = 'collection_paging.media_generation';
 }

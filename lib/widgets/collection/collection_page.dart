@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/catalog/catalog_prompt.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/view/catalog_prompt_dialog.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/query.dart';
@@ -47,7 +49,7 @@ class const CollectionPage({
 
 class _CollectionPageState extends State<CollectionPage> {
   final Set<StreamSubscription> _subscriptions = {};
-  late CollectionLens _collection;
+  late PagedCollectionLens _collection;
   final StreamController<DraggableScrollbarEvent> _draggableScrollBarEventStreamController = StreamController.broadcast();
 
   @override
@@ -69,10 +71,19 @@ class _CollectionPageState extends State<CollectionPage> {
       }),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkInitHighlight());
+    // The paged lens holds the catalog backlog back when it is large enough to
+    // ask about, and the question is answered here, where dialogs belong. A
+    // question raised by another paged surface (explorer, slideshow) is picked
+    // up on the next visit to a collection.
+    catalogPrompt.pending.addListener(_onCatalogPromptChanged);
+    if (catalogPrompt.pending.value != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _askToCatalog());
+    }
   }
 
   @override
   void dispose() {
+    catalogPrompt.pending.removeListener(_onCatalogPromptChanged);
     _subscriptions
       ..forEach((sub) => sub.cancel())
       ..clear();
@@ -219,5 +230,23 @@ class _CollectionPageState extends State<CollectionPage> {
     if (!mounted) return;
     final animate = context.read<Settings>().animate;
     context.read<HighlightInfo>().trackItem(item, animate: animate, highlightItem: item);
+  }
+
+  void _onCatalogPromptChanged() {
+    if (catalogPrompt.pending.value == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _askToCatalog());
+  }
+
+  Future<void> _askToCatalog() async {
+    final count = catalogPrompt.pending.value;
+    if (!mounted || count == null) return;
+    // Taken over here, so a second paged surface resolving while the dialog is
+    // up does not raise it again.
+    catalogPrompt.resolve();
+    final answer = await showCatalogPromptDialog(context, count: count);
+    if (!mounted || answer == null) return;
+    if (!await applyCatalogPromptAnswer(answer)) return;
+    if (!mounted) return;
+    unawaited(_collection.runCatalogBacklog());
   }
 }

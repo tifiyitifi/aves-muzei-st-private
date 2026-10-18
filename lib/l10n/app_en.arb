@@ -1238,5 +1238,20 @@
         "example": "0:42"
       }
     }
-  }
+  },
+
+  "settingsCollectionAskBeforeCatalogTile": "Ask before cataloguing",
+  "catalogPromptDialogTitle": "Catalogue in the background?",
+  "catalogPromptDialogMessage": "About {count} items have not been catalogued yet. Cataloguing reads tags, dates and locations in the background so that search, sorting and the map are precise. It can take a while.",
+  "@catalogPromptDialogMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "50000"
+      }
+    }
+  },
+  "catalogPromptDontAskAgain": "Don't ask again",
+  "catalogPromptLaterButton": "Later",
+  "catalogPromptCatalogueButton": "Catalogue"
 }

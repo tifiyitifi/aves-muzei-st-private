@@ -295,6 +295,62 @@ class PagedCollectionLens extends CollectionLens {
     await cache.ensureAround(local);
   }
 
+  /// Rows per lookup query: one bounded page at a time, so a lookup that has to
+  /// leave the loaded windows costs latency but never memory.
+  static const _lookupChunkSize = 2000;
+
+  @override
+  Future<AvesEntry?> firstMatching(bool Function(AvesEntry entry) test) async {
+    await _awaitSettled();
+    if (!pagedActive) return super.firstMatching(test);
+    // Loaded tiles first: a highlight almost always targets a row the view
+    // already shows, and reading them costs nothing.
+    for (final entry in loadedEntries) {
+      if (test(entry)) return entry;
+    }
+    final predicate = _pagedPredicate;
+    if (predicate == null) return super.firstMatching(test);
+    // Otherwise ask the database, in bounded id-ordered chunks, stopping at the
+    // first match. Rows come in id order rather than the view's date order, so
+    // when several rows match (a multi-item move) the one returned can differ
+    // from the legacy scan's: either is an item of the scope.
+    var afterId = 0;
+    while (true) {
+      final rows = await localMediaDb.loadWalkWindow(predicate: predicate, afterId: afterId, limit: _lookupChunkSize);
+      if (rows.isEmpty) return null;
+      for (final row in rows) {
+        if (test(row)) return _materialize(row);
+      }
+      if (rows.length < _lookupChunkSize) return null;
+      afterId = rows.last.id;
+    }
+  }
+
+  @override
+  Future<int> indexOfEntry(AvesEntry entry) async {
+    await _awaitSettled();
+    return indexOfId(entry.id);
+  }
+
+  /// Waits for the first load's decision while one is still pending, so a lookup
+  /// that arrives early (a page's init highlight) is not answered by the empty
+  /// pre-resolution list. A fixed-selection, morphed or blocked lens has already
+  /// settled, and a disposed one never will.
+  Future<void> _awaitSettled() async {
+    if (pagedActive || _morphed || _blocked || fixedSelection != null || _ready.isCompleted) return;
+    await ready;
+  }
+
+  /// Loads [row]'s window so its position becomes real (the highlight tracker
+  /// reads `indexOf`), and answers the loaded entry when it materialized.
+  Future<AvesEntry> _materialize(AvesEntry row) async {
+    final index = await indexOfId(row.id);
+    if (index < 0) return row;
+    await fillAround(index);
+    final entry = sortedEntries[index];
+    return entry is SkeletonEntry ? row : entry;
+  }
+
   @override
   void refresh() {
     if (fixedSelection != null) {

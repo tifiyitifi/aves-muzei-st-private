@@ -210,7 +210,7 @@ class _CollectionPageState extends State<CollectionPage> {
     final highlightTest = widget.highlightTest;
     if (highlightTest == null) return;
 
-    final item = _collection.sortedEntries.firstWhereOrNull(highlightTest);
+    final item = await _collection.firstMatching(highlightTest);
     if (item == null) return;
 
     final delayDuration = context.read<DurationsData>().staggeredAnimationPageTarget;

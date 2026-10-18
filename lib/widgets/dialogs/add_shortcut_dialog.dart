@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -7,7 +9,6 @@ import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/common/providers/media_query_data_provider.dart';
 import 'package:aves/widgets/dialogs/item_picker.dart';
 import 'package:aves/widgets/dialogs/pick_dialogs/item_pick_page.dart';
-import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'aves_dialog.dart';
@@ -38,14 +39,36 @@ class _AddShortcutDialogState extends State<AddShortcutDialog> {
     super.initState();
     final _collection = widget.collection;
     if (_collection != null) {
-      final entries = _collection.sortedEntries;
-      if (entries.isNotEmpty) {
-        final coverEntries = _collection.filters.map((filter) => covers.of(filter)?.entryId).nonNulls.map((id) => entries.firstWhereOrNull((entry) => entry.id == id)).nonNulls;
-        _coverEntry = coverEntries.firstOrNull ?? entries.first;
-      }
+      unawaited(_initCover(_collection));
     }
     _nameController.text = widget.defaultName;
     _validate();
+  }
+
+  /// Resolves the cover through the lens, not through its list: scanning a
+  /// windowed lens's lazy list would page the whole library in for a cover row,
+  /// and hand back a skeleton for its first position.
+  Future<void> _initCover(CollectionLens collection) async {
+    if (collection.isEmpty) return;
+    for (final id in collection.filters.map((filter) => covers.of(filter)?.entryId).nonNulls) {
+      final entry = await collection.firstMatching((entry) => entry.id == id);
+      if (entry != null) {
+        _setCover(entry);
+        return;
+      }
+    }
+    // The scope's own first row, like the legacy `entries.first`.
+    final entry = await collection.firstMatching((_) => true);
+    if (entry != null) {
+      _setCover(entry);
+    }
+  }
+
+  void _setCover(AvesEntry entry) {
+    if (!mounted) return;
+    setState(() {
+      _coverEntry = entry;
+    });
   }
 
   @override

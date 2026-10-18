@@ -144,6 +144,19 @@ class CollectionLens with ChangeNotifier {
     return _sectionedEntries!;
   }
 
+  /// The first entry of this collection matching [test], or null when none does.
+  ///
+  /// This lens holds every entry, so the answer is a plain scan. A windowed lens
+  /// overrides it: scanning its lazy list would kick a fetch per index and page
+  /// the whole library into the windows for one lookup.
+  Future<AvesEntry?> firstMatching(bool Function(AvesEntry entry) test) async => sortedEntries.firstWhereOrNull(test);
+
+  /// The position of [entry] in this collection, or -1 when it is not there.
+  ///
+  /// Same split as [firstMatching]: a windowed lens resolves the position
+  /// through the database instead of walking its lazy list.
+  Future<int> indexOfEntry(AvesEntry entry) async => sortedEntries.indexOf(entry);
+
   bool get showHeaders {
     bool showAlbumHeaders() => !filters.any((v) => v is StoredAlbumFilter && !v.reversed);
 

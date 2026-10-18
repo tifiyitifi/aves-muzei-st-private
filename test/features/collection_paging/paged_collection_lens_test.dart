@@ -193,6 +193,68 @@ void main() {
       expect(copy.entryAt(1).id, 1);
     });
 
+    test('a lookup finds a loaded tile without paging the library in', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 3))});
+      await collectionPagingPrefs.setLargeThreshold(2);
+      await collectionPagingPrefs.setWindowSize(10);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => allReal(lens) && lens.loadedEntries.length == 2);
+
+      expect((await lens.firstMatching((entry) => entry.uri == 'content://2'))?.id, 2);
+      expect(await lens.firstMatching((entry) => entry.uri == 'content://none'), isNull);
+    });
+
+    test('a lookup resolves a row outside the loaded windows and materializes it', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 2)), entry(3, dateTaken: millis(2024, 3))});
+      await collectionPagingPrefs.setLargeThreshold(2);
+      await collectionPagingPrefs.setWindowSize(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.sortedEntries[0] is! SkeletonEntry);
+
+      // Scanning the lazy list instead would kick a fetch per index and answer
+      // with a skeleton; the database walk answers with the real row, loaded.
+      final found = await lens.firstMatching((entry) => entry.id == 1);
+      expect(found?.id, 1);
+      expect(found, isNot(isA<SkeletonEntry>()));
+      expect(lens.sortedEntries.indexOf(found!), 2);
+      expect(await lens.indexOfEntry(found), 2);
+    });
+
+    test('a lookup that arrives before the first load still resolves', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 2))});
+      await collectionPagingPrefs.setLargeThreshold(2);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      // No settle: a page asks for its init highlight as soon as it opens.
+      expect((await lens.firstMatching((entry) => entry.id == 2))?.id, 2);
+    });
+
+    test('a viewer copy resolves positions through its parent, shuffle included', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 2)), entry(3, dateTaken: millis(2024, 3))});
+      await collectionPagingPrefs.setLargeThreshold(2);
+      await collectionPagingPrefs.setWindowSize(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.sortedEntries[0] is! SkeletonEntry);
+
+      final viewer = PagedViewerCopy(parent: lens, shuffleSeed: 7);
+      addTearDown(viewer.dispose);
+      final index = await viewer.indexOfEntry(entry(1));
+      expect(index, inInclusiveRange(0, 2));
+      // The copy's index space is the shuffled one, so the position must map
+      // back to the same row.
+      await viewer.prefetchAround(index);
+      expect(viewer.entryAt(index).id, 1);
+      // A lookup is answered by the parent, never by walking the copy itself.
+      expect((await viewer.firstMatching((entry) => entry.id == 2))?.id, 2);
+    });
+
     test('window rows carry the deep metadata an in-memory row carries', () async {
       final service = await drift();
       await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 2))});

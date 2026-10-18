@@ -801,16 +801,21 @@ class _EntryViewerStackState extends State<EntryViewerStack> with EntryViewContr
 
   void _onEntryRestored(Set<AvesEntry> restoredEntries) {
     if (restoredEntries.isEmpty) return;
+    unawaited(_focusRestoredEntry(restoredEntries.first));
+  }
 
+  /// Focuses a restored entry. The position is asked of the collection rather
+  /// than read off its list: a windowed collection resolves it through the
+  /// database instead of walking (and paging in) its lazy rows.
+  Future<void> _focusRestoredEntry(AvesEntry entry) async {
     final _collection = collection;
-    if (_collection != null) {
-      _collection.refresh();
-      final index = _collection.sortedEntries.indexOf(restoredEntries.first);
-      if (index != -1) {
-        _onHorizontalPageChanged(index);
-      }
-      _onCollectionChanged();
+    if (_collection == null) return;
+    _collection.refresh();
+    final index = await _collection.indexOfEntry(entry);
+    if (index != -1) {
+      _onHorizontalPageChanged(index);
     }
+    _onCollectionChanged();
   }
 
   // deleted or moved to another album

@@ -104,6 +104,24 @@ class PagedViewerCopy extends CollectionLens {
     return permutation == null ? realIndex : permutation.inverse(realIndex);
   }
 
+  @override
+  Future<int> indexOfEntry(AvesEntry entry) async {
+    // The parent answers from the database when the row is not loaded; the
+    // permutation then maps its real position into this copy's index space.
+    final realIndex = await parent.indexOfId(entry.id);
+    if (realIndex < 0) return -1;
+    final permutation = _permutationFor;
+    return permutation == null ? realIndex : permutation.inverse(realIndex);
+  }
+
+  @override
+  Future<AvesEntry?> firstMatching(bool Function(AvesEntry entry) test) {
+    // The copy adds a permutation over the parent's rows, so the parent's
+    // database walk answers for both. Inheriting the in-memory scan would walk
+    // this copy's lazy list instead, which is the very thing to avoid.
+    return parent.firstMatching(test);
+  }
+
   /// Loaded real entries in display order, for actions that must not walk the
   /// lazy list (map, slideshow).
   List<AvesEntry> get loadedEntries => parentAlive ? parent.loadedEntries : const [];

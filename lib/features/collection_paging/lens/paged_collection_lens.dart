@@ -667,7 +667,9 @@ class PagedCollectionLens extends CollectionLens {
       _log.w('paged catalog backlog probe failed', error, stack);
       return;
     }
-    await worker.run();
+    // The view's own scope goes first: it is what the user is looking at, and
+    // the unscoped pass picks up the rest of the backlog afterwards.
+    await worker.run(scope: _pagedPredicate);
   }
 
   void _detachCatalogWorker() {

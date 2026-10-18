@@ -417,10 +417,11 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   }
 
   @override
-  Future<int> countUncatalogued() => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+  Future<int> countUncatalogued([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
-  Future<List<int>> loadUncataloguedEntryIds({required int afterId, required int limit}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+  Future<List<int>> loadUncataloguedEntryIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) =>
+      throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   void _batchInsertMetadata(Batch batch, CatalogMetadata? metadata) {
     if (metadata == null) return;
@@ -481,10 +482,10 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   }
 
   @override
-  Future<List<int>> loadUnaddressedGpsIds({required int afterId, required int limit}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+  Future<List<int>> loadUnaddressedGpsIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
-  Future<List<int>> loadUnlocatedGpsIds({required int afterId, required int limit}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+  Future<List<int>> loadUnlocatedGpsIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   void _batchInsertAddress(Batch batch, AddressDetails? address) {
     if (address == null) return;

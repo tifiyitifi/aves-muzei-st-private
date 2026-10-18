@@ -121,23 +121,33 @@ class EntryStore {
     return result;
   }
 
-  /// Counts entries missing catalog metadata rows (the catalog backlog).
+  /// Counts entries missing catalog metadata rows (the catalog backlog),
+  /// optionally limited to [predicate]'s scope.
   ///
   /// Mirrors the legacy `catalogEntriesTest` (`!entry.isCatalogued`): any entry
-  /// without a metadata row counts, trashed or not.
-  Future<int> countUncatalogued() async {
-    final rows = await db.customSelect('SELECT COUNT(*) AS n FROM $_table e LEFT JOIN metadata m ON m.id = e.id WHERE m.id IS NULL').get();
+  /// without a metadata row counts, trashed or not, so the scope's own trash
+  /// clause is deliberately not applied (see [_backlogWhere]).
+  Future<int> countUncatalogued([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) async {
+    final where = _backlogWhere(predicate, conditions: ['m.id IS NULL'], variables: const []);
+    final rows = await db.customSelect(
+      'SELECT COUNT(*) AS n ${_from(predicate, metadata: true)} WHERE ${where.conditions.join(' AND ')}',
+      variables: where.variables,
+    ).get();
     return (rows.firstOrNull?.data['n'] as int?) ?? 0;
   }
 
   /// Keyset page over entries missing metadata rows, for the background
   /// catalog worker. [afterId] is exclusive (pass 0 to start); reruns skip
   /// finished rows, so an interrupted run resumes instead of restarting.
-  Future<List<int>> loadUncataloguedEntryIds({required int afterId, required int limit}) async {
+  ///
+  /// [predicate] limits the page to one scope, so a view can be catalogued
+  /// before the rest of the library.
+  Future<List<int>> loadUncataloguedEntryIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) async {
     if (limit <= 0) return [];
+    final where = _backlogWhere(predicate, conditions: ['m.id IS NULL', 'e.id > ?'], variables: [Variable(afterId)]);
     final rows = await db.customSelect(
-      'SELECT e.id AS id FROM $_table e LEFT JOIN metadata m ON m.id = e.id WHERE m.id IS NULL AND e.id > ? ORDER BY e.id LIMIT ?',
-      variables: [Variable(afterId), Variable(limit)],
+      'SELECT e.id AS id ${_from(predicate, metadata: true)} WHERE ${where.conditions.join(' AND ')} ORDER BY e.id LIMIT ?',
+      variables: [...where.variables, Variable(limit)],
     ).get();
     return [for (final row in rows) row.data['id'] as int];
   }
@@ -147,11 +157,16 @@ class EntryStore {
   /// Same coordinate test as `AvesEntry.hasGps`: a row counts when either
   /// coordinate is non-zero, so entries without a metadata row at all are
   /// skipped here (they surface through [loadUncataloguedEntryIds] first).
-  Future<List<int>> loadUnaddressedGpsIds({required int afterId, required int limit}) async {
+  Future<List<int>> loadUnaddressedGpsIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) async {
     if (limit <= 0) return [];
+    final where = _backlogWhere(
+      predicate,
+      conditions: ['a.id IS NULL', '(COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0)', 'e.id > ?'],
+      variables: [Variable(afterId)],
+    );
     final rows = await db.customSelect(
-      'SELECT e.id AS id FROM $_table e JOIN metadata m ON m.id = e.id LEFT JOIN address a ON a.id = e.id WHERE a.id IS NULL AND (COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0) AND e.id > ? ORDER BY e.id LIMIT ?',
-      variables: [Variable(afterId), Variable(limit)],
+      'SELECT e.id AS id ${_from(predicate, metadata: true, address: true)} WHERE ${where.conditions.join(' AND ')} ORDER BY e.id LIMIT ?',
+      variables: [...where.variables, Variable(limit)],
     ).get();
     return [for (final row in rows) row.data['id'] as int];
   }
@@ -165,13 +180,33 @@ class EntryStore {
   /// geocoding. Memory-side `hasFineAddress` additionally treats long
   /// `countryName`s as fine; such rows are selected here but no-op inside
   /// `locatePlace`, so the pass stays idempotent.
-  Future<List<int>> loadUnlocatedGpsIds({required int afterId, required int limit}) async {
+  Future<List<int>> loadUnlocatedGpsIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) async {
     if (limit <= 0) return [];
+    final where = _backlogWhere(
+      predicate,
+      conditions: ['(a.id IS NULL OR (a.locality IS NULL AND a.adminArea IS NULL))', '(COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0)', 'e.id > ?'],
+      variables: [Variable(afterId)],
+    );
     final rows = await db.customSelect(
-      'SELECT e.id AS id FROM $_table e JOIN metadata m ON m.id = e.id LEFT JOIN address a ON a.id = e.id WHERE (a.id IS NULL OR (a.locality IS NULL AND a.adminArea IS NULL)) AND (COALESCE(m.latitude, 0) != 0 OR COALESCE(m.longitude, 0) != 0) AND e.id > ? ORDER BY e.id LIMIT ?',
-      variables: [Variable(afterId), Variable(limit)],
+      'SELECT e.id AS id ${_from(predicate, metadata: true, address: true)} WHERE ${where.conditions.join(' AND ')} ORDER BY e.id LIMIT ?',
+      variables: [...where.variables, Variable(limit)],
     ).get();
     return [for (final row in rows) row.data['id'] as int];
+  }
+
+  /// Composes a backlog query's own conditions with the scope's filter atoms.
+  ///
+  /// The backlog deliberately ignores the scope's trash clause: the legacy
+  /// `analyze` catalogues trashed entries too, and a scoped pass must not change
+  /// what the unscoped pass would have done.
+  ({List<String> conditions, List<Variable> variables}) _backlogWhere(CollectionWindowPredicate predicate, {required List<String> conditions, required List<Variable> variables}) {
+    final result = <String>[...conditions];
+    final vars = <Variable>[...variables];
+    for (final fragment in predicate.conjunction) {
+      result.add(fragment.sql);
+      vars.addAll(fragment.variables);
+    }
+    return (conditions: result, variables: vars);
   }
 
   /// Count, total size and most recent `bestDate` of the entries matching

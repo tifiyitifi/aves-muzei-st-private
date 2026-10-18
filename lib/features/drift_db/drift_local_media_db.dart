@@ -336,10 +336,11 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<void> updateCatalogMetadata(int id, CatalogMetadata? metadata) => _catalog.update(id, metadata);
 
   @override
-  Future<int> countUncatalogued() => _entries.countUncatalogued();
+  Future<int> countUncatalogued([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) => _entries.countUncatalogued(predicate);
 
   @override
-  Future<List<int>> loadUncataloguedEntryIds({required int afterId, required int limit}) => _entries.loadUncataloguedEntryIds(afterId: afterId, limit: limit);
+  Future<List<int>> loadUncataloguedEntryIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) =>
+      _entries.loadUncataloguedEntryIds(predicate: predicate, afterId: afterId, limit: limit);
 
   // address
 
@@ -359,10 +360,10 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<void> updateAddress(int id, AddressDetails? address) => _addresses.update(id, address);
 
   @override
-  Future<List<int>> loadUnaddressedGpsIds({required int afterId, required int limit}) => _entries.loadUnaddressedGpsIds(afterId: afterId, limit: limit);
+  Future<List<int>> loadUnaddressedGpsIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) => _entries.loadUnaddressedGpsIds(predicate: predicate, afterId: afterId, limit: limit);
 
   @override
-  Future<List<int>> loadUnlocatedGpsIds({required int afterId, required int limit}) => _entries.loadUnlocatedGpsIds(afterId: afterId, limit: limit);
+  Future<List<int>> loadUnlocatedGpsIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required int afterId, required int limit}) => _entries.loadUnlocatedGpsIds(predicate: predicate, afterId: afterId, limit: limit);
 
   // vaults
 

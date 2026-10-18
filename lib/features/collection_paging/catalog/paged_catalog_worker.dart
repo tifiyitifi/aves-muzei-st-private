@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/geo/countries.dart';
 import 'package:aves/model/db/db.dart';
@@ -39,6 +40,7 @@ class PagedCatalogWorker {
   bool _stopRequested = false;
   bool _pendingRun = false;
   bool _pendingPlaces = false;
+  CollectionWindowPredicate? _pendingScope;
 
   new({
     required this.source,
@@ -71,12 +73,17 @@ class PagedCatalogWorker {
 
   bool get isRunning => _draining;
 
-  /// Requests the eager backlog (catalog, then offline countries). Serialized
-  /// with [runPlaces]: a request that arrives mid-pass is queued, never
-  /// dropped, and the eager pair always completes before any places pass so a
-  /// coarse country write can never clobber a fine address. [stop] halts
+  /// Requests the eager backlog (catalog, then offline countries). [scope], when
+  /// given, runs *first* in each pass: the rows of the view the user is looking
+  /// at are worth cataloguing before the rest of the library, and the unscoped
+  /// pass then resumes the backlog they are not part of.
+  ///
+  /// Serialized with [runPlaces]: a request that arrives mid-pass is queued,
+  /// never dropped, and the eager pair always completes before any places pass
+  /// so a coarse country write can never clobber a fine address. [stop] halts
   /// cooperatively between chunks.
-  Future<void> run({int chunkSize = 200}) {
+  Future<void> run({int chunkSize = 200, CollectionWindowPredicate? scope}) {
+    _pendingScope = scope;
     _pendingRun = true;
     return _drain(chunkSize);
   }
@@ -98,8 +105,10 @@ class PagedCatalogWorker {
       while (!_stopRequested && (_pendingRun || _pendingPlaces)) {
         if (_pendingRun) {
           _pendingRun = false;
-          await _runCatalog(chunkSize);
-          if (!_stopRequested) await _runCountries(chunkSize);
+          final scope = _pendingScope;
+          _pendingScope = null;
+          await _runCatalog(chunkSize, scope);
+          if (!_stopRequested) await _runCountries(chunkSize, scope);
         }
         if (!_stopRequested && _pendingPlaces) {
           _pendingPlaces = false;
@@ -114,8 +123,18 @@ class PagedCatalogWorker {
 
   void stop() => _stopRequested = true;
 
-  Future<void> _runCatalog(int chunkSize) async {
-    final total = await database.countUncatalogued();
+  /// Runs the catalog pass, scoped rows first when [scope] is given.
+  Future<void> _runCatalog(int chunkSize, CollectionWindowPredicate? scope) async {
+    if (scope != null) {
+      await _runCatalogPass(chunkSize, scope);
+      if (_stopRequested) return;
+    }
+    await _runCatalogPass(chunkSize, null);
+  }
+
+  Future<void> _runCatalogPass(int chunkSize, CollectionWindowPredicate? scope) async {
+    final predicate = scope ?? const CollectionWindowPredicate();
+    final total = await database.countUncatalogued(predicate);
     if (total == 0) return;
     var afterId = 0;
     var done = 0;
@@ -131,7 +150,7 @@ class PagedCatalogWorker {
     source.state = SourceState.cataloguing;
     source.setProgress(done: 0, total: total);
     while (!_stopRequested) {
-      final ids = await database.loadUncataloguedEntryIds(afterId: afterId, limit: chunkSize);
+      final ids = await database.loadUncataloguedEntryIds(predicate: predicate, afterId: afterId, limit: chunkSize);
       if (ids.isEmpty) break;
       afterId = ids.last;
       for (final entry in await _materialize(ids.toSet())) {
@@ -157,7 +176,17 @@ class PagedCatalogWorker {
     await flush();
   }
 
-  Future<void> _runCountries(int chunkSize) async {
+  /// Runs the offline-country pass, scoped rows first when [scope] is given.
+  Future<void> _runCountries(int chunkSize, CollectionWindowPredicate? scope) async {
+    if (scope != null) {
+      await _runCountriesPass(chunkSize, scope);
+      if (_stopRequested) return;
+    }
+    await _runCountriesPass(chunkSize, null);
+  }
+
+  Future<void> _runCountriesPass(int chunkSize, CollectionWindowPredicate? scope) async {
+    final predicate = scope ?? const CollectionWindowPredicate();
     var afterId = 0;
     var done = 0;
     final pending = <AddressDetails>{};
@@ -171,7 +200,7 @@ class PagedCatalogWorker {
     source.state = SourceState.locatingCountries;
     source.setProgress(done: 0, total: 0);
     while (!_stopRequested) {
-      final ids = await database.loadUnaddressedGpsIds(afterId: afterId, limit: chunkSize);
+      final ids = await database.loadUnaddressedGpsIds(predicate: predicate, afterId: afterId, limit: chunkSize);
       if (ids.isEmpty) break;
       afterId = ids.last;
       for (final entry in await _materialize(ids.toSet())) {

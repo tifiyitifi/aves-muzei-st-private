@@ -207,12 +207,14 @@ abstract class LocalMediaDb {
 
   Future<void> updateCatalogMetadata(int id, CatalogMetadata? metadata);
 
-  /// Counts entries missing catalog metadata rows (the catalog backlog).
-  Future<int> countUncatalogued();
+  /// Counts entries missing catalog metadata rows (the catalog backlog),
+  /// optionally limited to [predicate]'s scope.
+  Future<int> countUncatalogued([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]);
 
   /// Keyset page over entries missing metadata rows, for the background
-  /// catalog worker. [afterId] is exclusive.
-  Future<List<int>> loadUncataloguedEntryIds({required int afterId, required int limit});
+  /// catalog worker. [afterId] is exclusive, and [predicate] limits the page to
+  /// one scope so a view can be catalogued before the rest of the library.
+  Future<List<int>> loadUncataloguedEntryIds({CollectionWindowPredicate predicate, required int afterId, required int limit});
 
   // address
 
@@ -228,12 +230,12 @@ abstract class LocalMediaDb {
 
   /// Keyset page over GPS entries missing address rows (the locate backlog).
   /// [afterId] is exclusive.
-  Future<List<int>> loadUnaddressedGpsIds({required int afterId, required int limit});
+  Future<List<int>> loadUnaddressedGpsIds({CollectionWindowPredicate predicate, required int afterId, required int limit});
 
   /// Keyset page over GPS entries missing *fine* addresses (the locate-places
   /// backlog): rows with no address row, or a country-only row.
   /// [afterId] is exclusive.
-  Future<List<int>> loadUnlocatedGpsIds({required int afterId, required int limit});
+  Future<List<int>> loadUnlocatedGpsIds({CollectionWindowPredicate predicate, required int afterId, required int limit});
 
   // vaults
 

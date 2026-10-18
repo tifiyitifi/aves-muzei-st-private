@@ -1,7 +1,9 @@
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/metadata/address.dart';
 import 'package:aves/model/metadata/catalog.dart';
 import 'package:aves/services/common/services.dart';
@@ -34,11 +36,11 @@ void main() {
 
   tearDown(() => db.close());
 
-  AvesEntry entry(int id) {
+  AvesEntry entry(int id, {String dir = '/album', bool trashed = false}) {
     return AvesEntry(
       id: id,
       uri: 'content://$id',
-      path: '/album/$id.jpg',
+      path: '$dir/$id.jpg',
       contentId: 100 + id,
       pageId: null,
       sourceMimeType: 'image/jpeg',
@@ -51,7 +53,7 @@ void main() {
       dateModifiedMillis: 2,
       sourceDateTakenMillis: 0,
       durationMillis: 0,
-      trashed: false,
+      trashed: trashed,
       origin: EntryOrigins.mediaStoreContent,
     );
   }
@@ -80,6 +82,30 @@ void main() {
       await service.insertEntries({entry(1)});
       await service.saveCatalogMetadata({metadata(1)});
       expect(await service.countUncatalogued(), 0);
+    });
+
+    test('limits the catalog backlog to a scope', () async {
+      await service.insertEntries({entry(1), entry(2, dir: '/other'), entry(3, dir: '/other'), entry(4, trashed: true)});
+      final scope = predicateForFilters({StoredAlbumFilter('/other', null)})!;
+
+      // The scope sees its own rows only; the backlog itself stays complete,
+      // trashed rows included (the legacy analyze catalogues them too).
+      expect(await service.countUncatalogued(scope), 2);
+      expect(await service.loadUncataloguedEntryIds(predicate: scope, afterId: 0, limit: 10), [2, 3]);
+      expect(await service.countUncatalogued(), 4);
+      expect(await service.loadUncataloguedEntryIds(afterId: 0, limit: 10), [1, 2, 3, 4]);
+    });
+
+    test('limits the locate backlog to a scope', () async {
+      await service.insertEntries({entry(1), entry(2, dir: '/other')});
+      await service.saveCatalogMetadata({
+        metadata(1, latitude: 1, longitude: 1),
+        metadata(2, latitude: 1, longitude: 1),
+      });
+      final scope = predicateForFilters({StoredAlbumFilter('/other', null)})!;
+
+      expect(await service.loadUnaddressedGpsIds(predicate: scope, afterId: 0, limit: 10), [2]);
+      expect(await service.loadUnlocatedGpsIds(predicate: scope, afterId: 0, limit: 10), [2]);
     });
 
     test('lists gps entries missing addresses with keyset pagination', () async {

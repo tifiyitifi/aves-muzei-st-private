@@ -1,8 +1,10 @@
 import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dart';
+import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/metadata/address.dart';
 import 'package:aves/model/metadata/catalog.dart';
 import 'package:aves/model/source/location/location.dart';
@@ -43,11 +45,11 @@ void main() {
     await db.close();
   });
 
-  AvesEntry entry(int id) {
+  AvesEntry entry(int id, {String dir = '/album'}) {
     return AvesEntry(
       id: id,
       uri: 'content://media/external/images/media/${100 + id}',
-      path: '/album/$id.jpg',
+      path: '$dir/$id.jpg',
       contentId: 100 + id,
       pageId: null,
       sourceMimeType: 'image/jpeg',
@@ -99,8 +101,26 @@ void main() {
       expect(await database.countUncatalogued(), 0);
     });
 
-    test('stop halts between chunks and resumes after', () async {
-      await database.insertEntries({for (var i = 1; i <= 6; i++) entry(i)});
+    test('catalogs the view scope before the rest of the backlog', () async {
+      await database.insertEntries({entry(1), entry(2, dir: '/other'), entry(3, dir: '/other')});
+      final scope = predicateForFilters({StoredAlbumFilter('/other', null)})!;
+      final order = <int>[];
+      final w = worker(
+        catalogEntry: (entry) async {
+          order.add(entry.id);
+          entry.catalogMetadata = CatalogMetadata(id: entry.id);
+        },
+      );
+
+      await w.run(chunkSize: 10, scope: scope);
+
+      // The scope's rows go first, in id order; the unscoped pass then picks up
+      // what the scope did not cover.
+      expect(order, [2, 3, 1]);
+      expect(await database.countUncatalogued(), 0);
+    });
+
+    test('stop halts between chunks and resumes after', () async {      await database.insertEntries({for (var i = 1; i <= 6; i++) entry(i)});
       late PagedCatalogWorker w;
       var calls = 0;
       w = worker(

@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/catalog/catalog_progress.dart';
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/geo/countries.dart';
@@ -118,10 +119,18 @@ class PagedCatalogWorker {
     } finally {
       _draining = false;
       source.state = SourceState.ready;
+      catalogProgressNotifier.finish();
     }
   }
 
   void stop() => _stopRequested = true;
+
+  /// Reports a pass's progress to the source (the existing count display) and to
+  /// the app bar's notifier, which adds elapsed/ETA on top of it.
+  void _reportProgress({required int done, required int total}) {
+    source.setProgress(done: done, total: total);
+    catalogProgressNotifier.update(done: done, total: total, now: DateTime.now());
+  }
 
   /// Runs the catalog pass, scoped rows first when [scope] is given.
   Future<void> _runCatalog(int chunkSize, CollectionWindowPredicate? scope) async {
@@ -152,7 +161,7 @@ class PagedCatalogWorker {
     }
 
     source.state = SourceState.cataloguing;
-    source.setProgress(done: 0, total: total);
+    _reportProgress(done: 0, total: total);
     while (!_stopRequested) {
       final page = await database.loadUncataloguedEntryIds(predicate: predicate, after: after, limit: chunkSize);
       if (page.isEmpty) {
@@ -184,7 +193,7 @@ class PagedCatalogWorker {
         }
       }
       done += page.length;
-      source.setProgress(done: done, total: total);
+      _reportProgress(done: done, total: total);
       // Cooperative yield between chunks.
       await Future<void>.delayed(Duration.zero);
     }
@@ -213,7 +222,7 @@ class PagedCatalogWorker {
     }
 
     source.state = SourceState.locatingCountries;
-    source.setProgress(done: 0, total: 0);
+    _reportProgress(done: 0, total: 0);
     while (!_stopRequested) {
       final page = await database.loadUnaddressedGpsIds(predicate: predicate, after: after, limit: chunkSize);
       if (page.isEmpty) break;
@@ -230,7 +239,7 @@ class PagedCatalogWorker {
         if (pending.length >= LocationMixin.commitCountThreshold) await flush();
       }
       done += page.length;
-      source.setProgress(done: done, total: 0);
+      _reportProgress(done: done, total: 0);
       await Future<void>.delayed(Duration.zero);
     }
     await flush();
@@ -274,7 +283,7 @@ class PagedCatalogWorker {
     }
 
     source.state = SourceState.locatingPlaces;
-    source.setProgress(done: 0, total: 0);
+    _reportProgress(done: 0, total: 0);
     while (!_stopRequested) {
       final page = await database.loadUnlocatedGpsIds(after: after, limit: chunkSize);
       if (page.isEmpty) break;
@@ -291,7 +300,7 @@ class PagedCatalogWorker {
         if (pending.length >= LocationMixin.commitCountThreshold) await flush();
       }
       done += page.length;
-      source.setProgress(done: done, total: 0);
+      _reportProgress(done: done, total: 0);
       await Future<void>.delayed(Duration.zero);
     }
     await flush();

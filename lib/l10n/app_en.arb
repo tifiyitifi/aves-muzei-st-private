@@ -1215,5 +1215,28 @@
     }
   },
   "collectionPagedUnsupportedFilter": "This view needs the full in-memory path and is not available for very large collections. See About → Known Issues.",
-  "collectionPagedUnsupportedAction": "This action needs the full in-memory path and is not available for very large collections. See About → Known Issues."
+  "collectionPagedUnsupportedAction": "This action needs the full in-memory path and is not available for very large collections. See About → Known Issues.",
+
+  "catalogProgressWithEta": "elapsed {elapsed}, about {remaining} left",
+  "@catalogProgressWithEta": {
+    "placeholders": {
+      "elapsed": {
+        "type": "String",
+        "example": "0:42"
+      },
+      "remaining": {
+        "type": "String",
+        "example": "2:18"
+      }
+    }
+  },
+  "catalogProgressWithoutEta": "elapsed {elapsed}",
+  "@catalogProgressWithoutEta": {
+    "placeholders": {
+      "elapsed": {
+        "type": "String",
+        "example": "0:42"
+      }
+    }
+  }
 }

@@ -275,6 +275,8 @@
     "collectionSelectPageTitle": "選擇項目",
     "collectionPagedUnsupportedFilter": "此檢視需要載入全部項目，在超大型媒體庫上無法使用。詳見「關於 → 已知問題」。",
     "collectionPagedUnsupportedAction": "此操作需要載入全部項目，在超大型媒體庫上無法使用。詳見「關於 → 已知問題」。",
+    "catalogProgressWithEta": "已用 {elapsed}，預計還需 {remaining}",
+    "catalogProgressWithoutEta": "已用 {elapsed}",
     "collectionActionShowTitleSearch": "顯示標題過濾器",
     "collectionActionHideTitleSearch": "隱藏標題過濾器",
     "collectionActionEmptyBin": "清空資源回收筒",

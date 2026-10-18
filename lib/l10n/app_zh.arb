@@ -264,6 +264,8 @@
     "collectionSelectPageTitle": "选择项目",
     "collectionPagedUnsupportedFilter": "该视图需要载入全部条目，在超大图库上不可用。详见「关于 → 已知问题」。",
     "collectionPagedUnsupportedAction": "该操作需要载入全部条目，在超大图库上不可用。详见「关于 → 已知问题」。",
+    "catalogProgressWithEta": "已用 {elapsed}，预计还需 {remaining}",
+    "catalogProgressWithoutEta": "已用 {elapsed}",
     "collectionActionShowTitleSearch": "显示标题搜索框",
     "collectionActionHideTitleSearch": "隐藏标题搜索框",
     "collectionActionAddShortcut": "添加快捷方式",

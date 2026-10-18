@@ -121,7 +121,47 @@ void main() {
       expect(await database.countUncatalogued(), 0);
     });
 
-    test('stop halts between chunks and resumes after', () async {      await database.insertEntries({for (var i = 1; i <= 6; i++) entry(i)});
+    test('resumes the saved frontier and wraps to cover what precedes it', () async {
+      await database.insertEntries({for (var i = 1; i <= 3; i++) entry(i, dir: '/d$i')});
+      // A frontier from an earlier session: the sweep must continue after it and
+      // then wrap, or the rows before it would never be catalogued.
+      await database.saveCatalogCursor((directory: '/d1', id: 1));
+      final order = <int>[];
+      final w = worker(
+        catalogEntry: (entry) async {
+          order.add(entry.id);
+          entry.catalogMetadata = CatalogMetadata(id: entry.id);
+        },
+      );
+
+      await w.run(chunkSize: 10);
+
+      expect(order, [2, 3, 1]);
+      expect(await database.countUncatalogued(), 0);
+    });
+
+    test('a scoped pass keeps the library sweep out of its own rows', () async {
+      await database.insertEntries({entry(1), entry(2, dir: '/other')});
+      await database.saveCatalogCursor((directory: '/album', id: 1));
+      final scope = predicateForFilters({StoredAlbumFilter('/other', null)})!;
+      final order = <int>[];
+      final w = worker(
+        catalogEntry: (entry) async {
+          order.add(entry.id);
+          entry.catalogMetadata = CatalogMetadata(id: entry.id);
+        },
+      );
+
+      await w.run(chunkSize: 10, scope: scope);
+
+      // The scope's row is catalogued by the scoped pass, once, before the
+      // library pass resumes at its saved frontier.
+      expect(order, [2, 1]);
+      expect(await database.countUncatalogued(), 0);
+    });
+
+    test('stop halts between chunks and resumes after', () async {
+      await database.insertEntries({for (var i = 1; i <= 6; i++) entry(i)});
       late PagedCatalogWorker w;
       var calls = 0;
       w = worker(

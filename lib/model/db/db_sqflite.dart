@@ -423,6 +423,12 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   Future<List<BacklogCursor>> loadUncataloguedEntryIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required BacklogCursor after, required int limit}) =>
       throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
+  @override
+  Future<BacklogCursor?> loadCatalogCursor() => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<void> saveCatalogCursor(BacklogCursor cursor) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
   void _batchInsertMetadata(Batch batch, CatalogMetadata? metadata) {
     if (metadata == null) return;
     if (metadata.dateMillis != 0) {

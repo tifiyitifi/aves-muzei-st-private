@@ -6,6 +6,7 @@ import 'package:aves/features/drift_db/addresses/address_store.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
+import 'package:aves/features/drift_db/catalog/catalog_cursor_store.dart';
 import 'package:aves/features/drift_db/catalog/catalog_store.dart';
 import 'package:aves/features/drift_db/covers/cover_store.dart';
 import 'package:aves/features/drift_db/debug/debug_store.dart';
@@ -68,6 +69,7 @@ class DriftLocalMediaDb implements LocalMediaDb {
   late final VideoPlaybackStore _videoPlayback;
   late final DebugStore _debug;
   late final AppMetaStore _appMeta;
+  late final CatalogCursorStore _catalogCursor;
   Future<void>? _initFuture;
 
   @override
@@ -126,6 +128,7 @@ class DriftLocalMediaDb implements LocalMediaDb {
     _videoPlayback = VideoPlaybackStore(_db);
     _debug = DebugStore(_db);
     _appMeta = AppMetaStore(_db);
+    _catalogCursor = CatalogCursorStore(_appMeta);
     _ids = EntryIdAllocator(_db, _entries, _appMeta);
   }
 
@@ -341,6 +344,12 @@ class DriftLocalMediaDb implements LocalMediaDb {
   @override
   Future<List<BacklogCursor>> loadUncataloguedEntryIds({CollectionWindowPredicate predicate = const CollectionWindowPredicate(), required BacklogCursor after, required int limit}) =>
       _entries.loadUncataloguedEntryIds(predicate: predicate, after: after, limit: limit);
+
+  @override
+  Future<BacklogCursor?> loadCatalogCursor() => _catalogCursor.read();
+
+  @override
+  Future<void> saveCatalogCursor(BacklogCursor cursor) => _catalogCursor.write(cursor);
 
   // address
 

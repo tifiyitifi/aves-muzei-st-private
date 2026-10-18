@@ -92,6 +92,17 @@ void main() {
       expect(await pageIds(after: (directory: '/a', id: 3)), [1]);
     });
 
+    test('persists the sweep frontier, degrading an unusable value', () async {
+      expect(await service.loadCatalogCursor(), isNull);
+
+      await service.saveCatalogCursor((directory: '/a', id: 7));
+      expect(await service.loadCatalogCursor(), (directory: '/a', id: 7));
+
+      // A hand-edited or corrupt value restarts the sweep instead of failing it.
+      await db.customStatement("INSERT OR REPLACE INTO appMeta(key, value) VALUES('catalogCursor', 'garbage')");
+      expect(await service.loadCatalogCursor(), isNull);
+    });
+
     test('counts zero on empty or fully catalogued libraries', () async {
       expect(await service.countUncatalogued(), 0);
       expect(await pageIds(), isEmpty);

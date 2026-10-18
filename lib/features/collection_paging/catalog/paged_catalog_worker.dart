@@ -136,7 +136,11 @@ class PagedCatalogWorker {
     final predicate = scope ?? const CollectionWindowPredicate();
     final total = await database.countUncatalogued(predicate);
     if (total == 0) return;
-    var after = LocalMediaDb.backlogStart;
+    // A scoped pass sweeps its own scope once from the start. The unscoped pass
+    // resumes the persisted sweep and wraps once, so repeated short runs cover
+    // the whole backlog instead of re-walking its head.
+    var after = scope != null ? LocalMediaDb.backlogStart : await _resumeCursor();
+    var wrapped = scope != null;
     var done = 0;
     var stopCheckCount = 0;
     final pending = <CatalogMetadata>{};
@@ -151,8 +155,19 @@ class PagedCatalogWorker {
     source.setProgress(done: 0, total: total);
     while (!_stopRequested) {
       final page = await database.loadUncataloguedEntryIds(predicate: predicate, after: after, limit: chunkSize);
-      if (page.isEmpty) break;
+      if (page.isEmpty) {
+        if (wrapped) break;
+        // The end of the backlog: flush first, so the wrapped walk sees this
+        // run's rows as done instead of cataloguing them twice, then wrap once
+        // so the rows before the cursor are covered too.
+        await flush();
+        wrapped = true;
+        after = LocalMediaDb.backlogStart;
+        await database.saveCatalogCursor(after);
+        continue;
+      }
       after = page.last;
+      if (scope == null) await database.saveCatalogCursor(after);
       for (final entry in await _materialize({for (final cursor in page) cursor.id})) {
         try {
           await catalogEntry(entry);
@@ -219,6 +234,17 @@ class PagedCatalogWorker {
       await Future<void>.delayed(Duration.zero);
     }
     await flush();
+  }
+
+  /// The persisted sweep position, or the beginning when there is none (or the
+  /// stored value cannot be read).
+  Future<BacklogCursor> _resumeCursor() async {
+    try {
+      return await database.loadCatalogCursor() ?? LocalMediaDb.backlogStart;
+    } catch (error, stack) {
+      _log.w('catalog cursor read failed', error, stack);
+      return LocalMediaDb.backlogStart;
+    }
   }
 
   /// Materializes one chunk with catalog metadata and addresses attached

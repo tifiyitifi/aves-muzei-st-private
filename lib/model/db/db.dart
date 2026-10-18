@@ -227,6 +227,14 @@ abstract class LocalMediaDb {
   /// view can be catalogued before the rest of the library.
   Future<List<BacklogCursor>> loadUncataloguedEntryIds({CollectionWindowPredicate predicate, required BacklogCursor after, required int limit});
 
+  /// The persisted resume position of the catalog sweep, or null when it never
+  /// ran or its stored value is unusable. The sweep resumes from here and wraps
+  /// once, so repeated short runs cover a huge backlog fairly.
+  Future<BacklogCursor?> loadCatalogCursor();
+
+  /// Persists the catalog sweep's resume position.
+  Future<void> saveCatalogCursor(BacklogCursor cursor);
+
   // address
 
   Future<void> clearAddresses();

@@ -119,6 +119,22 @@ void main() {
       expect(s.mimeTypes, ['image/jpeg']);
     });
 
+    test('album media kinds come from the rows, unioned over a group', () async {
+      await database.insertEntries({entry(1, dir: '/images'), entry(2, dir: '/videos')});
+      await database.saveCatalogMetadata({CatalogMetadata(id: 2, mimeType: 'video/mp4')});
+      final s = summaries();
+      await s.ensureLoaded(SummaryDomain.albums);
+
+      expect(s.albumMediaKinds(StoredAlbumFilter('/images', null)), (hasImage: true, hasVideo: false));
+      expect(s.albumMediaKinds(StoredAlbumFilter('/videos', null)), (hasImage: false, hasVideo: true));
+      // A group holds what its members hold, like the legacy scan of its entries.
+      final group = AlbumGroupFilter(
+        Uri.parse('/group'),
+        SetOrFilter({StoredAlbumFilter('/images', null), StoredAlbumFilter('/videos', null)}),
+      );
+      expect(s.albumMediaKinds(group), (hasImage: true, hasVideo: true));
+    });
+
     test('resolves an album group aggregate on first touch', () async {
       await database.insertEntries({
         entry(1, dir: '/a', size: 10, sourceDateTaken: 100),

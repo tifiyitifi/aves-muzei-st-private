@@ -50,6 +50,10 @@ abstract class FilterSummaryProvider {
 
   AvesEntry? albumRecentEntry(AlbumBaseFilter filter);
 
+  /// Whether the album holds an image/video, mirroring `AvesEntry.isImage` and
+  /// `isVideo`. The albums grid groups by media kind on entry-free sources.
+  ({bool hasImage, bool hasVideo}) albumMediaKinds(AlbumBaseFilter filter);
+
   int tagCount(TagBaseFilter filter);
 
   int tagSize(TagBaseFilter filter);

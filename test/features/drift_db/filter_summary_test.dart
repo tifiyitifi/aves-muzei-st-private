@@ -150,6 +150,30 @@ void main() {
     test('returns empty list on empty database', () async {
       expect(await store.albumRows(noExclusion()), isEmpty);
     });
+
+    test('reports the media kinds an album holds', () async {
+      await service.insertEntries({entry(1, dir: '/images'), entry(2, dir: '/videos'), entry(3, dir: '/both'), entry(4, dir: '/both')});
+      // The source mime is a jpeg; the catalogued one replaces it.
+      await service.saveCatalogMetadata({
+        CatalogMetadata(id: 2, mimeType: 'video/mp4'),
+        CatalogMetadata(id: 3, mimeType: 'image/heic'),
+        CatalogMetadata(id: 4, mimeType: 'video/mp4'),
+      });
+
+      // The albums grid groups by media kind from here on a windowed source.
+      final kinds = {for (final row in await store.albumRows(noExclusion())) row.directory: (row.hasImage, row.hasVideo)};
+      expect(kinds['/images'], (true, false));
+      expect(kinds['/videos'], (false, true));
+      expect(kinds['/both'], (true, true));
+    });
+
+    test('counts an animated AVIF as a video, like the in-memory row', () async {
+      await service.insertEntries({entry(1, dir: '/avif')});
+      await service.saveCatalogMetadata({CatalogMetadata(id: 1, mimeType: 'image/avif', isAnimated: true)});
+
+      final row = (await store.albumRows(noExclusion())).single;
+      expect((row.hasImage, row.hasVideo), (true, true));
+    });
   });
 
   group('tagRows', () {

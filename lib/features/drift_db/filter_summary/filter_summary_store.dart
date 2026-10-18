@@ -22,6 +22,15 @@ class FilterSummaryStore {
   /// `bestDate` mirrors `AvesEntry.bestDate` (and `EntryStore.loadWindow`).
   static const String _bestDate = bestDateExpression;
 
+  /// `AvesEntry.mimeType`: catalogued mime first, source mime else.
+  static const String _mime = 'COALESCE(m.mimeType, e.sourceMimeType)';
+
+  /// `AvesEntry.isImage` / `isVideo`. The video test also counts an animated
+  /// AVIF (`CatalogMetadata.isAnimated` is bit 0 of the metadata flags).
+  static const String _isImage = "SUBSTR(COALESCE(m.mimeType, e.sourceMimeType), 1, 5) = 'image'";
+  static const String _isVideo =
+      "SUBSTR(COALESCE(m.mimeType, e.sourceMimeType), 1, 5) = 'video' OR (COALESCE(m.mimeType, e.sourceMimeType) = 'image/avif' AND (COALESCE(m.flags, 0) & 1) != 0)";
+
   static const String _joins = 'FROM entry e LEFT JOIN dateTaken dt ON dt.id = e.id LEFT JOIN metadata m ON m.id = e.id LEFT JOIN address a ON a.id = e.id';
 
   String _where(SummaryExclusion exclusion) {
@@ -35,6 +44,8 @@ class FilterSummaryStore {
     final rows = await db
         .customSelect(
           'SELECT DISTINCT e.directory AS k, COUNT(*) OVER w AS n, COALESCE(SUM(e.sizeBytes) OVER w, 0) AS s, MAX($_bestDate) OVER w AS md, '
+          'MAX(CASE WHEN $_isImage THEN 1 ELSE 0 END) OVER w AS img, '
+          'MAX(CASE WHEN $_isVideo THEN 1 ELSE 0 END) OVER w AS vid, '
           'FIRST_VALUE(e.id) OVER (PARTITION BY e.directory ORDER BY $_bestDate DESC, e.id DESC) AS rid '
           '$_joins ${_where(exclusion)} AND e.directory IS NOT NULL WINDOW w AS (PARTITION BY e.directory) ORDER BY k ASC',
           variables: _variables(exclusion),
@@ -48,6 +59,8 @@ class FilterSummaryStore {
           sizeBytes: (row.data['s'] as int?) ?? 0,
           maxBestDate: (row.data['md'] as int?) ?? 0,
           recentId: row.data['rid'] as int,
+          hasImage: ((row.data['img'] as int?) ?? 0) != 0,
+          hasVideo: ((row.data['vid'] as int?) ?? 0) != 0,
         ),
     ];
   }
@@ -154,11 +167,10 @@ SELECT id, SUBSTR(rest, 1, INSTR(rest, ';') - 1), SUBSTR(rest, INSTR(rest, ';') 
   /// The search page's format filters come from here when the source holds no
   /// entries (a windowed library), where scanning the entries would find none.
   Future<List<String>> mimeTypes(SummaryExclusion exclusion) async {
-    const mimeExpr = 'COALESCE(m.mimeType, e.sourceMimeType)';
     final rows = await db
         .customSelect(
-          'SELECT DISTINCT $mimeExpr AS k '
-          "$_joins ${_where(exclusion)} AND $mimeExpr IS NOT NULL AND $mimeExpr != '' "
+          'SELECT DISTINCT $_mime AS k '
+          "$_joins ${_where(exclusion)} AND $_mime IS NOT NULL AND $_mime != '' "
           'ORDER BY k ASC',
           variables: _variables(exclusion),
         )

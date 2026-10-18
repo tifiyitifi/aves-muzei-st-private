@@ -11,12 +11,19 @@ class AlbumSummaryRow {
   final int maxBestDate;
   final int recentId;
 
+  /// Whether the album holds an image/video, mirroring `AvesEntry.isImage` and
+  /// `isVideo` (which also counts an animated AVIF as a video). The albums grid
+  /// groups by media kind on entry-free (paged) sources.
+  final bool hasImage, hasVideo;
+
   const new({
     required this.directory,
     required this.count,
     required this.sizeBytes,
     required this.maxBestDate,
     required this.recentId,
+    required this.hasImage,
+    required this.hasVideo,
   });
 }
 

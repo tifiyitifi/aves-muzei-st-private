@@ -8,6 +8,7 @@ import 'package:aves/model/covers.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/container/album_group.dart';
+import 'package:aves/model/filters/container/container.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/container/tag_group.dart';
 import 'package:aves/model/filters/covered/location.dart';
@@ -323,6 +324,33 @@ class PagedFilterSummaries implements FilterSummaryProvider {
 
   @override
   AvesEntry? albumRecentEntry(AlbumBaseFilter filter) => filter is StoredAlbumFilter || _isContainer(filter) ? _recentByFilterKey[filter.key] : null;
+
+  @override
+  ({bool hasImage, bool hasVideo}) albumMediaKinds(AlbumBaseFilter filter) {
+    _kick(SummaryDomain.albums);
+    return _mediaKinds(filter, {});
+  }
+
+  /// The kinds an album holds, unioned over a container's members: a group of
+  /// albums holds what its albums hold, exactly like the legacy scan of its
+  /// entries. A member the per-album rows cannot answer (a tag or query filter
+  /// inside a group) contributes nothing, so such a group can read as mixed.
+  ({bool hasImage, bool hasVideo}) _mediaKinds(CollectionFilter filter, Set<String> visited) {
+    if (filter is StoredAlbumFilter) {
+      final row = _albums[filter.album];
+      return (hasImage: row?.hasImage ?? false, hasVideo: row?.hasVideo ?? false);
+    }
+    if (filter is ContainerFilter && visited.add(filter.key)) {
+      var hasImage = false, hasVideo = false;
+      for (final inner in filter.innerFilters) {
+        final kinds = _mediaKinds(inner, visited);
+        hasImage = hasImage || kinds.hasImage;
+        hasVideo = hasVideo || kinds.hasVideo;
+      }
+      return (hasImage: hasImage, hasVideo: hasVideo);
+    }
+    return (hasImage: false, hasVideo: false);
+  }
 
   @override
   int tagCount(TagBaseFilter filter) {

@@ -1,6 +1,7 @@
 import 'package:aves/model/app_inventory.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/dynamic_albums.dart';
+import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/props.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
@@ -207,13 +208,14 @@ class AlbumListPage extends StatelessWidget {
           if (sections.containsKey(regularKey)) regularKey: sections[regularKey]!,
         };
       case .mimeType:
+        // A windowed source holds no entries: each album's media kinds come from
+        // the summary domain, which aggregates them from the database.
         final visibleEntries = source.visibleEntries;
+        final summaries = visibleEntries.isEmpty ? source.summaries : null;
         sections = groupBy<FilterGridItem<AlbumBaseFilter>, ChipSectionKey>(unpinnedMapEntries, (kv) {
-          final matches = visibleEntries.where(kv.filter.test);
-          final hasImage = matches.any((v) => v.isImage);
-          final hasVideo = matches.any((v) => v.isVideo);
-          if (hasImage && !hasVideo) return MimeTypeSectionKey.images(context);
-          if (!hasImage && hasVideo) return MimeTypeSectionKey.videos(context);
+          final kinds = summaries != null ? summaries.albumMediaKinds(kv.filter) : _mediaKinds(visibleEntries, kv.filter);
+          if (kinds.hasImage && !kinds.hasVideo) return MimeTypeSectionKey.images(context);
+          if (!kinds.hasImage && kinds.hasVideo) return MimeTypeSectionKey.videos(context);
           return MimeTypeSectionKey.mixed(context);
         });
       case .volume:
@@ -247,5 +249,11 @@ class AlbumListPage extends StatelessWidget {
     }
 
     return sections;
+  }
+
+  /// The media kinds of an album's entries, as the in-memory grouping reads them.
+  static ({bool hasImage, bool hasVideo}) _mediaKinds(Iterable<AvesEntry> entries, AlbumBaseFilter filter) {
+    final matches = entries.where(filter.test);
+    return (hasImage: matches.any((v) => v.isImage), hasVideo: matches.any((v) => v.isVideo));
   }
 }

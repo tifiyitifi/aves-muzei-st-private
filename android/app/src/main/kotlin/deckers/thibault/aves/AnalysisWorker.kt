@@ -139,6 +139,7 @@ class AnalysisWorker(context: Context, parameters: WorkerParameters) : Coroutine
                     "start", hashMapOf(
                         "entryIds" to entryIdStrings?.map { Integer.parseUnsignedInt(it) }?.toList(),
                         "force" to inputData.getBoolean(KEY_FORCE, false),
+                        "paged" to inputData.getBoolean(KEY_PAGED, false),
                     )
                 )
             }
@@ -236,5 +237,6 @@ class AnalysisWorker(context: Context, parameters: WorkerParameters) : Coroutine
         const val NOTIFICATION_ID = 1
 
         const val KEY_FORCE = "force"
+        const val KEY_PAGED = "paged"
     }
 }

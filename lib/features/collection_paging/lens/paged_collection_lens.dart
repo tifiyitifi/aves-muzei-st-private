@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/catalog/catalog_prompt.dart';
+import 'package:aves/features/collection_paging/catalog/catalog_service.dart';
 import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dart';
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/collection_paging/lens/paged_lists.dart';
@@ -663,13 +664,7 @@ class PagedCollectionLens extends CollectionLens {
   Future<void> _runCatalogBacklog() async {
     final worker = _catalogWorker;
     if (worker == null || worker.isRunning) return;
-    final int uncatalogued;
-    try {
-      uncatalogued = await localMediaDb.countUncatalogued();
-    } catch (error, stack) {
-      _log.w('paged catalog backlog probe failed', error, stack);
-      return;
-    }
+    final uncatalogued = await _probeUncatalogued();
     if (uncatalogued == 0) return;
     if (catalogPrompt.shouldAsk(askBeforeCatalog: collectionPagingPrefs.askBeforeCatalog, uncatalogued: uncatalogued)) {
       // A backlog this large is long invisible work, so it waits for an answer
@@ -678,7 +673,7 @@ class PagedCollectionLens extends CollectionLens {
       catalogPrompt.markAsked(uncatalogued);
       return;
     }
-    await runCatalogBacklog();
+    await _sweepBacklog(worker, uncatalogued);
   }
 
   /// Sweeps the catalog backlog now, starting with this view's own scope.
@@ -687,8 +682,29 @@ class PagedCollectionLens extends CollectionLens {
   Future<void> runCatalogBacklog() async {
     final worker = _catalogWorker;
     if (worker == null || worker.isRunning) return;
-    // The view's own scope goes first: it is what the user is looking at, and
-    // the unscoped pass picks up the rest of the backlog afterwards.
+    final uncatalogued = await _probeUncatalogued();
+    if (uncatalogued == 0) return;
+    await _sweepBacklog(worker, uncatalogued);
+  }
+
+  Future<int> _probeUncatalogued() async {
+    try {
+      return await localMediaDb.countUncatalogued();
+    } catch (error, stack) {
+      _log.w('paged catalog backlog probe failed', error, stack);
+      return 0;
+    }
+  }
+
+  /// Sweeps the backlog: the view's own scope first, then the rest of the
+  /// library — unless the analysis service owns that rest, in which case the app
+  /// worker serves only the view so the two never race on the same rows.
+  Future<void> _sweepBacklog(PagedCatalogWorker worker, int uncatalogued) async {
+    if (shouldDelegateCatalogToService(canUseAnalysisService: settings.canUseAnalysisService, uncatalogued: uncatalogued)) {
+      await startPagedAnalysisService();
+      await worker.run(scope: _pagedPredicate, scopedOnly: true);
+      return;
+    }
     await worker.run(scope: _pagedPredicate);
   }
 

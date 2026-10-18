@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:aves/features/collection_paging/catalog/paged_analyzer.dart';
 import 'package:aves/l10n/l10n.dart';
 import 'package:aves/model/device.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -32,16 +33,17 @@ class AnalysisService {
     }
   }
 
-  static Future<void> startService({required bool force, List<int>? entryIds}) async {
+  static Future<void> startService({required bool force, List<int>? entryIds, bool paged = false}) async {
     // from Android 13 (API 33), notifications are off by default,
     // so the user needs to grant the permission to see the service notification
     unawaited(Permission.notification.request());
 
-    await reportService.log('Start analysis service${entryIds != null ? ' for ${entryIds.length} items' : ''}');
+    await reportService.log('Start analysis service${paged ? ' (paged)' : ''}${entryIds != null ? ' for ${entryIds.length} items' : ''}');
     try {
       await _platform.invokeMethod('startAnalysis', <String, Object?>{
         'entryIds': entryIds,
         'force': force,
+        'paged': paged,
       });
     } on PlatformException catch (e, stack) {
       await reportService.recordError(e, stack);
@@ -89,6 +91,7 @@ class Analyzer with WidgetsBindingObserver {
   late AppLocalizations _l10n;
   final ValueNotifier<AnalyzerState> _serviceStateNotifier = ValueNotifier<AnalyzerState>(AnalyzerState.stopped);
   AnalysisController? _controller;
+  PagedAnalyzer? _pagedAnalyzer;
   Timer? _notificationUpdateTimer;
   final _source = MediaStoreSource();
 
@@ -120,6 +123,7 @@ class Analyzer with WidgetsBindingObserver {
       LeakTracking.dispatchObjectDisposed(object: this);
     }
     _stopUpdateTimer();
+    _pagedAnalyzer?.stop();
     _controller?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _serviceStateNotifier.removeListener(_onServiceStateChanged);
@@ -136,9 +140,11 @@ class Analyzer with WidgetsBindingObserver {
   Future<void> start(Object? args) async {
     List<int>? entryIds;
     var force = false;
+    var paged = false;
     if (args is Map) {
       entryIds = (args['entryIds'] as List?)?.cast<int>();
       force = args['force'] ?? false;
+      paged = args['paged'] ?? false;
     }
     await reportService.log('Analyzer start for ${entryIds?.length ?? 'all'} entries');
     _controller?.dispose();
@@ -151,8 +157,21 @@ class Analyzer with WidgetsBindingObserver {
     settings.systemLocalesFallback = await deviceService.getLocales();
     _l10n = await AppLocalizations.delegate.load(settings.resolvedLocale);
     _serviceStateNotifier.value = AnalyzerState.running;
-    await _source.init(scope: CollectionSource.fullScope, analysisController: _controller);
+    _startNotificationTimer();
 
+    if (paged) {
+      // The backlog comes straight from the database, in bounded chunks: no
+      // library is loaded, so a collection too large for the legacy path can
+      // still be catalogued while the app is in the background.
+      _pagedAnalyzer = PagedAnalyzer(source: _source);
+      await _pagedAnalyzer!.run();
+      return;
+    }
+
+    await _source.init(scope: CollectionSource.fullScope, analysisController: _controller);
+  }
+
+  void _startNotificationTimer() {
     _notificationUpdateTimer = Timer.periodic(notificationUpdateInterval, (_) async {
       if (!isRunning) return;
       await _updateNotification();
@@ -161,6 +180,7 @@ class Analyzer with WidgetsBindingObserver {
 
   Future<void> stop() async {
     await reportService.log('Analyzer stop');
+    _pagedAnalyzer?.stop();
     _serviceStateNotifier.value = AnalyzerState.stopped;
   }
 

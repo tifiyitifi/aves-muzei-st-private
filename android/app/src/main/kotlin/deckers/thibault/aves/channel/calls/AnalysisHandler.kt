@@ -56,6 +56,9 @@ class AnalysisHandler<T>(private val activity: T, private val onAnalysisComplete
             result.error("startAnalysis-args", "missing arguments", null)
             return
         }
+        // paged analysis sweeps the database backlog instead of loading the whole
+        // library, so the Dart side needs to know which one to run
+        val paged = call.argument<Boolean>("paged") ?: false
 
         val activityManager = activity.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val runningAppProcesses = activityManager?.runningAppProcesses
@@ -80,6 +83,7 @@ class AnalysisHandler<T>(private val activity: T, private val onAnalysisComplete
 
         val workData = workDataOf(
             AnalysisWorker.KEY_FORCE to force,
+            AnalysisWorker.KEY_PAGED to paged,
         )
 
         WorkManager.getInstance(activity).beginUniqueWork(

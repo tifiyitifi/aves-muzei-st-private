@@ -160,6 +160,25 @@ void main() {
       expect(await database.countUncatalogued(), 0);
     });
 
+    test('a scoped-only pass leaves the rest of the library alone', () async {
+      await database.insertEntries({entry(1), entry(2, dir: '/other'), entry(3, dir: '/other')});
+      final scope = predicateForFilters({StoredAlbumFilter('/other', null)})!;
+      final order = <int>[];
+      final w = worker(
+        catalogEntry: (entry) async {
+          order.add(entry.id);
+          entry.catalogMetadata = CatalogMetadata(id: entry.id);
+        },
+      );
+
+      // Another owner (the analysis service) is taking the rest of the library,
+      // so this pass serves only the view the user is in.
+      await w.run(chunkSize: 10, scope: scope, scopedOnly: true);
+
+      expect(order, [2, 3]);
+      expect(await database.countUncatalogued(), 1);
+    });
+
     test('stop halts between chunks and resumes after', () async {
       await database.insertEntries({for (var i = 1; i <= 6; i++) entry(i)});
       late PagedCatalogWorker w;

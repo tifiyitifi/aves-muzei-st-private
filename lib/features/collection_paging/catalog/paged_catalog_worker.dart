@@ -41,6 +41,7 @@ class PagedCatalogWorker {
   bool _stopRequested = false;
   bool _pendingRun = false;
   bool _pendingPlaces = false;
+  bool _pendingScopedOnly = false;
   CollectionWindowPredicate? _pendingScope;
 
   new({
@@ -83,8 +84,12 @@ class PagedCatalogWorker {
   /// never dropped, and the eager pair always completes before any places pass
   /// so a coarse country write can never clobber a fine address. [stop] halts
   /// cooperatively between chunks.
-  Future<void> run({int chunkSize = 200, CollectionWindowPredicate? scope}) {
+  ///
+  /// [scopedOnly] sweeps [scope] and stops there, for when another owner (the
+  /// analysis service) is already taking the rest of the library.
+  Future<void> run({int chunkSize = 200, CollectionWindowPredicate? scope, bool scopedOnly = false}) {
     _pendingScope = scope;
+    _pendingScopedOnly = scopedOnly;
     _pendingRun = true;
     return _drain(chunkSize);
   }
@@ -107,9 +112,11 @@ class PagedCatalogWorker {
         if (_pendingRun) {
           _pendingRun = false;
           final scope = _pendingScope;
+          final scopedOnly = _pendingScopedOnly;
           _pendingScope = null;
-          await _runCatalog(chunkSize, scope);
-          if (!_stopRequested) await _runCountries(chunkSize, scope);
+          _pendingScopedOnly = false;
+          await _runCatalog(chunkSize, scope, scopedOnly: scopedOnly);
+          if (!_stopRequested) await _runCountries(chunkSize, scope, scopedOnly: scopedOnly);
         }
         if (!_stopRequested && _pendingPlaces) {
           _pendingPlaces = false;
@@ -133,10 +140,10 @@ class PagedCatalogWorker {
   }
 
   /// Runs the catalog pass, scoped rows first when [scope] is given.
-  Future<void> _runCatalog(int chunkSize, CollectionWindowPredicate? scope) async {
+  Future<void> _runCatalog(int chunkSize, CollectionWindowPredicate? scope, {required bool scopedOnly}) async {
     if (scope != null) {
       await _runCatalogPass(chunkSize, scope);
-      if (_stopRequested) return;
+      if (_stopRequested || scopedOnly) return;
     }
     await _runCatalogPass(chunkSize, null);
   }
@@ -201,10 +208,10 @@ class PagedCatalogWorker {
   }
 
   /// Runs the offline-country pass, scoped rows first when [scope] is given.
-  Future<void> _runCountries(int chunkSize, CollectionWindowPredicate? scope) async {
+  Future<void> _runCountries(int chunkSize, CollectionWindowPredicate? scope, {required bool scopedOnly}) async {
     if (scope != null) {
       await _runCountriesPass(chunkSize, scope);
-      if (_stopRequested) return;
+      if (_stopRequested || scopedOnly) return;
     }
     await _runCountriesPass(chunkSize, null);
   }

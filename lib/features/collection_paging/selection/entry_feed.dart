@@ -1,0 +1,118 @@
+import 'dart:async';
+
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/selection/selection_mark.dart';
+import 'package:aves/features/collection_paging/view/collection_targets.dart';
+import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/selection.dart';
+import 'package:aves/model/source/collection_lens.dart';
+import 'package:collection/collection.dart';
+
+/// Entries per batch. Small enough that one platform call never carries a huge
+/// payload, large enough that a whole library costs a handful of queries.
+const entryFeedBatchSize = 256;
+
+/// The entries an entry-set action runs on.
+///
+/// A whole-view selection is a *marker*, not a list: it can cover a million
+/// rows, so an action is never handed a materialized set. It asks the feed for
+/// bounded batches instead, and for a count it can show.
+///
+/// The scope is frozen when the feed is created: a row that arrives afterwards
+/// is not swept in, even though it matches the same marker.
+abstract interface class EntryFeed {
+  /// The largest feed an action that genuinely needs one set will take.
+  static const materializeLimit = 2000;
+
+  /// How many entries the action covers. Declared; never enumerated.
+  ///
+  /// Counts tiles, so a stack tile hides its members: an action may touch more
+  /// rows than this (see [batches]).
+  int get count;
+
+  /// Whether the feed is a whole-view declaration rather than an in-memory set.
+  bool get declared;
+
+  /// Whether [entry] belongs to the feed, for tile highlighting.
+  bool contains(AvesEntry entry);
+
+  /// Bounded batches, in database order, carrying the deep metadata an action
+  /// reads (catalog metadata, address, stack members) and already expanded, so a
+  /// batch holds what the legacy selection held.
+  Stream<List<AvesEntry>> batches();
+
+  /// A representative entry, for dialogs that only need one. Null when empty.
+  Future<AvesEntry?> first();
+
+  /// The whole feed, for the few actions that genuinely need one set.
+  ///
+  /// Throws [EntryFeedTooLargeException] past [limit]: such a caller must refuse
+  /// rather than risk the memory a whole scope would take.
+  Future<Set<AvesEntry>> materialize({int limit = materializeLimit});
+}
+
+/// Thrown when an action that needs one set meets a feed it cannot hold.
+class EntryFeedTooLargeException implements Exception {
+  final int count;
+  final int limit;
+
+  const new(this.count, this.limit);
+
+  @override
+  String toString() => '$runtimeType{count: $count, limit: $limit}';
+}
+
+/// A feed over entries already in memory: the legacy selection, and the loaded
+/// neighbourhood of a windowed collection.
+class MaterializedEntryFeed implements EntryFeed {
+  final List<AvesEntry> _entries;
+  final Set<AvesEntry> _set;
+
+  new(Iterable<AvesEntry> entries) : _entries = List.of(entries), _set = {} {
+    _set.addAll(_entries);
+  }
+
+  @override
+  bool get declared => false;
+
+  @override
+  int get count => _entries.length;
+
+  @override
+  bool contains(AvesEntry entry) => _set.contains(entry);
+
+  @override
+  Stream<List<AvesEntry>> batches() => Stream.fromIterable(_entries.slices(entryFeedBatchSize));
+
+  @override
+  Future<AvesEntry?> first() async => _entries.firstOrNull;
+
+  @override
+  Future<Set<AvesEntry>> materialize({int limit = EntryFeed.materializeLimit}) async {
+    if (_entries.length > limit) throw EntryFeedTooLargeException(_entries.length, limit);
+    return _set;
+  }
+}
+
+/// The feed an entry-set action runs on.
+///
+/// Selecting: the marker's declaration on a windowed collection, else the
+/// selected entries. Browsing: the whole collection — except on a windowed one,
+/// whose `sortedEntries` is a *lazy* list: walking it reads one skeleton per
+/// position and kicks a window for each, which on a huge library freezes the UI
+/// and hands the action placeholder entries. The loaded neighbourhood is the
+/// target set there instead.
+EntryFeed entryFeedFor(CollectionLens collection, Selection<AvesEntry> selection) {
+  final mark = selection.mark;
+  if (mark is CollectionSelectionMark && collection is PagedCollectionLens) {
+    final feed = collection.declaredFeed(mark);
+    if (feed != null) return feed;
+  }
+  return MaterializedEntryFeed(
+    collectionTargetItems(
+      collection: collection,
+      isSelecting: selection.isSelecting,
+      selectedItems: selection.selectedItems,
+    ),
+  );
+}

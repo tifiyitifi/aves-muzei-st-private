@@ -285,7 +285,7 @@
     "catalogPromptCatalogueButton": "開始編目",
     "albumCatalogBadgeTooltip": "還有 {count} 個項目尚未編目。點一下開始編目。",
     "albumCatalogBadgeOverflow": "999+",
-    "collectionSelectAllCapped": "此檢視共有 {total} 個項目，僅選取前 {count} 個。",
+    "entryFeedTooLargeMessage": "此操作一次最多處理 {limit} 個項目，目前已選 {count} 個。請先縮小範圍或取消部分選取。",
     "collectionActionShowTitleSearch": "顯示標題過濾器",
     "collectionActionHideTitleSearch": "隱藏標題過濾器",
     "collectionActionEmptyBin": "清空資源回收筒",

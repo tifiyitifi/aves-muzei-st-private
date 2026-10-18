@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
+import 'package:aves/features/collection_paging/selection/selection_mark.dart';
 import 'package:aves/features/collection_paging/view/skeleton_tile.dart';
 import 'package:aves/locale/calendar/calendar_utils.dart';
 import 'package:aves/model/app/permissions.dart';
@@ -683,6 +684,15 @@ class _CollectionScrollViewState extends State<_CollectionScrollView> with Widge
   void _sanitizeSelection(BuildContext context) {
     final selection = context.read<Selection<AvesEntry>?>();
     if (selection == null || !selection.isSelecting) return;
+
+    // A marked selection follows the view: narrowing it drops the rows the new
+    // scope excludes, and never adds rows back.
+    final mark = selection.mark;
+    final collection = widget.collection;
+    if (mark is CollectionSelectionMark && collection is PagedCollectionLens) {
+      final scope = collection.selectionScope;
+      if (scope != null) mark.refresh(scope);
+    }
 
     // check whether selection items are still within the filtered collection
     final collectionEntries = widget.collection.sortedEntries;

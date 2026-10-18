@@ -394,7 +394,7 @@ void main() {
       expect(await service.countUncatalogued(), 1);
     });
 
-    test('select all takes the loaded rows plus the scope head, under a cap', () async {
+    test('a marked view declares its whole scope, not just the loaded rows', () async {
       final service = await drift();
       await service.insertEntries({for (var i = 1; i <= 10; i++) entry(i, dateTaken: i * 10)});
       await collectionPagingPrefs.setLargeThreshold(1);
@@ -402,18 +402,24 @@ void main() {
       final lens = PagedCollectionLens(source: source, filters: {});
       addTearDown(lens.dispose);
       await settle(lens, done: () => lens.pagedActive && lens.entryCount == 10);
-      // Load the tail row: it is not in the scope's head, so the assertion
-      // below proves the loaded rows always make it in.
+      // Only the tail row is loaded: the mark must still cover the whole view.
       lens.sortedEntries[9];
       await settle(lens, done: () => lens.loadedEntries.any((entry) => entry.id == 1));
 
-      final items = await lens.selectAllItems(limit: 4);
+      final mark = lens.newSelectionMark()!;
+      expect(mark.count, 10);
 
-      // Bounded by the cap: the loaded row plus the scope's first three rows.
-      expect(items.map((entry) => entry.id).toSet(), {1, 10, 9, 8});
+      final feed = lens.declaredFeed(mark)!;
+      expect(feed.declared, isTrue);
+      expect(feed.count, 10);
+      final ids = <int>[];
+      await for (final batch in feed.batches()) {
+        ids.addAll(batch.map((entry) => entry.id));
+      }
+      expect(ids.toSet(), {for (var i = 1; i <= 10; i++) i});
     });
 
-    test('select all takes the whole view when it fits under the cap', () async {
+    test('a mark excludes the rows the user unmarked', () async {
       final service = await drift();
       await service.insertEntries({for (var i = 1; i <= 10; i++) entry(i, dateTaken: i * 10)});
       await collectionPagingPrefs.setLargeThreshold(1);
@@ -422,8 +428,16 @@ void main() {
       addTearDown(lens.dispose);
       await settle(lens, done: () => lens.pagedActive && lens.entryCount == 10);
 
-      final items = await lens.selectAllItems(limit: 100);
-      expect(items.length, 10);
+      final mark = lens.newSelectionMark()!;
+      final unmarked = entry(1, dateTaken: 10);
+      mark.unmark({unmarked});
+      expect(mark.count, 9);
+
+      final ids = <int>[];
+      await for (final batch in lens.declaredFeed(mark)!.batches()) {
+        ids.addAll(batch.map((entry) => entry.id));
+      }
+      expect(ids.toSet(), {for (var i = 2; i <= 10; i++) i});
     });
 
     test('places backlog runs lazily when locations load', () async {

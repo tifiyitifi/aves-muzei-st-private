@@ -1264,14 +1264,14 @@
     }
   },
   "albumCatalogBadgeOverflow": "999+",
-  "collectionSelectAllCapped": "This view has {total} items. Only the first {count} were selected.",
-  "@collectionSelectAllCapped": {
+  "entryFeedTooLargeMessage": "This action works on at most {limit} items at a time, and {count} are selected. Narrow the view or deselect some items first.",
+  "@entryFeedTooLargeMessage": {
     "placeholders": {
-      "count": {
+      "limit": {
         "type": "int",
         "format": "decimalPattern"
       },
-      "total": {
+      "count": {
         "type": "int",
         "format": "decimalPattern"
       }

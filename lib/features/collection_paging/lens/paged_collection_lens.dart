@@ -10,6 +10,8 @@ import 'package:aves/features/collection_paging/lens/paged_lists.dart';
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
+import 'package:aves/features/collection_paging/selection/declared_entry_feed.dart';
+import 'package:aves/features/collection_paging/selection/selection_mark.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/features/collection_paging/summary/paged_filter_summaries.dart';
 import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
@@ -220,75 +222,40 @@ class PagedCollectionLens extends CollectionLens {
   /// must never walk the lazy list.
   List<AvesEntry> get loadedEntries => [for (final state in _sectionStates) ...state.list.loadedItems];
 
-  /// Rows "select all" takes from a windowed view at most.
+  /// The scope this view declares, for a whole-view selection.
   ///
-  /// A selection is an in-memory set of entries, so a scope of a million rows
-  /// cannot be selected whole. This cap is generous enough for a whole album or
-  /// a filtered view, and the UI warns when it truncated the selection, so a
-  /// bulk action never runs on a silently partial set.
-  static const selectAllLimit = 2000;
-
-  /// The rows "select all" takes from this view: what is already loaded, plus
-  /// the scope's leading rows in the view's sort order while under [limit].
-  ///
-  /// The loaded rows are always included, even when the view is scrolled past
-  /// the scope's head, so the tiles the user is looking at light up. At most
-  /// [limit] distinct rows come back.
-  Future<Set<AvesEntry>> selectAllItems({int limit = selectAllLimit}) async {
-    final result = <AvesEntry>{...loadedEntries};
+  /// Null when the view cannot declare one: not paged, no SQL predicate, or the
+  /// calendar projection, whose rows are days rather than entries.
+  CollectionWindowPredicate? get selectionScope {
     final predicate = _pagedPredicate;
-    // The calendar projection's rows are days, not entries: only the loaded rows
-    // are taken there.
-    if (!pagedActive || predicate == null || _pagedDayRows || result.length >= limit) return result;
-    final List<AvesEntry> head;
-    try {
-      head = await localMediaDb.loadEntryWindow(
-        predicate: predicate,
-        sort: _pagedSort,
-        reverse: _pagedReverse,
-        limit: limit - result.length,
-        offset: 0,
-      );
-    } catch (error, stack) {
-      _log.w('paged select-all head load failed', error, stack);
-      return result;
-    }
-    if (_disposed) return result;
-    result.addAll(await _attachHeadExtras(head));
-    return result;
+    if (!pagedActive || predicate == null || _pagedDayRows) return null;
+    return predicate;
   }
 
-  /// Attaches the deep metadata of head rows, which the window SELECT does not
-  /// read: without it a head row would read as untagged, unlocated and unstacked
-  /// to whatever action took the selection.
+  /// A mark over this whole view, or null when the view cannot declare one.
   ///
-  /// Bounded chunks, like every other read here, so a cap of thousands of rows
-  /// costs a handful of indexed lookups instead of one oversized query.
-  Future<List<AvesEntry>> _attachHeadExtras(List<AvesEntry> rows) async {
-    if (rows.isEmpty) return rows;
-    final byId = {for (final row in rows) row.id: row};
-    try {
-      for (final slice in byId.keys.toList().slices(500)) {
-        final ids = slice.toSet();
-        final metaById = {for (final m in await localMediaDb.loadCatalogMetadataById(ids)) m.id: m};
-        final addressById = {for (final a in await localMediaDb.loadAddressesById(ids)) a.id: a};
-        final stacksById = _stackEntries ? await localMediaDb.loadStackMembers(ids) : const <int, List<AvesEntry>>{};
-        for (final id in ids) {
-          final row = byId[id];
-          if (row == null) continue;
-          row.catalogMetadata = metaById[id];
-          row.addressDetails = addressById[id];
-          final members = stacksById[id];
-          // Stack members ride on a new instance: the field is not settable.
-          if (members != null) byId[id] = row.copyWith(stackedEntries: members);
-        }
-      }
-    } catch (error, stack) {
-      // A failed attach must not cost the selection: the rows themselves are
-      // real, they just read as uncatalogued.
-      _log.w('paged select-all extras load failed', error, stack);
-    }
-    return byId.values.toList();
+  /// The count is seeded with the view's own total, so the app bar is right
+  /// before the database confirms it.
+  CollectionSelectionMark? newSelectionMark() {
+    final scope = selectionScope;
+    if (scope == null) return null;
+    return CollectionSelectionMark(scope: scope, count: _total);
+  }
+
+  /// The feed a mark resolves to on this view, or null when the view cannot
+  /// declare one.
+  ///
+  /// The predicate and the row count are read once, here: the feed walks a frozen
+  /// scope, so a file added while the action runs is not swept in even though it
+  /// matches the same mark.
+  DeclaredEntryFeed? declaredFeed(CollectionSelectionMark mark) {
+    if (selectionScope == null) return null;
+    return DeclaredEntryFeed(
+      mark: mark,
+      predicate: mark.predicate,
+      snapshotCount: mark.count,
+      stackEntries: _stackEntries,
+    );
   }
 
   /// The ratios the mosaic layout packs [key] with, or null while they load.

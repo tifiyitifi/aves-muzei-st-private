@@ -3,8 +3,8 @@ import 'dart:convert';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/selection/entry_feed.dart';
 import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
-import 'package:aves/features/collection_paging/view/collection_targets.dart';
 import 'package:aves/locale/intl.dart';
 import 'package:aves/model/device.dart';
 import 'package:aves/model/dynamic_albums.dart';
@@ -237,11 +237,11 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
       case .map:
         _goToMap(context);
       case .slideshow:
-        _goToSlideshow(context);
+        unawaited(_goToSlideshow(context));
       case .stats:
         _goToStats(context);
       case .rescan:
-        _rescan(context);
+        unawaited(_rescan(context));
       // selecting
       case .share:
         _share(context);
@@ -290,17 +290,31 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     }
   }
 
-  Set<AvesEntry> _getTargetItems(BuildContext context) {
-    final selection = context.read<Selection<AvesEntry>>();
-    return collectionTargetItems(
-      collection: context.read<CollectionLens>(),
-      isSelecting: selection.isSelecting,
-      selectedItems: selection.selectedItems,
-    );
+  /// The entries an entry-set action applies to.
+  ///
+  /// A whole-view selection is a marker, not a list: the feed resolves it in
+  /// bounded batches, and an action that needs one set at once must take the
+  /// whole feed. Such an action refuses past [EntryFeed.materializeLimit] and
+  /// tells the user the limit, instead of risking the memory a whole scope
+  /// would take.
+  Future<Set<AvesEntry>?> _getTargetEntries(BuildContext context) async {
+    final feed = entryFeedFor(context.read<CollectionLens>(), context.read<Selection<AvesEntry>>());
+    try {
+      return await feed.materialize();
+    } on EntryFeedTooLargeException catch (e) {
+      if (context.mounted) {
+        await showWarningDialog(
+          context: context,
+          message: context.l10n.entryFeedTooLargeMessage(e.limit, e.count),
+        );
+      }
+      return null;
+    }
   }
 
   Future<void> _share(BuildContext context) async {
-    final entries = _getTargetItems(context);
+    final entries = (await _getTargetEntries(context)) ?? {};
+    if (entries.isEmpty) return;
     try {
       if (!await appService.shareEntries(entries)) {
         await showNoMatchingAppDialog(context);
@@ -313,16 +327,18 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     }
   }
 
-  void _rescan(BuildContext context) {
-    final entries = _getTargetItems(context);
+  Future<void> _rescan(BuildContext context) async {
+    final entries = (await _getTargetEntries(context)) ?? {};
+    if (entries.isEmpty) return;
 
     final controller = AnalysisController(canStartService: true, force: true);
     final collection = context.read<CollectionLens>();
-    collection.source.analyze(controller, entries: entries).then((_) => controller.dispose());
+    await collection.source.analyze(controller, entries: entries);
+    controller.dispose();
   }
 
   Future<void> _delete(BuildContext context) async {
-    final entries = _getTargetItems(context);
+    final entries = (await _getTargetEntries(context)) ?? {};
     final byBinUsage = groupBy<AvesEntry, bool>(entries, (entry) {
       final details = vaults.getVault(entry.directory);
       return details?.useBin ?? settings.enableBin;
@@ -393,7 +409,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   Future<void> quickMove(BuildContext context, String destinationAlbum, {required bool copy}) async {
     if (!await unlockAlbum(context, destinationAlbum)) return;
 
-    final entries = _getTargetItems(context);
+    final entries = (await _getTargetEntries(context)) ?? {};
     await doQuickMove(
       context,
       moveType: copy ? MoveType.copy : MoveType.move,
@@ -404,12 +420,13 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   }
 
   Future<void> _move(BuildContext context, {required MoveType moveType}) async {
-    final entries = _getTargetItems(context);
+    final entries = (await _getTargetEntries(context)) ?? {};
     await doMove(context, moveType: moveType, entries: entries);
   }
 
   Future<void> _rename(BuildContext context) async {
-    final entries = _getTargetItems(context).toList();
+    final entries = ((await _getTargetEntries(context)) ?? const <AvesEntry>{}).toList();
+    if (entries.isEmpty) return;
 
     final pattern = await Navigator.maybeOf(context)?.push<NamingPattern>(
       MaterialPageRoute(
@@ -430,7 +447,8 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   }
 
   Future<void> _convert(BuildContext context) async {
-    final entries = _getTargetItems(context);
+    final entries = (await _getTargetEntries(context)) ?? {};
+    if (entries.isEmpty) return;
 
     final options = await showAvesDialog<EntryConvertOptions>(
       context: context,
@@ -449,8 +467,9 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   }
 
   Future<void> _copyToClipboard(BuildContext context) async {
-    final entries = _getTargetItems(context);
-    final success = entries.isNotEmpty && await appService.copyToClipboard(label: entries.first.bestTitle, uris: entries.map((entry) => entry.uri).toList());
+    final entries = (await _getTargetEntries(context)) ?? {};
+    if (entries.isEmpty) return;
+    final success = await appService.copyToClipboard(label: entries.first.bestTitle, uris: entries.map((entry) => entry.uri).toList());
     if (success) {
       showFeedback(context, FeedbackType.info, context.l10n.genericSuccessFeedback);
     } else {
@@ -459,7 +478,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   }
 
   Future<void> _exportGpx(BuildContext context) async {
-    final entries = _getTargetItems(context).where((entry) => entry.hasGps).sorted(AvesEntrySort.compareByDate).toList();
+    final entries = ((await _getTargetEntries(context)) ?? const <AvesEntry>{}).where((entry) => entry.hasGps).sorted(AvesEntrySort.compareByDate).toList();
     if (entries.isEmpty) return;
 
     final waypoints = entries
@@ -524,7 +543,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   }
 
   Future<void> _toggleFavourite(BuildContext context) async {
-    final entries = _getTargetItems(context);
+    final entries = (await _getTargetEntries(context)) ?? {};
     if (entries.every((entry) => entry.isFavourite)) {
       await favourites.removeEntries(entries);
     } else {
@@ -610,7 +629,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   Future<Set<AvesEntry>?> _getEditableTargetItems(
     BuildContext context, {
     required bool Function(AvesEntry entry) canEdit,
-  }) => _getEditableItems(context, _getTargetItems(context), canEdit: canEdit);
+  }) async => _getEditableItems(context, (await _getTargetEntries(context)) ?? {}, canEdit: canEdit);
 
   Future<Set<AvesEntry>?> _getEditableItems(
     BuildContext context,
@@ -810,7 +829,8 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
 
   Future<void> _goToMap(BuildContext context) async {
     final collection = context.read<CollectionLens>();
-    final entries = _getTargetItems(context);
+    final entries = await _getTargetEntries(context);
+    if (entries == null) return;
 
     // need collection with fresh ID to prevent hero from scroller on Map page to Collection page
     final mapCollection = CollectionLens(
@@ -826,19 +846,24 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     );
   }
 
-  void _goToSlideshow(BuildContext context) {
+  Future<void> _goToSlideshow(BuildContext context) async {
     final collection = context.read<CollectionLens>();
     final selection = context.read<Selection<AvesEntry>>();
     // A windowed collection must not be materialized into a fixed selection (the
     // walk would read one skeleton per position): the slideshow gets the
     // collection itself and shuffles the whole thing through its paged copy.
-    final slideshowCollection = !selection.isSelecting && collection is PagedCollectionLens && collection.pagedActive
-        ? collection.copyWith(listenToSource: false)
-        : CollectionLens(
-            source: collection.source,
-            filters: collection.filters,
-            fixedSelection: _getTargetItems(context).toList(),
-          );
+    final CollectionLens slideshowCollection;
+    if (!selection.isSelecting && collection is PagedCollectionLens && collection.pagedActive) {
+      slideshowCollection = collection.copyWith(listenToSource: false);
+    } else {
+      final entries = await _getTargetEntries(context);
+      if (entries == null) return;
+      slideshowCollection = CollectionLens(
+        source: collection.source,
+        filters: collection.filters,
+        fixedSelection: entries.toList(),
+      );
+    }
 
     Navigator.maybeOf(context)?.push(
       MaterialPageRoute(
@@ -860,7 +885,8 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     // selection is bounded by what the user picked, so it stays in memory.
     final pagedStats = !selection.isSelecting && collection is PagedCollectionLens && collection.pagedActive ? await pagedStatsSourceFor(collection.filters) : null;
     if (!context.mounted) return;
-    final entries = pagedStats != null ? const <AvesEntry>{} : _getTargetItems(context);
+    final entries = pagedStats != null ? const <AvesEntry>{} : await _getTargetEntries(context);
+    if (entries == null) return;
 
     Navigator.maybeOf(context)?.push(
       MaterialPageRoute(
@@ -984,8 +1010,9 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   }
 
   Future<void> _pickMultipleMedia(BuildContext context) async {
-    final selection = context.read<Selection<AvesEntry>>();
-    final uris = selection.selectedItems.map((entry) => entry.uri).toList();
+    final entries = await _getTargetEntries(context);
+    if (entries == null) return;
+    final uris = entries.map((entry) => entry.uri).toList();
     try {
       await IntentService.submitPickedItems(uris);
     } on TooManyItemsException catch (_) {

@@ -785,8 +785,8 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
       case .select:
         context.read<Selection<AvesEntry>>().select();
       case .selectAll:
-        // Bounded on a windowed collection, which cannot hold its whole scope.
-        await selectAllInCollection(context, collection);
+        // A windowed view marks its whole scope instead of enumerating it.
+        selectAllInCollection(context, collection);
       case .selectNone:
         context.read<Selection<AvesEntry>>().clearSelection();
       // browsing

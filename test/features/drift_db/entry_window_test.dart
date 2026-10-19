@@ -476,6 +476,11 @@ void main() {
     });
 
     test('recently added agrees around the 24h boundary', () async {
+      // The singleton refreshes the shared clock when it is constructed, and both
+      // the SQL and the in-memory test read that same clock: touch it first, then
+      // pin the snapshot the boundary rows are built from. Taking `now` before
+      // construction lets a one-second tick drop the 86399 row.
+      final filter = RecentlyAddedFilter.instance;
       RecentlyAddedFilter.updateNow();
       final now = RecentlyAddedFilter.nowSecs;
       final entries = [
@@ -486,9 +491,9 @@ void main() {
         entry(5, dateAdded: 0),
       ];
       await seed(entries);
-      await expectMatchesInMemory({RecentlyAddedFilter.instance}, entries);
-      await expectMatchesInMemory({RecentlyAddedFilter.instance.reverse()}, entries);
-      expect((await windowIds(predicate: predicateForFilters({RecentlyAddedFilter.instance})!)).toSet(), {1, 2});
+      await expectMatchesInMemory({filter}, entries);
+      await expectMatchesInMemory({filter.reverse()}, entries);
+      expect((await windowIds(predicate: predicateForFilters({filter})!)).toSet(), {1, 2});
     });
 
     test('orders dates like the legacy in-memory sort, including 0 and -1 fallbacks', () async {

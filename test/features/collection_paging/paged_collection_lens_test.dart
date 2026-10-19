@@ -398,14 +398,17 @@ void main() {
       await collectionPagingPrefs.setWindowSize(10);
       final catalogued = <int>[];
       var catalog = false;
+      var backlogStarted = false;
+      PagedCatalogWorker? worker;
       final lens = PagedCollectionLens(
         source: source,
         filters: {},
-        catalogWorkerFactory: ({required source}) => PagedCatalogWorker(
+        catalogWorkerFactory: ({required source}) => worker = PagedCatalogWorker(
           source: source,
           // The eager backlog is a no-op, so the badge keeps pending rows to
           // report; flipping the flag arms the on-demand pass.
           catalogEntry: (entry) async {
+            backlogStarted = true;
             if (!catalog) return;
             catalogued.add(entry.id);
             entry.catalogMetadata = CatalogMetadata(id: entry.id);
@@ -414,6 +417,10 @@ void main() {
       );
       addTearDown(lens.dispose);
       await settle(lens, done: () => lens.pagedActive && lens.albumUncatalogued('/a') == 2);
+      // The eager backlog runs unawaited, and `catalogAlbum` is a no-op while the
+      // worker is busy: hold the flag until that pass has started *and* finished,
+      // or the two sweeps race over the same rows.
+      await settle(lens, done: () => backlogStarted && worker?.isRunning == false);
 
       // The badge reads each album's own pending rows.
       expect(lens.albumUncatalogued('/a'), 2);

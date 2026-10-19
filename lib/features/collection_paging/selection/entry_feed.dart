@@ -21,7 +21,19 @@ const entryFeedBatchSize = 256;
 /// The scope is frozen when the feed is created: a row that arrives afterwards
 /// is not swept in, even though it matches the same marker.
 abstract interface class EntryFeed {
-  /// The largest feed an action that genuinely needs one set will take.
+  /// The largest *declared* feed an action that genuinely needs one payload will
+  /// take.
+  ///
+  /// This is a platform limit, not a semantic one: sharing, picking and the
+  /// clipboard hand every item to a single OS payload (an Intent's URI list, a
+  /// ClipData), which cannot be streamed. The windowed path therefore offers a
+  /// bounded version of those three actions only, and says so, instead of
+  /// materializing a whole scope. Every other action resolves its scope as a
+  /// predicate, a cursor, a fold or a permutation, and has no such limit.
+  ///
+  /// A materialized feed ignores it: its set is already in memory, so refusing it
+  /// protects nothing and would also take these actions away from the legacy
+  /// selection.
   static const materializeLimit = 2000;
 
   /// How many entries the action covers. Declared; never enumerated.
@@ -46,8 +58,9 @@ abstract interface class EntryFeed {
 
   /// The whole feed, for the few actions that genuinely need one set.
   ///
-  /// Throws [EntryFeedTooLargeException] past [limit]: such a caller must refuse
-  /// rather than risk the memory a whole scope would take.
+  /// A [declared] feed throws [EntryFeedTooLargeException] past [limit]: walking
+  /// a whole scope into memory is the cost this limit exists to prevent. A
+  /// materialized feed returns its set as is, since the set is already held.
   Future<Set<AvesEntry>> materialize({int limit = materializeLimit});
 }
 
@@ -87,11 +100,13 @@ class MaterializedEntryFeed implements EntryFeed {
   @override
   Future<AvesEntry?> first() async => _entries.firstOrNull;
 
+  /// The set already held: returned as is, whatever [limit] says.
+  ///
+  /// A materialized feed is the legacy selection (and the loaded neighbourhood of
+  /// a windowed view), so refusing a large one would take actions away from the
+  /// legacy path too — the one path whose behaviour must not change.
   @override
-  Future<Set<AvesEntry>> materialize({int limit = EntryFeed.materializeLimit}) async {
-    if (_entries.length > limit) throw EntryFeedTooLargeException(_entries.length, limit);
-    return _set;
-  }
+  Future<Set<AvesEntry>> materialize({int limit = EntryFeed.materializeLimit}) async => _set;
 }
 
 /// The feed an entry-set action runs on.

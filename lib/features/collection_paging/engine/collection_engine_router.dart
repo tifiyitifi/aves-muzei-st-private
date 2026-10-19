@@ -28,7 +28,11 @@ class EngineDecision {
   /// Load path for the view.
   final CollectionRoute route;
 
-  /// SQL predicate backing the view. Non-null exactly when [route] is paged.
+  /// SQL predicate backing the view, when the SQL layer can express it.
+  ///
+  /// Always set on a paged decision. A legacy decision carries it too when its
+  /// only reason to fall back is the size threshold, so a view whose *scope* is
+  /// small can still be served windowed when the *library* is too large to load.
   final CollectionWindowPredicate? predicate;
 
   /// Fresh total for [predicate], so the lens need not recount before first paint.
@@ -44,7 +48,10 @@ class EngineDecision {
     this.reason,
   });
 
-  const new legacy({int total = 0, String? reason}) : this._(route: CollectionRoute.legacy, total: total, reason: reason);
+  /// A full in-memory load. [predicate] is kept when the SQL layer can express
+  /// the same scope, so the view can still be paged if a full load turns out to
+  /// be unsafe (see `PagedCollectionLens._enterLegacy`).
+  const new legacy({int total = 0, String? reason, CollectionWindowPredicate? predicate}) : this._(route: CollectionRoute.legacy, total: total, reason: reason, predicate: predicate);
 
   const new paged({
     required CollectionWindowPredicate predicate,
@@ -111,7 +118,10 @@ class CollectionEngineRouter {
     if (total >= prefs.largeThreshold) {
       return EngineDecision.paged(predicate: predicate, total: total);
     }
-    return EngineDecision.legacy(total: total, reason: 'below the large-collection threshold');
+    // The scope is small but the predicate is already compiled: keep it, because
+    // the caller may still have to page it. The *library* decides whether a full
+    // load is safe, and that is a different count (see `allowFullLoad`).
+    return EngineDecision.legacy(total: total, reason: 'below the large-collection threshold', predicate: predicate);
   }
 
   /// Whether the whole library may be materialized in memory right now.

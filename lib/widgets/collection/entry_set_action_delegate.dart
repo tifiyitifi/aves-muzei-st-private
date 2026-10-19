@@ -320,9 +320,15 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   ///
   /// A whole-view selection is a marker, not a list: the feed resolves it in
   /// bounded batches, and an action that needs one set at once must take the
-  /// whole feed. Such an action refuses past [EntryFeed.materializeLimit] and
-  /// tells the user the limit, instead of risking the memory a whole scope
-  /// would take.
+  /// whole feed. A *declared* feed refuses past [EntryFeed.materializeLimit] and
+  /// tells the user, instead of walking a whole scope into memory.
+  ///
+  /// Sharing, picking and the clipboard are the only actions left that need one
+  /// set: each hands every item to a single OS payload (an Intent's URI list, a
+  /// ClipData) that cannot be streamed. The windowed path therefore offers
+  /// bounded versions of those three, and says so. A materialized feed (the
+  /// legacy selection, a loaded neighbourhood) is handed over whole, since its
+  /// set is already in memory.
   Future<Set<AvesEntry>?> _getTargetEntries(BuildContext context) async {
     final run = EntryFeedRun.current;
     if (run != null) {
@@ -344,6 +350,9 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   }
 
   Future<void> _share(BuildContext context) async {
+    // One Intent carries every URI, so this is bounded on the windowed path (see
+    // `_getTargetEntries`): a payload of a million URIs cannot be streamed, and
+    // the platform refuses it anyway.
     final entries = (await _getTargetEntries(context)) ?? {};
     if (entries.isEmpty) return;
     try {
@@ -501,6 +510,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   }
 
   Future<void> _copyToClipboard(BuildContext context) async {
+    // One ClipData carries every URI: bounded on the windowed path, like sharing.
     final entries = (await _getTargetEntries(context)) ?? {};
     if (entries.isEmpty) return;
     final success = await appService.copyToClipboard(label: entries.first.bestTitle, uris: entries.map((entry) => entry.uri).toList());
@@ -1067,6 +1077,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   }
 
   Future<void> _pickMultipleMedia(BuildContext context) async {
+    // One Intent carries every URI: bounded on the windowed path, like sharing.
     final entries = await _getTargetEntries(context);
     if (entries == null) return;
     final uris = entries.map((entry) => entry.uri).toList();

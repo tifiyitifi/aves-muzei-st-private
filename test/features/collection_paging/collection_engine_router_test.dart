@@ -92,6 +92,8 @@ void main() {
       );
       expect(decision.route, CollectionRoute.legacy);
       expect(decision.reason, isNotNull);
+      // Nothing for the windowed path to serve: the scope itself needs memory.
+      expect(decision.predicate, isNull);
     });
 
     test('auto pages at or above the threshold', () async {
@@ -108,6 +110,20 @@ void main() {
       await configure(engine: CollectionEngine.auto, threshold: 11);
       final decision = await router.resolve(filters: {}, database: driftDb);
       expect(decision.route, CollectionRoute.legacy);
+    });
+
+    test('a below-threshold scope keeps its predicate when the library is too large', () async {
+      await driftDb.insertEntries({entry(1), entry(2, directory: '/other'), entry(3, directory: '/other')});
+      // One row in the scope, three in the library: the scope is small, but the
+      // library is at the threshold, so a full load would materialize it all.
+      await configure(engine: CollectionEngine.auto, threshold: 2);
+      final decision = await router.resolve(filters: {StoredAlbumFilter('/album', null)}, database: driftDb);
+      expect(decision.route, CollectionRoute.legacy);
+      expect(decision.total, 1);
+      expect(decision.reason, 'below the large-collection threshold');
+      // Kept so the lens can page this scope instead of refusing it.
+      expect(decision.predicate, isNotNull);
+      expect(await router.allowFullLoad(database: driftDb), isFalse);
     });
 
     test('explicit paged forces the path on small collections', () async {

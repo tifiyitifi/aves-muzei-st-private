@@ -3,8 +3,9 @@ import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The feed an action runs on: an in-memory set is handed over whole, and a feed
-/// that needs one set refuses past the limit instead of risking the memory.
+/// The feed an action runs on: an in-memory set is handed over whole whatever
+/// the limit, and only a declared feed refuses past it instead of walking a
+/// whole scope into memory.
 void main() {
   AvesEntry entry(int id) => AvesEntry(
         id: id,
@@ -40,11 +41,14 @@ void main() {
     expect(batches.expand((batch) => batch).toSet(), entries);
   });
 
-  test('a feed that needs one set refuses past the limit', () async {
-    final feed = MaterializedEntryFeed([for (var i = 1; i <= 5; i++) entry(i)]);
+  test('a materialized set is handed over whole, whatever the limit', () async {
+    final entries = [for (var i = 1; i <= 5; i++) entry(i)];
+    final feed = MaterializedEntryFeed(entries);
 
-    expect(await feed.materialize(limit: 5), hasLength(5));
-    await expectLater(feed.materialize(limit: 4), throwsA(isA<EntryFeedTooLargeException>()));
+    // The set is already held, so the limit protects nothing: the legacy
+    // selection keeps the actions that used to refuse a large one.
+    expect(await feed.materialize(limit: 4), entries.toSet());
+    expect(await feed.materialize(), entries.toSet());
   });
 
   test('batches stay bounded', () async {

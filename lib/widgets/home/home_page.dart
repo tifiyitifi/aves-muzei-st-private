@@ -436,8 +436,15 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           await loadingCompleter.future;
 
           final filters = {StoredAlbumFilter(album, source.getStoredAlbumDisplayName(context, album))};
-          final pagedDecision = await const CollectionEngineRouter().resolve(filters: filters);
-          if (pagedDecision.route == CollectionRoute.paged) {
+          final decision = await const CollectionEngineRouter().resolve(filters: filters);
+          // One probe covers both branches: a paged decision never asks, and a
+          // legacy one asks once and reuses the answer below.
+          final allowFullLoad = decision.route != CollectionRoute.paged && await const CollectionEngineRouter().allowFullLoad();
+          // A scope below the size threshold still carries its predicate, so a
+          // small album in a library too large to load pages like any other view:
+          // only a scope with no windowed form opens the entry alone.
+          final paged = decision.route == CollectionRoute.paged || (!allowFullLoad && decision.predicate != null);
+          if (paged) {
             // Window-backed viewer: the opened entry's index comes from the
             // database order, so the neighbours resolve without any window
             // being materialized up front.
@@ -460,7 +467,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
               lens.dispose();
               collection = await _legacyViewCollection(source, filters, viewerEntry, (resolved) => viewerEntry = resolved);
             }
-          } else if (await const CollectionEngineRouter().allowFullLoad()) {
+          } else if (allowFullLoad) {
             collection = await _legacyViewCollection(source, filters, viewerEntry, (resolved) => viewerEntry = resolved);
           } else {
             // The album cannot be windowed (e.g. a locked vault) and the library

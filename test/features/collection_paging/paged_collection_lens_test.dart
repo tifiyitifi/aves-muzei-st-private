@@ -4,6 +4,7 @@ import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dar
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
+import 'package:aves/features/collection_paging/selection/entry_feed.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
@@ -172,10 +173,40 @@ void main() {
       final service = await drift();
       await service.insertEntries({entry(1), entry(2), entry(3)});
       await collectionPagingPrefs.setLargeThreshold(2);
-      final lens = PagedCollectionLens(source: source, filters: {QueryFilter('a', ACalendar.gregorian, live: true)});
+      // A `/regex/` query has no SQL translation, and the library cannot be fully
+      // loaded: there is nothing left to serve, so the view is refused.
+      final lens = PagedCollectionLens(source: source, filters: {QueryFilter(r'/./', ACalendar.gregorian)});
       addTearDown(lens.dispose);
       await settle(lens, done: () => lens.pagedBlocked);
       expect(lens.entryCount, 0);
+    });
+
+    test('a narrow query pages instead of blocking when a full load is unsafe', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2), entry(3)});
+      await collectionPagingPrefs.setLargeThreshold(2);
+      // A live search is compiled like any plain title query, so a scope below
+      // the threshold is paged: an empty result is a normal empty view, not the
+      // unsupported notice.
+      final lens = PagedCollectionLens(source: source, filters: {QueryFilter('zzz-no-match', ACalendar.gregorian, live: true)});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive);
+      expect(lens.pagedBlocked, isFalse);
+      expect(lens.entryCount, 0);
+    });
+
+    test('a small scope pages instead of blocking when a full load is unsafe', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2, dir: '/other'), entry(3, dir: '/other')});
+      // The view holds one row, the library three: a full load would materialize
+      // the library to show one album, so the scope is served windowed instead.
+      await collectionPagingPrefs.setLargeThreshold(2);
+      final lens = PagedCollectionLens(source: source, filters: {StoredAlbumFilter('/album', null)});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 1);
+      expect(lens.pagedBlocked, isFalse);
+      expect(lens.sections.length, 1);
+      expect(lens.sortedEntries.length, 1);
     });
 
     test('viewer copies resolve across windows instead of snapshotting', () async {
@@ -420,6 +451,20 @@ void main() {
         ids.addAll(batch.map((entry) => entry.id));
       }
       expect(ids.toSet(), {for (var i = 1; i <= 10; i++) i});
+    });
+
+    test('a declared feed still refuses to materialize past the limit', () async {
+      final service = await drift();
+      await service.insertEntries({for (var i = 1; i <= 10; i++) entry(i, dateTaken: i * 10)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 10);
+
+      // Only a declared feed walks a scope into memory, so only it keeps the cap.
+      final feed = lens.declaredFeed(lens.newSelectionMark()!)!;
+      expect(await feed.materialize(limit: 10), hasLength(10));
+      await expectLater(feed.materialize(limit: 9), throwsA(isA<EntryFeedTooLargeException>()));
     });
 
     test('a mark excludes the rows the user unmarked', () async {

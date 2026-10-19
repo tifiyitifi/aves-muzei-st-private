@@ -543,7 +543,7 @@ class PagedCollectionLens extends CollectionLens {
     } catch (error, stack) {
       if (!_current(gen)) return;
       _log.e('paged reload failed', error, stack);
-      _enterBlocked();
+      _enterBlocked('the reload failed');
     } finally {
       _reloading = false;
       if (!_ready.isCompleted) _ready.complete();
@@ -581,15 +581,22 @@ class PagedCollectionLens extends CollectionLens {
 
   /// Legacy path inside the paged lens: only taken when a full load is provably
   /// safe (see `CollectionEngineRouter.allowFullLoad`), so a huge library is
-  /// never materialized here — not even for a scope the SQL layer cannot
-  /// express, which then shows the unsupported notice instead. Display calls
+  /// never materialized here. A scope the SQL layer cannot express then shows the
+  /// unsupported notice instead. A scope it *can* express is paged, even though
+  /// it fell below the size threshold: it is the library that is too large, and
+  /// one small album is exactly what the windowed path is for. Display calls
   /// delegate to `super` afterwards.
   Future<void> _enterLegacy(EngineDecision decision, int gen) async {
     if (source.loadedScope != CollectionSource.fullScope) {
       final allowed = await const CollectionEngineRouter().allowFullLoad();
       if (!_current(gen)) return;
       if (!allowed) {
-        _enterBlocked();
+        final predicate = decision.predicate;
+        if (predicate != null) {
+          await _enterPaged(EngineDecision.paged(predicate: predicate, total: decision.total), gen);
+          return;
+        }
+        _enterBlocked('the scope needs the in-memory path and a full load is unsafe');
         return;
       }
       await source.init(scope: CollectionSource.fullScope);
@@ -605,7 +612,12 @@ class PagedCollectionLens extends CollectionLens {
     notifyListeners();
   }
 
-  void _enterBlocked() {
+  /// Marks the view unusable, saying why in the log.
+  ///
+  /// The notice the grid shows is generic, so the reason would otherwise be lost:
+  /// this is the only way to tell a refused view from a legitimately empty one.
+  void _enterBlocked([String? reason]) {
+    _log.d('paged view blocked${reason == null ? '' : ': $reason'}');
     _blocked = true;
     _morphed = false;
     _pagedActive = false;
@@ -620,7 +632,7 @@ class PagedCollectionLens extends CollectionLens {
   Future<void> _enterPaged(EngineDecision decision, int gen) async {
     final resolved = decision.predicate;
     if (resolved == null) {
-      _enterBlocked();
+      _enterBlocked('the view has no window predicate');
       return;
     }
     // A view may add its own atoms (the slideshow's video exclusion): they are
@@ -645,7 +657,7 @@ class PagedCollectionLens extends CollectionLens {
 
     final grouping = _resolveGrouping();
     if (grouping == null) {
-      _enterBlocked();
+      _enterBlocked('the view has no paged grouping');
       return;
     }
 

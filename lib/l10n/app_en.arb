@@ -648,6 +648,7 @@
   "aboutKnownIssues1": "Very large collections are browsed by paging the database instead of loading every item into memory. A few views that need all items at once show a notice there instead of risking a crash.",
   "aboutKnownIssues2": "In that mode, month/day sections and date filters (including YEAR/MONTH/DAY queries) support the Gregorian calendar only; the Hijri and Persian calendars fall back to that notice.",
   "aboutKnownIssues3": "Regular-expression queries (/.../) are not available on very large collections.",
+  "aboutKnownIssues4": "On very large collections, sharing, picking and copying to the clipboard are limited to a few thousand items at a time, because each passes the entire list in a single system request that cannot be split. Every other action covers the whole selection.",
 
   "policyPageTitle": "Privacy Policy",
 

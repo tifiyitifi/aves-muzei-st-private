@@ -270,6 +270,7 @@
     "aboutKnownIssues1": "超大型媒體庫改為分頁讀取資料庫，不再將全部項目載入記憶體。少數需要「全部項目」的檢視在這種媒體庫上會顯示提示，而不是冒險當掉。",
     "aboutKnownIssues2": "該模式下，月/日分段與日期篩選（含 YEAR/MONTH/DAY 查詢）僅支援公曆；伊斯蘭曆與波斯曆會回退到上述提示。",
     "aboutKnownIssues3": "超大型媒體庫上不支援正規表示式查詢（/.../）。",
+    "aboutKnownIssues4": "超大型媒體庫上，分享、多選與複製到剪貼簿一次最多只處理幾千個項目：它們必須把整份清單放進一次系統請求，無法拆分。其餘操作都能涵蓋整個選取範圍。",
     "policyPageTitle": "隱私政策",
     "collectionPageTitle": "收藏品",
     "collectionSelectPageTitle": "選擇項目",

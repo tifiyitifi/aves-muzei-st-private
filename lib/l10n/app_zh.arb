@@ -259,6 +259,7 @@
     "aboutKnownIssues1": "超大图库改为分页读取数据库，不再把全部条目载入内存。少数需要「全部条目」的视图在这种图库上会显示提示，而不是冒险崩溃。",
     "aboutKnownIssues2": "该模式下，月/日分区与日期筛选（含 YEAR/MONTH/DAY 查询）仅支持公历；伊斯兰历与波斯历会回退到上述提示。",
     "aboutKnownIssues3": "超大图库上不支持正则查询（/.../）。",
+    "aboutKnownIssues4": "超大图库上，分享、多选与复制到剪贴板一次最多只处理几千个条目：它们必须把整份列表放进一次系统请求，无法拆分。其余操作都能覆盖整个选择范围。",
     "policyPageTitle": "隐私政策",
     "collectionPageTitle": "媒体集",
     "collectionPickPageTitle": "挑选",

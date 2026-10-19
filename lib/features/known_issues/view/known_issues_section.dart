@@ -37,6 +37,7 @@ class KnownIssuesSection extends StatelessWidget {
       l10n.aboutKnownIssues1,
       l10n.aboutKnownIssues2,
       l10n.aboutKnownIssues3,
+      l10n.aboutKnownIssues4,
     ];
     return Column(
       crossAxisAlignment: .start,

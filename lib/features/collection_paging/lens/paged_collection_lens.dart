@@ -13,6 +13,7 @@ import 'package:aves/features/collection_paging/query/collection_window_predicat
 import 'package:aves/features/collection_paging/selection/declared_entry_feed.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/features/collection_paging/selection/selection_mark.dart';
+import 'package:aves/features/collection_paging/selection/selection_trait.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/features/collection_paging/summary/paged_filter_summaries.dart';
 import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
@@ -24,6 +25,7 @@ import 'package:aves/locale/calendar/calendar_utils.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/filters/rating.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
 import 'package:aves/model/source/collection_source.dart';
@@ -36,6 +38,7 @@ import 'package:aves/model/vaults/vaults.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
+import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 
 const _log = AreaKeyLog(collectionPagingLogKey);
@@ -276,6 +279,68 @@ class PagedCollectionLens extends CollectionLens {
       count: mark.expandedCount,
       stackEntries: _stackEntries,
     );
+  }
+
+  /// The trait a section header stands for, or null when the section has no
+  /// exact trait (the caller then keeps the legacy loaded-rows behaviour).
+  ///
+  /// Every kind compiles to the rows the section's own window selects, so
+  /// deselecting a section from its header removes exactly what it shows: an
+  /// album is its `directory` (the `IS NULL` bucket included), a rating is the
+  /// coalesced rating column, and a date section is the local range of the very
+  /// date expression the grouping uses.
+  SelectionTrait? sectionTrait(SectionKey key) {
+    switch (key) {
+      case EntryAlbumSectionKey(directory: final directory):
+        if (directory == null) {
+          // The bucket of entries with no directory: the grouping key is NULL
+          // itself, and no album filter can name it.
+          return SelectionTrait(
+            fragment: (sql: 'e.directory IS NULL', variables: const [], requires: const {}),
+            test: (entry) => entry.directory == null,
+          );
+        }
+        return SelectionTrait.fromFilter(StoredAlbumFilter(directory, null));
+      case EntryRatingSectionKey(rating: final rating):
+        return SelectionTrait.fromFilter(RatingFilter(rating));
+      case EntryDateSectionKey(year: final year, month: final month, day: final day):
+        final range = _dateSectionRange(year: year, month: month, day: day);
+        if (range == null) return null;
+        final (from, to) = range;
+        // The calendar projection groups days that all carry a usable date;
+        // every other date section groups on the epoch fallback, which files an
+        // entry without any date under the first month of 1970.
+        final requiresDate = _pagedDayRows;
+        return SelectionTrait(
+          fragment: (
+            sql: '($bestDateExpression >= ? AND $bestDateExpression < ?)',
+            variables: [Variable(from), Variable(to)],
+            requires: const {WindowTable.dateTaken},
+          ),
+          test: (entry) {
+            final bestDate = entry.bestDate;
+            if (requiresDate && bestDate == null) return false;
+            // An entry with no usable date has the epoch fallback in SQL too.
+            final millis = bestDate?.millisecondsSinceEpoch ?? 0;
+            return millis >= from && millis < to;
+          },
+        );
+      default:
+        return null;
+    }
+  }
+
+  /// The half-open local-time millisecond range of a date section, or null when
+  /// the section key names no date.
+  static (int, int)? _dateSectionRange({required int? year, required int? month, required int? day}) {
+    if (year == null) return null;
+    final from = DateTime(year, month ?? 1, day ?? 1);
+    final to = day != null
+        ? DateTime(year, month ?? 1, day + 1)
+        : month != null
+            ? DateTime(year, month + 1)
+            : DateTime(year + 1);
+    return (from.millisecondsSinceEpoch, to.millisecondsSinceEpoch);
   }
 
   /// The ratios the mosaic layout packs [key] with, or null while they load.

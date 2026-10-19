@@ -589,6 +589,7 @@
   "menuActionSelect": "Select",
   "menuActionSelectAll": "Select all",
   "menuActionSelectNone": "Select none",
+  "menuActionSelectByTrait": "Select by trait",
   "menuActionMap": "Map",
   "menuActionSlideshow": "Slideshow",
   "menuActionStats": "Stats",
@@ -777,6 +778,8 @@
 
   "collectionSelectSectionTooltip": "Select section",
   "collectionDeselectSectionTooltip": "Deselect section",
+  "collectionSelectionTraitDeselect": "Deselect",
+  "collectionSelectionTraitUndo": "Undo",
 
   "drawerAboutButton": "About",
   "drawerSettingsButton": "Settings",

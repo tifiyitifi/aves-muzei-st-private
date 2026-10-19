@@ -4,6 +4,7 @@ enum EntrySetAction {
   select,
   selectAll,
   selectNone,
+  selectByTrait,
   // browsing
   searchCollection,
   toggleLayoutBar,
@@ -48,6 +49,7 @@ class EntrySetActions {
     .select,
     .selectAll,
     .selectNone,
+    .selectByTrait,
   ];
 
   // `null` items are converted to dividers

@@ -5,7 +5,9 @@ import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
+import 'package:aves/features/collection_paging/selection/selection_mark.dart';
 import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
+import 'package:aves/features/collection_paging/view/selection_traits_sheet.dart';
 import 'package:aves/locale/intl.dart';
 import 'package:aves/model/device.dart';
 import 'package:aves/model/dynamic_albums.dart';
@@ -93,6 +95,10 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
         return (isSelecting && selectedItemCount < itemCount) || (!isSelecting && settings.collectionBrowsingQuickActions.contains(action));
       case .selectNone:
         return isSelecting && selectedItemCount == itemCount;
+      case .selectByTrait:
+        // Only meaningful while selecting: the app bar additionally hides it
+        // when the selection is enumerated rather than marked.
+        return isMain && isSelecting && !isTrash;
       // browsing
       case .searchCollection:
         return appMode.canNavigate && !isSelecting && !useTvLayout;
@@ -166,6 +172,8 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
         return selectedItemCount < itemCount || (!isSelecting && settings.collectionBrowsingQuickActions.contains(action));
       case .selectNone:
         return hasSelection;
+      case .selectByTrait:
+        return hasSelection;
       case .searchCollection:
       case .toggleLayoutBar:
       case .toggleTitleSearch:
@@ -219,6 +227,8 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
       case .selectAll:
       case .selectNone:
         break;
+      case .selectByTrait:
+        unawaited(_selectByTrait(context));
       // browsing
       case .searchCollection:
         _goToSearch(context);
@@ -1043,6 +1053,17 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
   Future<void> _pickCollectionFilters(BuildContext context) async {
     final filters = context.read<CollectionLens>().filters;
     await IntentService.submitPickedCollectionFilters(filters);
+  }
+
+  /// Opens the trait sheet over the selection's mark.
+  ///
+  /// A declared (whole-view) selection is the only one that can hold traits: an
+  /// enumerated one has no place to remember a rule, so the app bar hides this
+  /// action there.
+  Future<void> _selectByTrait(BuildContext context) async {
+    final mark = context.read<Selection<AvesEntry>>().mark;
+    if (mark is! CollectionSelectionMark) return;
+    await showSelectionTraitsSheet(context, mark);
   }
 
   Future<void> _pickMultipleMedia(BuildContext context) async {

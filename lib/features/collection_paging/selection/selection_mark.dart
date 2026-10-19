@@ -2,12 +2,16 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
+import 'package:aves/features/collection_paging/selection/selection_trait.dart';
 import 'package:aves/model/entry/entry.dart';
-import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/selection.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
+
+/// A SQL fragment carrying its own variables, so parts can be concatenated in
+/// the exact order their placeholders appear.
+typedef _Sql = ({String sql, List<Variable> variables});
 
 /// What a whole-view selection covers on a windowed view.
 ///
@@ -34,10 +38,17 @@ class SelectionScope {
 /// A selection declared over a whole collection view.
 ///
 /// "Select all" on a windowed collection cannot enumerate a million rows, so the
-/// view is marked as a whole and only the *unmarked* rows are remembered: the
-/// files the user tapped off, and the traits (filters) the user excluded. The
-/// count and the SQL scope are derived from that pair, so the marker costs
-/// nothing to hold and answers a tile's highlight in memory.
+/// view is marked as a whole and only what leaves the mark is remembered, in
+/// three layers of decreasing priority:
+///
+///  * a manual tap on a tile, which always wins and is not ordered;
+///  * a trait history: "select/deselect every row of this album, month, rating,
+///    tag, location", appended by a section header or the trait sheet, where for
+///    a row several traits cover the *last* op covering it decides;
+///  * the view's own scope, which marks everything no trait op covers.
+///
+/// The count, the walk and a tile's highlight are all derived from that, so the
+/// marker costs nothing to hold — it never enumerates the rows it covers.
 ///
 /// The scope only ever shrinks: narrowing the view (adding a filter) intersects
 /// the mark with it, exactly as the legacy selection dropped the entries that
@@ -53,11 +64,16 @@ class CollectionSelectionMark extends ChangeNotifier implements SelectionMark<Av
 
   late bool _dayRows;
 
-  /// Rows the user tapped off.
-  final Set<int> _unmarkedIds = {};
+  /// Trait operations, oldest first. Append-only: the last op covering a row
+  /// decides, and undoing one appends its opposite.
+  final List<SelectionTraitOp> _ops = [];
 
-  /// Traits the user excluded: every row matching any of them is unmarked.
-  final Set<CollectionFilter> _unmarkedFilters = {};
+  /// Rows the user tapped on, above every trait.
+  final Set<int> _manualSelected = {};
+
+  /// Rows the user tapped off, above every trait. Disjoint from
+  /// [_manualSelected]: the later tap of the two wins.
+  final Set<int> _manualUnselected = {};
 
   late int _count;
   late int _expandedCount;
@@ -87,78 +103,115 @@ class CollectionSelectionMark extends ChangeNotifier implements SelectionMark<Av
   /// calendar projection, whose tiles are days.
   int get walkCount => _dayRows ? _expandedCount : _count;
 
+  /// The trait history, oldest first, for the sheet that lets the user undo one.
+  List<SelectionTraitOp> get ops => List.unmodifiable(_ops);
+
   /// The scope an action walks, with the unmarked rows excluded.
-  CollectionWindowPredicate get tilePredicate => _exclude(_tiles);
+  CollectionWindowPredicate get tilePredicate => _compose(_tiles);
 
   /// The scope a count reports, with the unmarked rows excluded.
-  CollectionWindowPredicate get entryPredicate => _exclude(_entries);
+  CollectionWindowPredicate get entryPredicate => _compose(_entries);
 
-  CollectionWindowPredicate _exclude(CollectionWindowPredicate scope) => CollectionWindowPredicate(
-        conjunction: [
-          ...scope.conjunction,
-          if (_unmarkedIds.isNotEmpty)
-            (
-              sql: 'e.id NOT IN (${List.filled(_unmarkedIds.length, '?').join(', ')})',
-              variables: [for (final id in _unmarkedIds) Variable(id)],
-              requires: const <WindowTable>{},
-            ),
-          for (final filter in _unmarkedFilters) ..._filterExclusion(filter),
-        ],
-        trashedOnly: scope.trashedOnly,
-      );
+  CollectionWindowPredicate _compose(CollectionWindowPredicate scope) {
+    final mark = _markWhere();
+    if (mark == null) return scope;
+    return CollectionWindowPredicate(
+      conjunction: [
+        ...scope.conjunction,
+        (
+          sql: mark.sql,
+          variables: mark.variables,
+          // The traits read the tables their own fragments declare, so a count
+          // and a walk join exactly what they touch.
+          requires: {for (final op in _ops) ...op.trait.fragment.requires},
+        ),
+      ],
+      trashedOnly: scope.trashedOnly,
+    );
+  }
 
   @override
-  bool isMarked(AvesEntry entry) => !_unmarkedIds.contains(entry.id) && !_unmarkedFilters.any((filter) => filter.test(entry));
+  bool isMarked(AvesEntry entry) {
+    final id = entry.id;
+    if (_manualSelected.contains(id)) return true;
+    if (_manualUnselected.contains(id)) return false;
+    // The last op covering the row decides; a row no op covers keeps the view's
+    // own default, marked.
+    for (var i = _ops.length - 1; i >= 0; i--) {
+      final op = _ops[i];
+      if (op.trait.test(entry)) return op.select;
+    }
+    return true;
+  }
 
   @override
   void mark(Iterable<AvesEntry> entries) {
-    var changed = false;
+    var gained = 0;
     for (final entry in entries) {
-      if (_unmarkedIds.remove(entry.id)) changed = true;
+      // Already marked by the view or a trait: a tap adds nothing, and must not
+      // claim a row the count already holds.
+      if (isMarked(entry)) continue;
+      final id = entry.id;
+      _manualUnselected.remove(id);
+      if (_manualSelected.add(id)) gained++;
     }
-    if (!changed) return;
+    if (gained == 0) return;
+    // Show the rise at once, then let the database confirm the exact count.
+    _count += gained;
+    _expandedCount += gained;
     unawaited(_recount());
     notifyListeners();
   }
 
   @override
   void unmark(Iterable<AvesEntry> entries) {
-    var changed = false;
+    var lost = 0;
     for (final entry in entries) {
-      if (_unmarkedIds.add(entry.id)) changed = true;
+      if (!isMarked(entry)) continue;
+      final id = entry.id;
+      _manualSelected.remove(id);
+      if (_manualUnselected.add(id)) lost++;
     }
-    if (!changed) return;
+    if (lost == 0) return;
     // Show the drop at once, then let the database confirm the exact count.
-    _count = max(0, _count - 1);
-    _expandedCount = max(0, _expandedCount - 1);
+    _count = max(0, _count - lost);
+    _expandedCount = max(0, _expandedCount - lost);
     unawaited(_recount());
     notifyListeners();
   }
 
-  /// Unmarks every row matching [filters], without enumerating them.
+  /// Appends a trait operation selecting every row of [trait].
+  ///
+  /// This is how a section the user had deselected is taken back, and how a
+  /// trait is selected without enumerating its rows.
+  void selectTrait(SelectionTrait trait, {required String label}) => _appendTrait(trait, select: true, label: label);
+
+  /// Appends a trait operation deselecting every row of [trait].
   ///
   /// This is how a whole album (or any other trait) is deselected from a marked
   /// view: the rule is remembered, not the rows it matches.
-  void unmarkTraits(Set<CollectionFilter> filters) {
-    var changed = false;
-    for (final filter in filters) {
-      if (_unmarkedFilters.add(filter)) changed = true;
-    }
-    if (!changed) return;
+  void deselectTrait(SelectionTrait trait, {required String label}) => _appendTrait(trait, select: false, label: label);
+
+  /// A trait op never touches the manual layers: a row the user tapped stays
+  /// exactly as tapped, whatever traits are added around it.
+  void _appendTrait(SelectionTrait trait, {required bool select, required String label}) {
+    _ops.add(SelectionTraitOp(trait: trait, select: select, label: label));
     unawaited(_recount());
     notifyListeners();
   }
 
   @override
   void clear() {
-    _unmarkedIds.clear();
-    _unmarkedFilters.clear();
+    _ops.clear();
+    _manualSelected.clear();
+    _manualUnselected.clear();
   }
 
   /// Intersects the marker with the view's current scopes.
   ///
   /// A filter the user adds afterwards removes the rows it excludes from the
-  /// selection; it never adds rows back.
+  /// selection; it never adds rows back. The trait history needs no adjustment:
+  /// the whole mark is already intersected with the new scope.
   void refresh(SelectionScope view) {
     if (_sameScope(_lastView, view.tiles)) return;
     _lastView = view.tiles;
@@ -202,14 +255,75 @@ class CollectionSelectionMark extends ChangeNotifier implements SelectionMark<Av
         trashedOnly: a.trashedOnly || b.trashedOnly,
       );
 
-  /// SQL for one excluded trait: the reversal of the filter's own test.
+  /// SQL of the mark's own layers, or null when the mark covers the whole scope.
+  ///
+  /// The trait history expands to "the last op covering a row decides": the
+  /// region no op covers, plus, for every selecting op, the region where it is
+  /// the last op that covers a row. A manual tap then pierces every trait — the
+  /// manually marked rows are unioned in, and the manually unmarked ones removed
+  /// last — so a tap stays above the whole history whatever its order.
+  _Sql? _markWhere() {
+    final manualSelected = _manualSelected;
+    final manualUnselected = _manualUnselected;
+    if (_ops.isEmpty && manualSelected.isEmpty && manualUnselected.isEmpty) return null;
+
+    final parts = <_Sql>[];
+    if (manualSelected.isNotEmpty) parts.add(_idIn(manualSelected, negated: false));
+
+    final traits = _traitWhere(_ops);
+    if (traits != null) {
+      parts.add(manualUnselected.isEmpty ? traits : _and([traits, _idIn(manualUnselected, negated: true)]));
+    } else {
+      // Only manual drops: every other row keeps the view's own default, marked.
+      parts.add(_idIn(manualUnselected, negated: true));
+    }
+    return _or(parts);
+  }
+
+  /// The trait history as one predicate, or null when no op was recorded.
+  static _Sql? _traitWhere(List<SelectionTraitOp> ops) {
+    if (ops.isEmpty) return null;
+    final regions = <_Sql>[
+      // Rows no op covers keep the view's own default, marked.
+      _and([for (final op in ops) _traitTest(op.trait, negated: true)]),
+    ];
+    for (var i = 0; i < ops.length; i++) {
+      final op = ops[i];
+      if (!op.select) continue;
+      // Only the ops added later can shadow this one.
+      regions.add(_and([
+        _traitTest(op.trait, negated: false),
+        for (var j = i + 1; j < ops.length; j++) _traitTest(ops[j].trait, negated: true),
+      ]));
+    }
+    return _or(regions);
+  }
+
+  /// Two-valued SQL of a trait's test, or of its complement.
   ///
   /// `COALESCE(<test>, 0) = 0` rather than `NOT (<test>)`, because Dart's
   /// `!test` keeps a row a NULL comparison makes false: a reversed album filter
-  /// must keep an entry that has no directory.
-  static List<WindowFragment> _filterExclusion(CollectionFilter filter) {
-    final fragment = filterTestFragment(filter);
-    if (fragment == null) return const [];
-    return [(sql: 'COALESCE(${fragment.sql}, 0) = 0', variables: fragment.variables, requires: fragment.requires)];
-  }
+  /// must keep an entry that has no directory. The complement is spelled out
+  /// here too, so an `OR` around it cannot be swallowed by an unknown.
+  static _Sql _traitTest(SelectionTrait trait, {required bool negated}) => (
+        sql: 'COALESCE((${trait.fragment.sql}), 0) = ${negated ? 0 : 1}',
+        variables: trait.fragment.variables,
+      );
+
+  static _Sql _idIn(Set<int> ids, {required bool negated}) => (
+        sql: 'e.id ${negated ? 'NOT IN' : 'IN'} (${List.filled(ids.length, '?').join(', ')})',
+        variables: [for (final id in ids) Variable(id)],
+      );
+
+  static _Sql _and(List<_Sql> parts) => (
+        sql: '(${parts.map((p) => p.sql).join(' AND ')})',
+        variables: [for (final p in parts) ...p.variables],
+      );
+
+  static _Sql _or(List<_Sql> parts) => parts.length == 1
+      ? parts.single
+      : (
+          sql: '(${parts.map((p) => p.sql).join(' OR ')})',
+          variables: [for (final p in parts) ...p.variables],
+        );
 }

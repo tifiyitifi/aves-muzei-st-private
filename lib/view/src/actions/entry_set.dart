@@ -12,6 +12,7 @@ extension ExtraEntrySetActionView on EntrySetAction {
       .select => l10n.menuActionSelect,
       .selectAll => l10n.menuActionSelectAll,
       .selectNone => l10n.menuActionSelectNone,
+      .selectByTrait => l10n.menuActionSelectByTrait,
       // browsing
       .searchCollection => MaterialLocalizations.of(context).searchFieldLabel,
       .toggleLayoutBar =>
@@ -66,6 +67,7 @@ extension ExtraEntrySetActionView on EntrySetAction {
       .select => AIcons.select,
       .selectAll => AIcons.selected,
       .selectNone => AIcons.unselected,
+      .selectByTrait => AIcons.titleFilter,
       // browsing
       .searchCollection => AIcons.search,
       .toggleLayoutBar =>

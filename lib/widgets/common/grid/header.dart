@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/view/section_selection.dart';
 import 'package:aves/model/selection.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/section_keys.dart';
@@ -114,6 +115,10 @@ class const SectionHeader<T>({
   List<T> _getSectionEntries(BuildContext context) => context.read<SectionedListLayout<T>>().sections[sectionKey] ?? [];
 
   void _toggleSectionSelection(BuildContext context) {
+    // A marked (windowed) view turns this into one trait op over the whole
+    // section; every other case keeps the legacy loaded-rows toggle.
+    if (toggleSectionTraitSelection<T>(context, sectionKey, title)) return;
+
     final sectionEntries = _getSectionEntries(context);
     final selection = context.read<Selection<T>>();
     final isSelected = selection.isSelected(sectionEntries);

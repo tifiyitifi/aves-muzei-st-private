@@ -20,6 +20,7 @@ import 'package:aves/model/filters/trash.dart';
 import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/media_store_source.dart';
+import 'package:aves/model/source/section_keys.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
@@ -440,6 +441,139 @@ void main() {
         ids.addAll(batch.map((entry) => entry.id));
       }
       expect(ids.toSet(), {for (var i = 2; i <= 10; i++) i});
+    });
+
+    test('a section header turns into an exact trait over the whole album', () async {
+      settings.setStoredCollectionSectionFactor({}, EntrySectionFactor.album);
+      addTearDown(() => settings.setStoredCollectionSectionFactor({}, EntrySectionFactor.month));
+      final service = await drift();
+      await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/a'), entry(3, dir: '/b'), entry(4, dir: '/b')});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 4);
+
+      final mark = lens.newSelectionMark()!;
+      final trait = lens.sectionTrait(const EntryAlbumSectionKey('/a'))!;
+      mark.deselectTrait(trait, label: 'a');
+      await mark.recount();
+
+      // The trait covers the album, not the one row that happened to be loaded.
+      expect(lens.sections[const EntryAlbumSectionKey('/a')]!.length, 2);
+      expect(mark.count, 2);
+      final ids = <int>[];
+      await for (final batch in lens.declaredFeed(mark)!.batches()) {
+        ids.addAll(batch.map((entry) => entry.id));
+      }
+      expect(ids.toSet(), {3, 4});
+
+      // Selecting it again wins over the op, restoring exactly those rows.
+      mark.selectTrait(trait, label: 'a');
+      await mark.recount();
+      expect(mark.count, 4);
+    });
+
+    test('an album section with no directory has its own trait', () async {
+      final service = await drift();
+      final orphan = AvesEntry(
+        id: 1,
+        uri: 'content://1',
+        path: null,
+        contentId: 101,
+        pageId: null,
+        sourceMimeType: 'image/jpeg',
+        width: 10,
+        height: 20,
+        sourceRotationDegrees: 0,
+        sizeBytes: 5,
+        sourceTitle: 'title1',
+        dateAddedSecs: 1,
+        dateModifiedMillis: 2,
+        sourceDateTakenMillis: 0,
+        durationMillis: 0,
+        trashed: false,
+        origin: EntryOrigins.mediaStoreContent,
+      );
+      await service.insertEntries({orphan, entry(2, dir: '/b')});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 2);
+
+      final mark = lens.newSelectionMark()!;
+      mark.deselectTrait(lens.sectionTrait(const EntryAlbumSectionKey(null))!, label: 'unknown');
+      await mark.recount();
+      expect(mark.count, 1);
+
+      final ids = <int>[];
+      await for (final batch in lens.declaredFeed(mark)!.batches()) {
+        ids.addAll(batch.map((entry) => entry.id));
+      }
+      expect(ids.toSet(), {2});
+    });
+
+    test('a rating section trait covers exactly the coalesced rating rows', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2), entry(3)});
+      await service.saveCatalogMetadata({CatalogMetadata(id: 1, rating: 4), CatalogMetadata(id: 2, rating: 4)});
+      // The bootstrap wipes catalog metadata when the device timezone offset
+      // moved; pin it so the metadata this test seeds survives.
+      settings.catalogTimeZoneOffsetMillis = DateTime.now().timeZoneOffset.inMilliseconds;
+      await collectionPagingPrefs.setLargeThreshold(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 3);
+
+      final mark = lens.newSelectionMark()!;
+      mark.deselectTrait(lens.sectionTrait(const EntryRatingSectionKey(4))!, label: 'four');
+      await mark.recount();
+      expect(mark.count, 1);
+
+      final ids = <int>[];
+      await for (final batch in lens.declaredFeed(mark)!.batches()) {
+        ids.addAll(batch.map((entry) => entry.id));
+      }
+      expect(ids.toSet(), {3});
+    });
+
+    test('a date section trait covers the local month its section groups', () async {
+      final service = await drift();
+      await service.insertEntries({
+        entry(1, dateTaken: millis(2024, 1)),
+        entry(2, dateTaken: millis(2024, 2)),
+        entry(3, dateTaken: millis(2023, 1)),
+      });
+      await collectionPagingPrefs.setLargeThreshold(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 3);
+
+      const sectionKey = EntryDateSectionKey(year: 2024, month: 1);
+      final mark = lens.newSelectionMark()!;
+      mark.deselectTrait(lens.sectionTrait(sectionKey)!, label: '2024-01');
+      await mark.recount();
+
+      // The trait covers the same rows the section shows, no more and no less.
+      expect(lens.sections[sectionKey]!.length, 1);
+      expect(mark.count, 2);
+      final ids = <int>[];
+      await for (final batch in lens.declaredFeed(mark)!.batches()) {
+        ids.addAll(batch.map((entry) => entry.id));
+      }
+      expect(ids.toSet(), {2, 3});
+    });
+
+    test('a section kind with no exact trait answers null', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 2);
+
+      expect(lens.sectionTrait(const SectionKey()), isNull);
+      expect(lens.sectionTrait(const EntryDateSectionKey()), isNull);
     });
 
     test('a feed walks a frozen scope: a row added later is not swept in', () async {

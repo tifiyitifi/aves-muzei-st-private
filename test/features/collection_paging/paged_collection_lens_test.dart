@@ -20,6 +20,8 @@ import 'package:aves/model/filters/query.dart';
 import 'package:aves/model/filters/trash.dart';
 import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/model/settings/settings.dart';
+import 'package:aves/model/source/analysis_controller.dart';
+import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/model/source/media_store_source.dart';
 import 'package:aves/model/source/section_keys.dart';
 import 'package:aves/services/common/services.dart';
@@ -135,6 +137,33 @@ void main() {
       expect(lens.pagedActive, isFalse);
       expect(lens.pagedBlocked, isFalse);
       expect(lens.sortedEntries.every((e) => e is! SkeletonEntry), isTrue);
+    });
+
+    test('waits for a full load already in flight instead of starting a second one', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2), entry(3)});
+      // The home page starts loading the library before the collection page
+      // mounts, so the lens finds a source that is still loading and has no scope
+      // to report yet.
+      final loading = _LoadingSource()
+        ..canAnalyze = false
+        ..state = SourceState.loading;
+      final lens = PagedCollectionLens(source: loading, filters: {});
+      addTearDown(lens.dispose);
+      // A second full load here would dispose the entries the first pass is still
+      // analysing, and would do the whole load twice: the lens has to wait.
+      for (var i = 0; i < 8; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+      expect(loading.initCount, 0);
+      expect(lens.entryCount, 0);
+
+      // The load lands: the lens serves what it loaded instead of reloading.
+      await loading.completeLoad({entry(1), entry(2), entry(3)});
+      await settle(lens, done: () => lens.entryCount == 3);
+      expect(loading.initCount, 0);
+      expect(lens.pagedActive, isFalse);
+      expect(lens.pagedBlocked, isFalse);
     });
 
     test('pages above the threshold with lazy sections', () async {
@@ -789,4 +818,30 @@ void main() {
       expect(await lens.indexOfId(999), -1);
     });
   });
+}
+
+/// A source standing in for the home page's first load: the library is loading
+/// and no scope is reported until [completeLoad] lands its entries.
+class _LoadingSource extends MediaStoreSource {
+  var initCount = 0;
+  var _loaded = false;
+
+  @override
+  SourceScope get loadedScope => _loaded ? CollectionSource.fullScope : null;
+
+  Future<void> completeLoad(Set<AvesEntry> entries) async {
+    // Mirrors the essentials a real load completes before it adds entries.
+    await loadDates();
+    addEntries(entries);
+    _loaded = true;
+    // Leaving `loading` is what the lens waits for; the analysis that follows in
+    // a real load is not waited for.
+    state = SourceState.ready;
+  }
+
+  @override
+  Future<void> init({required SourceScope scope, AnalysisController? analysisController, bool loadTopEntriesFirst = false}) async {
+    initCount++;
+    _loaded = true;
+  }
 }

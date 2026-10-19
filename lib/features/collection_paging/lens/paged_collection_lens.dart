@@ -95,6 +95,10 @@ class PagedCollectionLens extends CollectionLens {
   bool _disposed = false;
   final Completer<void> _ready = Completer<void>();
 
+  /// Pending wait on a load this lens did not start (see [_awaitInFlightLoad]).
+  Completer<void>? _inFlightLoadWait;
+  VoidCallback? _inFlightLoadListener;
+
   /// Completes once the first load resolved (paged, morphed or blocked).
   /// Callers that must know which path was taken (the paged slideshow) await
   /// this instead of polling.
@@ -183,6 +187,7 @@ class PagedCollectionLens extends CollectionLens {
   @override
   void dispose() {
     _disposed = true;
+    _cancelInFlightLoadWait();
     _detachSummaries();
     _detachCatalogWorker();
     for (final sub in _pagedSubs) {
@@ -515,6 +520,13 @@ class PagedCollectionLens extends CollectionLens {
     _reloading = true;
     final gen = ++_reloadGen;
     try {
+      // The collection page mounts while the home page is still loading the
+      // library. Resolving now would find `loadedScope` unset and start a second
+      // full load, which disposes the entries the first pass is still analysing
+      // and does the work twice: wait for that pass to finish loading instead.
+      await _awaitInFlightLoad();
+      if (!_current(gen)) return;
+
       await PagedBootstrap.ensure(source);
       if (!_current(gen)) return;
 
@@ -548,6 +560,40 @@ class PagedCollectionLens extends CollectionLens {
       _reloading = false;
       if (!_ready.isCompleted) _ready.complete();
     }
+  }
+
+  /// Waits for a load started outside the lens (the home page loading the
+  /// library on launch, or the analyzer reloading it) to leave
+  /// [SourceState.loading].
+  ///
+  /// Only the load phase is waited for: `loadedScope` is assigned before the
+  /// analysis that follows, and that analysis stays visible through the legacy
+  /// progress display. A load that never settles would leave the whole app on its
+  /// loading screen anyway, so this adds no wait that was not already there.
+  Future<void> _awaitInFlightLoad() {
+    if (source.state != SourceState.loading) return Future<void>.value();
+    void listener() {
+      if (source.state == SourceState.loading) return;
+      _cancelInFlightLoadWait();
+    }
+
+    final completer = _inFlightLoadWait = Completer<void>();
+    _inFlightLoadListener = listener;
+    source.stateNotifier.addListener(listener);
+    return completer.future;
+  }
+
+  /// Releases the wait, resuming the reload so it can observe the disposal and
+  /// bail out. Also called by the listener when the load settles.
+  void _cancelInFlightLoadWait() {
+    final listener = _inFlightLoadListener;
+    if (listener != null) {
+      source.stateNotifier.removeListener(listener);
+      _inFlightLoadListener = null;
+    }
+    final completer = _inFlightLoadWait;
+    _inFlightLoadWait = null;
+    if (completer != null && !completer.isCompleted) completer.complete();
   }
 
   Future<bool> _isDatabaseEmpty() async {

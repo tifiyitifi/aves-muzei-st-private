@@ -35,6 +35,7 @@ void main() {
       await store.remove(CollectionPagingKeys.prefetchScreens);
       await store.remove(CollectionPagingKeys.largeThreshold);
       await store.remove(CollectionPagingKeys.askBeforeCatalog);
+      await store.remove(CollectionPagingKeys.browseOnlyBar);
       await store.remove(CollectionPagingKeys.importExplained);
       await store.remove(CollectionPagingKeys.importComplete);
     }
@@ -50,6 +51,8 @@ void main() {
       // Cataloguing is the steady state of a paged collection, so the backlog
       // question starts off; the one-time explainer says it once instead.
       expect(prefs.askBeforeCatalog, isFalse);
+      // The reduced mode takes features away, so its notice is on by default.
+      expect(prefs.browseOnlyBar, isTrue);
       expect(prefs.importExplained, isFalse);
       expect(prefs.importComplete, isFalse);
       // The default is the smallest preset: a library that big is served window
@@ -81,6 +84,7 @@ void main() {
       await prefs.setWindowSize(400);
       await prefs.setPrefetchScreens(0);
       await prefs.setLargeThreshold(50000);
+      await prefs.setBrowseOnlyBar(false);
       prefs.dispose();
 
       final reloaded = CollectionPagingPrefs();
@@ -89,6 +93,7 @@ void main() {
       expect(reloaded.windowSize, 400);
       expect(reloaded.prefetchScreens, 0);
       expect(reloaded.largeThreshold, 50000);
+      expect(reloaded.browseOnlyBar, isFalse);
       reloaded.dispose();
     });
 
@@ -118,6 +123,10 @@ void main() {
       expect(notified, 1);
       await prefs.setEngine(CollectionEngine.legacy);
       expect(notified, 1);
+      await prefs.setBrowseOnlyBar(false);
+      expect(notified, 2);
+      await prefs.setBrowseOnlyBar(false);
+      expect(notified, 2);
       prefs.dispose();
     });
   });

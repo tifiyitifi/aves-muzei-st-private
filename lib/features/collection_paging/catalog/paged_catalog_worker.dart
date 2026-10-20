@@ -86,6 +86,16 @@ class PagedCatalogWorker {
 
   bool get isRunning => _draining;
 
+  /// Rows the session started with, and how many of them are done.
+  ///
+  /// One session spans every pass of a drain: the counter is what the app bar
+  /// shows, and it must not restart when the worker moves from the current
+  /// view's rows to the rest of the library. See [CatalogProgressNotifier].
+  int _sessionTotal = 0;
+  int _sessionDone = 0;
+  bool _sessionStarted = false;
+  CollectionWindowPredicate? _sessionScope;
+
   /// Requests the eager backlog (catalog, then offline countries). [scope], when
   /// given, runs *first* in each pass: the rows of the view the user is looking
   /// at are worth cataloguing before the rest of the library, and the unscoped
@@ -126,6 +136,9 @@ class PagedCatalogWorker {
           final scopedOnly = _pendingScopedOnly;
           _pendingScope = null;
           _pendingScopedOnly = false;
+          // An album's badge sweeps one album and stops, so its denominator is
+          // that album's backlog; a library sweep counts the whole backlog.
+          await _beginSession(scopedOnly ? scope : null);
           await _runCatalog(chunkSize, scope, scopedOnly: scopedOnly);
           if (!_stopRequested) await _runCountries(chunkSize, scope, scopedOnly: scopedOnly);
         }
@@ -137,17 +150,65 @@ class PagedCatalogWorker {
     } finally {
       _draining = false;
       source.state = SourceState.ready;
+      // The counters are only meaningful while a pass runs: leaving them behind
+      // makes the next "loading" screen show a stale figure that looks like the
+      // library is being imported again.
+      source.setProgress(done: 0, total: 0);
       catalogProgressNotifier.finish();
+      _sessionTotal = 0;
+      _sessionDone = 0;
+      _sessionStarted = false;
+      _sessionScope = null;
     }
   }
 
   void stop() => _stopRequested = true;
 
-  /// Reports a pass's progress to the source (the existing count display) and to
-  /// the app bar's notifier, which adds elapsed/ETA on top of it.
-  void _reportProgress({required int done, required int total}) {
+  /// Fixes this drain's denominator before it moves a row.
+  ///
+  /// The backlog is read once: a denominator that follows the remaining rows
+  /// shrinks under the user's eyes, and one read per pass would still jump
+  /// between passes. The first run of a drain owns the session; a run queued
+  /// behind it continues the same one.
+  Future<void> _beginSession(CollectionWindowPredicate? scope) async {
+    if (_sessionStarted) return;
+    _sessionStarted = true;
+    _sessionScope = scope;
+    var total = 0;
+    try {
+      total = await database.countUncatalogued(scope ?? const CollectionWindowPredicate());
+    } catch (error, stack) {
+      _log.w('catalog backlog count failed', error, stack);
+    }
+    _sessionTotal = total;
+    _sessionDone = 0;
+    catalogProgressNotifier.begin(total: total, now: DateTime.now());
+    if (total > 0) _reportSession();
+  }
+
+  /// Reports the session's progress, clamped so the app bar never reads "N of N"
+  /// with rows still to do or "N+1 of N".
+  void _reportSession() {
+    final total = _sessionTotal;
+    final done = total > 0 && _sessionDone > total ? total : _sessionDone;
     source.setProgress(done: done, total: total);
     catalogProgressNotifier.update(done: done, total: total, now: DateTime.now());
+  }
+
+  /// Absorbs work that other owners did, so the counter does not stall while the
+  /// analysis service catalogues alongside the app.
+  Future<void> _resyncSession() async {
+    if (_sessionTotal <= 0) return;
+    try {
+      final remaining = await database.countUncatalogued(_sessionScope ?? const CollectionWindowPredicate());
+      final done = (_sessionTotal - remaining).clamp(0, _sessionTotal);
+      if (done > _sessionDone) {
+        _sessionDone = done;
+        _reportSession();
+      }
+    } catch (error, stack) {
+      _log.w('catalog backlog resync failed', error, stack);
+    }
   }
 
   /// Runs the catalog pass, scoped rows first when [scope] is given.
@@ -168,8 +229,6 @@ class PagedCatalogWorker {
     // the whole backlog instead of re-walking its head.
     var after = scope != null ? LocalMediaDb.backlogStart : await _resumeCursor();
     var wrapped = scope != null;
-    var done = 0;
-    var stopCheckCount = 0;
     final pending = <CatalogMetadata>{};
     Future<void> flush() async {
       if (pending.isEmpty) return;
@@ -179,7 +238,7 @@ class PagedCatalogWorker {
     }
 
     source.state = SourceState.cataloguing;
-    _reportProgress(done: 0, total: total);
+    _reportSession();
     while (!_stopRequested) {
       final page = await database.loadUncataloguedEntryIds(predicate: predicate, after: after, limit: chunkSize);
       if (page.isEmpty) {
@@ -195,34 +254,34 @@ class PagedCatalogWorker {
       }
       after = page.last;
       if (scope == null) await database.saveCatalogCursor(after);
-      var withinChunk = 0;
+      var stopCheckCount = 0;
       for (final entry in await _materialize({for (final cursor in page) cursor.id})) {
         try {
           await catalogEntry(entry);
-          if (entry.isCatalogued) pending.add(entry.catalogMetadata!);
+          if (entry.isCatalogued) {
+            pending.add(entry.catalogMetadata!);
+            // Count real cataloguing only: a row that failed keeps its place in
+            // the backlog, and a resumed run must not read as progress.
+            _sessionDone++;
+            if (_sessionDone % progressTickRows == 0) _reportSession();
+          }
         } catch (error, stack) {
           _log.w('paged catalog failed for entry id=${entry.id}', error, stack);
         } finally {
           entry.dispose();
         }
         if (pending.length >= persistBatchRows) await flush();
-        // Tick inside the chunk: the counter has to move while rows are being
-        // worked on, not only when the whole chunk lands.
-        withinChunk++;
-        if (withinChunk % progressTickRows == 0) {
-          _reportProgress(done: done + withinChunk, total: total);
-        }
         if (++stopCheckCount >= 100) {
           stopCheckCount = 0;
           if (_stopRequested) break;
         }
       }
-      done += page.length;
-      _reportProgress(done: done, total: total);
+      _reportSession();
       // Cooperative yield between chunks.
       await Future<void>.delayed(Duration.zero);
     }
     await flush();
+    await _resyncSession();
   }
 
   /// Runs the offline-country pass, scoped rows first when [scope] is given.
@@ -237,7 +296,6 @@ class PagedCatalogWorker {
   Future<void> _runCountriesPass(int chunkSize, CollectionWindowPredicate? scope) async {
     final predicate = scope ?? const CollectionWindowPredicate();
     var after = LocalMediaDb.backlogStart;
-    var done = 0;
     final pending = <AddressDetails>{};
     Future<void> flush() async {
       if (pending.isEmpty) return;
@@ -247,7 +305,8 @@ class PagedCatalogWorker {
     }
 
     source.state = SourceState.locatingCountries;
-    _reportProgress(done: 0, total: 0);
+    // Countries are their own pass but not their own session: the catalog
+    // counter keeps its value and clock instead of restarting at zero.
     while (!_stopRequested) {
       final page = await database.loadUnaddressedGpsIds(predicate: predicate, after: after, limit: chunkSize);
       if (page.isEmpty) break;
@@ -263,8 +322,6 @@ class PagedCatalogWorker {
         }
         if (pending.length >= LocationMixin.commitCountThreshold) await flush();
       }
-      done += page.length;
-      _reportProgress(done: done, total: 0);
       await Future<void>.delayed(Duration.zero);
     }
     await flush();
@@ -298,7 +355,6 @@ class PagedCatalogWorker {
 
   Future<void> _runPlaces(int chunkSize) async {
     var after = LocalMediaDb.backlogStart;
-    var done = 0;
     final pending = <AddressDetails>{};
     Future<void> flush() async {
       if (pending.isEmpty) return;
@@ -308,7 +364,8 @@ class PagedCatalogWorker {
     }
 
     source.state = SourceState.locatingPlaces;
-    _reportProgress(done: 0, total: 0);
+    // Same rule as the country pass: a locate pass does not restart the
+    // catalog session's counter.
     while (!_stopRequested) {
       final page = await database.loadUnlocatedGpsIds(after: after, limit: chunkSize);
       if (page.isEmpty) break;
@@ -324,8 +381,6 @@ class PagedCatalogWorker {
         }
         if (pending.length >= LocationMixin.commitCountThreshold) await flush();
       }
-      done += page.length;
-      _reportProgress(done: done, total: 0);
       await Future<void>.delayed(Duration.zero);
     }
     await flush();

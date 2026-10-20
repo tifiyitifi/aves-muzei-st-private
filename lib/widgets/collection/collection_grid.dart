@@ -4,6 +4,7 @@ import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/collection_paging/selection/selection_mark.dart';
+import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/features/collection_paging/view/skeleton_tile.dart';
 import 'package:aves/locale/calendar/calendar_utils.dart';
 import 'package:aves/model/app/permissions.dart';
@@ -158,7 +159,7 @@ class _CollectionGridContentState extends State<_CollectionGridContent> {
 
   @override
   Widget build(BuildContext context) {
-    final selectable = context.select<ValueNotifier<AppMode>, bool>((v) => v.value.canSelectMedia);
+    final selectable = context.select<ValueNotifier<AppMode>, bool>((v) => v.value.canSelectMedia) && !BrowseOnlyMode.isActive;
     return Consumer<CollectionLens>(
       builder: (context, collection, child) {
         final tileLayout = context.select<Settings, TileLayout>((v) => v.getEffectiveCollectionTileLayout(collection.visibleFilters));

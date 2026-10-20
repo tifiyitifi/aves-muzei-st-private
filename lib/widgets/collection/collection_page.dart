@@ -54,6 +54,7 @@ class _CollectionPageState extends State<CollectionPage> {
   final Set<StreamSubscription> _subscriptions = {};
   late PagedCollectionLens _collection;
   final StreamController<DraggableScrollbarEvent> _draggableScrollBarEventStreamController = StreamController.broadcast();
+  bool _importing = false;
 
   @override
   void initState() {
@@ -84,6 +85,7 @@ class _CollectionPageState extends State<CollectionPage> {
     }
     // The first import raises a one-time explanation of what the app is doing
     // and how long it takes; dialogs belong here, not in the lens.
+    _importing = pagedImportStatus.active;
     pagedImportStatus.addListener(_onImportStatusChanged);
     if (pagedImportStatus.explainerPending) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _maybeExplainImport());
@@ -262,6 +264,22 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   void _onImportStatusChanged() {
+    final importing = pagedImportStatus.active;
+    final wasImporting = _importing;
+    _importing = importing;
+    if (wasImporting && !importing && mounted) {
+      // The reduced mode ended on its own: its strip and the app bar's
+      // "organizing" line simply disappear, so say once that the features are
+      // back instead of leaving the user to notice it.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // A pushed viewer or page owns the screen: the notice would land on it.
+        if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text(context.l10n.browseOnlyUnlockedFeedback)),
+        );
+      });
+    }
     if (!pagedImportStatus.explainerPending) return;
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeExplainImport());
   }

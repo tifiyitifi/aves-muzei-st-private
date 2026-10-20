@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed.dart';
+import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/features/collection_paging/selection/selection_mark.dart';
 import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
@@ -159,6 +160,10 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     required CollectionLens collection,
     required int selectedItemCount,
   }) {
+    // The collection bar already greys these; the delegate enforces it too, so
+    // the TV layout and any future caller cannot slip past the reduced mode.
+    if (BrowseOnlyMode.locks(action)) return false;
+
     final itemCount = collection.entryCount;
     final hasItems = itemCount > 0;
     final hasSelection = selectedItemCount > 0;

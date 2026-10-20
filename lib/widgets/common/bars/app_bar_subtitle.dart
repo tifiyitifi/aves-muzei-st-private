@@ -79,6 +79,9 @@ class SourceStateSubtitle extends StatelessWidget {
         final subtitle = pagedImportStatus.active ? context.l10n.sourceStateImporting : sourceState.getName(context.l10n);
         if (subtitle == null) return const SizedBox();
 
+        // A locate pass has its own scope and no row denominator: the catalog
+        // session's figures would describe something else.
+        final locating = sourceState == SourceState.locatingCountries || sourceState == SourceState.locatingPlaces;
         final theme = Theme.of(context);
         return DefaultTextStyle.merge(
           style: theme.textTheme.bodySmall!.copyWith(fontFeatures: const [FontFeature.disable('smcp')]),
@@ -92,7 +95,7 @@ class SourceStateSubtitle extends StatelessWidget {
                     TextSpan(
                       children: [
                         TextSpan(text: subtitle),
-                        if (progress.total != 0 && progress.done > 0 && sourceState != SourceState.locatingCountries) ...[
+                        if (!locating && progress.total != 0 && progress.done > 0) ...[
                           const WidgetSpan(child: SizedBox(width: 8)),
                           TextSpan(
                             text: '${progress.done}/${progress.total}',
@@ -101,7 +104,7 @@ class SourceStateSubtitle extends StatelessWidget {
                         ],
                         // The pass's own clock: how long it has run, and how long it
                         // is likely to take.
-                        if (catalogProgress != null && catalogProgress.done > 0) ...[
+                        if (!locating && catalogProgress != null && catalogProgress.done > 0) ...[
                           const WidgetSpan(child: SizedBox(width: 8)),
                           TextSpan(
                             text: _catalogProgressLabel(context, catalogProgress),

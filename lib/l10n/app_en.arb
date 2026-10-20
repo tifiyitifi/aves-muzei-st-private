@@ -1274,7 +1274,7 @@
     }
   },
   "collectionImportIntroTitle": "Browse first, organize in the background",
-  "collectionImportIntroBody": "Your photos are listed immediately, so you can browse and open them right away.\nFilters, search, statistics and album counts become complete when organizing finishes. Bulk selection stays off until then.\nOrganizing runs in the background and does not block browsing; live progress shows under the title.",
+  "collectionImportIntroBody": "Your photos are listed immediately, so you can browse and open them right away.\nFilters, search, statistics and album counts become complete when organizing finishes; editing and bulk selection stay paused until then.\nOrganizing runs in the background and does not block browsing; live progress shows under the title.",
   "collectionImportEtaHeader": "Time reference (mid-range device)",
   "collectionImportEtaTier1": "1 thousand items: browsable in under a second, organized in about 10 seconds",
   "collectionImportEtaTier2": "10 thousand items: browsable in 1-2 seconds, organized in about half a minute",
@@ -1294,6 +1294,17 @@
   "collectionImportIntroAcknowledge": "Got it",
   "collectionImportIntroDetails": "Details",
   "settingsCollectionBackgroundWorkTile": "Background organizing",
+  "settingsCollectionBrowseOnlyBarTile": "Browse-only bar while organizing",
+  "browseOnlyBarMessage": "Browse-only mode · editing paused",
+  "browseOnlyBarDetails": "Details",
+  "browseOnlySectionTitle": "Browse-only mode",
+  "browseOnlySectionBody": "While the library is being organized, Aves can browse and open what it has already indexed. Editing waits for the import, and the full feature set comes back by itself when it finishes.",
+  "browseOnlyReadOnlyBody": "Editing is paused on purpose: the background pass reads each file's metadata and would overwrite a change made before it got there.",
+  "browseOnlyAvailableTitle": "Available now",
+  "browseOnlyAvailableBody": "Browsing, zoom, full screen, video, sorting by folder, type, size or date modified, and search by file name.",
+  "browseOnlyLockedTitle": "Returns when the import finishes",
+  "browseOnlyLockedBody": "Tag, rating and capture-date filters, statistics, calendar and places, plus editing (rating, tags, delete, move) and select all, share and clipboard.",
+  "browseOnlyUnlockedFeedback": "The library is organized. All features are back.",
   "collectionImportStatusReady": "Ready: {count} items",
   "@collectionImportStatusReady": {
     "placeholders": {

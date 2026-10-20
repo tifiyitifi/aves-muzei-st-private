@@ -165,6 +165,29 @@ class CollectionAskBeforeCatalogEditor extends StatelessWidget {
   }
 }
 
+/// Custom editor for the browse-only notice bar.
+///
+/// On by default: the reduced mode removes features, so it has to be visible
+/// where those features are. Turning it off leaves the app bar subtitle as the
+/// only notice.
+class CollectionBrowseOnlyBarEditor extends StatelessWidget {
+  final SettingDef def;
+
+  const new({super.key, required this.def});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: collectionPagingPrefs,
+      builder: (context, child) => SwitchListTile(
+        title: Text(def.title(context)),
+        value: collectionPagingPrefs.browseOnlyBar,
+        onChanged: collectionPagingPrefs.setBrowseOnlyBar,
+      ),
+    );
+  }
+}
+
 /// Custom editor for the first-run background organization explainer.
 ///
 /// A settings entry rather than a second copy of the text: the one-time dialog

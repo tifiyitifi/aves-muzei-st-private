@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
+import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/features/collection_paging/view/collection_select_all.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
@@ -97,6 +100,9 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
   CollectionSource get source => collection.source;
 
   bool get showFilterBar => collection.visibleFilters.isNotEmpty;
+
+  /// Whether the browse-only strip is part of the app bar right now.
+  bool get _showBrowseOnlyBar => pagedImportStatus.active && collectionPagingPrefs.browseOnlyBar;
 
   static const _trashSelectionQuickActions = <EntrySetAction>[
     .delete,
@@ -203,60 +209,67 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
                     builder: (context, _, child) {
                       final useTvLayout = settings.useTvLayout;
                       final onFilterTap = canRemoveFilters ? collection.removeFilter : null;
-                      return AvesAppBar(
-                        contentHeight: _getAppBarContentHeight(context),
-                        pinned: context.select<Selection<AvesEntry>, bool>((selection) => selection.isSelecting),
-                        leading: _buildAppBarLeading(
-                          hasDrawer: appMode.canNavigate,
-                          isSelecting: isSelecting,
-                        ),
-                        title: _buildAppBarTitle(isSelecting),
-                        actions: (context, maxWidth) => useTvLayout ? [] : _buildActions(context, selection, maxWidth),
-                        bottom: Column(
-                          children: [
-                            if (useTvLayout)
-                              SizedBox(
-                                height: CaptionedButton.getTelevisionButtonHeight(context),
-                                child: ListView(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  scrollDirection: Axis.horizontal,
-                                  children: _buildActions(context, selection, double.infinity),
+                      // The mode can start or end while this bar is on screen
+                      // (the first import runs behind it), so the bar rebuilds on
+                      // both the import status and the setting that shows it.
+                      return ListenableBuilder(
+                        listenable: Listenable.merge([pagedImportStatus, collectionPagingPrefs]),
+                        builder: (context, child) => AvesAppBar(
+                          contentHeight: _getAppBarContentHeight(context),
+                          pinned: context.select<Selection<AvesEntry>, bool>((selection) => selection.isSelecting),
+                          leading: _buildAppBarLeading(
+                            hasDrawer: appMode.canNavigate,
+                            isSelecting: isSelecting,
+                          ),
+                          title: _buildAppBarTitle(isSelecting),
+                          actions: (context, maxWidth) => useTvLayout ? [] : _buildActions(context, selection, maxWidth),
+                          bottom: Column(
+                            children: [
+                              if (_showBrowseOnlyBar) const BrowseOnlyNoticeBar(),
+                              if (useTvLayout)
+                                SizedBox(
+                                  height: CaptionedButton.getTelevisionButtonHeight(context),
+                                  child: ListView(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    scrollDirection: Axis.horizontal,
+                                    children: _buildActions(context, selection, double.infinity),
+                                  ),
                                 ),
-                              ),
-                            if (showFilterBar)
-                              NotificationListener(
-                                onNotification: (notification) {
-                                  if (notification is SelectFilterNotification) {
-                                    collection.addFilters({notification.filter});
-                                    return true;
-                                  } else if (notification is DecomposeFilterNotification) {
-                                    final filter = notification.filter;
-                                    if (filter is DynamicAlbumFilter) {
-                                      final innerFilter = filter.filter;
-                                      final newFilters = innerFilter is SetAndFilter ? innerFilter.innerFilters : {innerFilter};
-                                      collection.addFilters(newFilters);
-                                      collection.removeFilter(filter);
+                              if (showFilterBar)
+                                NotificationListener(
+                                  onNotification: (notification) {
+                                    if (notification is SelectFilterNotification) {
+                                      collection.addFilters({notification.filter});
                                       return true;
+                                    } else if (notification is DecomposeFilterNotification) {
+                                      final filter = notification.filter;
+                                      if (filter is DynamicAlbumFilter) {
+                                        final innerFilter = filter.filter;
+                                        final newFilters = innerFilter is SetAndFilter ? innerFilter.innerFilters : {innerFilter};
+                                        collection.addFilters(newFilters);
+                                        collection.removeFilter(filter);
+                                        return true;
+                                      }
                                     }
-                                  }
-                                  return false;
-                                },
-                                child: FilterBar(
-                                  filters: collection.visibleFilters,
-                                  interactive: true,
-                                  onTap: onFilterTap,
-                                  onRemove: onFilterTap,
+                                    return false;
+                                  },
+                                  child: FilterBar(
+                                    filters: collection.visibleFilters,
+                                    interactive: true,
+                                    onTap: onFilterTap,
+                                    onRemove: onFilterTap,
+                                  ),
                                 ),
-                              ),
-                            if (layoutBarEnabled) const LayoutBar(),
-                            if (queryEnabled)
-                              EntryQueryBar(
-                                queryNotifier: context.select<Query, ValueNotifier<String>>((query) => query.queryNotifier),
-                                focusNode: _queryBarFocusNode,
-                              ),
-                          ],
+                              if (layoutBarEnabled) const LayoutBar(),
+                              if (queryEnabled)
+                                EntryQueryBar(
+                                  queryNotifier: context.select<Query, ValueNotifier<String>>((query) => query.queryNotifier),
+                                  focusNode: _queryBarFocusNode,
+                                ),
+                            ],
+                          ),
+                          transitionKey: isSelecting,
                         ),
-                        transitionKey: isSelecting,
                       );
                     },
                   );
@@ -278,6 +291,9 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
   double _getAppBarContentHeight(BuildContext context) {
     final textScaler = MediaQuery.textScalerOf(context);
     double height = textScaler.scale(kToolbarHeight);
+    if (_showBrowseOnlyBar) {
+      height += BrowseOnlyNoticeBar.preferredHeight;
+    }
     if (settings.useTvLayout) {
       height += CaptionedButton.getTelevisionButtonHeight(context);
     }
@@ -374,9 +390,6 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
       // The trait sheet drives a declared (whole-view) selection: an enumerated
       // one has no place to remember a trait rule.
       if (action == .selectByTrait && !selection.allMarked) return false;
-      // While the library is still being written, "all" would mean "the rows
-      // that happen to be imported": a bulk delete would silently skip the rest.
-      if (source.state == SourceState.loading && (action == .selectAll || action == .selectByTrait)) return false;
       return _actionDelegate.isVisible(
         action,
         appMode: appMode,
@@ -386,12 +399,18 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
         isTrash: isTrash,
       );
     }
-    bool canApply(EntrySetAction action) => _actionDelegate.canApply(
-      action,
-      isSelecting: isSelecting,
-      collection: collection,
-      selectedItemCount: selectedItemCount,
-    );
+
+    bool canApply(EntrySetAction action) {
+      // Browse-only: the action stays where the user expects it, greyed, and
+      // the notice strip says why.
+      if (BrowseOnlyMode.locks(action)) return false;
+      return _actionDelegate.canApply(
+        action,
+        isSelecting: isSelecting,
+        collection: collection,
+        selectedItemCount: selectedItemCount,
+      );
+    }
 
     return settings.useTvLayout
         ? _buildTelevisionActions(

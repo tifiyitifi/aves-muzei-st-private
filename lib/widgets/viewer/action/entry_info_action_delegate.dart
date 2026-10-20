@@ -14,6 +14,7 @@ import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
 import 'package:aves/ref/mime_types.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/widgets/common/action_mixins/entry_editor.dart';
 import 'package:aves/widgets/common/action_mixins/feedback.dart';
 import 'package:aves/widgets/common/action_mixins/permission_aware.dart';
@@ -37,7 +38,7 @@ class EntryInfoActionDelegate with FeedbackMixin, PermissionAwareMixin, EntryEdi
     required AvesEntry targetEntry,
     required EntryAction action,
   }) {
-    final canWrite = appMode.canEditEntry && !settings.isReadOnly;
+    final canWrite = appMode.canEditEntry && !settings.isReadOnly && !BrowseOnlyMode.isActive;
     switch (action) {
       // general
       case .editDate:

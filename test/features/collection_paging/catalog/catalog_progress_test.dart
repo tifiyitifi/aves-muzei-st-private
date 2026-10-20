@@ -84,6 +84,30 @@ void main() {
       expect(notifier.value!.elapsed, const Duration(seconds: 90));
       expect(notifier.value!.remaining, isNull);
     });
+
+    test('a later pass does not rewind the session', () {
+      // The worker sweeps the current view first, then the rest of the library:
+      // each pass has its own small counter, but the user watches one session.
+      final notifier = CatalogProgressNotifier()..begin(total: 1000, now: start);
+      report(notifier, done: 300, total: 1000, after: const Duration(seconds: 20));
+      final progress = report(notifier, done: 0, total: 700, after: const Duration(seconds: 21))!;
+
+      expect(progress.done, 300);
+      expect(progress.total, 1000);
+      expect(progress.elapsed, const Duration(seconds: 21));
+    });
+
+    test('the session total only grows, and the count never passes it', () {
+      final notifier = CatalogProgressNotifier()..begin(total: 100, now: start);
+      expect(report(notifier, done: 80, total: 0, after: const Duration(seconds: 5))!.total, 100);
+      // New rows appeared: the work grew, so the denominator grows with it.
+      expect(report(notifier, done: 120, total: 150, after: const Duration(seconds: 10))!.total, 150);
+      // Rows catalogued by the analysis service: the count is clamped, not shown
+      // as "160 of 150".
+      final progress = report(notifier, done: 160, total: 0, after: const Duration(seconds: 15))!;
+      expect(progress.done, 150);
+      expect(progress.total, 150);
+    });
   });
 
   group('formatCatalogDuration', () {

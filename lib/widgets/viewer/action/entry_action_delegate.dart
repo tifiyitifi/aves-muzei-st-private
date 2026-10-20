@@ -20,6 +20,7 @@ import 'package:aves/theme/durations.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/common/action_mixins/entry_editor.dart';
 import 'package:aves/widgets/common/action_mixins/entry_storage.dart';
+import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/widgets/common/action_mixins/feedback.dart';
 import 'package:aves/widgets/common/action_mixins/permission_aware.dart';
 import 'package:aves/widgets/common/action_mixins/size_aware.dart';
@@ -69,7 +70,7 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
       }
     } else {
       final targetEntry = EntryActions.pageActions.contains(action) ? pageEntry : mainEntry;
-      final canWrite = appMode.canEditEntry && !settings.isReadOnly;
+      final canWrite = appMode.canEditEntry && !settings.isReadOnly && !BrowseOnlyMode.isActive;
       switch (action) {
         case .toggleFavourite:
           return collection != null;

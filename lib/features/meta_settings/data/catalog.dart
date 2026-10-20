@@ -517,6 +517,14 @@ final List<SettingDef> _advancedDefs = [
     sortOrder: 60,
   ),
   SettingDef(
+    key: CollectionPagingKeys.browseOnlyBar,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsCollectionBrowseOnlyBarTile,
+    editorKey: MetaEditorKeys.collectionBrowseOnlyBar,
+    sortOrder: 65,
+  ),
+  SettingDef(
     key: CollectionPagingKeys.importExplained,
     category: SettingsCategory.advanced,
     widgetKind: SettingWidgetKind.custom,

@@ -15,6 +15,13 @@ abstract final class CollectionPagingKeys {
   /// Whether the background catalogue asks before sweeping a large backlog.
   static const String askBeforeCatalog = 'collection_paging.ask_before_catalog';
 
+  /// Whether the browse-only notice bar is shown while the import runs.
+  ///
+  /// On by default: the mode takes features away, so it has to be visible where
+  /// the features are, not only in a settings page the user has no reason to
+  /// open. Turning it off leaves the app bar subtitle as the only notice.
+  static const String browseOnlyBar = 'collection_paging.browse_only_bar';
+
   /// Whether the one-time "browse first, organize in the background" explainer
   /// has been shown. Kept here, not in a settings store: it must survive a
   /// settings-engine switch and never come back on its own.

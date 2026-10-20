@@ -61,6 +61,9 @@ class CollectionPagingPrefs extends ChangeNotifier {
   /// leaves a question per launch with nothing to decide.
   static const bool defaultAskBeforeCatalog = false;
 
+  /// Whether the browse-only notice bar is shown while the import runs.
+  static const bool defaultBrowseOnlyBar = true;
+
   /// Rows imported before the collection paints for the first time.
   ///
   /// One screen's worth on a phone grid, which is what makes a fresh install
@@ -76,6 +79,8 @@ class CollectionPagingPrefs extends ChangeNotifier {
   int _largeThreshold = defaultLargeThreshold;
 
   bool _askBeforeCatalog = defaultAskBeforeCatalog;
+
+  bool _browseOnlyBar = defaultBrowseOnlyBar;
 
   bool _importExplained = false;
 
@@ -97,6 +102,9 @@ class CollectionPagingPrefs extends ChangeNotifier {
 
   bool get askBeforeCatalog => _askBeforeCatalog;
 
+  /// Whether the browse-only notice bar is shown during the first import.
+  bool get browseOnlyBar => _browseOnlyBar;
+
   /// Whether the one-time background-organization explainer has been shown.
   bool get importExplained => _importExplained;
 
@@ -115,6 +123,7 @@ class CollectionPagingPrefs extends ChangeNotifier {
       _prefetchScreens = (prefs.getInt(CollectionPagingKeys.prefetchScreens) ?? defaultPrefetchScreens).clamp(0, maxPrefetchScreens);
       _largeThreshold = clampLargeThreshold(prefs.getInt(CollectionPagingKeys.largeThreshold) ?? defaultLargeThreshold);
       _askBeforeCatalog = prefs.getBool(CollectionPagingKeys.askBeforeCatalog) ?? defaultAskBeforeCatalog;
+      _browseOnlyBar = prefs.getBool(CollectionPagingKeys.browseOnlyBar) ?? defaultBrowseOnlyBar;
       _importExplained = prefs.getBool(CollectionPagingKeys.importExplained) ?? false;
       _importComplete = prefs.getBool(CollectionPagingKeys.importComplete) ?? false;
     } catch (error, stack) {
@@ -207,6 +216,18 @@ class CollectionPagingPrefs extends ChangeNotifier {
       await (await SharedPreferences.getInstance()).setBool(CollectionPagingKeys.importComplete, complete);
     } catch (error, stack) {
       _log.e('failed to persist the import-complete flag=$complete', error, stack);
+    }
+  }
+
+  /// Toggles the browse-only notice bar.
+  Future<void> setBrowseOnlyBar(bool show) async {
+    if (show == _browseOnlyBar) return;
+    _browseOnlyBar = show;
+    notifyListeners();
+    try {
+      await (await SharedPreferences.getInstance()).setBool(CollectionPagingKeys.browseOnlyBar, show);
+    } catch (error, stack) {
+      _log.e('failed to persist the browse-only bar flag=$show', error, stack);
     }
   }
 

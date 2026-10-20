@@ -1,11 +1,11 @@
-import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
-/// A catalog pass's progress over time.
+/// A catalog session's progress over time.
 class CatalogProgress {
   final int done;
 
-  /// The pass's row count, or 0 when it is unknown (the locate passes).
+  /// The session's row count, i.e. the backlog it started with, or 0 when it is
+  /// unknown.
   final int total;
 
   final Duration elapsed;
@@ -21,11 +21,15 @@ class CatalogProgress {
   });
 }
 
-/// Live progress of the background catalog/locate passes, for the app bar.
+/// Live progress of the background catalog passes, for the app bar.
 ///
-/// The passes report rows through `source.setProgress`; the worker feeds this
-/// notifier too, which adds the two things a bare counter cannot say: how long
-/// the pass has been running, and how long it is likely to take.
+/// A *session* is one drain of the worker, which may run several passes in a
+/// row (the current view, the rest of the library, the offline countries). Only
+/// the session is meaningful to the user: each pass restarts its own counters,
+/// and reporting them directly made the number jump backwards and the
+/// denominator change size between passes. Here the denominator is fixed when
+/// the session starts and the numerator only ever moves forward, so "N of M"
+/// reads like the old full load did.
 ///
 /// The estimate is a rolling rate over recent samples, so a stall or a burst
 /// moves the ETA instead of being averaged away. It is withheld until the pass
@@ -44,32 +48,48 @@ class CatalogProgressNotifier extends ValueNotifier<CatalogProgress?> {
   static const rateWindow = Duration(seconds: 30);
 
   DateTime? _startedAt;
+  int _done = 0;
+  int _total = 0;
   final List<({DateTime at, int done})> _samples = [];
 
   new() : super(null);
 
-  /// Reports a pass's progress. `total` of 0 means "unknown", and a `done` of 0
-  /// starts a new pass.
+  /// Starts a session. [total] is the backlog the session will work through and
+  /// stays fixed for its whole duration; 0 means the size is unknown.
+  void begin({required int total, required DateTime now}) {
+    _startedAt = now;
+    _done = 0;
+    _total = total;
+    _samples.clear();
+    value = CatalogProgress(done: 0, total: total, elapsed: Duration.zero);
+  }
+
+  /// Reports the session's progress. Neither number moves backwards: a pass
+  /// that starts over cannot rewind what the session already achieved.
   void update({required int done, required int total, required DateTime now}) {
-    if (done == 0) {
-      _samples.clear();
-      _startedAt = now;
-    }
     final startedAt = _startedAt ??= now;
-    _samples.add((at: now, done: done));
+    final nextTotal = total > _total ? total : _total;
+    var nextDone = done > _done ? done : _done;
+    if (nextTotal > 0 && nextDone > nextTotal) nextDone = nextTotal;
+    _done = nextDone;
+    _total = nextTotal;
+
+    _samples.add((at: now, done: nextDone));
     final cutoff = now.subtract(rateWindow);
     _samples.removeWhere((sample) => sample.at.isBefore(cutoff));
     value = CatalogProgress(
-      done: done,
-      total: total,
+      done: nextDone,
+      total: nextTotal,
       elapsed: now.difference(startedAt),
-      remaining: _estimate(done: done, total: total, now: now, startedAt: startedAt),
+      remaining: _estimate(done: nextDone, total: nextTotal, now: now, startedAt: startedAt),
     );
   }
 
-  /// Clears the pass, e.g. when it finishes and the source goes ready.
+  /// Clears the session, e.g. when the worker is done and the source goes ready.
   void finish() {
     _startedAt = null;
+    _done = 0;
+    _total = 0;
     _samples.clear();
     value = null;
   }
@@ -77,7 +97,7 @@ class CatalogProgressNotifier extends ValueNotifier<CatalogProgress?> {
   Duration? _estimate({required int done, required int total, required DateTime now, required DateTime startedAt}) {
     if (total <= 0 || done <= 0) return null;
     if (now.difference(startedAt) < estimateMinElapsed || done < estimateMinRows) return null;
-    final first = _samples.firstOrNull;
+    final first = _samples.isEmpty ? null : _samples.first;
     if (first == null) return null;
     final spanMs = now.difference(first.at).inMilliseconds;
     if (spanMs <= 0) return null;

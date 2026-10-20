@@ -681,6 +681,7 @@ class PagedCollectionLens extends CollectionLens {
       _log.e('paged bulk import failed', error, stack);
       _importingRows = false;
       pagedImportStatus.end();
+      source.setProgress(done: 0, total: 0);
       if (!_current(gen)) return;
       // Settle without refreshing: a reload would immediately retry the same
       // failing import. The next launch tries again, and rows already written
@@ -697,6 +698,10 @@ class PagedCollectionLens extends CollectionLens {
   void _onImportFinished(int gen) {
     _importingRows = false;
     pagedImportStatus.end();
+    // The import's counter must not outlive it: the loading screen renders any
+    // progress it finds, so a stale "32804/32804" would read as a re-import on
+    // the next resolve.
+    source.setProgress(done: 0, total: 0);
     if (!_current(gen)) return;
     source.state = SourceState.ready;
     notifyListeners();
@@ -915,6 +920,10 @@ class PagedCollectionLens extends CollectionLens {
       PagedBootstrap.feedDirectories(source, headers);
     }
     _attachSummaries();
+    // The window is ready now: publish it before the filter summaries, whose
+    // aggregates are the slow part. Waiting for them kept the whole grid behind
+    // a loading screen on a large library, even though its rows were resolvable.
+    notifyListeners();
     if (!_current(gen)) return;
     // Eager albums on first entry; refreshes already-loaded domains (tags,
     // locations) whose rows may have changed. Never throws: a failed domain

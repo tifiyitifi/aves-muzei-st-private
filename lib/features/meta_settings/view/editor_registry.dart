@@ -35,5 +35,6 @@ final Map<String, MetaEditorBuilder> metaEditorRegistry = {
   MetaEditorKeys.collectionPrefetchScreens: (context, def) => CollectionPrefetchScreensEditor(def: def),
   MetaEditorKeys.collectionThreshold: (context, def) => CollectionThresholdEditor(def: def),
   MetaEditorKeys.collectionAskBeforeCatalog: (context, def) => CollectionAskBeforeCatalogEditor(def: def),
+  MetaEditorKeys.collectionBrowseOnlyBar: (context, def) => CollectionBrowseOnlyBarEditor(def: def),
   MetaEditorKeys.collectionBackgroundWork: (context, def) => CollectionBackgroundWorkEditor(def: def),
 };

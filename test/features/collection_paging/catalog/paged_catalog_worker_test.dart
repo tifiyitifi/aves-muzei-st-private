@@ -121,6 +121,58 @@ void main() {
       expect(await database.countUncatalogued(), 0);
     });
 
+    test('reports one monotonic session across the scoped and library passes', () async {
+      await database.insertEntries({entry(1), entry(2, dir: '/other'), entry(3, dir: '/other')});
+      final scope = predicateForFilters({StoredAlbumFilter('/other', null)})!;
+      final reports = <(int, int)>[];
+      void onProgress() {
+        final p = source.progressNotifier.value;
+        reports.add((p.done, p.total));
+      }
+
+      source.progressNotifier.addListener(onProgress);
+      addTearDown(() => source.progressNotifier.removeListener(onProgress));
+
+      await worker().run(chunkSize: 1, scope: scope);
+
+      // The scoped pass reports 1 and 2 of the library backlog, the library pass
+      // then 3: the denominator never changes and the numerator never rewinds,
+      // which is what makes the app bar's counter readable.
+      final active = reports.where((r) => r.$2 > 0).toList();
+      expect(active.first, (0, 3));
+      for (var i = 1; i < active.length; i++) {
+        expect(active[i].$1, greaterThanOrEqualTo(active[i - 1].$1), reason: 'reports: $active');
+        expect(active[i].$2, active.first.$2, reason: 'reports: $active');
+      }
+      expect(active.last, (3, 3));
+
+      // The session's figures must not survive it: a later loading screen reads
+      // any progress it finds, and a stale "3/3" would look like a new pass.
+      expect(source.progressNotifier.value.done, 0);
+      expect(source.progressNotifier.value.total, 0);
+    });
+
+    test('a scoped-only pass counts its own album, not the library', () async {
+      await database.insertEntries({entry(1), entry(2, dir: '/other'), entry(3, dir: '/other')});
+      final scope = predicateForFilters({StoredAlbumFilter('/other', null)})!;
+      final reports = <(int, int)>[];
+      void onProgress() {
+        final p = source.progressNotifier.value;
+        reports.add((p.done, p.total));
+      }
+
+      source.progressNotifier.addListener(onProgress);
+      addTearDown(() => source.progressNotifier.removeListener(onProgress));
+
+      await worker().run(chunkSize: 1, scope: scope, scopedOnly: true);
+
+      // The badge promises one album, so "2 of 2" is the honest figure; the
+      // library's backlog would leave the counter stranded at the start.
+      final active = reports.where((r) => r.$2 > 0).toList();
+      expect(active.first, (0, 2));
+      expect(active.last, (2, 2));
+    });
+
     test('resumes the saved frontier and wraps to cover what precedes it', () async {
       await database.insertEntries({for (var i = 1; i <= 3; i++) entry(i, dir: '/d$i')});
       // A frontier from an earlier session: the sweep must continue after it and

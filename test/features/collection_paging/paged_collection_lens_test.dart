@@ -72,6 +72,9 @@ void main() {
     await collectionPagingPrefs.setWindowSize(200);
     await collectionPagingPrefs.setPrefetchScreens(0);
     await collectionPagingPrefs.setLargeThreshold(100000);
+    // Steady state: the library has been imported once. The import test below
+    // turns this off on purpose.
+    await collectionPagingPrefs.setImportComplete(true);
     await driftDb.clearEntries();
     await driftDb.clearCatalogMetadata();
     await driftDb.clearDates();
@@ -119,7 +122,7 @@ void main() {
       if (done()) return;
       await Future<void>.delayed(const Duration(milliseconds: 25));
     }
-    fail('paged lens did not settle (entryCount=${lens.entryCount}, blocked=${lens.pagedBlocked})');
+    fail('paged lens did not settle (entryCount=${lens.entryCount}, active=${lens.pagedActive}, blocked=${lens.pagedBlocked})');
   }
 
   /// Reads every row, kicking off fetches like the sliver would, until none
@@ -787,10 +790,11 @@ void main() {
       await collectionPagingPrefs.setLargeThreshold(2);
       await collectionPagingPrefs.setWindowSize(10);
       final locatedIds = <int>[];
+      late PagedCatalogWorker worker;
       final lens = PagedCollectionLens(
         source: source,
         filters: {},
-        catalogWorkerFactory: ({required source}) => PagedCatalogWorker(
+        catalogWorkerFactory: ({required source}) => worker = PagedCatalogWorker(
           source: source,
           // id 1 is geotagged; bootstrap may wipe metadata, so the fake
           // catalog re-supplies the coordinates.
@@ -809,11 +813,11 @@ void main() {
       );
       addTearDown(lens.dispose);
       await settle(lens, done: () => lens.entryCount == 2 && lens.pagedActive);
-      // eager passes (catalog + countries) run on enter, places do not
-      for (var i = 0; i < 200; i++) {
-        if ((await service.loadUnaddressedGpsIds(after: LocalMediaDb.backlogStart, limit: 10)).isEmpty) break;
-        await Future<void>.delayed(const Duration(milliseconds: 25));
-      }
+      // Eager passes (catalog + countries) run on enter, places do not. The lens
+      // starts them unawaited, so the test joins the drain instead of polling
+      // the database, which would race the worker's own cooperative yields.
+      unawaited(worker.run());
+      await worker.whenIdle();
       expect(locatedIds, isEmpty);
       // opening a places surface loads the locations domain, which lazily
       // triggers the fine-places pass for the country-only row (id 1; id 2

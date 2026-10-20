@@ -102,6 +102,12 @@ class PagedCollectionLens extends CollectionLens {
   /// even after the first windows resolved.
   bool _importingRows = false;
 
+  /// Whether the grid has already been re-resolved once mid-import.
+  ///
+  /// The first resolve only sees the first batch; a huge library would otherwise
+  /// show that batch until the whole import ends.
+  bool _grewDuringImport = false;
+
   int _reloadGen = 0;
   bool _reloading = false;
   bool _disposed = false;
@@ -549,6 +555,24 @@ class PagedCollectionLens extends CollectionLens {
       await _awaitInFlightLoad();
       if (!_current(gen)) return;
 
+      final prefs = collectionPagingPrefs;
+      await prefs.init();
+      if (!_current(gen)) return;
+
+      // A first run is known before anything is read: the library is about to be
+      // written, so say so from the first frame instead of a bare "loading" that
+      // only turns into an explanation a second later. A reload that lands while
+      // the import runs must not start a second one: it only re-resolves the
+      // rows that have arrived.
+      final needsImport = !prefs.importComplete;
+      final startImport = needsImport && !_importingRows;
+      if (startImport) {
+        _importingRows = true;
+        _grewDuringImport = false;
+        pagedImportStatus.begin();
+        source.setProgress(done: 0, total: 0);
+      }
+
       // The view is about to resolve: say so instead of showing an empty
       // collection with a zero count, which reads as "your library is gone"
       // during the (slow, first-run) bootstrap.
@@ -565,11 +589,7 @@ class PagedCollectionLens extends CollectionLens {
       var decision = await const CollectionEngineRouter().resolve(filters: filters);
       if (!_current(gen)) return;
 
-      final prefs = collectionPagingPrefs;
-      await prefs.init();
-      if (!_current(gen)) return;
-
-      if (!prefs.importComplete) {
+      if (startImport) {
         // Unseen library, or an import that never finished: fill the database
         // (resumably) and paint after the first batch, then re-resolve against
         // what has landed. The empty-scope case is covered too: an empty
@@ -640,10 +660,6 @@ class PagedCollectionLens extends CollectionLens {
   /// the tail, so nothing already on screen is reordered.
   Future<void> _initialImport(int gen) async {
     final discoverer = PagedDiscoverer();
-    _importingRows = true;
-    pagedImportStatus.begin();
-    source.state = SourceState.loading;
-    source.setProgress(done: 0, total: 0);
     if (!collectionPagingPrefs.importExplained) {
       // One-time: what the app is doing and how long it takes. The settings
       // page keeps the same explanation available afterwards.
@@ -665,6 +681,7 @@ class PagedCollectionLens extends CollectionLens {
       onProgress: (done) {
         pagedImportStatus.update(done);
         if (_current(gen)) source.setProgress(done: done, total: pagedImportStatus.total);
+        _growWhileImporting(done, gen);
       },
       onFirstBatch: () async {
         if (!firstBatch.isCompleted) firstBatch.complete();
@@ -691,6 +708,19 @@ class PagedCollectionLens extends CollectionLens {
     }));
 
     await firstBatch.future;
+  }
+
+  /// Lets the grid grow once, midway through a long import.
+  ///
+  /// The view is resolved against the rows that exist at that moment. Without
+  /// this, a library that takes a minute to stream would show its first batch
+  /// until the very end, which reads as a collection that stops at 250 items.
+  void _growWhileImporting(int done, int gen) {
+    if (!_pagedActive || _grewDuringImport) return;
+    final total = pagedImportStatus.total;
+    if (total <= 0 || done < total ~/ 2) return;
+    _grewDuringImport = true;
+    if (_current(gen)) refresh();
   }
 
   /// Settles the state and re-resolves once the import is over, so the view
@@ -727,7 +757,10 @@ class PagedCollectionLens extends CollectionLens {
   /// delegate to `super` afterwards.
   Future<void> _enterLegacy(EngineDecision decision, int gen) async {
     if (source.loadedScope != CollectionSource.fullScope) {
-      final allowed = await const CollectionEngineRouter().allowFullLoad();
+      // A library that is still being written cannot be materialized: a count
+      // taken now is the part that has landed, not the library, and materializing
+      // it would walk every row the import is about to add.
+      final allowed = !_importingRows && await const CollectionEngineRouter().allowFullLoad();
       if (!_current(gen)) return;
       if (!allowed) {
         final predicate = decision.predicate;

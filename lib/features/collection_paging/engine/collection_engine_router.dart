@@ -144,6 +144,14 @@ class CollectionEngineRouter {
     if (prefs.engine == CollectionEngine.legacy) {
       return true;
     }
+    if (!prefs.importComplete) {
+      // The library is not whole yet. A count taken now is only the part the
+      // import has written so far, so "small enough" would be an accident of
+      // timing: a fresh install would materialize the very library it is still
+      // filling. The windowed path bootstraps entry-free and waits for the
+      // import instead.
+      return false;
+    }
     try {
       final db = database ?? localMediaDb;
       await db.init();

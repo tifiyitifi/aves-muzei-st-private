@@ -36,6 +36,9 @@ void main() {
 
   setUp(() async {
     await collectionPagingPrefs.init();
+    // The size rules assume a library that has been imported once: before that,
+    // what the database holds is only the part that has landed.
+    await collectionPagingPrefs.setImportComplete(true);
     db = AppDatabase(NativeDatabase.memory());
     driftDb = DriftLocalMediaDb(database: db);
     await driftDb.init();
@@ -205,6 +208,17 @@ void main() {
     test('an unprovable size is not a safe full load', () async {
       await configure(engine: CollectionEngine.auto, threshold: 1);
       expect(await router.allowFullLoad(database: _FailingDb()), isFalse);
+    });
+
+    test('a library still being imported is never fully loaded', () async {
+      await driftDb.insertEntries({entry(1)});
+      await configure(engine: CollectionEngine.auto, threshold: 1000);
+      await collectionPagingPrefs.setImportComplete(false);
+      addTearDown(() => collectionPagingPrefs.setImportComplete(true));
+
+      // One row is in the database, the library has thousands: the count is an
+      // accident of timing, not a size.
+      expect(await router.allowFullLoad(database: driftDb), isFalse);
     });
   });
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/features/collection_paging/catalog/catalog_progress.dart';
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/logging/log.dart';
@@ -86,6 +88,14 @@ class PagedCatalogWorker {
 
   bool get isRunning => _draining;
 
+  /// Completes when the current drain, if any, has finished.
+  ///
+  /// Lets a test wait for the eager passes without polling the database, which
+  /// would race the worker's own cooperative yields.
+  Future<void> whenIdle() => _draining ? (_drainDone?.future ?? Future<void>.value()) : Future<void>.value();
+
+  Completer<void>? _drainDone;
+
   /// Rows the session started with, and how many of them are done.
   ///
   /// One session spans every pass of a drain: the counter is what the app bar
@@ -128,6 +138,7 @@ class PagedCatalogWorker {
   Future<void> _drain(int chunkSize) async {
     if (_draining) return;
     _draining = true;
+    _drainDone = Completer<void>();
     try {
       while (!_stopRequested && (_pendingRun || _pendingPlaces)) {
         if (_pendingRun) {
@@ -159,6 +170,9 @@ class PagedCatalogWorker {
       _sessionDone = 0;
       _sessionStarted = false;
       _sessionScope = null;
+      final done = _drainDone;
+      _drainDone = null;
+      if (done != null && !done.isCompleted) done.complete();
     }
   }
 

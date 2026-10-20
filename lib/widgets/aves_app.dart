@@ -446,12 +446,15 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
   Future<void> _setup() async {
     final stopwatch = Stopwatch()..start();
 
-    await device.init();
-    await mobileServices.init();
-    await settings.init(monitorPlatformSettings: true, shouldSanitize: true);
-    settings.isRotationLocked = await windowService.isRotationLocked();
-    settings.longPressTimeoutMillis = await AccessibilityService.getLongPressTimeout();
-    settings.areAnimationsRemoved = await AccessibilityService.areAnimationsRemoved();
+    // Only what the first page needs gates it, and the three initializers are
+    // independent: running them together costs the slowest one instead of their
+    // sum. `settings.init` is asked not to sanitize, as sanitation reads device
+    // capabilities and would otherwise only add to the blocking path.
+    await Future.wait([
+      _timed('device', device.init),
+      _timed('mobile services', mobileServices.init),
+      _timed('settings', () => settings.init(monitorPlatformSettings: true, shouldSanitize: false)),
+    ]);
     _monitorSettings();
     videoControllerFactory.init();
     videoMetadataFetcher.init();
@@ -461,6 +464,34 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
     unawaited(_setupErrorReporting());
 
     debugPrint('App setup in ${stopwatch.elapsed.inMilliseconds}ms');
+    unawaited(_setupAfterFirstFrame(stopwatch));
+  }
+
+  /// Setup that no first page needs, so it lands while the collection is already
+  /// interactive: platform probes that write settings back, and the sanitation
+  /// pass that reads the device capabilities awaited by [_setup].
+  Future<void> _setupAfterFirstFrame(Stopwatch stopwatch) async {
+    await WidgetsBinding.instance.endOfFrame;
+    debugPrint('First frame in ${stopwatch.elapsed.inMilliseconds}ms');
+    await _timed('sanitize', settings.sanitize);
+    await _timed('rotation lock', () async => settings.isRotationLocked = await windowService.isRotationLocked());
+    await _timed('accessibility', () async {
+      settings.longPressTimeoutMillis = await AccessibilityService.getLongPressTimeout();
+      settings.areAnimationsRemoved = await AccessibilityService.areAnimationsRemoved();
+    });
+    debugPrint('Deferred setup in ${stopwatch.elapsed.inMilliseconds}ms');
+  }
+
+  /// Times one setup step. `debugPrint` on purpose: these lines are the startup
+  /// budget and must also show in profile runs, where the log channels are gated
+  /// above the debug level.
+  Future<T> _timed<T>(String step, Future<T> Function() body) async {
+    final stopwatch = Stopwatch()..start();
+    try {
+      return await body();
+    } finally {
+      debugPrint('setup $step in ${stopwatch.elapsedMilliseconds}ms');
+    }
   }
 
   void _monitorSettings() {

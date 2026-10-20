@@ -44,6 +44,10 @@ void main() {
       expect(prefs.windowSize, CollectionPagingPrefs.defaultWindowSize);
       expect(prefs.prefetchScreens, CollectionPagingPrefs.defaultPrefetchScreens);
       expect(prefs.largeThreshold, CollectionPagingPrefs.defaultLargeThreshold);
+      // The default is the smallest preset: a library that big is served window
+      // by window, so a low threshold costs nothing and keeps it off the full
+      // load.
+      expect(CollectionPagingPrefs.defaultLargeThreshold, CollectionPagingPrefs.largeThresholdPresets.first);
       expect(prefs.isLoaded, isTrue);
       prefs.dispose();
     });

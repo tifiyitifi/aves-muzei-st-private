@@ -37,7 +37,11 @@ class CollectionPagingPrefs extends ChangeNotifier {
   static const List<int> largeThresholdPresets = [20000, 50000, 100000, 500000];
 
   /// Collections at or above this size use paged loading under [CollectionEngine.auto].
-  static const int defaultLargeThreshold = 100000;
+  ///
+  /// The default is the smallest preset: a library that large already costs real
+  /// memory to materialize, and the windowed path serves it without ever needing
+  /// the whole list, so paging is the safer default and can still be raised.
+  static const int defaultLargeThreshold = 20000;
 
   /// Hard ceiling for the threshold: above this a full load is never attempted.
   static const int maxLargeThreshold = 10000000;

@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/browse_only/install.dart';
+import 'package:aves/features/browse_only/view/browse_only_page.dart';
 import 'package:aves/features/collection_paging/catalog/catalog_prompt.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/view/catalog_prompt_dialog.dart';
@@ -55,9 +58,13 @@ class _CollectionPageState extends State<CollectionPage> {
   late PagedCollectionLens _collection;
   final StreamController<DraggableScrollbarEvent> _draggableScrollBarEventStreamController = StreamController.broadcast();
   bool _importing = false;
+  int _lastRetryToken = 0;
 
   @override
   void initState() {
+    // The import feeds the browse index in the same pass that writes the rows,
+    // so install the sink before the lens can start one.
+    installBrowseOnly();
     // do not seed this widget with the collection, but control its lifecycle here instead,
     // as the collection properties may change and they should not be reset by a widget update (e.g. with theme change)
     // The paged lens covers both paths: it serves windows from the database on
@@ -87,6 +94,8 @@ class _CollectionPageState extends State<CollectionPage> {
     // and how long it takes; dialogs belong here, not in the lens.
     _importing = pagedImportStatus.active;
     pagedImportStatus.addListener(_onImportStatusChanged);
+    libraryPhase.addListener(_onLibraryPhaseChanged);
+    _lastRetryToken = libraryPhase.retryToken;
     if (pagedImportStatus.explainerPending) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _maybeExplainImport());
     }
@@ -96,6 +105,7 @@ class _CollectionPageState extends State<CollectionPage> {
   void dispose() {
     catalogPrompt.pending.removeListener(_onCatalogPromptChanged);
     pagedImportStatus.removeListener(_onImportStatusChanged);
+    libraryPhase.removeListener(_onLibraryPhaseChanged);
     _subscriptions
       ..forEach((sub) => sub.cancel())
       ..clear();
@@ -103,9 +113,29 @@ class _CollectionPageState extends State<CollectionPage> {
     super.dispose();
   }
 
+  /// The browser and the collection choose their surface from one place now, so
+  /// a phase change rebuilds this page instead of leaving a stale gate behind.
+  void _onLibraryPhaseChanged() {
+    if (!mounted) return;
+    final token = libraryPhase.retryToken;
+    if (token != _lastRetryToken) {
+      // The user asked to resume a stopped import: the lens owns the work.
+      _lastRetryToken = token;
+      if (!_collection.importingRows) _collection.refresh();
+    }
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final useTvLayout = settings.useTvLayout;
+    // While the library is being organized the browser is the collection
+    // surface: a window over a database still being written cannot answer for
+    // albums, counts or a filter switch without reading as "zero" or
+    // "loading". The phase is the only signal and it only moves one way, so a
+    // navigation back to all media after the import can never bring the browser
+    // back: the grid shows its own loading state instead.
+    final browseOnly = libraryPhase.isBrowsing;
     final liveFilter = _collection.filters.firstWhereOrNull((v) => v is QueryFilter && v.live) as QueryFilter?;
     return SelectionProvider<AvesEntry>(
       toSelectableItems: (entry) => entry.toSelectableItems(),
@@ -133,11 +163,13 @@ class _CollectionPageState extends State<CollectionPage> {
                       start: !useTvLayout,
                       top: false,
                       bottom: false,
-                      child: const CollectionGrid(
-                        // key is expected by test driver
-                        key: Key('collection-grid'),
-                        settingsRouteKey: CollectionPage.routeName,
-                      ),
+                      child: browseOnly
+                          ? const BrowseOnlyPage()
+                          : const CollectionGrid(
+                              // key is expected by test driver
+                              key: Key('collection-grid'),
+                              settingsRouteKey: CollectionPage.routeName,
+                            ),
                     ),
                   ),
                 );
@@ -174,9 +206,11 @@ class _CollectionPageState extends State<CollectionPage> {
                   },
                   child: AvesScaffold(
                     body: body,
-                    floatingActionButton: _buildFab(context, isSelecting, selectedItemCount),
+                    floatingActionButton: _buildFab(context, isSelecting, selectedItemCount, browseOnly: browseOnly),
                     drawer: canNavigate ? AppDrawer(currentCollection: _collection) : null,
-                    bottomNavigationBar: showBottomNavigationBar
+                    // The browser brings its own bar (the same items, mapped to
+                    // views it can serve); two bars would fight for the bottom.
+                    bottomNavigationBar: showBottomNavigationBar && !browseOnly
                         ? AppBottomNavBar(
                             events: _draggableScrollBarEventStreamController.stream,
                             currentCollection: _collection,
@@ -199,7 +233,10 @@ class _CollectionPageState extends State<CollectionPage> {
     );
   }
 
-  Widget? _buildFab(BuildContext context, bool isSelecting, int selectedItemCount) {
+  Widget? _buildFab(BuildContext context, bool isSelecting, int selectedItemCount, {required bool browseOnly}) {
+    // Nothing on the browser is selectable: a floating action over it would be
+    // a button with no valid target.
+    if (browseOnly) return null;
     final actionDelegate = EntrySetActionDelegate();
     final action = EntrySetActions.fab.firstWhereOrNull((action) {
       return actionDelegate.isVisible(

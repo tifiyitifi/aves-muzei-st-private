@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:aves/features/collection_paging/engine/collection_engine.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dart';
-import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
+import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
+import 'package:aves/features/collection_paging/summary/paged_summary_registry.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/locale/aves_locale.dart';
@@ -25,6 +28,7 @@ import 'package:aves/model/source/analysis_controller.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/model/source/media_store_source.dart';
 import 'package:aves/model/source/section_keys.dart';
+import 'package:aves/model/source/tag.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
@@ -80,6 +84,7 @@ void main() {
     await driftDb.clearDates();
     await driftDb.clearAddresses();
     await driftDb.clearTrashDetails();
+    await db.customStatement('DELETE FROM appMeta WHERE key = ?', [DriftLocalMediaDb.importCompleteKey]);
     source = MediaStoreSource();
     source.canAnalyze = false;
   });
@@ -858,6 +863,129 @@ void main() {
       expect(lens.pagedActive, isFalse);
       expect(await lens.indexOfId(2), 0);
       expect(await lens.indexOfId(999), -1);
+    });
+
+    test('summaries outlive the lens for the top-level filter pages', () async {
+      final service = await drift();
+      await service.insertEntries({
+        entry(1, dir: '/a', dateTaken: millis(2024, 3)),
+        entry(2, dir: '/a', dateTaken: millis(2024, 1)),
+      });
+      // Force the windowed path: a small library would materialize instead.
+      await collectionPagingPrefs.setLargeThreshold(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      await settle(lens, done: () => lens.entryCount == 2);
+      expect(lens.pagedActive, isTrue);
+      expect(source.summaries, isNotNull);
+
+      // The album/tag/place pages are pushed with `pushAndRemoveUntil`, which
+      // disposes the collection. Their counts must survive it.
+      lens.dispose();
+      expect(source.summaries, isNotNull);
+      expect(source.count(StoredAlbumFilter('/a', null)), 2);
+      forgetPagedSummaries(source);
+    });
+
+    test('a legacy view detaches the provider from the source', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2)});
+      await collectionPagingPrefs.setLargeThreshold(100000);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.entryCount == 2);
+      expect(lens.pagedActive, isFalse);
+      // Entries are materialized, so the source must answer from memory again.
+      expect(source.summaries, isNull);
+      forgetPagedSummaries(source);
+    });
+
+    test('cataloguing patches the mounted tiles instead of rebuilding the window', () async {
+      final service = await drift();
+      await service.insertEntries({
+        entry(1, dir: '/a', dateTaken: millis(2024, 3)),
+        entry(2, dir: '/a', dateTaken: millis(2024, 1)),
+      });
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(10);
+      final lens = PagedCollectionLens(
+        source: source,
+        filters: {},
+        catalogWorkerFactory: ({required source}) => PagedCatalogWorker(
+          source: source,
+          catalogEntry: (entry) async => entry.catalogMetadata = CatalogMetadata(id: entry.id, xmpSubjects: 'sweep'),
+        ),
+      );
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && allReal(lens));
+      // The eager sweep settles the view once when it ends. Capture the window
+      // after that, so the assertions below are about the catalog event alone.
+      for (var i = 0; i < 200; i++) {
+        if (await service.countUncatalogued() == 0) break;
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await settle(lens, done: () => lens.pagedActive && allReal(lens));
+
+      final sections = lens.sections;
+
+      // A pass persists a batch and announces it, exactly like the worker does.
+      await service.saveCatalogMetadata({CatalogMetadata(id: 1, xmpSubjects: 'batch')});
+      source.eventBus.fire(CatalogMetadataChangedEvent());
+      // The patch is coalesced, so it lands a beat after the event.
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+
+      expect(identical(lens.sections, sections), isTrue, reason: 'a catalog event must not rebuild the sections');
+      expect(allReal(lens), isTrue, reason: 'no tile may fall back to a skeleton');
+      expect(lens.sortedEntries.firstWhere((e) => e.id == 1).catalogMetadata?.xmpSubjects, 'batch');
+      expect(source.state, SourceState.ready);
+    });
+
+    test('a first resolve settles ready instead of staying loading', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      // No sweep, so nothing else will write the state back.
+      await collectionPagingPrefs.setAskBeforeCatalog(true);
+      addTearDown(() => collectionPagingPrefs.setAskBeforeCatalog(false));
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 2);
+      expect(source.state, SourceState.ready, reason: 'a resolved window must not read as loading');
+    });
+
+    test('a refresh does not overwrite the catalog pass state', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(10);
+      // Held back, so no pass runs behind the assertion.
+      await collectionPagingPrefs.setAskBeforeCatalog(true);
+      addTearDown(() => collectionPagingPrefs.setAskBeforeCatalog(false));
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && allReal(lens));
+
+      // The app bar shows the pass's own clock while it runs; a reload used to
+      // write `ready` back, flipping the subtitle on every refresh.
+      source.state = SourceState.cataloguing;
+      lens.refresh();
+      await settle(lens, done: () => lens.pagedActive && allReal(lens));
+      expect(source.state, SourceState.cataloguing);
+    });
+
+    test('a lost preference does not re-import a complete database', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2)});
+      // The marker is written next to the rows: preferences can be reset, the
+      // database cannot without losing the library.
+      await service.writeImportComplete();
+      await collectionPagingPrefs.setImportComplete(false);
+      await collectionPagingPrefs.setLargeThreshold(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 2);
+      expect(collectionPagingPrefs.importComplete, isTrue);
+      expect(pagedImportStatus.active, isFalse, reason: 'a complete library must not be scanned again');
     });
   });
 }

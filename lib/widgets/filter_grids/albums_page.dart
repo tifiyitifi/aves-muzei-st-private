@@ -1,3 +1,5 @@
+import 'package:aves/features/browse_only/view/browse_albums_view.dart';
+import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/model/app_inventory.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/dynamic_albums.dart';
@@ -36,6 +38,19 @@ class AlbumListPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // One phase decides which album list is honest: while the library is not
+    // imported the database holds only the rows the import has written, so its
+    // summaries would list a partial library (or nothing) as if that were the
+    // whole answer. The builder listens, so the persisted flag arriving a frame
+    // after the page was built cannot leave the browse album page on screen.
+    return ListenableBuilder(
+      listenable: libraryPhase,
+      builder: (context, child) => libraryPhase.isBrowsing ? const BrowseOnlyAlbumsPage() : child!,
+      child: _buildAlbums(context),
+    );
+  }
+
+  Widget _buildAlbums(BuildContext context) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<FilterGrouping>.value(value: albumGrouping),

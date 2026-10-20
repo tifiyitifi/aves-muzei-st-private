@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:aves/app_flavor.dart';
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/l10n/l10n.dart';
 import 'package:aves/model/app/intent.dart';
@@ -454,6 +455,10 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
       _timed('device', device.init),
       _timed('mobile services', mobileServices.init),
       _timed('settings', () => settings.init(monitorPlatformSettings: true, shouldSanitize: false)),
+      // The import flag decides which surface the first page is: reading it
+      // behind an async gap let a page built before it resolved treat a
+      // complete library as unimported.
+      _timed('library phase', libraryPhase.init),
     ]);
     _monitorSettings();
     videoControllerFactory.init();

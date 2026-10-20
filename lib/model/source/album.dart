@@ -19,7 +19,10 @@ mixin AlbumMixin on SourceBase {
 
   List<String> get rawAlbums {
     final provider = summaries;
-    if (provider != null && allEntries.isEmpty) return provider.albumDirectories;
+    // A paged source keeps no entries at all: its summaries are the library.
+    // Any in-memory entry (a vault row, a move) must not flip the album list
+    // back to a handful of paths the app happened to materialize.
+    if (provider != null) return provider.albumDirectories;
     return List.unmodifiable(_directories);
   }
 

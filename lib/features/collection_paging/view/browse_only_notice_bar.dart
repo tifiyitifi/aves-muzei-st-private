@@ -1,5 +1,7 @@
+import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/view/collection_background_work_page.dart';
+import 'package:aves/model/settings/settings.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:material_ui/material_ui.dart';
@@ -18,7 +20,7 @@ import 'package:material_ui/material_ui.dart';
 /// disappears with it, so the unlock is visible without a restart.
 abstract final class BrowseOnlyMode {
   /// Whether the reduced mode is running.
-  static bool get isActive => pagedImportStatus.active;
+  static bool get isActive => libraryPhase.isBrowsing || pagedImportStatus.active;
 
   /// Collection actions that are greyed out while it runs.
   static const Set<EntrySetAction> lockedActions = {
@@ -61,56 +63,95 @@ abstract final class BrowseOnlyMode {
 ///
 /// It is the mode's own explanation surface: a mode that takes features away has
 /// to say so where those features are, not only in a settings page the user has
-/// no reason to open.
+/// no reason to open. It carries the import counter too, on its own line: one
+/// line could not show both what the app is doing and how far it has got
+/// without cutting one of them.
 class BrowseOnlyNoticeBar extends StatelessWidget {
   /// Kept in sync with the bar's layout and added to the app bar's content
   /// height while the bar is shown.
-  static const double preferredHeight = 40;
+  static const double preferredHeight = 56;
 
-  const new({super.key});
+  /// Whether to show the mode notice line. The import counter is always shown
+  /// while a run is active: it is status, not the notice the setting hides.
+  final bool showNotice;
+
+  const new({super.key, this.showNotice = true});
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
     final theme = Theme.of(context);
     final color = theme.colorScheme.onSecondaryContainer;
+    final l10n = context.l10n;
     return Material(
       color: theme.colorScheme.secondaryContainer,
       child: SizedBox(
         height: preferredHeight,
-        child: Row(
-          children: [
-            const SizedBox(width: 16),
-            Icon(Icons.sync, size: 16, color: color),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                l10n.browseOnlyBarMessage,
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.fade,
-                style: theme.textTheme.bodySmall?.copyWith(color: color),
-              ),
-            ),
-            TextButton(
-              style: TextButton.styleFrom(
-                // The strip is 40 high: a default-sized button would overflow it.
-                minimumSize: Size.zero,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-                foregroundColor: color,
-              ),
-              onPressed: () => Navigator.maybeOf(context)?.push(
-                MaterialPageRoute(
-                  settings: const RouteSettings(name: CollectionBackgroundWorkPage.routeName),
-                  builder: CollectionBackgroundWorkPage.routeBuilder,
+        child: ListenableBuilder(
+          listenable: Listenable.merge([pagedImportStatus, libraryPhase]),
+          builder: (context, child) {
+            final status = pagedImportStatus;
+            final failed = libraryPhase.hasFailed;
+            final formatter = settings.avesLocale.decimalNumberFormat();
+            final statusLine = failed
+                ? l10n.browseOnlyImportFailed
+                : !status.active
+                ? null
+                : status.total > 0
+                ? l10n.browseOnlyProgress(formatter.format(status.done), formatter.format(status.total))
+                : l10n.sourceStateImporting;
+            return Row(
+              children: [
+                const SizedBox(width: 16),
+                Icon(failed ? Icons.error_outline : Icons.sync, size: 16, color: color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (statusLine != null)
+                        Text(
+                          statusLine,
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.fade,
+                          style: theme.textTheme.bodyMedium?.copyWith(color: color),
+                        ),
+                      if (showNotice)
+                        Text(
+                          l10n.browseOnlyBarMessage,
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.fade,
+                          style: theme.textTheme.bodySmall?.copyWith(color: color),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-              child: Text(l10n.browseOnlyBarDetails),
-            ),
-            const SizedBox(width: 4),
-          ],
+                const SizedBox(width: 8),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    // The strip is 56 high: a default-sized button would overflow.
+                    minimumSize: Size.zero,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: color,
+                  ),
+                  onPressed: failed
+                      ? libraryPhase.retry
+                      : () => Navigator.maybeOf(context)?.push(
+                          MaterialPageRoute(
+                            settings: const RouteSettings(name: CollectionBackgroundWorkPage.routeName),
+                            builder: CollectionBackgroundWorkPage.routeBuilder,
+                          ),
+                        ),
+                  child: Text(failed ? l10n.browseOnlyImportRetry : l10n.browseOnlyBarDetails),
+                ),
+                const SizedBox(width: 4),
+              ],
+            );
+          },
         ),
       ),
     );

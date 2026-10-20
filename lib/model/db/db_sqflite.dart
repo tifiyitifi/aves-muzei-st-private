@@ -429,6 +429,15 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   @override
   Future<void> saveCatalogCursor(BacklogCursor cursor) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
+  // The marker describes the paged import, which only the Drift backend runs:
+  // this one answers "not recorded" and ignores the write rather than failing a
+  // read the collection performs on every start.
+  @override
+  Future<bool> readImportComplete() async => false;
+
+  @override
+  Future<void> writeImportComplete() async {}
+
   void _batchInsertMetadata(Batch batch, CatalogMetadata? metadata) {
     if (metadata == null) return;
     if (metadata.dateMillis != 0) {

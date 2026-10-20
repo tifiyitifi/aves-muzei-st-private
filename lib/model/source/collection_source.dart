@@ -606,7 +606,7 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
 
   int count(CollectionFilter filter) {
     final provider = summaries;
-    if (provider != null && allEntries.isEmpty) return provider.count(filter);
+    if (provider != null) return provider.count(filter);
     switch (filter) {
       case AlbumBaseFilter _:
         return albumEntryCount(filter);
@@ -624,7 +624,7 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
 
   int size(CollectionFilter filter) {
     final provider = summaries;
-    if (provider != null && allEntries.isEmpty) return provider.size(filter);
+    if (provider != null) return provider.size(filter);
     switch (filter) {
       case AlbumBaseFilter _:
         return albumSize(filter);
@@ -642,7 +642,7 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
 
   AvesEntry? recentEntry(CollectionFilter filter) {
     final provider = summaries;
-    if (provider != null && allEntries.isEmpty) return provider.recentEntry(filter);
+    if (provider != null) return provider.recentEntry(filter);
     switch (filter) {
       case AlbumBaseFilter _:
         return albumRecentEntry(filter);
@@ -660,7 +660,7 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
 
   AvesEntry? coverEntry(CollectionFilter filter) {
     final provider = summaries;
-    if (provider != null && allEntries.isEmpty) return provider.coverEntry(filter);
+    if (provider != null) return provider.coverEntry(filter);
     final id = covers.of(filter)?.entryId;
     if (id != null) {
       final entry = visibleEntries.firstWhereOrNull((entry) => entry.id == id);

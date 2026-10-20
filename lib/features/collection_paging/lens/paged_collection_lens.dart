@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/catalog/catalog_prompt.dart';
 import 'package:aves/features/collection_paging/catalog/catalog_service.dart';
 import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dart';
+import 'package:aves/features/collection_paging/import/import_rows.dart';
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/lens/paged_lists.dart';
@@ -17,6 +19,7 @@ import 'package:aves/features/collection_paging/selection/selection_mark.dart';
 import 'package:aves/features/collection_paging/selection/selection_trait.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/features/collection_paging/summary/paged_filter_summaries.dart';
+import 'package:aves/features/collection_paging/summary/paged_summary_registry.dart';
 import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
 import 'package:aves/features/collection_paging/windows/window_cache.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
@@ -108,8 +111,17 @@ class PagedCollectionLens extends CollectionLens {
   /// show that batch until the whole import ends.
   bool _grewDuringImport = false;
 
+  /// Listener for an import started by another surface, when this lens joined
+  /// it instead of scanning again.
+  void Function()? _externalImportListener;
+
   int _reloadGen = 0;
   bool _reloading = false;
+
+  /// Coalesces the in-place metadata patches: a sweep flushes every 50 rows,
+  /// and one patch per flush would still rebuild the grid hundreds of times.
+  Timer? _metadataPatchTimer;
+  bool _patchingMetadata = false;
   bool _disposed = false;
   final Completer<void> _ready = Completer<void>();
 
@@ -157,8 +169,12 @@ class PagedCollectionLens extends CollectionLens {
       source.eventBus.on<EntryMovedEvent>().listen((_) => refresh()),
       source.eventBus.on<EntryRefreshedEvent>().listen((_) => refresh()),
       source.eventBus.on<FilterVisibilityChangedEvent>().listen((_) => refresh()),
-      source.eventBus.on<CatalogMetadataChangedEvent>().listen((_) => refresh()),
-      source.eventBus.on<AddressMetadataChangedEvent>().listen((_) => refresh()),
+      // Cataloguing and locating change row *content*, not which rows the view
+      // holds: patch the tiles already on screen instead of re-resolving. A
+      // full reload here rebuilt every section into skeletons on each 50-row
+      // flush, which is constant flicker while a large backlog is swept.
+      source.eventBus.on<CatalogMetadataChangedEvent>().listen((_) => _scheduleMetadataPatch()),
+      source.eventBus.on<AddressMetadataChangedEvent>().listen((_) => _scheduleMetadataPatch()),
       // The locations domain loads when the user opens a places surface;
       // lazily backfill fine addresses then, instead of geocoding a huge
       // library up front.
@@ -206,7 +222,13 @@ class PagedCollectionLens extends CollectionLens {
   void dispose() {
     _disposed = true;
     _cancelInFlightLoadWait();
-    _detachSummaries();
+    _metadataPatchTimer?.cancel();
+    _metadataPatchTimer = null;
+    final importListener = _externalImportListener;
+    if (importListener != null) {
+      pagedImportStatus.removeListener(importListener);
+      _externalImportListener = null;
+    }
     _detachCatalogWorker();
     for (final sub in _pagedSubs) {
       sub.cancel();
@@ -564,19 +586,31 @@ class PagedCollectionLens extends CollectionLens {
       // only turns into an explanation a second later. A reload that lands while
       // the import runs must not start a second one: it only re-resolves the
       // rows that have arrived.
-      final needsImport = !prefs.importComplete;
-      final startImport = needsImport && !_importingRows;
-      if (startImport) {
+      final needsImport = !prefs.importComplete && !await _recoverImportMarker(prefs);
+      if (!_current(gen)) return;
+      // Another surface may already be importing (a second collection route):
+      // join that run instead of scanning MediaStore again.
+      final importRunning = pagedImportStatus.active;
+      final startImport = needsImport && !_importingRows && !importRunning;
+      final joinImport = needsImport && importRunning && !_importingRows;
+      if (startImport || joinImport) {
         _importingRows = true;
         _grewDuringImport = false;
-        pagedImportStatus.begin();
-        source.setProgress(done: 0, total: 0);
+        if (startImport) {
+          pagedImportStatus.begin();
+          source.setProgress(done: 0, total: 0);
+        }
+        // Surfaces switch to the browse-only browser on this frame rather than
+        // after the first batch: waiting would show a loading grid first.
+        notifyListeners();
       }
 
       // The view is about to resolve: say so instead of showing an empty
       // collection with a zero count, which reads as "your library is gone"
-      // during the (slow, first-run) bootstrap.
-      source.state = SourceState.loading;
+      // during the (slow, first-run) bootstrap. A refresh over a view that is
+      // already on screen keeps its state: only the first resolve, or a run
+      // that is still writing, has nothing to show yet.
+      if (_importingRows || !_ready.isCompleted) source.state = SourceState.loading;
 
       await PagedBootstrap.ensure(source);
       if (!_current(gen)) return;
@@ -598,6 +632,10 @@ class PagedCollectionLens extends CollectionLens {
         if (!_current(gen)) return;
         decision = await const CollectionEngineRouter().resolve(filters: filters);
         if (!_current(gen)) return;
+      } else if (joinImport) {
+        // The run belongs to another surface: its status ending is our signal,
+        // and its rows are already reaching the shared index.
+        _followExternalImport(gen);
       }
 
       if (decision.route == CollectionRoute.legacy) {
@@ -608,7 +646,13 @@ class PagedCollectionLens extends CollectionLens {
     } catch (error, stack) {
       if (!_current(gen)) return;
       _log.e('paged reload failed', error, stack);
-      _enterBlocked('the reload failed');
+      if (_pagedActive) {
+        // A view that already has a window keeps it: a transient read failure
+        // (a busy database while the import writes) must not blank the grid,
+        // which would read as the library vanishing and coming back.
+      } else {
+        _enterBlocked('the reload failed');
+      }
     } finally {
       _reloading = false;
       if (!_ready.isCompleted) _ready.complete();
@@ -652,6 +696,25 @@ class PagedCollectionLens extends CollectionLens {
     if (completer != null && !completer.isCompleted) completer.complete();
   }
 
+  /// Restores the import flag from the database when preferences lost it.
+  ///
+  /// The marker is written next to the imported rows, so a preference reset over
+  /// a whole database cannot read as "never imported" — which would bring the
+  /// browser back over a complete library and scan it a second time. Returns
+  /// whether the library is known complete.
+  Future<bool> _recoverImportMarker(CollectionPagingPrefs prefs) async {
+    try {
+      await localMediaDb.init();
+      if (!await localMediaDb.readImportComplete()) return false;
+      await prefs.setImportComplete(true);
+      _log.i('paged import marker recovered from the database');
+      return true;
+    } catch (error, stack) {
+      _log.w('paged import marker read failed', error, stack);
+      return false;
+    }
+  }
+
   /// Fills an empty database without making the first screen wait for it.
   ///
   /// Only the first batch is awaited: the caller then resolves and paints, and
@@ -678,6 +741,7 @@ class PagedCollectionLens extends CollectionLens {
     final firstBatch = Completer<void>();
     final import = discoverer.importAll(
       firstBatchLimit: CollectionPagingPrefs.firstImportBatchSize,
+      onRows: importRowsSink,
       onProgress: (done) {
         pagedImportStatus.update(done);
         if (_current(gen)) source.setProgress(done: done, total: pagedImportStatus.total);
@@ -690,6 +754,13 @@ class PagedCollectionLens extends CollectionLens {
     unawaited(import.then((imported) async {
       _log.i('paged bulk import complete: $imported rows');
       if (!firstBatch.isCompleted) firstBatch.complete();
+      // Record completion next to the rows first: preferences can be reset,
+      // the database cannot without losing the library itself.
+      try {
+        await localMediaDb.writeImportComplete();
+      } catch (error, stack) {
+        _log.w('paged import marker write failed', error, stack);
+      }
       await collectionPagingPrefs.setImportComplete(true);
       _onImportFinished(gen);
     }, onError: (Object error, StackTrace stack) {
@@ -698,6 +769,10 @@ class PagedCollectionLens extends CollectionLens {
       _log.e('paged bulk import failed', error, stack);
       _importingRows = false;
       pagedImportStatus.end();
+      // The database now holds part of the library: keep the browser, which
+      // reads the media store, and let the user retry instead of handing a
+      // truncated collection over as if the import had succeeded.
+      libraryPhase.markFailed();
       source.setProgress(done: 0, total: 0);
       if (!_current(gen)) return;
       // Settle without refreshing: a reload would immediately retry the same
@@ -721,6 +796,26 @@ class PagedCollectionLens extends CollectionLens {
     if (total <= 0 || done < total ~/ 2) return;
     _grewDuringImport = true;
     if (_current(gen)) refresh();
+  }
+
+  /// Follows an import another surface owns: when its shared status ends, this
+  /// lens settles and re-resolves, without starting a second scan.
+  void _followExternalImport(int gen) {
+    if (_externalImportListener != null) return;
+    // The run may have ended between the flag read and this call.
+    if (!pagedImportStatus.active) {
+      _onImportFinished(gen);
+      return;
+    }
+    void listener() {
+      if (pagedImportStatus.active) return;
+      pagedImportStatus.removeListener(listener);
+      _externalImportListener = null;
+      _onImportFinished(gen);
+    }
+
+    _externalImportListener = listener;
+    pagedImportStatus.addListener(listener);
   }
 
   /// Settles the state and re-resolves once the import is over, so the view
@@ -776,7 +871,7 @@ class PagedCollectionLens extends CollectionLens {
     }
     super.refresh();
     if (!_current(gen)) return;
-    _detachSummaries();
+    _detachSummariesForLegacy();
     _detachCatalogWorker();
     _blocked = false;
     _morphed = true;
@@ -833,7 +928,9 @@ class PagedCollectionLens extends CollectionLens {
       return;
     }
 
-    source.state = SourceState.loading;
+    // About to resolve: a first resolve has nothing to show yet, so say loading
+    // rather than an empty collection with a zero count.
+    _settleState(resolving: true);
     final sort = settings.getEffectiveCollectionSortFactor(filters);
     final reverse = settings.getEffectiveCollectionSortReverse(filters);
     final windowSize = prefs.windowSize;
@@ -953,9 +1050,12 @@ class PagedCollectionLens extends CollectionLens {
       PagedBootstrap.feedDirectories(source, headers);
     }
     _attachSummaries();
-    // The window is ready now: publish it before the filter summaries, whose
-    // aggregates are the slow part. Waiting for them kept the whole grid behind
-    // a loading screen on a large library, even though its rows were resolvable.
+    // The window is ready now: settle the state and publish it *before* the
+    // filter summaries, whose aggregates are the slow part. While the state was
+    // still `loading`, the app bar read "loading" with no count for as long as
+    // that query took — minutes on a fresh 32k library — even though the grid
+    // and the total were already there.
+    _settleState();
     notifyListeners();
     if (!_current(gen)) return;
     // Eager albums on first entry; refreshes already-loaded domains (tags,
@@ -969,29 +1069,48 @@ class PagedCollectionLens extends CollectionLens {
     // sweep the same rows twice and report a total that keeps growing.
     _attachCatalogWorker();
     if (!_importingRows) unawaited(_runCatalogBacklog());
-    _settleState();
     notifyListeners();
   }
 
   /// Settles the source state: `loading` still means "the library is being
   /// organized", and only this lens knows when that is over.
-  void _settleState() {
-    source.state = _importingRows ? SourceState.loading : SourceState.ready;
+  ///
+  /// Cataloguing owns its own states (`cataloguing`, `locating*`): the worker
+  /// sets them and writes `ready` back when its drain ends. Overwriting them
+  /// here made the app bar flip between the count line and the catalog clock on
+  /// every refresh.
+  ///
+  /// [resolving] is the "about to resolve, nothing to show yet" case: a first
+  /// resolve must say loading instead of showing an empty collection. The final
+  /// settle never passes it — `_ready` completes only after this returns, so
+  /// keying the settle off it left every new lens stuck in `loading`.
+  void _settleState({bool resolving = false}) {
+    if (_importingRows || (resolving && !_ready.isCompleted)) {
+      source.state = SourceState.loading;
+      return;
+    }
+    switch (source.state) {
+      case SourceState.cataloguing:
+      case SourceState.locatingCountries:
+      case SourceState.locatingPlaces:
+        return;
+      case SourceState.loading:
+      case SourceState.ready:
+        source.state = SourceState.ready;
+    }
   }
 
   void _attachSummaries() {
-    _summaries ??= PagedFilterSummaries(
-      source: source,
-      hiddenFilters: () => settings.hiddenFilters,
-      lockedVaultDirs: () => vaults.vaultDirectories.where(vaults.isLocked).toSet(),
-      isImporting: () => _importingRows,
-    );
-    source.summaries = _summaries;
+    // Shared per source: the provider has to outlive this lens, because the
+    // album/tag/place pages are top-level routes that dispose the collection.
+    attachPagedSummaries(source);
+    _summaries = pagedSummariesFor(source);
   }
 
-  void _detachSummaries() {
-    source.summaries = null;
-    _summaries?.dispose();
+  /// Detaches the provider for a legacy view. The shared instance is only
+  /// invalidated, not forgotten: the next paged view reuses it.
+  void _detachSummariesForLegacy() {
+    detachPagedSummaries(source);
     _summaries = null;
   }
 
@@ -1035,7 +1154,7 @@ class PagedCollectionLens extends CollectionLens {
     if (worker == null || worker.isRunning) return;
     final predicate = predicateForFilters({StoredAlbumFilter(directory, null)});
     if (predicate == null) return;
-    await worker.run(scope: predicate, scopedOnly: true);
+    _settleAfterSweep(await worker.run(scope: predicate, scopedOnly: true));
   }
 
   /// Rows of [directory] that still need cataloguing, for its header badge.
@@ -1074,17 +1193,18 @@ class PagedCollectionLens extends CollectionLens {
   Future<void> _sweepBacklog(PagedCatalogWorker worker, int uncatalogued) async {
     final delegated = shouldDelegateCatalogToService(canUseAnalysisService: settings.canUseAnalysisService, uncatalogued: uncatalogued);
     if (!delegated) {
-      await worker.run(scope: _pagedPredicate);
+      _settleAfterSweep(await worker.run(scope: _pagedPredicate));
       return;
     }
     if (shouldPreemptCatalogService(serviceDelegated: delegated, scopedUncatalogued: await _probeScopedUncatalogued())) {
       await cancelPagedAnalysisService();
-      await worker.run(scope: _pagedPredicate, scopedOnly: true);
+      final catalogued = await worker.run(scope: _pagedPredicate, scopedOnly: true);
       await startPagedAnalysisService();
+      _settleAfterSweep(catalogued);
       return;
     }
     await startPagedAnalysisService();
-    await worker.run(scope: _pagedPredicate, scopedOnly: true);
+    _settleAfterSweep(await worker.run(scope: _pagedPredicate, scopedOnly: true));
   }
 
   void _detachCatalogWorker() {
@@ -1272,6 +1392,82 @@ class PagedCollectionLens extends CollectionLens {
     } else if (_stackEntries) {
       await _attachStackMembers(state, rows, gen);
     }
+  }
+
+  /// Coalesces the in-place metadata patches triggered by catalog/locate passes.
+  ///
+  /// The sweep persists every 50 rows, so patching per event would still rebuild
+  /// the grid hundreds of times; one patch per [_metadataPatchInterval] keeps
+  /// tile badges and dates filling in visibly without any structural change.
+  static const _metadataPatchInterval = Duration(milliseconds: 200);
+
+  void _scheduleMetadataPatch() {
+    if (!pagedActive) {
+      // Morphed/blocked views materialize their rows: the legacy refresh is the
+      // right (and cheap) answer there, and there are no windows to patch.
+      refresh();
+      return;
+    }
+    if (_metadataPatchTimer != null) return;
+    _metadataPatchTimer = Timer(_metadataPatchInterval, () {
+      _metadataPatchTimer = null;
+      unawaited(_patchMountedMetadata());
+    });
+  }
+
+  /// Rewrites the metadata of the tiles already materialized, in place.
+  ///
+  /// Cataloguing changes row content only: the section list, its headers and
+  /// the totals stay valid, so a re-resolve would rebuild them into skeletons
+  /// for nothing. Section drift caused by corrected dates is settled once by the
+  /// refresh at the end of a sweep.
+  Future<void> _patchMountedMetadata() async {
+    if (_patchingMetadata || _disposed || !pagedActive) return;
+    _patchingMetadata = true;
+    try {
+      final byId = <int, List<AvesEntry>>{};
+      for (final state in _sectionStates) {
+        for (final entry in state.list.loaded.values) {
+          (byId[entry.id] ??= []).add(entry);
+        }
+      }
+      if (byId.isEmpty) return;
+      var changed = false;
+      for (final slice in byId.keys.slices(500)) {
+        final ids = slice.toSet();
+        final metaById = {for (final m in await localMediaDb.loadCatalogMetadataById(ids)) m.id: m};
+        final addressById = {for (final a in await localMediaDb.loadAddressesById(ids)) a.id: a};
+        if (_disposed) return;
+        for (final id in slice) {
+          final meta = metaById[id];
+          final address = addressById[id];
+          if (meta == null && address == null) continue;
+          for (final entry in byId[id]!) {
+            if (meta != null) entry.catalogMetadata = meta;
+            if (address != null) entry.addressDetails = address;
+            changed = true;
+          }
+        }
+      }
+      if (changed) notifyListeners();
+    } catch (error, stack) {
+      // A failed patch must not cost the grid its tiles: the next pass or the
+      // end-of-sweep refresh still lands the metadata.
+      _log.w('paged metadata patch failed', error, stack);
+    } finally {
+      _patchingMetadata = false;
+    }
+  }
+
+  /// One settle after a sweep that catalogued something.
+  ///
+  /// Catalog dates can move a row between sections, which no in-place patch can
+  /// express. This is the only rebuild a catalog pass causes, and it is skipped
+  /// when the sweep made no progress (a row that keeps failing must not start an
+  /// endless refresh/retry chain).
+  void _settleAfterSweep(int cataloguedRows) {
+    if (cataloguedRows <= 0 || _disposed || !pagedActive || _importingRows) return;
+    refresh();
   }
 
   /// Attaches the members of the stacks the window's tiles show, so a tile can

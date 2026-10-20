@@ -118,7 +118,11 @@ class PagedCatalogWorker {
   ///
   /// [scopedOnly] sweeps [scope] and stops there, for when another owner (the
   /// analysis service) is already taking the rest of the library.
-  Future<void> run({int chunkSize = 200, CollectionWindowPredicate? scope, bool scopedOnly = false}) {
+  ///
+  /// Returns how many rows this call catalogued. Zero means it joined a drain
+  /// already in progress or found nothing to do, which is what tells the caller
+  /// whether a settle refresh is worth anything.
+  Future<int> run({int chunkSize = 200, CollectionWindowPredicate? scope, bool scopedOnly = false}) {
     _pendingScope = scope;
     _pendingScopedOnly = scopedOnly;
     _pendingRun = true;
@@ -135,10 +139,14 @@ class PagedCatalogWorker {
   }
 
   /// Single serialized drain loop for every pass, so passes never interleave.
-  Future<void> _drain(int chunkSize) async {
-    if (_draining) return;
+  ///
+  /// Returns the rows it catalogued, or 0 when it only joined a drain that was
+  /// already running.
+  Future<int> _drain(int chunkSize) async {
+    if (_draining) return 0;
     _draining = true;
     _drainDone = Completer<void>();
+    var catalogued = 0;
     try {
       while (!_stopRequested && (_pendingRun || _pendingPlaces)) {
         if (_pendingRun) {
@@ -159,6 +167,7 @@ class PagedCatalogWorker {
         }
       }
     } finally {
+      catalogued = _sessionDone;
       _draining = false;
       source.state = SourceState.ready;
       // The counters are only meaningful while a pass runs: leaving them behind
@@ -174,6 +183,7 @@ class PagedCatalogWorker {
       _drainDone = null;
       if (done != null && !done.isCompleted) done.complete();
     }
+    return catalogued;
   }
 
   void stop() => _stopRequested = true;

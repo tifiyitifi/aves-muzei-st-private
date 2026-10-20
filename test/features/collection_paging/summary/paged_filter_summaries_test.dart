@@ -228,6 +228,28 @@ void main() {
       expect(source.sortedTags, isEmpty);
     });
 
+    test('provider stays authoritative when the source holds entries too', () async {
+      await database.insertEntries({
+        entry(1, dir: '/a', size: 10, sourceDateTaken: 100),
+        entry(2, dir: '/a', size: 20, sourceDateTaken: 200),
+      });
+      source.summaries = summaries();
+      await (source.summaries as PagedFilterSummaries).ensureLoaded(SummaryDomain.albums);
+
+      // A vault row, a move, a debug page: any in-memory entry must not switch
+      // the source back to its partial legacy counters, which is how albums
+      // read zero on a library that was fully imported.
+      await source.loadDates();
+      source.addEntries({entry(99, dir: '/a', size: 30, sourceDateTaken: 300)});
+      expect(source.allEntries, isNotEmpty);
+
+      final filter = StoredAlbumFilter('/a', null);
+      expect(source.rawAlbums, ['/a']);
+      expect(source.count(filter), 2);
+      expect(source.size(filter), 30);
+      expect(source.recentEntry(filter)?.id, 2);
+    });
+
     test('source without provider keeps legacy behaviour', () {
       expect(source.summaries, isNull);
       expect(source.rawAlbums, isEmpty);

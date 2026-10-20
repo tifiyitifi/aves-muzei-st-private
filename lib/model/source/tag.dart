@@ -19,7 +19,7 @@ mixin TagMixin on SourceBase {
 
   List<String> get sortedTags {
     final provider = summaries;
-    if (provider != null && allEntries.isEmpty) return provider.tags;
+    if (provider != null) return provider.tags;
     return _sortedTags;
   }
 

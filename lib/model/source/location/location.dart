@@ -25,7 +25,7 @@ mixin LocationMixin on CountryMixin, StateMixin {
 
   List<String> get sortedCountries {
     final provider = summaries;
-    if (provider != null && allEntries.isEmpty) return provider.countries;
+    if (provider != null) return provider.countries;
     return _sortedCountries;
   }
 
@@ -33,7 +33,7 @@ mixin LocationMixin on CountryMixin, StateMixin {
 
   List<String> get sortedStates {
     final provider = summaries;
-    if (provider != null && allEntries.isEmpty) return provider.states;
+    if (provider != null) return provider.states;
     return _sortedStates;
   }
 
@@ -41,7 +41,7 @@ mixin LocationMixin on CountryMixin, StateMixin {
 
   List<String> get sortedPlaces {
     final provider = summaries;
-    if (provider != null && allEntries.isEmpty) return provider.places;
+    if (provider != null) return provider.places;
     return _sortedPlaces;
   }
 

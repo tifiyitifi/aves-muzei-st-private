@@ -1297,6 +1297,34 @@
   "settingsCollectionBrowseOnlyBarTile": "Browse-only bar while organizing",
   "browseOnlyBarMessage": "Browse-only mode · editing paused",
   "browseOnlyBarDetails": "Details",
+  "browseOnlyMediaTab": "Media",
+  "browseOnlyTimelineTab": "Timeline",
+  "browseOnlyAlbumsTab": "Albums",
+  "browseOnlyVideosTab": "Videos",
+  "browseOnlyUnavailable": "Available after the library is organized",
+  "browseOnlyImportFailed": "Organizing stopped",
+  "browseOnlyImportRetry": "Retry",
+  "browseOnlyEmptyLibrary": "No media yet",
+  "browseOnlyProgress": "Organizing library · {done} / {total}",
+  "@browseOnlyProgress": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "browseOnlyAlbumCount": "{count} items",
+  "@browseOnlyAlbumCount": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
   "browseOnlySectionTitle": "Browse-only mode",
   "browseOnlySectionBody": "While the library is being organized, Aves can browse and open what it has already indexed. Editing waits for the import, and the full feature set comes back by itself when it finishes.",
   "browseOnlyReadOnlyBody": "Editing is paused on purpose: the background pass reads each file's metadata and would overwrite a change made before it got there.",

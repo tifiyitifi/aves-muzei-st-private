@@ -322,6 +322,19 @@ abstract class LocalMediaDb {
 
   Future<void> removeVideoPlayback(Set<int> ids);
 
+  // one-time import
+
+  /// Whether the one-time import finished, as recorded next to the rows it
+  /// wrote.
+  ///
+  /// The same fact also lives in preferences. This copy survives a preference
+  /// reset, so a database that already holds the whole library never brings the
+  /// browser back over it (and never scans it a second time).
+  Future<bool> readImportComplete();
+
+  /// Records the one-time import completion in the database.
+  Future<void> writeImportComplete();
+
   // debug
 
   Future<void> clearDebugLog();

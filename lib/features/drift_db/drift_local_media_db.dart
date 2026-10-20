@@ -469,6 +469,20 @@ class DriftLocalMediaDb implements LocalMediaDb {
   @override
   Future<void> removeVideoPlayback(Set<int> ids) => _videoPlayback.remove(ids);
 
+  // one-time import
+
+  /// Key of the import-completion marker in the generic `appMeta` table.
+  static const importCompleteKey = 'collection_paging.import_complete';
+
+  @override
+  Future<bool> readImportComplete() async {
+    final values = await _appMeta.read({importCompleteKey});
+    return values[importCompleteKey] == '1';
+  }
+
+  @override
+  Future<void> writeImportComplete() => _appMeta.write({importCompleteKey: '1'});
+
   // debug
 
   @override

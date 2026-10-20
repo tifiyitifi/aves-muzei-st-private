@@ -33,8 +33,12 @@ class CatalogProgress {
 /// second is worse than no number.
 class CatalogProgressNotifier extends ValueNotifier<CatalogProgress?> {
   /// An estimate needs this much history before it is shown.
-  static const estimateMinElapsed = Duration(seconds: 30);
-  static const estimateMinRows = 50;
+  ///
+  /// Small on purpose: the pass now reports every few rows, and an estimate
+  /// that only appears after half a minute leaves the user staring at a
+  /// counter that looks stuck.
+  static const estimateMinElapsed = Duration(seconds: 5);
+  static const estimateMinRows = 10;
 
   /// How much history the rolling rate is measured over.
   static const rateWindow = Duration(seconds: 30);

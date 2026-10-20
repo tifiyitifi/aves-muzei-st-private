@@ -9,6 +9,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Log channel owned by this feature (never a shared catch-all).
 const String collectionPagingLogKey = 'log.collection_paging';
 
+/// Channels this feature owns, opened in debug builds by `Log.init`.
+///
+/// Declared here rather than in `LogKeys`: the registry is for cross-cutting
+/// channels, and a feature's diagnostics should not depend on someone
+/// remembering to add them there.
+const List<String> collectionPagingDebugLogKeys = [collectionPagingLogKey];
+
 const _log = AreaKeyLog(collectionPagingLogKey);
 
 /// User-tunable parameters of collection loading, independent of the settings
@@ -47,9 +54,18 @@ class CollectionPagingPrefs extends ChangeNotifier {
   static const int maxLargeThreshold = 10000000;
 
   /// Whether the background catalogue asks before sweeping a large backlog.
-  /// On by default: cataloguing a huge library is long invisible work, so it
-  /// starts with a question rather than silently.
-  static const bool defaultAskBeforeCatalog = true;
+  ///
+  /// Off by default: cataloguing is the steady state of a paged collection
+  /// (new rows are catalogued inline on sync), so a backlog is simply the part
+  /// that has not been reached yet. The one-time explainer says so once, which
+  /// leaves a question per launch with nothing to decide.
+  static const bool defaultAskBeforeCatalog = false;
+
+  /// Rows imported before the collection paints for the first time.
+  ///
+  /// One screen's worth on a phone grid, which is what makes a fresh install
+  /// browsable in a fraction of a second; the rest streams in behind it.
+  static const int firstImportBatchSize = 250;
 
   CollectionEngine _engine = CollectionEngine.defaultEngine;
 
@@ -60,6 +76,10 @@ class CollectionPagingPrefs extends ChangeNotifier {
   int _largeThreshold = defaultLargeThreshold;
 
   bool _askBeforeCatalog = defaultAskBeforeCatalog;
+
+  bool _importExplained = false;
+
+  bool _importComplete = false;
 
   bool _loaded = false;
 
@@ -77,6 +97,12 @@ class CollectionPagingPrefs extends ChangeNotifier {
 
   bool get askBeforeCatalog => _askBeforeCatalog;
 
+  /// Whether the one-time background-organization explainer has been shown.
+  bool get importExplained => _importExplained;
+
+  /// Whether the library has been fully imported at least once.
+  bool get importComplete => _importComplete;
+
   /// Whether persisted values have been read. Getters return defaults before.
   bool get isLoaded => _loaded;
 
@@ -89,6 +115,8 @@ class CollectionPagingPrefs extends ChangeNotifier {
       _prefetchScreens = (prefs.getInt(CollectionPagingKeys.prefetchScreens) ?? defaultPrefetchScreens).clamp(0, maxPrefetchScreens);
       _largeThreshold = clampLargeThreshold(prefs.getInt(CollectionPagingKeys.largeThreshold) ?? defaultLargeThreshold);
       _askBeforeCatalog = prefs.getBool(CollectionPagingKeys.askBeforeCatalog) ?? defaultAskBeforeCatalog;
+      _importExplained = prefs.getBool(CollectionPagingKeys.importExplained) ?? false;
+      _importComplete = prefs.getBool(CollectionPagingKeys.importComplete) ?? false;
     } catch (error, stack) {
       _log.w('failed to load collection paging prefs, using defaults', error, stack);
     }
@@ -151,6 +179,34 @@ class CollectionPagingPrefs extends ChangeNotifier {
       await (await SharedPreferences.getInstance()).setBool(CollectionPagingKeys.askBeforeCatalog, ask);
     } catch (error, stack) {
       _log.e('failed to persist collection ask-before-catalog=$ask', error, stack);
+    }
+  }
+
+  /// Records that the one-time explainer was shown, so it never reappears.
+  Future<void> setImportExplained() async {
+    if (_importExplained) return;
+    _importExplained = true;
+    notifyListeners();
+    try {
+      await (await SharedPreferences.getInstance()).setBool(CollectionPagingKeys.importExplained, true);
+    } catch (error, stack) {
+      _log.e('failed to persist the import explainer flag', error, stack);
+    }
+  }
+
+  /// Records whether the library is fully imported.
+  ///
+  /// Written as `false` when an import starts and `true` when it completes, so
+  /// an interrupted run resumes on the next launch instead of leaving a
+  /// permanently partial collection.
+  Future<void> setImportComplete(bool complete) async {
+    if (complete == _importComplete) return;
+    _importComplete = complete;
+    notifyListeners();
+    try {
+      await (await SharedPreferences.getInstance()).setBool(CollectionPagingKeys.importComplete, complete);
+    } catch (error, stack) {
+      _log.e('failed to persist the import-complete flag=$complete', error, stack);
     }
   }
 

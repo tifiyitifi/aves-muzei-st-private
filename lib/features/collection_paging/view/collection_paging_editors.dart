@@ -1,7 +1,9 @@
 import 'package:aves/features/collection_paging/engine/collection_engine.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/view/collection_background_work_page.dart';
 import 'package:aves/features/collection_paging/view/collection_paging_labels.dart';
 import 'package:aves/features/meta_settings/model/setting_def.dart';
+import 'package:aves/features/meta_settings/view/widgets/meta_sub_page_tile.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/common/identity/aves_list_subtitle.dart';
 import 'package:aves/widgets/dialogs/selection_dialogs/common.dart';
@@ -161,4 +163,22 @@ class CollectionAskBeforeCatalogEditor extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Custom editor for the first-run background organization explainer.
+///
+/// A settings entry rather than a second copy of the text: the one-time dialog
+/// says it once, and this keeps the same explanation — plus the live state —
+/// reachable afterwards.
+class CollectionBackgroundWorkEditor extends StatelessWidget {
+  final SettingDef def;
+
+  const new({super.key, required this.def});
+
+  @override
+  Widget build(BuildContext context) => MetaSubPageTile(
+        title: def.title,
+        routeName: CollectionBackgroundWorkPage.routeName,
+        builder: (context) => const CollectionBackgroundWorkPage(),
+      );
 }

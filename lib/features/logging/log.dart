@@ -42,10 +42,19 @@ abstract final class Log {
 
   /// Attaches [sink] (defaults to `dart:developer`) and applies the build-mode
   /// defaults. Call once from the composition root.
-  static void init({LogSink? sink}) {
+  ///
+  /// [debugChannels] are feature-owned channels (declared in their own slices,
+  /// never in [LogKeys]) that debug builds open alongside the cross-cutting
+  /// ones, so a feature's diagnostics are visible without a `--dart-define`.
+  static void init({LogSink? sink, Iterable<String> debugChannels = const []}) {
     _sink = sink ?? _devSink;
     _gates.clear();
     applyDefaults(debug: kDebugMode);
+    if (kDebugMode) {
+      for (final key in debugChannels) {
+        setLevel(key, LogLevel.verbose);
+      }
+    }
   }
 
   /// Opens [key] ([LogLevel.verbose] in debug, [LogLevel.warning] otherwise) or

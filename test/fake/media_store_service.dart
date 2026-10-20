@@ -10,8 +10,13 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   late Set<AvesEntry> entries;
   Duration? latency;
 
+  /// When set, `getEntries` streams this instead of [entries], so a test can
+  /// hold the stream open and observe the states in between.
+  Stream<AvesEntry>? entriesStream;
+
   void reset() {
     entries = {};
+    entriesStream = null;
     latency = null;
   }
 
@@ -34,7 +39,10 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   }
 
   @override
-  Stream<AvesEntry> getEntries(Map<int?, int?> knownEntries, {String? directory}) => Stream.fromIterable(entries);
+  Stream<AvesEntry> getEntries(Map<int?, int?> knownEntries, {String? directory}) => entriesStream ?? Stream.fromIterable(entries);
+
+  @override
+  Future<int> countEntries() async => entries.length;
 
   static var _lastId = 1;
 

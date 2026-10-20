@@ -16,12 +16,29 @@ void main() {
       // A pass that just started: elapsed only.
       final fresh = CatalogProgressNotifier();
       expect(report(fresh, done: 0, total: 1000, after: Duration.zero)!.remaining, isNull);
-      expect(report(fresh, done: 100, total: 1000, after: const Duration(seconds: 5))!.remaining, isNull);
 
-      // ...and one that ran long enough but barely moved.
+      // Too few rows moved to know a rate, however long it ran.
       final slow = CatalogProgressNotifier();
       report(slow, done: 0, total: 1000, after: Duration.zero);
-      expect(report(slow, done: 20, total: 1000, after: const Duration(seconds: 60))!.remaining, isNull);
+      expect(report(slow, done: 5, total: 1000, after: const Duration(seconds: 10))!.remaining, isNull);
+
+      // Rows moved, but the clock has not run long enough to trust it.
+      final quick = CatalogProgressNotifier();
+      report(quick, done: 0, total: 1000, after: Duration.zero);
+      expect(report(quick, done: 100, total: 1000, after: const Duration(seconds: 1))!.remaining, isNull);
+    });
+
+    test('estimates as soon as a few rows have moved', () {
+      // The pass now ticks every 10 rows, so the estimate must not wait for the
+      // half-minute the first implementation required: that window is exactly
+      // where the counter used to look stuck.
+      final notifier = CatalogProgressNotifier();
+      report(notifier, done: 0, total: 1000, after: Duration.zero);
+      report(notifier, done: 10, total: 1000, after: const Duration(seconds: 2));
+      final progress = report(notifier, done: 20, total: 1000, after: const Duration(seconds: 5))!;
+
+      expect(progress.elapsed, const Duration(seconds: 5));
+      expect(progress.remaining, isNotNull);
     });
 
     test('estimates the remaining time from the rolling rate', () {

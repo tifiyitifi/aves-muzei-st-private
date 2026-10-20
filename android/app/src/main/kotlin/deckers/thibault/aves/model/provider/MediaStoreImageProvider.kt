@@ -119,6 +119,21 @@ class MediaStoreImageProvider : ImageProvider() {
         }
     }
 
+    // Counts the rows `fetchAll` would stream: images plus videos, across the
+    // external volumes. `cursor.count` comes from the provider's own count
+    // query, so no row is materialized.
+    fun countEntries(context: Context): Int {
+        fun count(contentUri: Uri, projection: Array<String>): Int {
+            return try {
+                context.contentResolver.query(contentUri, projection, null, null, null)?.use { it.count } ?: 0
+            } catch (e: Exception) {
+                Log.e(LOG_TAG, "failed to count entries for contentUri=$contentUri", e)
+                0
+            }
+        }
+        return count(IMAGE_CONTENT_URI, IMAGE_PROJECTION) + count(VIDEO_CONTENT_URI, VIDEO_PROJECTION)
+    }
+
     fun checkObsoleteContentIds(context: Context, knownContentIds: List<Long?>): List<Long> {
         val foundContentIds = HashSet<Long>()
         fun check(context: Context, contentUri: Uri) {

@@ -17,6 +17,13 @@ abstract class MediaStoreService {
   // knownEntries: map of contentId -> dateModifiedMillis
   Stream<AvesEntry> getEntries(Map<int?, int?> knownEntries, {String? directory});
 
+  /// Counts the rows [getEntries] would stream for the whole library.
+  ///
+  /// Used as the denominator of the one-time import progress: the database
+  /// cannot know it before the rows are written. 0 when the platform cannot
+  /// tell, which callers render as "unknown" instead of blocking.
+  Future<int> countEntries();
+
   // returns media URI
   Future<Uri?> scanFile(String path, String mimeType);
 }
@@ -73,6 +80,17 @@ class PlatformMediaStoreService implements MediaStoreService {
       await reportService.recordError(e, stack);
     }
     return null;
+  }
+
+  @override
+  Future<int> countEntries() async {
+    try {
+      final result = await _platform.invokeMethod('countEntries');
+      if (result is int) return result;
+    } on PlatformException catch (e, stack) {
+      await reportService.recordError(e, stack);
+    }
+    return 0;
   }
 
   @override

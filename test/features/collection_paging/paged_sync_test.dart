@@ -99,6 +99,49 @@ void main() {
       expect(await discoverer.importAll(onProgress: (_) {}), 0);
       expect(await driftDb.countEntries(), 5);
     });
+
+    test('signals the first batch before the rest is written', () async {
+      final store = _ScriptedMediaStore()..entries = {for (var id = 1; id <= 10; id++) entry(id)};
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+      var atSignal = -1;
+      var done = 0;
+      final imported = await discoverer.importAll(
+        onProgress: (processed) => done = processed,
+        firstBatchLimit: 3,
+        onFirstBatch: () async => atSignal = done,
+      );
+      // The caller paints with the first batch in hand, not with the whole run.
+      expect(atSignal, 3);
+      // ...and the stream carries on behind it to the end.
+      expect(imported, 10);
+      expect(done, 10);
+      expect(await driftDb.countEntries(), 10);
+    });
+
+    test('still signals when the library is smaller than one batch', () async {
+      final store = _ScriptedMediaStore()..entries = {for (var id = 1; id <= 2; id++) entry(id)};
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+      var signals = 0;
+      await discoverer.importAll(
+        onProgress: (_) {},
+        firstBatchLimit: 500,
+        onFirstBatch: () async => signals++,
+      );
+      expect(signals, 1);
+      expect(await driftDb.countEntries(), 2);
+    });
+
+    test('counts the rows the stream would cover, not only the new ones', () async {
+      final store = _ScriptedMediaStore()..entries = {for (var id = 1; id <= 4; id++) entry(id)};
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+      expect(await discoverer.countEntries(), 4);
+      await discoverer.importAll(onProgress: (_) {});
+      // A resumed run re-walks known rows: the counter must stay monotonic
+      // instead of reading 0 while it re-checks them.
+      var done = 0;
+      await discoverer.importAll(onProgress: (processed) => done = processed);
+      expect(done, 4);
+    });
   });
 
   group('PagedDiscoverer.syncIfChanged', () {
@@ -215,4 +258,7 @@ class _ScriptedMediaStore extends Fake implements MediaStoreService {
 
   @override
   Stream<AvesEntry> getEntries(Map<int?, int?> knownEntries, {String? directory}) => Stream.fromIterable(entries);
+
+  @override
+  Future<int> countEntries() async => entries.length;
 }

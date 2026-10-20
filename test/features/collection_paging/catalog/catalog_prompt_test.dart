@@ -43,8 +43,12 @@ void main() {
   });
 
   group('applyCatalogPromptAnswer', () {
-    setUp(() => collectionPagingPrefs.setAskBeforeCatalog(true));
-    tearDown(() => collectionPagingPrefs.setAskBeforeCatalog(true));
+    setUp(() async {
+      // The singleton self-loads from prefs; set after that read, not racing it.
+      await collectionPagingPrefs.init();
+      await collectionPagingPrefs.setAskBeforeCatalog(true);
+    });
+    tearDown(() async => collectionPagingPrefs.setAskBeforeCatalog(CollectionPagingPrefs.defaultAskBeforeCatalog));
 
     test('catalogue now sweeps and keeps asking', () async {
       expect(await applyCatalogPromptAnswer(CatalogPromptAnswer.catalogueNow), isTrue);
@@ -63,6 +67,5 @@ void main() {
       // The settings surface can turn it back on, so the choice is not a trap.
       await collectionPagingPrefs.setAskBeforeCatalog(true);
       expect(collectionPagingPrefs.askBeforeCatalog, isTrue);
-    });
-  });
+    });  });
 }

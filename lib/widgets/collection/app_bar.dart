@@ -335,6 +335,7 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
             title = SourceStateAwareAppBarTitle(
               title: title,
               source: source,
+              collection: collection,
             );
           }
           return title;
@@ -354,6 +355,7 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
         title = SourceStateAwareAppBarTitle(
           title: title,
           source: source,
+          collection: collection,
         );
       }
       return InteractiveAppBarTitle(
@@ -372,6 +374,9 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
       // The trait sheet drives a declared (whole-view) selection: an enumerated
       // one has no place to remember a trait rule.
       if (action == .selectByTrait && !selection.allMarked) return false;
+      // While the library is still being written, "all" would mean "the rows
+      // that happen to be imported": a bulk delete would silently skip the rest.
+      if (source.state == SourceState.loading && (action == .selectAll || action == .selectByTrait)) return false;
       return _actionDelegate.isVisible(
         action,
         appMode: appMode,

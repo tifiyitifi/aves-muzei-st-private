@@ -1,8 +1,9 @@
+import 'dart:async';
+
 import 'package:aves/features/collection_paging/engine/collection_engine.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dart';
-import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
-import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
+import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
@@ -31,6 +32,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 import '../../common.dart';
+import '../../fake/media_store_service.dart';
 import '../../helpers/sqlite3_loader.dart';
 
 /// Paged lens behaviour against an in-memory Drift database: auto morphing,
@@ -128,6 +130,42 @@ void main() {
   Future<DriftLocalMediaDb> drift() async => getIt<LocalMediaDb>() as DriftLocalMediaDb;
 
   group('PagedCollectionLens', () {
+    test('paints after the first import batch and settles ready when the rest lands', () async {
+      // The import stream stays open so the two states can be observed: the
+      // first batch is browsable, the source still says "organizing", and the
+      // collection becomes whole when the stream ends.
+      // The lens resolves the discoverer through the app-wide service, which is
+      // bound on first use: set the stream on that instance, not on whatever
+      // `getIt` holds after the latest registration.
+      final store = mediaStoreService as FakeMediaStoreService;
+      store.entries = {};
+      final controller = StreamController<AvesEntry>();
+      addTearDown(controller.close);
+      store.entriesStream = controller.stream;
+      // Page this small library: a below-threshold view morphs to legacy, which
+      // has no import at all.
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setImportComplete(false);
+
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+
+      for (var id = 1; id <= CollectionPagingPrefs.firstImportBatchSize; id++) {
+        controller.add(entry(id));
+      }
+      // The first batch is awaited by the lens, so `ready` resolves with rows on
+      // screen and the import still running behind them.
+      await lens.ready;
+      expect(lens.entryCount, greaterThan(0));
+      expect(lens.importingRows, isTrue);
+      expect(source.state, SourceState.loading);
+
+      controller.add(entry(CollectionPagingPrefs.firstImportBatchSize + 1));
+      await controller.close();
+      await settle(lens, done: () => !lens.importingRows && source.state == SourceState.ready);
+      expect(lens.entryCount, CollectionPagingPrefs.firstImportBatchSize + 1);
+    });
+
     test('morphs to legacy below the threshold', () async {
       final service = await drift();
       await service.insertEntries({entry(1), entry(2)});

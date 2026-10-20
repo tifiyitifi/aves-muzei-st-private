@@ -26,6 +26,7 @@ class MediaStoreHandler(private val context: Context) : MethodCallHandler {
             "checkObsoletePaths" -> ioScope.launch { safe(call, result, ::checkObsoletePaths) }
             "getChangedUris" -> ioScope.launch { safe(call, result, ::getChangedUris) }
             "getGenerationByVolume" -> ioScope.launch { safe(call, result, ::getGenerationByVolume) }
+            "countEntries" -> ioScope.launch { safe(call, result, ::countEntries) }
             "scanFile" -> ioScope.launch { safe(call, result, ::scanFile) }
             else -> result.notImplemented()
         }
@@ -73,6 +74,10 @@ class MediaStoreHandler(private val context: Context) : MethodCallHandler {
             null
         }
         result.success(generationByVolume)
+    }
+
+    private fun countEntries(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        result.success(MediaStoreImageProvider().countEntries(context))
     }
 
     private fun scanFile(call: MethodCall, result: MethodChannel.Result) {

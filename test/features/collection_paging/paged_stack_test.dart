@@ -98,6 +98,15 @@ void main() {
     addTearDown(lens.dispose);
     await lens.ready;
     await lens.fillAround(0);
+    // A reload can land between the fill request and its callback (the
+    // background catalogue fires a metadata change right after the view
+    // resolves) and a fill from a replaced cache is dropped. The layout keeps
+    // asking for its windows, so the test does the same instead of reading a
+    // half-filled view.
+    for (var attempt = 0; attempt < 20 && lens.loadedEntries.isEmpty && lens.entryCount > 0; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await lens.fillAround(0);
+    }
     return lens;
   }
 

@@ -1,6 +1,7 @@
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/features/logging/log_level.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -137,6 +138,17 @@ void main() {
       Log.applyDefaults(debug: false);
       expect(Log.isEnabled(LogKeys.app, LogLevel.error), isFalse);
       expect(Log.isEnabled(LogKeys.db, LogLevel.error), isFalse);
+    });
+
+    test('a feature channel can be opened by the composition root', () {
+      // Feature-owned channels are declared in their own slices and passed to
+      // init, so adding one never means editing the shared registry.
+      const featureKey = 'log.collection_paging';
+      Log.init(debugChannels: const [featureKey]);
+      expect(Log.isEnabled(featureKey, LogLevel.verbose), kDebugMode);
+
+      // Release builds only surface warnings, exactly like the shared channels.
+      if (!kDebugMode) expect(Log.isEnabled(featureKey, LogLevel.warning), isFalse);
     });
   });
 }

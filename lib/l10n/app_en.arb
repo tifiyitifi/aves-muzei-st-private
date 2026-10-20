@@ -1258,6 +1258,64 @@
   "catalogPromptDontAskAgain": "Don't ask again",
   "catalogPromptLaterButton": "Later",
   "catalogPromptCatalogueButton": "Catalogue",
+
+  "sourceStateImporting": "Organizing library",
+  "collectionCountOfTotal": "{count} / {total} items",
+  "@collectionCountOfTotal": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "total": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "collectionImportIntroTitle": "Browse first, organize in the background",
+  "collectionImportIntroBody": "Your photos are listed immediately, so you can browse and open them right away.\nFilters, search, statistics and album counts become complete when organizing finishes. Bulk selection stays off until then.\nOrganizing runs in the background and does not block browsing; live progress shows under the title.",
+  "collectionImportEtaHeader": "Time reference (mid-range device)",
+  "collectionImportEtaTier1": "1 thousand items: browsable in under a second, organized in about 10 seconds",
+  "collectionImportEtaTier2": "10 thousand items: browsable in 1-2 seconds, organized in about half a minute",
+  "collectionImportEtaTier3": "30 thousand items: browsable in 3-5 seconds, organized in 1-2 minutes",
+  "collectionImportEtaTier4": "100 thousand items: browsable in about 10 seconds, organized in 3-5 minutes",
+  "collectionImportEtaTier5": "300 thousand items: browsable within half a minute, organized in 10-15 minutes",
+  "collectionImportEtaFootnote": "Low-end devices take about twice as long. The live progress in the app is authoritative.",
+  "collectionImportEtaYours": "Your library has about {count} items; compare with the table above.",
+  "@collectionImportEtaYours": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "collectionImportIntroAcknowledge": "Got it",
+  "collectionImportIntroDetails": "Details",
+  "settingsCollectionBackgroundWorkTile": "Background organizing",
+  "collectionImportStatusReady": "Ready: {count} items",
+  "@collectionImportStatusReady": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "collectionImportStatusImporting": "Organizing: {done} / {total}",
+  "@collectionImportStatusImporting": {
+    "placeholders": {
+      "done": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "total": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
   "albumCatalogBadgeTooltip": "{count} items not catalogued yet. Tap to catalogue.",
   "@albumCatalogBadgeTooltip": {
     "placeholders": {

@@ -11,7 +11,6 @@ import 'package:aves/model/metadata/catalog.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/model/source/location/location.dart';
-import 'package:aves/model/source/tag.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
 
@@ -72,6 +71,18 @@ class PagedCatalogWorker {
   }
 
   static Future<bool> _defaultCanLocate() => availability.canLocatePlaces;
+
+  /// Rows between progress reports inside a chunk.
+  ///
+  /// Reporting per chunk reads as frozen at 0 while the first chunk runs, which
+  /// on a cold library is the longest wait of the whole pass.
+  static const int progressTickRows = 10;
+
+  /// Catalog metadata rows persisted per database transaction.
+  ///
+  /// One transaction per entry was the pass's dominant cost (~7 ms each), so a
+  /// whole chunk's worth now lands together.
+  static const int persistBatchRows = 50;
 
   bool get isRunning => _draining;
 
@@ -184,6 +195,7 @@ class PagedCatalogWorker {
       }
       after = page.last;
       if (scope == null) await database.saveCatalogCursor(after);
+      var withinChunk = 0;
       for (final entry in await _materialize({for (final cursor in page) cursor.id})) {
         try {
           await catalogEntry(entry);
@@ -193,7 +205,13 @@ class PagedCatalogWorker {
         } finally {
           entry.dispose();
         }
-        if (pending.length >= TagMixin.commitCountThreshold) await flush();
+        if (pending.length >= persistBatchRows) await flush();
+        // Tick inside the chunk: the counter has to move while rows are being
+        // worked on, not only when the whole chunk lands.
+        withinChunk++;
+        if (withinChunk % progressTickRows == 0) {
+          _reportProgress(done: done + withinChunk, total: total);
+        }
         if (++stopCheckCount >= 100) {
           stopCheckCount = 0;
           if (_stopRequested) break;

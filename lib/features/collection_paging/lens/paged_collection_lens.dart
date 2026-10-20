@@ -6,6 +6,7 @@ import 'package:aves/features/collection_paging/catalog/catalog_prompt.dart';
 import 'package:aves/features/collection_paging/catalog/catalog_service.dart';
 import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dart';
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
+import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/lens/paged_lists.dart';
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
@@ -89,6 +90,17 @@ class PagedCollectionLens extends CollectionLens {
   int _total = 0;
   List<_SectionState> _sectionStates = const [];
   PagedFlatList _flat = PagedFlatList(const []);
+
+  /// Rows across the whole library, for the `view / library` count line. The
+  /// view total counts what the filters keep; this is the denominator.
+  int _libraryTotal = 0;
+
+  /// Whether the one-time import is still writing rows for this lens.
+  ///
+  /// Distinct from the source state: the source must stay in `loading` while
+  /// this is true so the app bar keeps saying the library is being organized,
+  /// even after the first windows resolved.
+  bool _importingRows = false;
 
   int _reloadGen = 0;
   bool _reloading = false;
@@ -215,6 +227,16 @@ class PagedCollectionLens extends CollectionLens {
     if (_morphed) return super.entryCount;
     return _total;
   }
+
+  /// Rows in the whole library, or the view total when it cannot be known.
+  ///
+  /// The app bar shows the pair while the view is narrower than the library
+  /// (a filter, or rows still being imported), so the denominator is always
+  /// visible rather than implied.
+  int get libraryEntryCount => _libraryTotal > 0 ? _libraryTotal : entryCount;
+
+  /// Whether this lens is still importing rows into an empty database.
+  bool get importingRows => _importingRows;
 
   @override
   bool get isEmpty => entryCount == 0;
@@ -527,6 +549,11 @@ class PagedCollectionLens extends CollectionLens {
       await _awaitInFlightLoad();
       if (!_current(gen)) return;
 
+      // The view is about to resolve: say so instead of showing an empty
+      // collection with a zero count, which reads as "your library is gone"
+      // during the (slow, first-run) bootstrap.
+      source.state = SourceState.loading;
+
       await PagedBootstrap.ensure(source);
       if (!_current(gen)) return;
 
@@ -538,9 +565,15 @@ class PagedCollectionLens extends CollectionLens {
       var decision = await const CollectionEngineRouter().resolve(filters: filters);
       if (!_current(gen)) return;
 
-      if (decision.total == 0 && await _isDatabaseEmpty()) {
-        // Fresh database on an unseen library: bulk import, then re-resolve.
-        // Skipped for legitimately empty scopes (e.g. an empty trash).
+      final prefs = collectionPagingPrefs;
+      await prefs.init();
+      if (!_current(gen)) return;
+
+      if (!prefs.importComplete) {
+        // Unseen library, or an import that never finished: fill the database
+        // (resumably) and paint after the first batch, then re-resolve against
+        // what has landed. The empty-scope case is covered too: an empty
+        // library completes with zero rows and stops asking.
         await _initialImport(gen);
         if (!_current(gen)) return;
         decision = await const CollectionEngineRouter().resolve(filters: filters);
@@ -571,6 +604,9 @@ class PagedCollectionLens extends CollectionLens {
   /// progress display. A load that never settles would leave the whole app on its
   /// loading screen anyway, so this adds no wait that was not already there.
   Future<void> _awaitInFlightLoad() {
+    // Our own import keeps the source in `loading` without being an external
+    // load: waiting for it here would deadlock the reload that paints it.
+    if (_importingRows) return Future<void>.value();
     if (source.state != SourceState.loading) return Future<void>.value();
     void listener() {
       if (source.state == SourceState.loading) return;
@@ -596,30 +632,82 @@ class PagedCollectionLens extends CollectionLens {
     if (completer != null && !completer.isCompleted) completer.complete();
   }
 
-  Future<bool> _isDatabaseEmpty() async {
-    try {
-      return await localMediaDb.countEntries() == 0;
-    } catch (error, stack) {
-      _log.w('paged emptiness probe failed', error, stack);
-      return false;
-    }
-  }
-
+  /// Fills an empty database without making the first screen wait for it.
+  ///
+  /// Only the first batch is awaited: the caller then resolves and paints, and
+  /// the rest of the library streams in behind the grid. Because MediaStore
+  /// hands entries over newest first, later batches only append older rows at
+  /// the tail, so nothing already on screen is reordered.
   Future<void> _initialImport(int gen) async {
+    final discoverer = PagedDiscoverer();
+    _importingRows = true;
+    pagedImportStatus.begin();
     source.state = SourceState.loading;
     source.setProgress(done: 0, total: 0);
+    if (!collectionPagingPrefs.importExplained) {
+      // One-time: what the app is doing and how long it takes. The settings
+      // page keeps the same explanation available afterwards.
+      pagedImportStatus.requestExplainer();
+    }
     notifyListeners();
-    try {
-      final imported = await PagedDiscoverer().importAll(
-        onProgress: (done) {
-          if (_current(gen)) {
-            source.setProgress(done: done, total: 0);
-          }
-        },
-      );
-      _log.d('paged bulk import complete: $imported rows');
-    } catch (error, stack) {
+
+    // The platform row count is the denominator; it runs alongside the first
+    // batch so it never delays the first paint.
+    unawaited(discoverer.countEntries().then((total) {
+      if (!_current(gen) || total <= 0) return;
+      pagedImportStatus.update(pagedImportStatus.done, total: total);
+      source.setProgress(done: pagedImportStatus.done, total: total);
+    }));
+
+    final firstBatch = Completer<void>();
+    final import = discoverer.importAll(
+      firstBatchLimit: CollectionPagingPrefs.firstImportBatchSize,
+      onProgress: (done) {
+        pagedImportStatus.update(done);
+        if (_current(gen)) source.setProgress(done: done, total: pagedImportStatus.total);
+      },
+      onFirstBatch: () async {
+        if (!firstBatch.isCompleted) firstBatch.complete();
+      },
+    );
+    unawaited(import.then((imported) async {
+      _log.i('paged bulk import complete: $imported rows');
+      if (!firstBatch.isCompleted) firstBatch.complete();
+      await collectionPagingPrefs.setImportComplete(true);
+      _onImportFinished(gen);
+    }, onError: (Object error, StackTrace stack) {
+      // Never leave the caller waiting on a batch that will not come.
+      if (!firstBatch.isCompleted) firstBatch.complete();
       _log.e('paged bulk import failed', error, stack);
+      _importingRows = false;
+      pagedImportStatus.end();
+      if (!_current(gen)) return;
+      // Settle without refreshing: a reload would immediately retry the same
+      // failing import. The next launch tries again, and rows already written
+      // stay browsable in the meantime.
+      source.state = SourceState.ready;
+      notifyListeners();
+    }));
+
+    await firstBatch.future;
+  }
+
+  /// Settles the state and re-resolves once the import is over, so the view
+  /// picks up the whole library (or stops claiming it is still organizing).
+  void _onImportFinished(int gen) {
+    _importingRows = false;
+    pagedImportStatus.end();
+    if (!_current(gen)) return;
+    source.state = SourceState.ready;
+    notifyListeners();
+    if (_reloading) {
+      // The initial reload is still resolving the first batch: reload again
+      // once it settles instead of dropping this refresh.
+      unawaited(_ready.future.then((_) {
+        if (_current(gen)) refresh();
+      }));
+    } else {
+      refresh();
     }
   }
 
@@ -716,6 +804,10 @@ class PagedCollectionLens extends CollectionLens {
         ? await localMediaDb.countDays(predicate: predicate)
         : await localMediaDb.countEntries(predicate);
     if (!_current(gen)) return;
+    // Denominator for the count line. A calendar view counts days and a filtered
+    // view counts matches, so neither can be compared with the library size: the
+    // pair is only shown when the view *is* the library.
+    _libraryTotal = dayRows || filters.isNotEmpty ? 0 : total;
 
     final headers = dayRows
         ? await localMediaDb.loadDaySectionHeaders(predicate: predicate, reverse: reverse)
@@ -831,10 +923,18 @@ class PagedCollectionLens extends CollectionLens {
     if (!_current(gen)) return;
     // Backlog catalog runs behind the instant grid: the worker fills tags,
     // precise dates and countries in bounded chunks without blocking display.
+    // It waits for a running import: cataloguing a half-imported database would
+    // sweep the same rows twice and report a total that keeps growing.
     _attachCatalogWorker();
-    unawaited(_runCatalogBacklog());
-    source.state = SourceState.ready;
+    if (!_importingRows) unawaited(_runCatalogBacklog());
+    _settleState();
     notifyListeners();
+  }
+
+  /// Settles the source state: `loading` still means "the library is being
+  /// organized", and only this lens knows when that is over.
+  void _settleState() {
+    source.state = _importingRows ? SourceState.loading : SourceState.ready;
   }
 
   void _attachSummaries() {
@@ -842,6 +942,7 @@ class PagedCollectionLens extends CollectionLens {
       source: source,
       hiddenFilters: () => settings.hiddenFilters,
       lockedVaultDirs: () => vaults.vaultDirectories.where(vaults.isLocked).toSet(),
+      isImporting: () => _importingRows,
     );
     source.summaries = _summaries;
   }

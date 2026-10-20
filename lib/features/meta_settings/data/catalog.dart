@@ -516,4 +516,12 @@ final List<SettingDef> _advancedDefs = [
     editorKey: MetaEditorKeys.collectionAskBeforeCatalog,
     sortOrder: 60,
   ),
+  SettingDef(
+    key: CollectionPagingKeys.importExplained,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsCollectionBackgroundWorkTile,
+    editorKey: MetaEditorKeys.collectionBackgroundWork,
+    sortOrder: 70,
+  ),
 ];

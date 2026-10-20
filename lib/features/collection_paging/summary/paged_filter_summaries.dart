@@ -47,12 +47,23 @@ class PagedFilterSummaries implements FilterSummaryProvider {
   final Set<CollectionFilter> Function() hiddenFilters;
   final Set<String> Function() lockedVaultDirs;
 
+  /// Whether the collection is still being imported; the source must stay in
+  /// `loading` until it is done, no matter how the summary loads settle.
+  final bool Function()? isImporting;
+
   new({
     required this.source,
     LocalMediaDb? database,
     required this.hiddenFilters,
     required this.lockedVaultDirs,
+    this.isImporting,
   }) : database = database ?? localMediaDb;
+
+  /// Settles the source state, respecting an import still writing rows.
+  void _settleState() {
+    final importing = isImporting?.call() ?? false;
+    source.state = importing ? SourceState.loading : SourceState.ready;
+  }
 
   Map<String, AlbumSummaryRow> _albums = {};
   Map<String, TagSummaryRow> _tags = {};
@@ -145,7 +156,7 @@ class PagedFilterSummaries implements FilterSummaryProvider {
     } finally {
       _loading.remove(domain);
       _pendingLoads--;
-      if (_pendingLoads == 0) source.state = SourceState.ready;
+      if (_pendingLoads == 0) _settleState();
     }
   }
 
@@ -407,7 +418,7 @@ class PagedFilterSummaries implements FilterSummaryProvider {
         _resolveContainer(filter, key, predicate).whenComplete(() {
           _containerLoading.remove(key);
           _pendingLoads--;
-          if (_pendingLoads == 0) source.state = SourceState.ready;
+          if (_pendingLoads == 0) _settleState();
         }),
       );
     }

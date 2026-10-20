@@ -34,6 +34,9 @@ void main() {
       await store.remove(CollectionPagingKeys.windowSize);
       await store.remove(CollectionPagingKeys.prefetchScreens);
       await store.remove(CollectionPagingKeys.largeThreshold);
+      await store.remove(CollectionPagingKeys.askBeforeCatalog);
+      await store.remove(CollectionPagingKeys.importExplained);
+      await store.remove(CollectionPagingKeys.importComplete);
     }
 
     test('starts on defaults when nothing is persisted', () async {
@@ -44,6 +47,11 @@ void main() {
       expect(prefs.windowSize, CollectionPagingPrefs.defaultWindowSize);
       expect(prefs.prefetchScreens, CollectionPagingPrefs.defaultPrefetchScreens);
       expect(prefs.largeThreshold, CollectionPagingPrefs.defaultLargeThreshold);
+      // Cataloguing is the steady state of a paged collection, so the backlog
+      // question starts off; the one-time explainer says it once instead.
+      expect(prefs.askBeforeCatalog, isFalse);
+      expect(prefs.importExplained, isFalse);
+      expect(prefs.importComplete, isFalse);
       // The default is the smallest preset: a library that big is served window
       // by window, so a low threshold costs nothing and keeps it off the full
       // load.

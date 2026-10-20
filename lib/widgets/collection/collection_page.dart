@@ -2,8 +2,11 @@ import 'dart:async';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/catalog/catalog_prompt.dart';
+import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/view/catalog_prompt_dialog.dart';
+import 'package:aves/features/collection_paging/view/collection_import_intro.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/query.dart';
@@ -79,11 +82,18 @@ class _CollectionPageState extends State<CollectionPage> {
     if (catalogPrompt.pending.value != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _askToCatalog());
     }
+    // The first import raises a one-time explanation of what the app is doing
+    // and how long it takes; dialogs belong here, not in the lens.
+    pagedImportStatus.addListener(_onImportStatusChanged);
+    if (pagedImportStatus.explainerPending) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeExplainImport());
+    }
   }
 
   @override
   void dispose() {
     catalogPrompt.pending.removeListener(_onCatalogPromptChanged);
+    pagedImportStatus.removeListener(_onImportStatusChanged);
     _subscriptions
       ..forEach((sub) => sub.cancel())
       ..clear();
@@ -249,5 +259,24 @@ class _CollectionPageState extends State<CollectionPage> {
     if (!await applyCatalogPromptAnswer(answer)) return;
     if (!mounted) return;
     unawaited(_collection.runCatalogBacklog());
+  }
+
+  void _onImportStatusChanged() {
+    if (!pagedImportStatus.explainerPending) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeExplainImport());
+  }
+
+  /// Shows the one-time explanation of the first import.
+  ///
+  /// Delayed a beat so it never competes with the first frame it is explaining,
+  /// and taken over synchronously so a second listener cannot raise it twice.
+  Future<void> _maybeExplainImport() async {
+    if (!mounted || !pagedImportStatus.explainerPending) return;
+    pagedImportStatus.clearExplainer();
+    await collectionPagingPrefs.setImportExplained();
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    await showCollectionImportIntroDialog(context, libraryCount: pagedImportStatus.total);
   }
 }

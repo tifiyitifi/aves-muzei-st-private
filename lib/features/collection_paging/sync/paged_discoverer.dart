@@ -83,34 +83,80 @@ class PagedDiscoverer {
 
   /// Chunked full import. Safe to rerun: rows already in the database (by
   /// content id) are skipped, modified ones are overwritten in place.
+  ///
+  /// [firstBatchLimit] splits the run so a caller can paint before the whole
+  /// library is written: once that many rows are in, [onFirstBatch] is awaited
+  /// (the caller resolves its view there) and the stream carries on behind it.
+  /// The rows arrive newest first, so everything the later batches add lands at
+  /// the tail of a date-ordered view instead of reordering what is on screen.
+  ///
   /// Returns the number of inserted or updated rows.
-  Future<int> importAll({required void Function(int done) onProgress}) async {
+  Future<int> importAll({
+    required void Function(int done) onProgress,
+    int firstBatchLimit = 0,
+    Future<void> Function()? onFirstBatch,
+  }) async {
     if (_importing) return 0;
     _importing = true;
+    final stopwatch = Stopwatch()..start();
     try {
-      var done = 0;
+      var processed = 0;
+      var written = 0;
       var batch = <AvesEntry>{};
+      var signalled = firstBatchLimit <= 0;
       Future<void> flush() async {
         if (batch.isEmpty) return;
-        done += await _upsertBatch(batch);
-        onProgress(done);
+        final count = batch.length;
+        processed += count;
+        written += await _upsertBatch(batch);
+        // Progress counts the rows the stream has covered, not the rows it
+        // wrote: a resumed run re-walks rows that are already there, and a
+        // counter that stalls at 0 while it does would read as stuck.
+        onProgress(processed);
         batch = {};
+        _log.v('paged import chunk: $count rows in ${stopwatch.elapsedMilliseconds}ms, $processed processed, $written written');
+        stopwatch.reset();
         // Cooperative yield: a million-row import must not starve the UI.
         await Future<void>.delayed(Duration.zero);
+      }
+
+      // Emitted when the stream ends before reaching the limit (a library
+      // smaller than one batch) so the caller is never left waiting.
+      Future<void> signalFirstBatch() async {
+        if (signalled) return;
+        signalled = true;
+        await flush();
+        if (onFirstBatch != null) await onFirstBatch();
       }
 
       await for (final entry in mediaStore.getEntries(const {})) {
         entry.id = database.nextId;
         batch.add(entry);
-        if (batch.length >= 2000) await flush();
+        if (!signalled) {
+          if (batch.length >= firstBatchLimit) await signalFirstBatch();
+        } else if (batch.length >= 2000) {
+          await flush();
+        }
       }
+      await signalFirstBatch();
       await flush();
 
       final generation = await mediaStore.getGenerationByVolume();
       if (generation != null) await _storeGeneration(generation);
-      return done;
+      return written;
     } finally {
       _importing = false;
+    }
+  }
+
+  /// Counts the rows [importAll] would stream, for the import progress
+  /// denominator. 0 when the platform cannot tell.
+  Future<int> countEntries() async {
+    try {
+      return await mediaStore.countEntries();
+    } catch (error, stack) {
+      _log.w('paged entry count failed', error, stack);
+      return 0;
     }
   }
 

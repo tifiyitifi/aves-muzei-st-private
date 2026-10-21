@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:aves/features/collection_paging/lens/scope_registry.dart';
+import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -54,14 +55,29 @@ class AvesNavItem extends Equatable {
     return NavigationDisplay.getPageTitle(context, route);
   }
 
+  /// The filters this destination opens.
+  ///
+  /// A collection destination that declares none is the media-set slot: it
+  /// reopens the view the slot last showed (an album opened from the albums page,
+  /// a search) instead of resetting the library behind the user's back. A
+  /// destination that names its filters (video, favourites, a pinned album)
+  /// always opens exactly them.
+  Set<CollectionFilter>? get effectiveFilters {
+    final declared = filters;
+    if (route != CollectionPage.routeName) return declared;
+    if (declared != null && declared.isNotEmpty) return declared;
+    return mediaSetTab.filters ?? declared;
+  }
+
   Future<void> goTo(BuildContext context, {bool? topLevel}) async {
     topLevel ??= _defaultTopLevel;
+    final targetFilters = effectiveFilters;
     if (this.route == CollectionPage.routeName) {
       // A tap on a collection item is the decision to show it: resolve it while
       // the route transition runs, so its page opens on a published window.
-      scopeRegistry.prewarm(source: context.read<CollectionSource>(), filters: filters);
+      scopeRegistry.prewarm(source: context.read<CollectionSource>(), filters: targetFilters);
     }
-    final route = routeBuilder(context, topLevel: topLevel);
+    final route = routeBuilder(context, topLevel: topLevel, collectionFilters: targetFilters);
     if (topLevel) {
       await Navigator.maybeOf(context)?.pushAndRemoveUntil(
         route,
@@ -84,7 +100,7 @@ class AvesNavItem extends Equatable {
     }
   }
 
-  Route routeBuilder(BuildContext context, {required bool topLevel}) {
+  Route routeBuilder(BuildContext context, {required bool topLevel, Set<CollectionFilter?>? collectionFilters}) {
     switch (route) {
       case HomePage.routeName:
         return settings.homeNavItem.routeBuilder(context, topLevel: topLevel);
@@ -97,17 +113,18 @@ class AvesNavItem extends Equatable {
       default:
         return MaterialPageRoute(
           settings: RouteSettings(name: route),
-          builder: _materialPageBuilder(route),
+          builder: _materialPageBuilder(route, collectionFilters),
         );
     }
   }
 
-  WidgetBuilder _materialPageBuilder(String route) {
+  WidgetBuilder _materialPageBuilder(String route, Set<CollectionFilter?>? collectionFilters) {
     switch (route) {
       case CollectionPage.routeName:
+        final targetFilters = collectionFilters ?? filters;
         return (context) => CollectionPage(
           source: context.read<CollectionSource>(),
-          filters: filters,
+          filters: targetFilters,
         );
       case AlbumListPage.routeName:
         return (_) => const AlbumListPage(initialGroup: null);

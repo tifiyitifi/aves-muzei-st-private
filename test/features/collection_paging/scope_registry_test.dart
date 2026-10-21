@@ -2,6 +2,7 @@ import 'package:aves/features/collection_paging/engine/collection_engine.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/lens/scope_registry.dart';
+import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/model/db/db.dart';
@@ -69,6 +70,7 @@ void main() {
 
   tearDown(() async {
     scopeRegistry.reset();
+    mediaSetTab.clear();
     await setUpServices();
   });
 
@@ -126,6 +128,25 @@ void main() {
       expect(again.pagedActive, isTrue);
       expect(again.entryCount, 3);
       expect(scopeRegistry.active, same(again));
+    });
+
+    test('the media-set slot reopens the album it showed, from the retained lens', () async {
+      await driftDb.insertEntries({entry(1), entry(2), entry(3, dir: '/b')});
+
+      final album = scopeRegistry.acquire(source: source, filters: scopeOf('/a'));
+      await album.ready;
+      expect(album.entryCount, 2);
+      scopeRegistry.release(album);
+      // The albums page is on screen: no collection page is mounted, and the slot
+      // holds the filters of the view it was showing.
+      mediaSetTab.note(routeFilters: scopeOf('/a').nonNulls.toSet(), currentFilters: () => album.filters);
+
+      // Tapping the bottom bar's media-set item must land on that view, instead of
+      // opening a fresh "whole library" scope that resolves everything again.
+      final again = scopeRegistry.acquire(source: source, filters: mediaSetTab.filters);
+      expect(identical(again, album), isTrue);
+      expect(again.entryCount, 2);
+      expect(again.ready, completes);
     });
 
     test('another album replaces the previous one, the home stays', () async {

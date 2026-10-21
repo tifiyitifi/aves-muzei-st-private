@@ -10,6 +10,7 @@ import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/lens/scope_registry.dart';
 import 'package:aves/features/collection_paging/view/catalog_prompt_dialog.dart';
 import 'package:aves/features/collection_paging/view/collection_import_intro.dart';
+import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/query.dart';
@@ -73,6 +74,15 @@ class _CollectionPageState extends State<CollectionPage> {
       source: widget.source,
       filters: widget.filters,
     );
+    // The media-set slot remembers the view it shows, so the bottom bar's
+    // collection item returns to it instead of resetting to the whole library.
+    // A view a bottom-bar item declares itself (video, favourites, an album
+    // pinned to the bar) belongs to that item and must not hijack the slot.
+    final routeFilters = (widget.filters ?? const <CollectionFilter?>{}).nonNulls.toSet();
+    final declaredFilters = settings.bottomNavigationActions.where((v) => v.route == CollectionPage.routeName).map((v) => v.filters).nonNulls;
+    if (!declaredFilters.any((v) => const SetEquality().equals(v, routeFilters))) {
+      mediaSetTab.note(routeFilters: routeFilters, currentFilters: () => _collection.filters);
+    }
     super.initState();
     _subscriptions.add(
       settings.updateStream.where((event) => event.key == SettingKeys.enableBinKey).listen((_) {

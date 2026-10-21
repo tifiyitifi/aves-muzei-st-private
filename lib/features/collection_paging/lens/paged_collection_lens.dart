@@ -807,6 +807,10 @@ class PagedCollectionLens extends CollectionLens {
       }
     }
     if (_disposed) return true;
+    // The window may have moved while the ratios were read (an import batch, a
+    // catalog sweep, a filter change): publishing the layout now would paint the
+    // new presentation over another window's rows, so let the full resolve run.
+    if (!_pagedActive || _importingRows || _pagedDataEpoch != _dataEpoch) return false;
     if (settings.getEffectiveCollectionTileLayout(filters) != layout) {
       // Another layout was chosen while the ratios loaded: the pending pass
       // publishes that one.
@@ -847,11 +851,16 @@ class PagedCollectionLens extends CollectionLens {
       // rows that have arrived.
       final needsImport = !prefs.importComplete && !await _recoverImportMarker(prefs);
       if (!_current(gen)) return;
+      // A failed import is not retried behind the user's back: the browser stays
+      // up and the notice bar's retry reopens the phase. Without this, every
+      // surface that followed the failed run (and every later mount) would start
+      // the same failing scan again.
+      final canImport = needsImport && !libraryPhase.hasFailed;
       // Another surface may already be importing (a second collection route):
       // join that run instead of scanning MediaStore again.
       final importRunning = pagedImportStatus.active;
-      final startImport = needsImport && !_importingRows && !importRunning;
-      final joinImport = needsImport && importRunning && !_importingRows;
+      final startImport = canImport && !_importingRows && !importRunning;
+      final joinImport = canImport && importRunning && !_importingRows;
       if (startImport || joinImport) {
         _importingRows = true;
         _grewDuringImport = false;
@@ -1105,6 +1114,13 @@ class PagedCollectionLens extends CollectionLens {
     _ownsLoading = false;
     source.state = SourceState.ready;
     notifyListeners();
+    if (libraryPhase.hasFailed) {
+      // This surface may only have been following the run: a failure is not an
+      // ending it should re-resolve from. Refreshing here would find the import
+      // still unfinished and start it again from this lens.
+      _log.i('paged import failed, keeping the browser instead of re-resolving');
+      return;
+    }
     // The view still shows the rows of the batches that landed: re-resolve
     // against the whole library, coalescing into the running pass if there is.
     refresh();

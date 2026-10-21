@@ -14,10 +14,15 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   /// hold the stream open and observe the states in between.
   Stream<AvesEntry>? entriesStream;
 
+  /// How many times the library stream was asked for. A failed import must not
+  /// be restarted behind the user's back, and this is how a test proves it.
+  int entryRequestCount = 0;
+
   void reset() {
     entries = {};
     entriesStream = null;
     latency = null;
+    entryRequestCount = 0;
   }
 
   @override
@@ -39,7 +44,10 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   }
 
   @override
-  Stream<AvesEntry> getEntries(Map<int?, int?> knownEntries, {String? directory}) => entriesStream ?? Stream.fromIterable(entries);
+  Stream<AvesEntry> getEntries(Map<int?, int?> knownEntries, {String? directory}) {
+    entryRequestCount++;
+    return entriesStream ?? Stream.fromIterable(entries);
+  }
 
   @override
   Future<int> countEntries() async => entries.length;

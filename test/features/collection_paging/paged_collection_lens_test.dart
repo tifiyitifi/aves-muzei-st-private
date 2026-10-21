@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/collection_paging/engine/collection_engine.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
@@ -172,6 +173,44 @@ void main() {
       await controller.close();
       await settle(lens, done: () => !lens.importingRows && source.state == SourceState.ready);
       expect(lens.entryCount, CollectionPagingPrefs.firstImportBatchSize + 1);
+    });
+
+    test('a failed import is not restarted by the surface that followed it', () async {
+      final store = mediaStoreService as FakeMediaStoreService;
+      store.entries = {};
+      final controller = StreamController<AvesEntry>();
+      addTearDown(controller.close);
+      store.entriesStream = controller.stream;
+      store.entryRequestCount = 0;
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setImportComplete(false);
+      addTearDown(() => collectionPagingPrefs.setImportComplete(true));
+      addTearDown(libraryPhase.retry);
+      addTearDown(pagedImportStatus.reset);
+
+      // Two surfaces mount together, as a second collection route (or the
+      // explorer) does: one runs the import, the other follows it.
+      final first = PagedCollectionLens(source: source, filters: {});
+      addTearDown(first.dispose);
+      final second = PagedCollectionLens(source: source, filters: {});
+      addTearDown(second.dispose);
+      for (var id = 1; id <= CollectionPagingPrefs.firstImportBatchSize; id++) {
+        controller.add(entry(id));
+      }
+      await Future.wait([first.ready, second.ready]);
+      expect(pagedImportStatus.active, isTrue);
+      expect(first.importingRows || second.importingRows, isTrue, reason: 'one surface owns the import');
+
+      // The stream dies. The owner marks the phase failed and settles without
+      // retrying; the follower must read that as a failure, not as the end of
+      // the import, or it starts the same failing scan again by itself.
+      controller.addError(StateError('media store went away'));
+      await settle(first, done: () => libraryPhase.hasFailed && !first.importingRows && !second.importingRows);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      expect(pagedImportStatus.active, isFalse);
+      expect(store.entryRequestCount, 1, reason: 'a failed import must not be restarted silently');
+      expect(source.state, isNot(SourceState.loading));
     });
 
     test('morphs to legacy below the threshold', () async {

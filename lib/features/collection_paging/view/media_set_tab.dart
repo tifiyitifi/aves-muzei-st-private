@@ -1,4 +1,14 @@
 import 'package:aves/model/filters/filters.dart';
+import 'package:collection/collection.dart';
+
+/// Whether [filters] is a view a bottom-bar destination declares itself.
+///
+/// Video, favourites or an album pinned to the bar are their own destinations:
+/// their views belong to them, so they must never write the media-set slot (and
+/// visiting one must not make the media-set tab open it afterwards).
+bool isDestinationView(Set<CollectionFilter> filters, Iterable<Set<CollectionFilter>?> destinationFilters) {
+  return destinationFilters.nonNulls.any((v) => const SetEquality().equals(v, filters));
+}
 
 /// The collection view the media-set destination last showed.
 ///

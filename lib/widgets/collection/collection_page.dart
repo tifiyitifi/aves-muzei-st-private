@@ -79,8 +79,8 @@ class _CollectionPageState extends State<CollectionPage> {
     // A view a bottom-bar item declares itself (video, favourites, an album
     // pinned to the bar) belongs to that item and must not hijack the slot.
     final routeFilters = (widget.filters ?? const <CollectionFilter?>{}).nonNulls.toSet();
-    final declaredFilters = settings.bottomNavigationActions.where((v) => v.route == CollectionPage.routeName).map((v) => v.filters).nonNulls;
-    if (!declaredFilters.any((v) => const SetEquality().equals(v, routeFilters))) {
+    final declaredFilters = settings.bottomNavigationActions.map((v) => v.filters);
+    if (!isDestinationView(routeFilters, declaredFilters)) {
       mediaSetTab.note(routeFilters: routeFilters, currentFilters: () => _collection.filters);
     }
     super.initState();

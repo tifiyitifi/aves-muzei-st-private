@@ -63,4 +63,35 @@ void main() {
       expect(const AvesNavItem(route: CollectionPage.routeName).effectiveFilters, isNull);
     });
   });
+
+  group('isDestinationView', () {
+    test("a destination's own view is not the slot's", () {
+      expect(
+        isDestinationView(
+          {video},
+          [
+            {video},
+          ],
+        ),
+        isTrue,
+        reason: 'visiting the video item must not hijack the tab',
+      );
+      expect(
+        isDestinationView(
+          {album},
+          [
+            {video},
+          ],
+        ),
+        isFalse,
+      );
+      expect(isDestinationView({album}, [null]), isFalse, reason: 'the media-set item declares no filters of its own');
+      expect(
+        isDestinationView(<CollectionFilter>{}, [
+          {video},
+        ]),
+        isFalse,
+      );
+    });
+  });
 }

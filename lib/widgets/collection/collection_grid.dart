@@ -101,14 +101,11 @@ class _CollectionGridState extends State<CollectionGrid> {
   @override
   Widget build(BuildContext context) {
     final filters = context.select<CollectionLens, Set<CollectionFilter>>((v) => v.visibleFilters);
-    // A paged window keeps its own layout until the resolve for a newly chosen
-    // one publishes: switching the grid over immediately painted the old window
-    // with the new packing (skeletons, or a mosaic without its ratios) while the
-    // new one loaded. The settings value is what was *asked* for; the lens
-    // answers what is actually on screen.
-    final resolvedLayout = context.select<CollectionLens, TileLayout?>((v) => v is PagedCollectionLens ? v.resolvedLayout : null);
+    // The grid answers the chosen layout immediately: a same-projection switch
+    // repaints at once, and a projection change (the calendar) shows a loading
+    // body until its window lands, so the tap is never left looking ignored.
     final requestedLayout = context.select<Settings, TileLayout>((v) => v.getEffectiveCollectionTileLayout(filters));
-    final layout = resolvedLayout ?? requestedLayout;
+    final layout = requestedLayout;
     final isCalendar = layout == TileLayout.calendar;
     final spacing = CollectionGrid.spacingForLayout(layout);
 
@@ -175,9 +172,7 @@ class _CollectionGridContentState extends State<_CollectionGridContent> {
     final selectable = context.select<ValueNotifier<AppMode>, bool>((v) => v.value.canSelectMedia) && !BrowseOnlyMode.isActive;
     return Consumer<CollectionLens>(
       builder: (context, collection, child) {
-        final requestedLayout = context.select<Settings, TileLayout>((v) => v.getEffectiveCollectionTileLayout(collection.visibleFilters));
-        final resolvedLayout = collection is PagedCollectionLens ? collection.resolvedLayout : null;
-        final tileLayout = resolvedLayout ?? requestedLayout;
+        final tileLayout = context.select<Settings, TileLayout>((v) => v.getEffectiveCollectionTileLayout(collection.visibleFilters));
         final sectionedListLayoutProvider = ValueListenableBuilder<double>(
           valueListenable: context.select<TileExtentController, ValueNotifier<double>>((controller) => controller.extentNotifier),
           builder: (context, thumbnailExtent, child) {
@@ -608,6 +603,11 @@ class _CollectionScrollViewState extends State<_CollectionScrollView> with Widge
   }
 
   Widget _buildScrollView(Widget appBar, CollectionLens collection) {
+    // Across a projection change (to or from the calendar) the new window is not
+    // readable yet: the body says so instead of painting the previous
+    // projection's rows under the new layout, or leaving the old layout up as if
+    // the tap had been ignored. Same-projection switches never report pending.
+    final layoutPending = collection is PagedCollectionLens && collection.layoutPending;
     return CustomScrollView(
       key: widget.scrollableKey,
       primary: true,
@@ -622,12 +622,18 @@ class _CollectionScrollViewState extends State<_CollectionScrollView> with Widge
       scrollCacheExtent: ScrollCacheExtent.pixels(context.select<TileExtentController, double>((controller) => controller.effectiveExtentMax)),
       slivers: [
         appBar,
-        collection.isEmpty
-            ? SliverFillRemaining(
-                hasScrollBody: false,
-                child: _buildEmptyContent(collection),
-              )
-            : const SectionedListSliver<AvesEntry>(),
+        if (layoutPending)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: LoadingEmptyContent(source: collection.source),
+          )
+        else if (collection.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _buildEmptyContent(collection),
+          )
+        else
+          const SectionedListSliver<AvesEntry>(),
         const NavBarPaddingSliver(),
         const TvTileGridBottomPaddingSliver(),
       ],

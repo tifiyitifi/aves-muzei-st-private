@@ -445,15 +445,36 @@ class PagedCollectionLens extends CollectionLens {
 
   /// The layout the published window is shaped for.
   ///
-  /// The grid renders this layout until a resolve for a newly chosen one
-  /// publishes, so a switch keeps the current content on screen instead of
-  /// repainting it as skeletons (or as a mosaic without its ratio channel) while
-  /// the new window resolves.
+  /// It tracks what is on screen, not what was asked for: a same-projection
+  /// switch republishes it at once, while a projection change (the calendar)
+  /// keeps it until the new window is ready.
   TileLayout _pagedLayout = TileLayout.grid;
 
   /// The published window's layout, or null when the view is not paged (the
   /// in-memory list follows the settings directly).
   TileLayout? get resolvedLayout => _pagedActive ? _pagedLayout : null;
+
+  /// Whether the layout the user just asked for cannot be painted yet.
+  ///
+  /// True only across a projection change (to or from the calendar): grid, list
+  /// and mosaic share one window, so switching between them needs no resolve.
+  /// The grid answers the tap in the same frame and shows this as a loading
+  /// body, instead of painting the previous projection's rows under the new
+  /// layout (or leaving the old layout up as if the tap was ignored).
+  ///
+  /// The wait itself is the design trade-off, not a bug: a calendar row is a day
+  /// and any other row is an entry, so the target needs its own count, headers
+  /// and first window. Removing the wait would mean resolving the other
+  /// projection on every calendar entry or keeping two live windows, which costs
+  /// more than the few hundred milliseconds it saves. Do not "fix" it by
+  /// dropping the loading body: that brings back a blank sheet.
+  bool get layoutPending {
+    if (!_pagedActive || _disposed) return false;
+    final requested = settings.getEffectiveCollectionTileLayout(filters);
+    if (requested == _pagedLayout) return false;
+    final requestedDayRows = !fixedSort && requested == TileLayout.calendar;
+    return requestedDayRows != _pagedDayRows;
+  }
 
   /// The view [_mosaicRatios] was measured for (see [_signatureOf]).
   String? _ratioSignature;
@@ -747,7 +768,11 @@ class PagedCollectionLens extends CollectionLens {
       if (_pagedActive) {
         // A view that already has a window keeps it: a transient read failure
         // (a busy database while the import writes) must not blank the grid,
-        // which would read as the library vanishing and coming back.
+        // which would read as the library vanishing and coming back. Adopt the
+        // requested layout as well, or the grid would wait on a window that will
+        // never arrive; the next refresh retries.
+        _pagedLayout = settings.getEffectiveCollectionTileLayout(filters);
+        notifyListeners();
       } else {
         _enterBlocked('the reload failed');
       }
@@ -1137,6 +1162,14 @@ class PagedCollectionLens extends CollectionLens {
       }
     }
 
+    // Fill the first screen's window before publishing. The grid is already
+    // showing this layout's loading body, so these reads only shorten it, and
+    // the switch lands on real tiles instead of a fresh sheet of skeletons.
+    if (states.isNotEmpty) {
+      await states.first.cache.ensureAround(0);
+      if (!_current(gen)) return;
+    }
+
     // A newer layout may have been chosen while this pass ran (the user tapping
     // through the layout bar). Publishing this one would swap the grid to it and
     // straight back on the trailing pass, so keep the current window on screen
@@ -1150,6 +1183,10 @@ class PagedCollectionLens extends CollectionLens {
     _sectionStates = List.unmodifiable(states);
     _flat = PagedFlatList(List.unmodifiable(lists.values.toList()));
     sections = Map.unmodifiable(lists);
+    // The first window may already be loaded (see the prefetch above), before
+    // this flat list existed: index it so positions, selections and highlights
+    // resolve for those rows too.
+    _reindexFlat();
     _pagedPredicate = predicate;
     _pagedEntryPredicate = base;
     // The calendar projection counts days, so its entry total needs its own read.

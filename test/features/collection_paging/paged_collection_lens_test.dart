@@ -936,6 +936,41 @@ void main() {
       forgetPagedSummaries(source);
     });
 
+    test('a projection change reports a pending layout until it publishes', () async {
+      final service = await drift();
+      await service.insertEntries({
+        for (var i = 1; i <= 4; i++) entry(i, dateTaken: i <= 2 ? millis(2024, 1) : millis(2024, 3, 5)),
+      });
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(2);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      addTearDown(() => settings.setStoredCollectionTileLayout({}, TileLayout.grid));
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 4);
+
+      // Same projection (grid to mosaic): the window is reused, nothing to wait
+      // for, and the grid repaints at once.
+      settings.setStoredCollectionTileLayout({}, TileLayout.mosaic);
+      expect(lens.layoutPending, isFalse);
+      await settle(lens, done: () => lens.resolvedLayout == TileLayout.mosaic);
+
+      // To the calendar: a different projection, so the body waits for the new
+      // window instead of painting day rows as a grid.
+      settings.setStoredCollectionTileLayout({}, TileLayout.calendar);
+      expect(lens.layoutPending, isTrue);
+      await settle(lens, done: () => !lens.layoutPending);
+      expect(lens.resolvedLayout, TileLayout.calendar);
+      expect(lens.entryCount, 2);
+
+      // And back out of the calendar.
+      settings.setStoredCollectionTileLayout({}, TileLayout.list);
+      expect(lens.layoutPending, isTrue);
+      await settle(lens, done: () => !lens.layoutPending);
+      expect(lens.resolvedLayout, TileLayout.list);
+      expect(lens.entryCount, 4);
+      expect(lens.loadedEntries, isNotEmpty, reason: 'the first window is prefetched before publishing');
+    });
+
     test('a layout switch over the same rows keeps the loaded window', () async {
       final service = await drift();
       await service.insertEntries({

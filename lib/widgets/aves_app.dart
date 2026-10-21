@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:aves/app_flavor.dart';
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
+import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/l10n/l10n.dart';
 import 'package:aves/model/app/intent.dart';
@@ -64,6 +66,8 @@ import 'package:overlay_support/overlay_support.dart';
 import 'package:provider/provider.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:url_launcher/url_launcher.dart' as ul;
+
+const _log = AreaKeyLog(LogKeys.media);
 
 class const AvesApp({
   super.key,
@@ -636,8 +640,22 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
 
   Future<void> _onAnalysisCompletion() async {
     debugPrint('Analysis completed');
-    await _mediaStoreSource.loadCatalogMetadata();
-    await _mediaStoreSource.loadAddresses();
+    // The event can arrive before the database is open (a restart while the
+    // analysis service is still finishing): every read below goes through it, so
+    // it has to be up first.
+    await localMediaDb.init();
+    // A failed read must not skip the next one, or the library would be left
+    // without the tags or addresses this pass exists to load.
+    try {
+      await _mediaStoreSource.loadCatalogMetadata();
+    } catch (error, stack) {
+      _log.w('analysis completion: catalog metadata load failed', error, stack);
+    }
+    try {
+      await _mediaStoreSource.loadAddresses();
+    } catch (error, stack) {
+      _log.w('analysis completion: addresses load failed', error, stack);
+    }
     _mediaStoreSource.updateDerivedFilters();
   }
 

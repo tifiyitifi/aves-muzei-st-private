@@ -1,4 +1,5 @@
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/sync/platform_timeout.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/model/covers.dart';
@@ -62,7 +63,10 @@ class PagedBootstrap {
 
     source.addDirectories(albums: settings.pinnedFilters.whereType<StoredAlbumFilter>().map((v) => v.album).toSet());
     if (source is MediaStoreSource) {
-      await source.updateGeneration();
+      // Bounded like the resolve's own media store steps: this is a platform
+      // query, and a reply lost while the engine restarts must not hold the
+      // whole bootstrap (and every view waiting on it).
+      await withPlatformTimeout(source.updateGeneration, label: 'media store generation');
     }
     source.pauseMonitoring();
     if (driveState) source.state = SourceState.ready;

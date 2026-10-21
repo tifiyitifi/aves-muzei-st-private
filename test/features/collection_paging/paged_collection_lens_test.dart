@@ -971,6 +971,80 @@ void main() {
       expect(lens.loadedEntries, isNotEmpty, reason: 'the first window is prefetched before publishing');
     });
 
+    test('a view that announced loading hands it back when it is parked', () async {
+      final service = await drift();
+      await service.insertEntries({for (var i = 1; i <= 200; i++) entry(i)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      // The resolve reports its steps through the lens, so parking can land while
+      // it is still reading. The announcement must not outlive the view that made
+      // it, or the whole app would read "loading" with nothing left to clear it.
+      var parked = false;
+      SourceState? stateWhileResolving;
+      SourceState? stateAfterParking;
+      void onStep() {
+        if (parked || lens.resolvePhase == null) return;
+        parked = true;
+        stateWhileResolving = source.state;
+        lens.setActive(false);
+        stateAfterParking = source.state;
+      }
+
+      lens.addListener(onStep);
+      addTearDown(() => lens.removeListener(onStep));
+
+      await settle(lens, done: () => lens.pagedActive);
+      expect(parked, isTrue, reason: 'the resolve reported a step before publishing');
+      expect(stateWhileResolving, SourceState.loading, reason: 'the first resolve says it is resolving');
+      expect(stateAfterParking, isNot(SourceState.loading), reason: 'parking hands the loading back');
+      expect(lens.entryCount, 200);
+    });
+
+    test('a pass superseded by a layout switch does not leave the view on its own loading', () async {
+      final service = await drift();
+      await service.insertEntries({
+        for (var i = 1; i <= 200; i++) entry(i, dateTaken: i <= 100 ? millis(2024, 1) : millis(2024, 2)),
+      });
+      // Everything catalogued: no worker runs alongside the resolve, so nothing
+      // else clears the loading this lens announced. That is the state the guard
+      // is about, and a sweep would mask it.
+      await service.saveCatalogMetadata({for (var i = 1; i <= 200; i++) CatalogMetadata(id: i)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(20);
+      addTearDown(() => settings.setStoredCollectionTileLayout({}, TileLayout.grid));
+
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      // The pass captures the layout and then reports its count: switching the
+      // layout from that notification makes it end without publishing, which is
+      // the exit that must not leave the shared state terminal. The pass that
+      // follows must resolve instead of waiting for the loading this lens
+      // announced.
+      var switched = false;
+      SourceState? stateWhileResolving;
+      void onStep() {
+        if (switched || lens.resolvePhase != PagedResolvePhase.counting) return;
+        switched = true;
+        stateWhileResolving = source.state;
+        settings.setStoredCollectionTileLayout({}, TileLayout.list);
+        // Coalesce into the running pass: the switch alone is picked up by the
+        // settings notification, which lands after this pass has already ended.
+        lens.refresh(dataChanged: false);
+      }
+
+      lens.addListener(onStep);
+      addTearDown(() => lens.removeListener(onStep));
+
+      await settle(lens, done: () => lens.pagedActive && lens.resolvedLayout == TileLayout.list);
+      expect(switched, isTrue, reason: 'the pass reported its count before publishing');
+      expect(stateWhileResolving, SourceState.loading);
+      expect(lens.entryCount, 200);
+      expect(source.state, isNot(SourceState.loading));
+      expect(lens.resolvePhase, isNull);
+    });
+
     test('a layout switch over the same rows keeps the loaded window', () async {
       final service = await drift();
       await service.insertEntries({

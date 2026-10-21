@@ -20,6 +20,7 @@ import 'package:aves/model/db/db.dart';
 import 'package:aves/features/collection_paging/summary/paged_filter_summaries.dart';
 import 'package:aves/features/collection_paging/summary/paged_summary_registry.dart';
 import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
+import 'package:aves/features/collection_paging/sync/platform_timeout.dart';
 import 'package:aves/features/collection_paging/windows/window_cache.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
 import 'package:aves/features/logging/log.dart';
@@ -61,6 +62,25 @@ class _SectionState {
   });
 }
 
+/// The step a resolve is on, for the loading body.
+///
+/// A spinner alone says nothing while a view waits: these steps are what the
+/// resolve is actually working on, in the order it works through them.
+enum PagedResolvePhase {
+  /// Reading the library's own state and deciding how to serve the view: the
+  /// MediaStore changes, the dates and groupings, and the engine's route.
+  syncing,
+
+  /// Counting the rows the view holds (the layout is already captured here).
+  counting,
+
+  /// Reading the view's sections.
+  headers,
+
+  /// Filling the first screen so the switch lands on real tiles.
+  firstWindow,
+}
+
 /// A [CollectionLens] that materializes only the visible windows.
 ///
 /// The grid, drawer, viewer and selection consume the exact same interface as
@@ -97,6 +117,16 @@ class PagedCollectionLens extends CollectionLens {
 
   bool get isActive => _active;
 
+  /// Whether the library-wide `loading` on the source is this lens's own
+  /// announcement ("resolving, nothing to show yet").
+  ///
+  /// Two rules hang off it. A lens never waits for its own announcement (see
+  /// [_awaitInFlightLoad]): it is the lens's own "about to resolve", and waiting
+  /// would wait for the resolve that is starting. And a lens that owns it hands
+  /// it back when its resolve ends without publishing, or parking/disposing it
+  /// would leave the whole app saying "loading" with nothing left to clear it.
+  bool _ownsLoading = false;
+
   /// Marks whether this lens is the view on screen, and resumes what parking
   /// stopped: the worker and the backlog it owns.
   ///
@@ -109,6 +139,10 @@ class PagedCollectionLens extends CollectionLens {
     _active = value;
     if (!value) {
       _detachCatalogWorker();
+      // Parking must not leave the library saying "loading": nothing would clear
+      // an announcement whose resolve is now off screen. The page that takes
+      // over announces (or publishes) its own.
+      _releaseLoading();
       return;
     }
     if (_disposed) return;
@@ -135,6 +169,48 @@ class PagedCollectionLens extends CollectionLens {
   /// The grid shows its loading body for this instead of reading the shared
   /// source state, which a parked scope deliberately leaves alone.
   bool get awaitingFirstWindow => fixedSelection == null && !_disposed && !_pagedActive && !_morphed && !_blocked && !_ready.isCompleted;
+
+  /// The step the current resolve is on, or null when it is not resolving.
+  PagedResolvePhase? get resolvePhase => _resolvePhase;
+  PagedResolvePhase? _resolvePhase;
+
+  /// The total a resolve has already read, before its window is published.
+  ///
+  /// The loading body says how much there is while it waits: this is the same
+  /// figure the app bar shows once the window lands, just earlier.
+  int? get resolvingTotal => _resolvingTotal;
+  int? _resolvingTotal;
+
+  void _setResolvePhase(PagedResolvePhase? value) {
+    if (_disposed || _resolvePhase == value) return;
+    _resolvePhase = value;
+    notifyListeners();
+  }
+
+  void _setResolvingTotal(int? value) {
+    if (_disposed || _resolvingTotal == value) return;
+    _resolvingTotal = value;
+    notifyListeners();
+  }
+
+  /// Clears the step and the count a resolve was reporting.
+  void _clearResolveProgress() {
+    _setResolvePhase(null);
+    _setResolvingTotal(null);
+  }
+
+  /// Hands the library-wide `loading` back when this lens put it there.
+  ///
+  /// Only a `loading` still in place is handed back: another surface may have
+  /// settled or replaced it meanwhile, and that one is not this lens's to clear.
+  void _releaseLoading() {
+    if (!_ownsLoading) return;
+    // An import keeps the library "loading" on purpose (see `_settleState`): it is
+    // still writing rows, so this is not an announcement left behind.
+    if (_importingRows) return;
+    _ownsLoading = false;
+    if (source.state == SourceState.loading) source.state = SourceState.ready;
+  }
 
   /// False for fixed-selection (viewer) copies, morphed and blocked states.
   bool get pagedActive => _pagedActive && !_blocked && !_morphed && fixedSelection == null;
@@ -282,6 +358,9 @@ class PagedCollectionLens extends CollectionLens {
   void dispose() {
     _disposed = true;
     _cancelInFlightLoadWait();
+    // A disposed view cannot settle what it announced; leaving it would keep the
+    // whole app on its loading screen.
+    _releaseLoading();
     _metadataPatchTimer?.cancel();
     _metadataPatchTimer = null;
     final importListener = _externalImportListener;
@@ -691,6 +770,11 @@ class PagedCollectionLens extends CollectionLens {
       _reloading = false;
       _reloadPending = false;
       if (!_ready.isCompleted) _ready.complete();
+      // A resolve that ended without publishing must not leave the library on
+      // "loading": this is what makes the state non-terminal. It is a no-op for
+      // a resolve that settled itself.
+      _releaseLoading();
+      _clearResolveProgress();
     }
   }
 
@@ -786,13 +870,17 @@ class PagedCollectionLens extends CollectionLens {
       // already on screen keeps its state: only the first resolve, or a run
       // that is still writing, has nothing to show yet.
       _settleState(resolving: true);
+      _setResolvePhase(PagedResolvePhase.syncing);
 
       await PagedBootstrap.ensure(source, driveState: _active);
       if (!_current(gen)) return;
 
       // Steady-state MediaStore sync: one cheap generation query when quiet,
       // bounded change handling otherwise. New files appear without a restart.
-      await PagedDiscoverer().syncIfChanged();
+      // Bounded, like the bootstrap's own generation read: a platform reply lost
+      // while the engine restarts would otherwise freeze the resolve on its
+      // loading body (see `withPlatformTimeout`).
+      await withPlatformTimeout(() => PagedDiscoverer().syncIfChanged(), label: 'media store sync');
       if (!_current(gen)) return;
 
       var decision = await const CollectionEngineRouter().resolve(filters: filters);
@@ -848,6 +936,10 @@ class PagedCollectionLens extends CollectionLens {
     // load: waiting for it here would deadlock the reload that paints it.
     if (_importingRows) return Future<void>.value();
     if (source.state != SourceState.loading) return Future<void>.value();
+    // Our own announcement is not a load to wait for: it says "this view has
+    // nothing to show yet", and waiting for it would wait for the very resolve
+    // that is starting (or for the one that just aborted without settling it).
+    if (_ownsLoading) return Future<void>.value();
     void listener() {
       if (source.state == SourceState.loading) return;
       _cancelInFlightLoadWait();
@@ -953,6 +1045,7 @@ class PagedCollectionLens extends CollectionLens {
       // Settle without refreshing: a reload would immediately retry the same
       // failing import. The next launch tries again, and rows already written
       // stay browsable in the meantime.
+      _ownsLoading = false;
       source.state = SourceState.ready;
       notifyListeners();
     }));
@@ -1009,6 +1102,7 @@ class PagedCollectionLens extends CollectionLens {
     // progress it finds, so a stale "32804/32804" would read as a re-import on
     // the next resolve.
     source.setProgress(done: 0, total: 0);
+    _ownsLoading = false;
     source.state = SourceState.ready;
     notifyListeners();
     // The view still shows the rows of the batches that landed: re-resolve
@@ -1051,6 +1145,10 @@ class PagedCollectionLens extends CollectionLens {
     _blocked = false;
     _morphed = true;
     _pagedActive = false;
+    // A morphed view shows the in-memory list: whatever this lens announced is
+    // settled here, or the state would stay `loading` over a loaded collection.
+    _settleState();
+    _clearResolveProgress();
     notifyListeners();
   }
 
@@ -1067,7 +1165,9 @@ class PagedCollectionLens extends CollectionLens {
     _sectionStates = const [];
     _flat = PagedFlatList(const []);
     sections = Map.unmodifiable(const {});
+    _ownsLoading = false;
     if (_active) source.state = SourceState.ready;
+    _clearResolveProgress();
     notifyListeners();
   }
 
@@ -1114,6 +1214,7 @@ class PagedCollectionLens extends CollectionLens {
     // About to resolve: a first resolve has nothing to show yet, so say loading
     // rather than an empty collection with a zero count.
     _settleState(resolving: true);
+    _setResolvePhase(PagedResolvePhase.counting);
     final windowSize = prefs.windowSize;
     final prefetch = prefs.prefetchScreens;
     // The router already counted the exact predicate this view resolves to, so
@@ -1127,6 +1228,10 @@ class PagedCollectionLens extends CollectionLens {
             ? decision.total
             : await localMediaDb.countEntries(predicate);
     if (!_current(gen)) return;
+    // The count is the one figure a waiting user can hold on to: publish it to
+    // the loading body now instead of only when the window lands.
+    _setResolvingTotal(total);
+    _setResolvePhase(PagedResolvePhase.headers);
     // Denominator for the count line. A calendar view counts days and a filtered
     // view counts matches, so neither can be compared with the library size: the
     // pair is only shown when the view *is* the library.
@@ -1227,6 +1332,7 @@ class PagedCollectionLens extends CollectionLens {
     // Fill the first screen's window before publishing. The grid is already
     // showing this layout's loading body, so these reads only shorten it, and
     // the switch lands on real tiles instead of a fresh sheet of skeletons.
+    _setResolvePhase(PagedResolvePhase.firstWindow);
     if (states.isNotEmpty) {
       await states.first.cache.ensureAround(0);
       if (!_current(gen)) return;
@@ -1271,6 +1377,7 @@ class PagedCollectionLens extends CollectionLens {
     // that query took — minutes on a fresh 32k library — even though the grid
     // and the total were already there.
     _settleState();
+    _clearResolveProgress();
     notifyListeners();
     if (!_current(gen)) return;
     _log.d('paged view resolved layout=${layout.name} grouping=${grouping.name} total=$total sections=${states.length}');
@@ -1350,7 +1457,10 @@ class PagedCollectionLens extends CollectionLens {
   /// keying the settle off it left every new lens stuck in `loading`.
   void _settleState({bool resolving = false}) {
     if (_importingRows || (resolving && !_ready.isCompleted)) {
-      if (_active) source.state = SourceState.loading;
+      if (_active) {
+        _ownsLoading = true;
+        source.state = SourceState.loading;
+      }
       return;
     }
     if (!_active) return;
@@ -1358,9 +1468,13 @@ class PagedCollectionLens extends CollectionLens {
       case SourceState.cataloguing:
       case SourceState.locatingCountries:
       case SourceState.locatingPlaces:
+        // Another surface owns the state now (the catalog worker, the locator):
+        // this lens's announcement is spent.
+        _ownsLoading = false;
         return;
       case SourceState.loading:
       case SourceState.ready:
+        _ownsLoading = false;
         source.state = SourceState.ready;
     }
   }

@@ -1274,6 +1274,12 @@
       }
     }
   },
+  "collectionLoadingPhaseSyncing": "Syncing library…",
+  "collectionLoadingPhaseCounting": "Counting items…",
+  "collectionLoadingPhaseHeaders": "Preparing sections…",
+  "collectionLoadingPhaseFirstWindow": "Reading the first screen…",
+  "collectionLoadingLong": "Taking longer than usual",
+  "collectionLoadingRetry": "Retry",
   "collectionImportIntroTitle": "Browse first, organize in the background",
   "collectionImportIntroBody": "Your photos are listed immediately, so you can browse and open them right away.\nFilters, search, statistics and album counts become complete when organizing finishes; editing and bulk selection stay paused until then.\nOrganizing runs in the background and does not block browsing; live progress shows under the title.",
   "collectionImportEtaHeader": "Time reference (mid-range device)",

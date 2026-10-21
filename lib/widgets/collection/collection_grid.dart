@@ -625,7 +625,10 @@ class _CollectionScrollViewState extends State<_CollectionScrollView> with Widge
         if (layoutPending)
           SliverFillRemaining(
             hasScrollBody: false,
-            child: LoadingEmptyContent(source: collection.source),
+            child: LoadingEmptyContent(
+              source: collection.source,
+              collection: collection,
+            ),
           )
         else if (collection.isEmpty)
           SliverFillRemaining(
@@ -649,10 +652,16 @@ class _CollectionScrollViewState extends State<_CollectionScrollView> with Widge
         // the shared state says: a parked scope keeps that state to itself, so
         // the page adopting it still has to say what it is doing.
         if (collection is PagedCollectionLens && collection.awaitingFirstWindow) {
-          return LoadingEmptyContent(source: source);
+          return LoadingEmptyContent(
+            source: source,
+            collection: collection,
+          );
         }
         if (sourceState == SourceState.loading) {
-          return LoadingEmptyContent(source: source);
+          return LoadingEmptyContent(
+            source: source,
+            collection: collection,
+          );
         }
 
         return FutureBuilder<bool>(

@@ -139,25 +139,30 @@ class _LoadingStatusState extends State<_LoadingStatus> {
     return Column(
       mainAxisSize: .min,
       children: [
-        Text.rich(
-          TextSpan(
-            children: [
-              if (headline != null) TextSpan(text: headline),
-              if (knownTotal > 0 && !stuck) ...[
-                if (headline != null) const TextSpan(text: ' · '),
-                TextSpan(text: l10n.itemCount(knownTotal), style: subtle),
+        if (headline != null || (knownTotal > 0 && !stuck)) ...[
+          Text.rich(
+            TextSpan(
+              children: [
+                if (headline != null) TextSpan(text: headline),
+                if (knownTotal > 0 && !stuck) ...[
+                  if (headline != null) const TextSpan(text: ' · '),
+                  TextSpan(text: l10n.itemCount(knownTotal), style: subtle),
+                ],
               ],
-              if (headline != null || knownTotal > 0) const TextSpan(text: ' · '),
-              TextSpan(
-                text: l10n.catalogProgressWithoutEta(formatCatalogDuration(elapsed)),
-                style: subtle,
-              ),
-            ],
+            ),
+            style: theme.textTheme.bodySmall!.copyWith(fontFeatures: const [FontFeature.disable('smcp')]),
+            softWrap: false,
+            overflow: .fade,
+            maxLines: 1,
+            textAlign: .center,
           ),
-          style: theme.textTheme.bodySmall!.copyWith(fontFeatures: const [FontFeature.disable('smcp')]),
-          softWrap: false,
-          overflow: .fade,
-          maxLines: 1,
+          const SizedBox(height: 4),
+        ],
+        // The clock has a line of its own: it is the one figure that is always
+        // there, and a bare `00:00` needs no label to be understood.
+        Text(
+          _formatElapsed(elapsed),
+          style: theme.textTheme.bodySmall!.copyWith(color: subtle.color, fontFeatures: const [FontFeature.tabularFigures()]),
           textAlign: .center,
         ),
         // The escape hatch: a wait this long with nothing moving is not going to
@@ -171,6 +176,17 @@ class _LoadingStatusState extends State<_LoadingStatus> {
         ],
       ],
     );
+  }
+
+  /// `00:00`, and `1:02:03` past an hour.
+  ///
+  /// A clock rather than a sentence: it needs no translation, and its figures stay
+  /// tabular so the line does not jitter as the seconds change.
+  String _formatElapsed(Duration elapsed) {
+    final seconds = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+    final minutes = (elapsed.inMinutes % 60).toString().padLeft(2, '0');
+    final hours = elapsed.inHours;
+    return hours > 0 ? '$hours:$minutes:$seconds' : '$minutes:$seconds';
   }
 
   String _phaseLabel(AppLocalizations l10n, PagedResolvePhase phase) {

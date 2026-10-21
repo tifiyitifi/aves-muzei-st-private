@@ -49,8 +49,8 @@ void main() {
     await tester.pumpWidget(app(source: source));
     await tester.pump(const Duration(seconds: 1));
 
-    // The elapsed line is the one figure that is always available, and it moves.
-    expect(find.textContaining('elapsed 0:01', findRichText: true), findsOneWidget);
+    // The clock is the one figure that is always available, and it moves.
+    expect(find.text('00:01'), findsOneWidget);
     expect(find.text('Retry'), findsNothing, reason: 'a one-second wait is not escalated');
   });
 

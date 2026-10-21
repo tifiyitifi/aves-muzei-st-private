@@ -116,16 +116,19 @@ class BrowseOnlyAlbumsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AvesScaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.browseOnlyAlbumsTab),
-        actions: const [BrowseAlbumSortButton()],
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(BrowseOnlyNoticeBar.preferredHeight),
-          child: BrowseOnlyNoticeBar(),
+    // The strip belongs to the phase, not to this page: the handoff can happen
+    // while the page is still on screen, and a bar written in once would keep
+    // claiming the library is being organized.
+    return ListenableBuilder(
+      listenable: Listenable.merge([libraryPhase, pagedImportStatus]),
+      builder: (context, child) => AvesScaffold(
+        appBar: AppBar(
+          title: Text(context.l10n.browseOnlyAlbumsTab),
+          actions: const [BrowseAlbumSortButton()],
+          bottom: browseOnlyNoticeBar(),
         ),
+        body: const BrowseAlbumsView(),
       ),
-      body: const BrowseAlbumsView(),
     );
   }
 }
@@ -141,7 +144,7 @@ class BrowseAlbumPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([browsePrefs, browseLibrary]),
+      listenable: Listenable.merge([browsePrefs, browseLibrary, libraryPhase, pagedImportStatus]),
       builder: (context, child) {
         final sort = browsePrefs.mediaSort;
         final indexes = browseLibrary.albumIndexes(album.directory, sort: sort, reverse: browsePrefs.mediaReverse);
@@ -159,10 +162,7 @@ class BrowseAlbumPage extends StatelessWidget {
               ],
             ),
             actions: const [BrowseMediaSortButton()],
-            bottom: const PreferredSize(
-              preferredSize: Size.fromHeight(BrowseOnlyNoticeBar.preferredHeight),
-              child: BrowseOnlyNoticeBar(),
-            ),
+            bottom: browseOnlyNoticeBar(),
           ),
           body: BrowseMediaGrid(
             indexes: indexes,

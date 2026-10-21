@@ -85,9 +85,12 @@ class _BrowseMediaGridState extends State<BrowseMediaGrid> {
 
   Widget _buildEmpty(BuildContext context) => EmptyContent(
     icon: AIcons.image,
-    text:
-        widget.emptyText ??
-        (libraryPhase.isBrowsing && pagedImportStatus.active ? context.l10n.sourceStateImporting : context.l10n.browseOnlyEmptyLibrary),
+    // A view with no rows can read as "nothing here" or as "not imported yet":
+    // while the library is still being organized the second is the truth, even
+    // for a narrowed view (videos) that has a text of its own.
+    text: libraryPhase.isBrowsing && pagedImportStatus.active
+        ? context.l10n.sourceStateImporting
+        : widget.emptyText ?? context.l10n.browseOnlyEmptyLibrary,
   );
 
   Widget _buildSectionedGrid(BuildContext context, List<_SectionRange> sections) {

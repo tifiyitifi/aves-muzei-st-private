@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/view/collection_background_work_page.dart';
@@ -5,6 +6,20 @@ import 'package:aves/model/settings/settings.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:material_ui/material_ui.dart';
+
+/// The app bar strip while the reduced mode runs, or null once it is over.
+///
+/// A browse page pushed before the handoff outlives it (the collection swaps
+/// under it, it is not popped), so the strip belongs to the phase instead of
+/// being written into that page's app bar once. Callers that do not rebuild on
+/// the phase must listen to it to get the strip removed.
+PreferredSizeWidget? browseOnlyNoticeBar() {
+  if (!libraryPhase.isBrowsing && !pagedImportStatus.active) return null;
+  return PreferredSize(
+    preferredSize: const Size.fromHeight(BrowseOnlyNoticeBar.preferredHeight),
+    child: BrowseOnlyNoticeBar(showNotice: collectionPagingPrefs.browseOnlyBar),
+  );
+}
 
 /// The reduced mode a collection runs in while its first import fills the
 /// database.

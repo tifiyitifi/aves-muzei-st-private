@@ -59,6 +59,17 @@ class BrowseLibrary extends ChangeNotifier {
   /// the compact rows are the index, entries are a rendering detail.
   static const int _entryCacheMax = 600;
 
+  /// Rows the scan gathers before handing a batch over to the index.
+  static const int _scanBatchSize = 250;
+
+  /// How often an intermediate scan batch may rebuild the surfaces.
+  ///
+  /// A batch invalidates the display orders and section lists, and rebuilding
+  /// them costs a full sort of the rows indexed so far: notifying per batch
+  /// makes a large scan quadratic in the row count. The last batch always
+  /// notifies immediately, so the counter and the grid still end up whole.
+  static const Duration _notifyInterval = Duration(milliseconds: 200);
+
   final List<BrowseRow> _rows = [];
 
   /// Row identity to position, so a resumed import's re-streamed rows do not
@@ -92,7 +103,10 @@ class BrowseLibrary extends ChangeNotifier {
   String _monthsHidden = '';
   bool _disposed = false;
   bool _scanning = false;
-  bool _scanStopped = false;
+  int _scanToken = 0;
+  StreamSubscription<AvesEntry>? _scanSubscription;
+  Completer<void>? _scanDone;
+  Timer? _notifyTimer;
   Future<void>? _scan;
 
   /// Streams the library straight from MediaStore, for a start where no import
@@ -102,37 +116,81 @@ class BrowseLibrary extends ChangeNotifier {
   Future<void> scan() => _scan ??= _scanLibrary();
 
   /// Stops a scan whose surface is gone (the collection took over).
+  ///
+  /// Cancels the subscription rather than asking the loop to stop: a flag read
+  /// between stream events left a scan that was already waiting running, and it
+  /// then indexed into the index the handoff had just cleared.
   void stopScan() {
-    _scanStopped = true;
+    _scanToken++;
+    final done = _scanDone;
+    _scanDone = null;
+    if (done != null && !done.isCompleted) done.complete();
+    final subscription = _scanSubscription;
+    _scanSubscription = null;
+    if (subscription != null) unawaited(subscription.cancel());
+    _scan = null;
+    _scanning = false;
+  }
+
+  /// Publishes a coalesced batch now instead of waiting for the timer.
+  ///
+  /// A scan that ends with a pending notification would otherwise leave its last
+  /// rows unpainted until the timer fires.
+  void _publishPending() {
+    final timer = _notifyTimer;
+    if (timer == null) return;
+    timer.cancel();
+    _notifyTimer = null;
+    _notify();
   }
 
   Future<void> _scanLibrary() async {
     if (_scanning) return;
     _scanning = true;
-    _scanStopped = false;
+    final token = ++_scanToken;
+    final done = _scanDone = Completer<void>();
     final stopwatch = Stopwatch()..start();
+    final buffer = <AvesEntry>[];
+
+    void flush({required bool immediately}) {
+      if (buffer.isEmpty) return;
+      addEntries(buffer, immediately: immediately);
+      buffer.clear();
+    }
+
     try {
       unawaited(
         mediaStoreService.countEntries().then(setTotal, onError: (Object error, StackTrace stack) {
           _log.w('browse-only count failed', error, stack);
         }),
       );
-      final buffer = <AvesEntry>[];
-      await for (final entry in mediaStoreService.getEntries(const {})) {
-        if (_scanStopped) break;
-        buffer.add(entry);
-        if (buffer.length >= 250) {
-          addEntries(buffer);
-          buffer.clear();
-        }
-      }
-      if (buffer.isNotEmpty) addEntries(buffer);
-      _log.i('browse-only scan indexed $length rows in ${stopwatch.elapsedMilliseconds}ms');
-    } catch (error, stack) {
-      // Keep what arrived: the collection page takes over either way.
-      _log.w('browse-only scan failed', error, stack);
+      _scanSubscription = mediaStoreService.getEntries(const {}).listen(
+        (entry) {
+          if (token != _scanToken) return;
+          buffer.add(entry);
+          if (buffer.length >= _scanBatchSize) flush(immediately: false);
+        },
+        onError: (Object error, StackTrace stack) {
+          // Keep what arrived: the collection page takes over either way.
+          _log.w('browse-only scan failed', error, stack);
+          if (token != _scanToken) return;
+          flush(immediately: true);
+          _publishPending();
+        },
+        onDone: () {
+          if (token != _scanToken) return;
+          flush(immediately: true);
+          _publishPending();
+          _log.i('browse-only scan indexed $length rows in ${stopwatch.elapsedMilliseconds}ms');
+          if (!done.isCompleted) done.complete();
+        },
+      );
+      await done.future;
     } finally {
-      _scanning = false;
+      if (token == _scanToken) {
+        _scanning = false;
+        _scanSubscription = null;
+      }
     }
   }
 
@@ -156,7 +214,10 @@ class BrowseLibrary extends ChangeNotifier {
   /// Appends rows from the media store stream. Duplicates (a resumed import
   /// re-streams what is already indexed) are ignored, and trashed rows are left
   /// out: this is the library, not the bin.
-  void addEntries(Iterable<AvesEntry> entries) {
+  ///
+  /// [immediately] false coalesces the notification into at most one per
+  /// [_notifyInterval], for a scan handing batches over back to back.
+  void addEntries(Iterable<AvesEntry> entries, {bool immediately = true}) {
     var added = 0;
     for (final entry in entries) {
       if (entry.trashed) continue;
@@ -176,7 +237,16 @@ class BrowseLibrary extends ChangeNotifier {
     _version++;
     _albums = null;
     _months = null;
-    _notify();
+    if (immediately) {
+      _notifyTimer?.cancel();
+      _notifyTimer = null;
+      _notify();
+    } else {
+      _notifyTimer ??= Timer(_notifyInterval, () {
+        _notifyTimer = null;
+        _notify();
+      });
+    }
   }
 
   BrowseRow rowAt(int index) => _rows[index];
@@ -369,11 +439,15 @@ class BrowseLibrary extends ChangeNotifier {
   }
 
   /// Drops the index, for the handoff back to the collection.
+  ///
+  /// Stops the scan first: a scan still streaming would keep indexing into the
+  /// rows cleared below, refilling a library nothing will show again.
   void clear() {
-    _scan = null;
-    _scanning = false;
-    _scanStopped = false;
-    if (_rows.isEmpty) return;
+    stopScan();
+    _notifyTimer?.cancel();
+    _notifyTimer = null;
+    final hadContent = _rows.isNotEmpty || _total != 0;
+    _total = 0;
     _rows.clear();
     _indexByKey.clear();
     _albumRows.clear();
@@ -383,6 +457,7 @@ class BrowseLibrary extends ChangeNotifier {
     _mediaOrder = null;
     _albumOrder = null;
     _albumDates = null;
+    if (!hadContent) return;
     _version++;
     _notify();
   }
@@ -390,6 +465,11 @@ class BrowseLibrary extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _notifyTimer?.cancel();
+    _notifyTimer = null;
+    final subscription = _scanSubscription;
+    _scanSubscription = null;
+    if (subscription != null) unawaited(subscription.cancel());
     super.dispose();
   }
 

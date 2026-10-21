@@ -6,9 +6,7 @@ import 'package:aves/features/browse_only/view/browse_albums_view.dart';
 import 'package:aves/features/browse_only/view/browse_bottom_bar.dart';
 import 'package:aves/features/browse_only/view/browse_media_grid.dart';
 import 'package:aves/features/browse_only/view/browse_sort_button.dart';
-import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
-import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
@@ -65,7 +63,6 @@ class _BrowseOnlyPageState extends State<BrowseOnlyPage> {
     // The collection page owns the drawer (settings, bin, ...): open that one
     // instead of nesting a second drawer-less scaffold.
     final outerScaffold = Scaffold.maybeOf(context);
-    final showNotice = collectionPagingPrefs.browseOnlyBar;
     return AvesScaffold(
       appBar: AppBar(
         leading: outerScaffold != null && outerScaffold.hasDrawer
@@ -83,12 +80,7 @@ class _BrowseOnlyPageState extends State<BrowseOnlyPage> {
         // cold-start wait (a complete library, a slow resolve) shows the
         // browser too, but has nothing to explain: the bar belongs to the
         // organized-library-free window, not to a spinner.
-        bottom: libraryPhase.isBrowsing || pagedImportStatus.active
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(BrowseOnlyNoticeBar.preferredHeight),
-                child: BrowseOnlyNoticeBar(showNotice: showNotice),
-              )
-            : null,
+        bottom: browseOnlyNoticeBar(),
       ),
       body: _buildBody(context),
       bottomNavigationBar: BrowseOnlyBottomBar(

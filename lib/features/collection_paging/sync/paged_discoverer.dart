@@ -95,7 +95,6 @@ class PagedDiscoverer {
     required void Function(int done) onProgress,
     int firstBatchLimit = 0,
     Future<void> Function()? onFirstBatch,
-    void Function(List<AvesEntry> rows)? onRows,
   }) async {
     if (_importing) return 0;
     _importing = true;
@@ -109,12 +108,7 @@ class PagedDiscoverer {
         if (batch.isEmpty) return;
         final count = batch.length;
         processed += count;
-        final rows = batch.toList(growable: false);
         written += await _upsertBatch(batch);
-        // Rows go out after the upsert, so every id is the canonical one (an
-        // updated row keeps its existing id rather than the one handed out
-        // while streaming).
-        onRows?.call(rows);
         // Progress counts the rows the stream has covered, not the rows it
         // wrote: a resumed run re-walks rows that are already there, and a
         // counter that stalls at 0 while it does would read as stuck.

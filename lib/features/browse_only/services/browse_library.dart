@@ -190,7 +190,11 @@ class BrowseLibrary extends ChangeNotifier {
       return cached;
     }
     final row = _rows[index];
-    final entry = row.toEntry(id: row.id > 0 ? row.id : index + 1);
+    // Browse rows have no database id: the media store stream does not hand one
+    // out, and this index is not the database. The synthetic id lives in the
+    // negative domain so it can never equal a real row id and alias another
+    // entry in a viewer or selection keyed by id.
+    final entry = row.toEntry(id: -(index + 1));
     _entries[index] = entry;
     if (_entries.length > _entryCacheMax) {
       _entries.remove(_entries.keys.first);

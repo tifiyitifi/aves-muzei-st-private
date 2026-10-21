@@ -191,7 +191,19 @@ void main() {
     expect(identical(first, library.entryAt(0)), isTrue);
   });
 
-  test('scan and import share one index, so handoff never loses rows', () {
+  test('synthetic entry ids are unique and disjoint from database ids', () {
+    // The index used to mix two id domains (database ids from the import,
+    // position-based ids from the scan), so a viewer or selection keyed by id
+    // could resolve to another row. Browse owns the id now.
+    library.addEntries([entry(0), entry(5), entry(9)]);
+
+    final ids = [for (var index = 0; index < library.length; index++) library.entryAt(index).id];
+    expect(ids, hasLength(3));
+    expect(ids.toSet(), hasLength(ids.length), reason: 'two rows must never share an id');
+    expect(ids.every((id) => id < 0), isTrue, reason: 'a synthetic id must not alias a real database id');
+  });
+
+  test('clears the index for the handoff back to the collection', () {
     library.addEntries([entry(1)]);
     library.clear();
     expect(library.isEmpty, isTrue);

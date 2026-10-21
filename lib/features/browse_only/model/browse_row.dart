@@ -8,6 +8,9 @@ import 'package:aves/model/entry/extensions/keys.dart';
 /// needs only what the media store itself reports, so it keeps exactly those
 /// fields and materializes an entry for the rows a surface actually shows.
 class BrowseRow {
+  /// The source row's database id, when it has one. MediaStore rows do not, so
+  /// this is 0 for everything this index holds: [BrowseLibrary.entryAt] owns the
+  /// synthetic, negative identity instead.
   final int id;
   final int? contentId;
   final String uri;

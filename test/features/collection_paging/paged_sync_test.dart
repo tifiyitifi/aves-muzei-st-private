@@ -100,19 +100,6 @@ void main() {
       expect(await driftDb.countEntries(), 5);
     });
 
-    test('hands the written rows over for surfaces that browse before indexing', () async {
-      final store = _ScriptedMediaStore()..entries = {for (var id = 1; id <= 4; id++) entry(id)};
-      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
-      final handed = <int>[];
-      await discoverer.importAll(onProgress: (_) {}, onRows: (rows) => handed.addAll(rows.map((v) => v.id)));
-
-      // Every row arrives once, under the id the database kept, so a browser
-      // fed by the import and one fed by a later scan agree on identity.
-      expect(handed, hasLength(4));
-      expect(handed.toSet(), hasLength(4));
-      expect(await driftDb.loadEntriesById(handed.toSet()), hasLength(4));
-    });
-
     test('signals the first batch before the rest is written', () async {
       final store = _ScriptedMediaStore()..entries = {for (var id = 1; id <= 10; id++) entry(id)};
       final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);

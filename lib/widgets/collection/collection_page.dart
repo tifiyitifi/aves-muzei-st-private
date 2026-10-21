@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
-import 'package:aves/features/browse_only/install.dart';
 import 'package:aves/features/browse_only/view/browse_only_page.dart';
 import 'package:aves/features/collection_paging/catalog/catalog_prompt.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
@@ -62,9 +61,6 @@ class _CollectionPageState extends State<CollectionPage> {
 
   @override
   void initState() {
-    // The import feeds the browse index in the same pass that writes the rows,
-    // so install the sink before the lens can start one.
-    installBrowseOnly();
     // do not seed this widget with the collection, but control its lifecycle here instead,
     // as the collection properties may change and they should not be reset by a widget update (e.g. with theme change)
     // The paged lens covers both paths: it serves windows from the database on

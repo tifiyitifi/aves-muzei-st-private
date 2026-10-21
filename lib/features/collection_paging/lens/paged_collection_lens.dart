@@ -6,7 +6,6 @@ import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/catalog/catalog_prompt.dart';
 import 'package:aves/features/collection_paging/catalog/catalog_service.dart';
 import 'package:aves/features/collection_paging/catalog/paged_catalog_worker.dart';
-import 'package:aves/features/collection_paging/import/import_rows.dart';
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/lens/paged_lists.dart';
@@ -861,7 +860,6 @@ class PagedCollectionLens extends CollectionLens {
     final firstBatch = Completer<void>();
     final import = discoverer.importAll(
       firstBatchLimit: CollectionPagingPrefs.firstImportBatchSize,
-      onRows: importRowsSink,
       onProgress: (done) {
         pagedImportStatus.update(done);
         if (_current(gen)) source.setProgress(done: done, total: pagedImportStatus.total);

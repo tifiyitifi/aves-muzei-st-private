@@ -1138,15 +1138,34 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 100));
       expect(parked.loadedEntries, isNotEmpty, reason: 'the published window is kept, not rebuilt');
 
-      // The page that adopts an unresolved lens says "loading" until its window
-      // is published, even though the shared state was never set.
+      // A page adopting a lens whose window has not landed learns it from the
+      // lens, not from the shared state, and the resolve still finishes.
       final adopted = PagedCollectionLens(source: source, filters: {});
       addTearDown(adopted.dispose);
       adopted.setActive(false);
       adopted.setActive(true);
-      expect(source.state, SourceState.loading);
+      expect(adopted.awaitingFirstWindow, isTrue, reason: 'the page paints a loading body from this');
       await settle(adopted, done: () => adopted.pagedActive && adopted.entryCount == 2);
+      expect(adopted.awaitingFirstWindow, isFalse);
       expect(source.state, isNot(SourceState.loading));
+    });
+
+    test('a settled library resolves on the first visit instead of waiting on itself', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2)});
+      // Everything catalogued: no worker runs alongside the resolve, so nothing
+      // else touches the shared state. This is a library that has been used for a
+      // while, and activation used to announce `loading` before the resolve's own
+      // in-flight check, which then waited for that very resolve: a deadlock.
+      await service.saveCatalogMetadata({CatalogMetadata(id: 1), CatalogMetadata(id: 2)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      lens.setActive(false);
+      lens.setActive(true);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 2);
+      expect(source.state, isNot(SourceState.loading), reason: 'a resolved view must not read as loading');
     });
   });
 }

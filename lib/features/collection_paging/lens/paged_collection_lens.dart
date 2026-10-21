@@ -99,6 +99,11 @@ class PagedCollectionLens extends CollectionLens {
 
   /// Marks whether this lens is the view on screen, and resumes what parking
   /// stopped: the worker and the backlog it owns.
+  ///
+  /// Activation itself never writes the library-wide state. A first resolve
+  /// announces its own wait *after* the in-flight load it defers to; announcing
+  /// it here would put the state in `loading` before that check, which then waits
+  /// for the very resolve that was about to start — a deadlock.
   void setActive(bool value) {
     if (_active == value) return;
     _active = value;
@@ -106,10 +111,15 @@ class PagedCollectionLens extends CollectionLens {
       _detachCatalogWorker();
       return;
     }
-    _announcePending();
     if (_disposed) return;
-    _attachCatalogWorker();
-    if (!_importingRows) unawaited(_runCatalogBacklog());
+    // Only a view that already has a window resumes its backlog here: one still
+    // resolving publishes first and runs it then (see `_refreshSummaries`), or a
+    // worker would flip the shared state to `cataloguing` while the grid has
+    // nothing to paint yet.
+    if (_pagedActive) {
+      _attachCatalogWorker();
+      if (!_importingRows) unawaited(_runCatalogBacklog());
+    }
     if (_refreshWhileParked) {
       // A change landed while nothing showed this view: it is owed now. The
       // published window stays on screen until the new one lands, so this costs
@@ -119,15 +129,12 @@ class PagedCollectionLens extends CollectionLens {
     }
   }
 
-  /// Says the view has nothing to show yet.
+  /// Whether the view has nothing to paint yet: its first resolve is still
+  /// running, or a prewarmed one has not landed.
   ///
-  /// A lens adopted from the registry may have started its first resolve while
-  /// parked, when it deliberately held the shared state back: the page that now
-  /// shows it has to say "loading" instead of painting an empty collection.
-  void _announcePending() {
-    if (_disposed || _pagedActive || _morphed || _blocked || _ready.isCompleted) return;
-    source.state = SourceState.loading;
-  }
+  /// The grid shows its loading body for this instead of reading the shared
+  /// source state, which a parked scope deliberately leaves alone.
+  bool get awaitingFirstWindow => fixedSelection == null && !_disposed && !_pagedActive && !_morphed && !_blocked && !_ready.isCompleted;
 
   /// False for fixed-selection (viewer) copies, morphed and blocked states.
   bool get pagedActive => _pagedActive && !_blocked && !_morphed && fixedSelection == null;

@@ -645,6 +645,12 @@ class _CollectionScrollViewState extends State<_CollectionScrollView> with Widge
     return ValueListenableBuilder<SourceState>(
       valueListenable: source.stateNotifier,
       builder: (context, sourceState, child) {
+        // A view that has not published its first window is loading, whatever
+        // the shared state says: a parked scope keeps that state to itself, so
+        // the page adopting it still has to say what it is doing.
+        if (collection is PagedCollectionLens && collection.awaitingFirstWindow) {
+          return LoadingEmptyContent(source: source);
+        }
         if (sourceState == SourceState.loading) {
           return LoadingEmptyContent(source: source);
         }

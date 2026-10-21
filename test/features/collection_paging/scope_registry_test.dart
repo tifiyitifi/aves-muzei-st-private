@@ -9,6 +9,7 @@ import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/metadata/catalog.dart';
 import 'package:aves/model/source/media_store_source.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
@@ -221,6 +222,26 @@ void main() {
       final adopted = scopeRegistry.acquire(source: source, filters: albumFilters);
       expect(identical(adopted, prewarmed), isTrue);
       expect(adopted.pagedActive, isTrue);
+    });
+
+    test('a settled library resolves on the first visit instead of waiting on itself', () async {
+      await driftDb.insertEntries({entry(1), entry(2), entry(3, dir: '/b')});
+      // Everything catalogued, as it is on a device that has used the app for a
+      // while: nothing runs alongside the resolve, so activation announcing the
+      // wait would leave it waiting for the resolve it just delayed.
+      await driftDb.saveCatalogMetadata({CatalogMetadata(id: 1), CatalogMetadata(id: 2), CatalogMetadata(id: 3)});
+
+      final home = scopeRegistry.acquire(source: source, filters: scopeOf(null));
+      await settle(home, done: () => home.pagedActive);
+      expect(home.entryCount, 3);
+      expect(home.awaitingFirstWindow, isFalse);
+      expect(source.state, isNot(SourceState.loading));
+
+      // The album opened next behaves the same.
+      final album = scopeRegistry.acquire(source: source, filters: scopeOf('/a'));
+      await settle(album, done: () => album.pagedActive);
+      expect(album.entryCount, 2);
+      expect(source.state, isNot(SourceState.loading));
     });
 
     test('the scope key names the filters, not the order they arrive in', () {

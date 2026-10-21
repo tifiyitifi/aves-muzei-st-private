@@ -49,6 +49,9 @@ void main() {
     await collectionPagingPrefs.setWindowSize(1);
     await collectionPagingPrefs.setPrefetchScreens(0);
     await collectionPagingPrefs.setLargeThreshold(1);
+    // The size rules assume a library that has been imported once: before that,
+    // a full load is never provably safe (see `allowFullLoad`).
+    await collectionPagingPrefs.setImportComplete(true);
     await driftDb.clearEntries();
     await driftDb.clearCatalogMetadata();
     await driftDb.clearDates();

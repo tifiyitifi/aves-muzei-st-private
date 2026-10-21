@@ -199,6 +199,19 @@ void main() {
       expect(await router.allowFullLoad(database: driftDb), isTrue);
     });
 
+    test('an explicit legacy engine still waits for the import to finish', () async {
+      await driftDb.insertEntries({entry(1)});
+      await configure(engine: CollectionEngine.legacy, threshold: 1);
+      await collectionPagingPrefs.setImportComplete(false);
+      addTearDown(() => collectionPagingPrefs.setImportComplete(true));
+
+      // The legacy preference is a choice about the size threshold, not about a
+      // database the import is still writing: materializing the part that has
+      // landed would present it as the library (and race the import for the
+      // rest).
+      expect(await router.allowFullLoad(database: driftDb), isFalse);
+    });
+
     test('a paged preference does not forbid a provably small full load', () async {
       await driftDb.insertEntries({entry(1)});
       await configure(engine: CollectionEngine.paged, threshold: 100000);

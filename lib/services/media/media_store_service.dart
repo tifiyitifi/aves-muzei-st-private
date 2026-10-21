@@ -102,11 +102,21 @@ class PlatformMediaStoreService implements MediaStoreService {
             'directory': directory,
           })
           .where((event) => event is Map)
-          .map((event) {
+          .map<AvesEntry?>((event) {
             final fields = event as Map;
-            AvesEntry.normalizeMimeTypeFields(fields);
-            return AvesEntry.fromMap(fields);
-          });
+            try {
+              AvesEntry.normalizeMimeTypeFields(fields);
+              return AvesEntry.fromMap(fields);
+            } catch (error, stack) {
+              // One unparsable row must not end the stream: a consumer reading
+              // it as a whole library (an import, a browse scan) stops at the
+              // error and never sees the rows behind it.
+              unawaited(reportService.recordError(error, stack));
+              return null;
+            }
+          })
+          .where((entry) => entry != null)
+          .cast<AvesEntry>();
     } on PlatformException catch (e, stack) {
       reportService.recordError(e, stack);
       return Stream.error(e);

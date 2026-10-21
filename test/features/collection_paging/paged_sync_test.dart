@@ -142,6 +142,40 @@ void main() {
       await discoverer.importAll(onProgress: (processed) => done = processed);
       expect(done, 4);
     });
+
+    test('imports rows a provider reports without a content id', () async {
+      // Batches used to be keyed by content id only, so such a row was dropped
+      // by the import while the change sync inserted it later: same row, two
+      // answers. The URI identifies it just as well.
+      final withoutContentId = AvesEntry(
+        id: 2,
+        uri: 'content://media/external/images/media/2',
+        path: '/album/2.jpg',
+        contentId: null,
+        pageId: null,
+        sourceMimeType: 'image/jpeg',
+        width: 10,
+        height: 20,
+        sourceRotationDegrees: 0,
+        sizeBytes: 5,
+        sourceTitle: 'title2',
+        dateAddedSecs: 1,
+        dateModifiedMillis: 2,
+        sourceDateTakenMillis: 3,
+        durationMillis: 0,
+        trashed: false,
+        origin: EntryOrigins.mediaStoreContent,
+      );
+      final store = _ScriptedMediaStore()..entries = {entry(1), withoutContentId};
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+
+      expect(await discoverer.importAll(onProgress: (_) {}), 2);
+      expect(await driftDb.countEntries(), 2);
+
+      // A rerun matches it by URI instead of inserting a duplicate.
+      expect(await discoverer.importAll(onProgress: (_) {}), 0);
+      expect(await driftDb.countEntries(), 2);
+    });
   });
 
   group('PagedDiscoverer.syncIfChanged', () {

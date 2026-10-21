@@ -165,26 +165,51 @@ class PagedDiscoverer {
   /// Returns the number of written rows.
   Future<int> _upsertBatch(Set<AvesEntry> batch) async {
     if (batch.isEmpty) return 0;
+    // MediaStore normally identifies a row by content id, but a provider that
+    // reports none must not lose the row: the URI identifies it just as well,
+    // and the change-sync path already inserts rows without a content id.
     final byContentId = <int, AvesEntry>{};
+    final byUri = <String, AvesEntry>{};
     for (final entry in batch) {
       final contentId = entry.contentId;
-      if (contentId != null) byContentId[contentId] = entry;
+      if (contentId != null) {
+        byContentId[contentId] = entry;
+      } else {
+        byUri[entry.uri] = entry;
+      }
     }
-    final known = await database.loadEntriesByContentIds(byContentId.keys.toSet());
-    final knownByContentId = {for (final e in known) e.contentId: e};
+    final knownByContentId = {
+      for (final entry in await database.loadEntriesByContentIds(byContentId.keys.toSet())) entry.contentId: entry,
+    };
+    final knownByUri = byUri.isEmpty
+        ? <String, AvesEntry>{}
+        : {
+            for (final entry in await database.loadEntriesByUris(byUri.keys.toSet()))
+              // Only rows this import owns: a vault row can carry the same URI
+              // and must not be overwritten with a media-store one.
+              if (entry.origin == EntryOrigins.mediaStoreContent) entry.uri: entry,
+          };
 
     final toInsert = <AvesEntry>{};
     var written = 0;
-    for (final kv in byContentId.entries) {
-      final knownEntry = knownByContentId[kv.key];
+
+    Future<void> upsert(AvesEntry entry, AvesEntry? knownEntry) async {
       if (knownEntry == null) {
-        toInsert.add(kv.value);
-      } else if ((kv.value.dateModifiedMillis ?? 0) > (knownEntry.dateModifiedMillis ?? 0)) {
-        kv.value.id = knownEntry.id;
-        await database.updateEntry(knownEntry.id, kv.value);
-        await _saveTrash(kv.value);
-        written++;
+        toInsert.add(entry);
+        return;
       }
+      if ((entry.dateModifiedMillis ?? 0) <= (knownEntry.dateModifiedMillis ?? 0)) return;
+      entry.id = knownEntry.id;
+      await database.updateEntry(knownEntry.id, entry);
+      await _saveTrash(entry);
+      written++;
+    }
+
+    for (final kv in byContentId.entries) {
+      await upsert(kv.value, knownByContentId[kv.key]);
+    }
+    for (final kv in byUri.entries) {
+      await upsert(kv.value, knownByUri[kv.key]);
     }
     if (toInsert.isNotEmpty) {
       await database.insertEntries(toInsert);

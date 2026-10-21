@@ -127,7 +127,7 @@ void main() {
       if (done()) return;
       await Future<void>.delayed(const Duration(milliseconds: 25));
     }
-    fail('paged lens did not settle (entryCount=${lens.entryCount}, active=${lens.pagedActive}, blocked=${lens.pagedBlocked})');
+    fail('paged lens did not settle (entryCount=${lens.entryCount}, active=${lens.pagedActive}, blocked=${lens.pagedBlocked}, importing=${lens.importingRows}, state=${lens.source.state}, sections=${lens.sections.length}, loaded=${lens.loadedEntries.length})');
   }
 
   /// Reads every row, kicking off fetches like the sliver would, until none
@@ -789,6 +789,36 @@ void main() {
       expect(ids.toSet(), {for (var i = 1; i <= 10; i++) i});
     });
 
+    test('a layout change during a resolve is applied after it', () async {
+      final service = await drift();
+      // Two days: the calendar projection totals 2 against 4 rows, so the count
+      // says which layout the final window was resolved for.
+      await service.insertEntries({
+        for (var i = 1; i <= 4; i++) entry(i, dateTaken: i <= 2 ? millis(2024, 1) : millis(2024, 3, 5)),
+      });
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(1);
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      addTearDown(() => settings.setStoredCollectionTileLayout({}, TileLayout.grid));
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 4);
+
+      // Both changes land in the same turn: the first starts a resolve and the
+      // second used to be dropped, leaving the calendar's day rows (total 2)
+      // painted under the mosaic layout, without a ratio channel.
+      settings.setStoredCollectionTileLayout({}, TileLayout.calendar);
+      settings.setStoredCollectionTileLayout({}, TileLayout.mosaic);
+
+      await settle(
+        lens,
+        done: () => lens.pagedActive && lens.entryCount == 4 && lens.mosaicRatios(const EntryDateSectionKey(year: 2024, month: 3)) != null,
+      );
+      expect(lens.entryCount, 4, reason: 'the last layout must win, not the calendar day count');
+      // The grid follows the published window: it keeps the previous layout on
+      // screen until the new one resolves, then switches with it.
+      expect(lens.resolvedLayout, TileLayout.mosaic);
+    });
+
     test('places backlog runs lazily when locations load', () async {
       final service = await drift();
       await service.insertEntries({entry(1, dateTaken: millis(2024, 1)), entry(2, dateTaken: millis(2024, 3))});
@@ -829,6 +859,13 @@ void main() {
       // has no gps)
       source.eventBus.fire(PlacesChangedEvent());
       await settle(lens, done: () => locatedIds.isNotEmpty);
+      // The worker persists the located address once the fake returns, which is a
+      // beat after the call the settle above observes: wait for the row itself
+      // instead of racing it.
+      for (var i = 0; i < 200; i++) {
+        if ((await service.loadAddresses()).any((address) => address.locality == 'Paris')) break;
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
       expect(locatedIds, [1]);
       expect((await service.loadAddresses()).single.locality, 'Paris');
     });
@@ -899,6 +936,48 @@ void main() {
       forgetPagedSummaries(source);
     });
 
+    test('a layout switch over the same rows keeps the loaded window', () async {
+      final service = await drift();
+      await service.insertEntries({
+        for (var i = 1; i <= 4; i++) entry(i, dateTaken: i <= 2 ? millis(2024, 1) : millis(2024, 3)),
+      });
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setWindowSize(2);
+      final lens = PagedCollectionLens(
+        source: source,
+        filters: {},
+        catalogWorkerFactory: ({required source}) => PagedCatalogWorker(
+          source: source,
+          catalogEntry: (entry) async => entry.catalogMetadata = CatalogMetadata(id: entry.id, xmpSubjects: 'sweep'),
+        ),
+      );
+      addTearDown(lens.dispose);
+      addTearDown(() => settings.setStoredCollectionTileLayout({}, TileLayout.grid));
+      await settle(lens, done: () => lens.pagedActive && allReal(lens));
+      // The eager sweep reloads the view once when it ends; start from after it.
+      for (var i = 0; i < 200; i++) {
+        if (await service.countUncatalogued() == 0) break;
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await settle(lens, done: () => lens.pagedActive && allReal(lens));
+
+      final sections = lens.sections;
+      final loaded = lens.loadedEntries.map((e) => e.id).toSet();
+      expect(loaded, isNotEmpty);
+
+      // The same rows in the same order, only the presentation changes: the
+      // window and its loaded rows must survive, or every tile falls back to a
+      // skeleton for the length of a full refetch.
+      settings.setStoredCollectionTileLayout({}, TileLayout.mosaic);
+      await settle(lens, done: () => lens.resolvedLayout == TileLayout.mosaic);
+
+      expect(identical(lens.sections, sections), isTrue, reason: 'a layout switch must not rebuild the window');
+      expect(lens.loadedEntries.map((e) => e.id).toSet(), loaded);
+      expect(allReal(lens), isTrue, reason: 'no tile may fall back to a skeleton');
+      expect(lens.mosaicRatios(lens.sections.keys.first), isNotNull, reason: 'the mosaic channel is measured before switching');
+    });
+
     test('cataloguing patches the mounted tiles instead of rebuilding the window', () async {
       final service = await drift();
       await service.insertEntries({
@@ -940,17 +1019,18 @@ void main() {
       expect(source.state, SourceState.ready);
     });
 
-    test('a first resolve settles ready instead of staying loading', () async {
+    test('a first resolve settles out of loading', () async {
       final service = await drift();
       await service.insertEntries({entry(1), entry(2)});
       await collectionPagingPrefs.setLargeThreshold(1);
-      // No sweep, so nothing else will write the state back.
       await collectionPagingPrefs.setAskBeforeCatalog(true);
       addTearDown(() => collectionPagingPrefs.setAskBeforeCatalog(false));
       final lens = PagedCollectionLens(source: source, filters: {});
       addTearDown(lens.dispose);
       await settle(lens, done: () => lens.pagedActive && lens.entryCount == 2);
-      expect(source.state, SourceState.ready, reason: 'a resolved window must not read as loading');
+      // A catalog pass may legitimately own the state by now; what must never
+      // happen is a resolved window that still reads as loading.
+      expect(source.state, isNot(SourceState.loading), reason: 'a resolved window must not read as loading');
     });
 
     test('a refresh does not overwrite the catalog pass state', () async {

@@ -118,6 +118,15 @@ class PagedCollectionLens extends CollectionLens {
   int _reloadGen = 0;
   bool _reloading = false;
 
+  /// Set when a refresh lands while a resolve is running: the last request is
+  /// applied as soon as that resolve ends.
+  bool _reloadPending = false;
+
+  /// Bumped whenever the rows a view can show may have changed. A resolve
+  /// publishes the epoch it read, and a pure layout switch may reuse that window
+  /// while the epoch is unchanged.
+  int _dataEpoch = 0;
+
   /// Coalesces the in-place metadata patches: a sweep flushes every 50 rows,
   /// and one patch per flush would still rebuild the grid hundreds of times.
   Timer? _metadataPatchTimer;
@@ -192,7 +201,9 @@ class PagedCollectionLens extends CollectionLens {
         // rebuilt in the background and the view refreshes again once it lands.
         unawaited(_rebuildStackIndex());
       }
-      if (!_morphed) refresh();
+      // A tile layout only changes the presentation: the rows stay the same, so
+      // the published window is reused instead of being re-read.
+      if (!_morphed) refresh(dataChanged: !event.key.startsWith(SettingKeys.tileLayoutPrefixKey));
     });
     if (fixedSelection == null) {
       refresh();
@@ -426,15 +437,29 @@ class PagedCollectionLens extends CollectionLens {
   /// layout), so positions, totals and index lookups count days.
   bool _pagedDayRows = false;
 
-  /// True when the layout shows one row per day under month sections.
-  bool get _dayRows => !fixedSort && tileLayout == TileLayout.calendar;
-
-  /// True when the layout packs sections from a measured ratio channel.
-  bool get _mosaic => !fixedSort && tileLayout == TileLayout.mosaic;
-
-  /// Display ratios per section, for the mosaic packing. Cleared on every
-  /// resolve; a section is absent until its channel lands.
+  /// Display ratios per section, for the mosaic packing. Kept across resolves
+  /// while the section still holds the same rows: re-measuring them after a
+  /// layout switch would leave every section empty for a frame, which was the
+  /// visible flicker when entering the mosaic layout.
   final Map<SectionKey, List<double>> _mosaicRatios = {};
+
+  /// The layout the published window is shaped for.
+  ///
+  /// The grid renders this layout until a resolve for a newly chosen one
+  /// publishes, so a switch keeps the current content on screen instead of
+  /// repainting it as skeletons (or as a mosaic without its ratio channel) while
+  /// the new window resolves.
+  TileLayout _pagedLayout = TileLayout.grid;
+
+  /// The published window's layout, or null when the view is not paged (the
+  /// in-memory list follows the settings directly).
+  TileLayout? get resolvedLayout => _pagedActive ? _pagedLayout : null;
+
+  /// The view [_mosaicRatios] was measured for (see [_signatureOf]).
+  String? _ratioSignature;
+
+  /// The data epoch the published window was resolved against.
+  int _pagedDataEpoch = -1;
 
   /// Global index of the entry with [id] in the current view, or -1 when the
   /// view is not paged (the legacy list answers in memory) or [id] is not in
@@ -536,7 +561,11 @@ class PagedCollectionLens extends CollectionLens {
   }
 
   @override
-  void refresh() {
+  void refresh({bool dataChanged = true}) {
+    // The rows a view can show may have changed (added, moved, restacked, the
+    // vault lock, the import, a catalog sweep). Only a pure presentation change
+    // opts out, which is what lets a layout switch reuse the published window.
+    if (dataChanged) _dataEpoch++;
     // A run updates the source batch by batch: reloading the view per batch would
     // re-resolve counts, headers and summaries thousands of times. One reload at
     // the end of the run is enough.
@@ -566,8 +595,77 @@ class PagedCollectionLens extends CollectionLens {
   }
 
   Future<void> _reload() async {
-    if (_reloading || _disposed || _morphed) return;
+    if (_disposed || _morphed) return;
+    if (_reloading) {
+      // Coalesce instead of dropping: a layout, sort or filter change that
+      // landed while a resolve was running used to be lost, leaving the previous
+      // window (e.g. the calendar's day rows, or a channel-less mosaic) painted
+      // under the new layout until something else happened to refresh.
+      _reloadPending = true;
+      return;
+    }
     _reloading = true;
+    try {
+      do {
+        _reloadPending = false;
+        await _reloadOnce();
+      } while (_reloadPending && !_disposed && !_morphed);
+    } finally {
+      _reloading = false;
+      _reloadPending = false;
+      if (!_ready.isCompleted) _ready.complete();
+    }
+  }
+
+  /// Publishes a newly chosen layout over the current window when the rows
+  /// themselves did not change.
+  ///
+  /// Returns true when the resolve is done (switched or superseded), false when a
+  /// full resolve is needed. The generation is deliberately untouched: the
+  /// published window's caches fill under the generation they were created with,
+  /// and bumping it would silently drop every later fill.
+  Future<bool> _reuseWindowForLayout() async {
+    if (!_pagedActive || _importingRows || _pagedDataEpoch != _dataEpoch) return false;
+    // An external full load is about to replace the source: let the normal path
+    // wait for it instead of publishing a layout over a window that is going away.
+    if (source.state == SourceState.loading) return false;
+    final layout = settings.getEffectiveCollectionTileLayout(filters);
+    if (layout == _pagedLayout) return false;
+    // The calendar projects one row per day: a different window, not a different
+    // presentation.
+    final dayRows = !fixedSort && layout == TileLayout.calendar;
+    if (dayRows != _pagedDayRows) return false;
+
+    if (layout == TileLayout.mosaic) {
+      final predicate = _pagedPredicate;
+      final missing = [for (final state in _sectionStates) if (_mosaicRatios[state.key]?.length != state.list.count) state];
+      if (predicate != null && missing.isNotEmpty) {
+        // Measure before switching: the current layout stays on screen for these
+        // reads, so the mosaic appears already packed.
+        await Future.wait([for (final state in missing) _loadSectionRatios(predicate, state, _pagedSort, _pagedReverse, _reloadGen)]);
+      }
+    }
+    if (_disposed) return true;
+    if (settings.getEffectiveCollectionTileLayout(filters) != layout) {
+      // Another layout was chosen while the ratios loaded: the pending pass
+      // publishes that one.
+      _log.d('paged layout ${layout.name} superseded before switching');
+      return true;
+    }
+    _pagedLayout = layout;
+    _settleState();
+    notifyListeners();
+    _log.d('paged view reused layout=${layout.name} total=$_total sections=${_sectionStates.length}');
+    return true;
+  }
+
+  Future<void> _reloadOnce() async {
+    // A layout change alone keeps the same rows: publish it over the current
+    // window instead of re-reading counts, headers and rows. A full resolve here
+    // dropped every loaded row, so the grid had to fill a whole screen of
+    // skeleton tiles again — the blank sheet between two layouts.
+    if (await _reuseWindowForLayout()) return;
+
     final gen = ++_reloadGen;
     try {
       // The collection page mounts while the home page is still loading the
@@ -635,7 +733,7 @@ class PagedCollectionLens extends CollectionLens {
       } else if (joinImport) {
         // The run belongs to another surface: its status ending is our signal,
         // and its rows are already reaching the shared index.
-        _followExternalImport(gen);
+        _followExternalImport();
       }
 
       if (decision.route == CollectionRoute.legacy) {
@@ -653,9 +751,6 @@ class PagedCollectionLens extends CollectionLens {
       } else {
         _enterBlocked('the reload failed');
       }
-    } finally {
-      _reloading = false;
-      if (!_ready.isCompleted) _ready.complete();
     }
   }
 
@@ -762,7 +857,7 @@ class PagedCollectionLens extends CollectionLens {
         _log.w('paged import marker write failed', error, stack);
       }
       await collectionPagingPrefs.setImportComplete(true);
-      _onImportFinished(gen);
+      _onImportFinished();
     }, onError: (Object error, StackTrace stack) {
       // Never leave the caller waiting on a batch that will not come.
       if (!firstBatch.isCompleted) firstBatch.complete();
@@ -800,18 +895,18 @@ class PagedCollectionLens extends CollectionLens {
 
   /// Follows an import another surface owns: when its shared status ends, this
   /// lens settles and re-resolves, without starting a second scan.
-  void _followExternalImport(int gen) {
+  void _followExternalImport() {
     if (_externalImportListener != null) return;
     // The run may have ended between the flag read and this call.
     if (!pagedImportStatus.active) {
-      _onImportFinished(gen);
+      _onImportFinished();
       return;
     }
     void listener() {
       if (pagedImportStatus.active) return;
       pagedImportStatus.removeListener(listener);
       _externalImportListener = null;
-      _onImportFinished(gen);
+      _onImportFinished();
     }
 
     _externalImportListener = listener;
@@ -820,25 +915,25 @@ class PagedCollectionLens extends CollectionLens {
 
   /// Settles the state and re-resolves once the import is over, so the view
   /// picks up the whole library (or stops claiming it is still organizing).
-  void _onImportFinished(int gen) {
+  ///
+  /// The import outlives the resolve that started it, and a later resolve (a
+  /// growth refresh, a layout change) bumps the generation: gating this on that
+  /// generation left the view on `loading` forever once the import ended, because
+  /// the handler was considered stale. The import ending is a source fact, so it
+  /// applies to whichever resolve is current, and the reload coalesces.
+  void _onImportFinished() {
+    if (_disposed || _morphed) return;
     _importingRows = false;
     pagedImportStatus.end();
     // The import's counter must not outlive it: the loading screen renders any
     // progress it finds, so a stale "32804/32804" would read as a re-import on
     // the next resolve.
     source.setProgress(done: 0, total: 0);
-    if (!_current(gen)) return;
     source.state = SourceState.ready;
     notifyListeners();
-    if (_reloading) {
-      // The initial reload is still resolving the first batch: reload again
-      // once it settles instead of dropping this refresh.
-      unawaited(_ready.future.then((_) {
-        if (_current(gen)) refresh();
-      }));
-    } else {
-      refresh();
-    }
+    // The view still shows the rows of the batches that landed: re-resolve
+    // against the whole library, coalescing into the running pass if there is.
+    refresh();
   }
 
   bool _current(int gen) => gen == _reloadGen && !_disposed;
@@ -911,8 +1006,16 @@ class PagedCollectionLens extends CollectionLens {
             conjunction: [...resolved.conjunction, ..._extraFragments],
             trashedOnly: resolved.trashedOnly,
           );
-    final dayRows = _dayRows;
-    final mosaic = _mosaic;
+    // The layout is read from the settings here, at resolve time, instead of the
+    // factors cached on the lens: those are refreshed by the superclass'
+    // settings listener, and a resolve started from the same event must not
+    // depend on which listener ran first.
+    final layout = settings.getEffectiveCollectionTileLayout(filters);
+    final sort = settings.getEffectiveCollectionSortFactor(filters);
+    final reverse = settings.getEffectiveCollectionSortReverse(filters);
+    final sectionFactor = settings.getEffectiveCollectionSectionFactor(filters);
+    final dayRows = !fixedSort && layout == TileLayout.calendar;
+    final mosaic = !fixedSort && layout == TileLayout.mosaic;
     // Stacks ride on the same predicate as the totals and windows: a member shows
     // while its tile is in the same scope, so nothing disappears when a filter
     // splits a group. A library without stacks skips the filter entirely, and the
@@ -922,7 +1025,7 @@ class PagedCollectionLens extends CollectionLens {
     await prefs.init();
     if (!_current(gen)) return;
 
-    final grouping = _resolveGrouping();
+    final grouping = _resolveGrouping(layout: layout, sortFactor: sort, sectionFactor: sectionFactor);
     if (grouping == null) {
       _enterBlocked('the view has no paged grouping');
       return;
@@ -931,8 +1034,6 @@ class PagedCollectionLens extends CollectionLens {
     // About to resolve: a first resolve has nothing to show yet, so say loading
     // rather than an empty collection with a zero count.
     _settleState(resolving: true);
-    final sort = settings.getEffectiveCollectionSortFactor(filters);
-    final reverse = settings.getEffectiveCollectionSortReverse(filters);
     final windowSize = prefs.windowSize;
     final prefetch = prefs.prefetchScreens;
     final total = dayRows
@@ -1022,14 +1123,27 @@ class PagedCollectionLens extends CollectionLens {
       lists[key] = list;
     }
 
-    _mosaicRatios.clear();
+    _pruneMosaicRatios(states, _signatureOf(predicate, sort, reverse));
     if (mosaic) {
-      // The mosaic packs a whole section, so its ratios are measured per section
-      // and the layout waits for them (a section renders as its header until
-      // then) instead of packing skeletons that would reflow on the next fill.
-      for (final state in states) {
-        unawaited(_loadSectionRatios(predicate, state, sort, reverse, gen));
+      // The mosaic packs a whole section, so its ratios come from a channel, not
+      // from the rows. Only the sections without a usable channel are measured,
+      // and they are measured *before* the window is published: packing
+      // skeletons first and reflowing when the channel lands is a visible jump,
+      // while the previous window stays on screen for the few extra reads.
+      final missing = [for (final state in states) if (_mosaicRatios[state.key]?.length != state.list.count) state];
+      if (missing.isNotEmpty) {
+        await Future.wait([for (final state in missing) _loadSectionRatios(predicate, state, sort, reverse, gen)]);
+        if (!_current(gen)) return;
       }
+    }
+
+    // A newer layout may have been chosen while this pass ran (the user tapping
+    // through the layout bar). Publishing this one would swap the grid to it and
+    // straight back on the trailing pass, so keep the current window on screen
+    // and let that pass publish instead.
+    if (settings.getEffectiveCollectionTileLayout(filters) != layout) {
+      _log.d('paged resolve for ${layout.name} superseded before publish');
+      return;
     }
 
     _total = total;
@@ -1043,6 +1157,8 @@ class PagedCollectionLens extends CollectionLens {
     _pagedSort = sort;
     _pagedReverse = reverse;
     _pagedDayRows = dayRows;
+    _pagedLayout = layout;
+    _pagedDataEpoch = _dataEpoch;
     _blocked = false;
     _morphed = false;
     _pagedActive = true;
@@ -1058,10 +1174,29 @@ class PagedCollectionLens extends CollectionLens {
     _settleState();
     notifyListeners();
     if (!_current(gen)) return;
-    // Eager albums on first entry; refreshes already-loaded domains (tags,
-    // locations) whose rows may have changed. Never throws: a failed domain
-    // stays unloaded and retries on next touch.
-    await _summaries!.reload();
+    _log.d('paged view resolved layout=${layout.name} grouping=${grouping.name} total=$total sections=${states.length}');
+    // The summaries are the slow part (aggregates over the whole library), so
+    // they run behind the published window instead of inside the resolve: the
+    // gate they used to hold delayed every layout or filter change by their
+    // duration, which on a 32k library is seconds and used to make the newest
+    // change look lost.
+    unawaited(_refreshSummaries(gen));
+  }
+
+  /// Reloads the filter summaries behind the published window, then hands the
+  /// backlog to the catalog worker.
+  ///
+  /// Eager albums on first entry; refreshes already-loaded domains (tags,
+  /// locations) whose rows may have changed. Never throws: a failed domain
+  /// stays unloaded and retries on next touch.
+  Future<void> _refreshSummaries(int gen) async {
+    final summaries = _summaries;
+    if (summaries == null) return;
+    try {
+      await summaries.reload();
+    } catch (error, stack) {
+      _log.w('paged summary reload failed', error, stack);
+    }
     if (!_current(gen)) return;
     // Backlog catalog runs behind the instant grid: the worker fills tags,
     // precise dates and countries in bounded chunks without blocking display.
@@ -1070,6 +1205,36 @@ class PagedCollectionLens extends CollectionLens {
     _attachCatalogWorker();
     if (!_importingRows) unawaited(_runCatalogBacklog());
     notifyListeners();
+  }
+
+  /// Drops the ratio channels that no longer describe the view, keeping the
+  /// ones whose section survived with the same row count.
+  ///
+  /// A channel lists ratios in view order, so it is only reusable while the view
+  /// keeps the same scope and order ([signature]); otherwise it is dropped and
+  /// re-measured. Keeping it across a layout switch (mosaic to grid and back) is
+  /// what lets the section pack immediately instead of showing an empty band for
+  /// the frames the queries take.
+  void _pruneMosaicRatios(List<_SectionState> states, String signature) {
+    if (_ratioSignature != signature) {
+      _ratioSignature = signature;
+      _mosaicRatios.clear();
+      return;
+    }
+    if (_mosaicRatios.isEmpty) return;
+    final counts = {for (final state in states) state.key: state.list.count};
+    _mosaicRatios.removeWhere((key, ratios) => counts[key] != ratios.length);
+  }
+
+  /// Signature of the view a ratio channel is valid for: its scope (the
+  /// predicate's SQL and its arity) and its order.
+  ///
+  /// The variables themselves are not part of it: a filter value that changes the
+  /// SQL keeps the channel only when the row count also matches, and the next
+  /// resolve measures it again.
+  String _signatureOf(CollectionWindowPredicate predicate, SortFactor sort, bool reverse) {
+    final fragments = predicate.conjunction;
+    return '${predicate.trashedOnly}|${sort.name}|$reverse|${fragments.map((f) => '${f.sql}#${f.variables.length}').join('&')}';
   }
 
   /// Settles the source state: `loading` still means "the library is being
@@ -1541,7 +1706,8 @@ class PagedCollectionLens extends CollectionLens {
   }
 
   /// Measures one section for the mosaic packing, without reading its entries
-  /// (which may still be skeletons).
+  /// (which may still be skeletons). Awaited before the window is published, so
+  /// it does not notify on its own: the publish does.
   Future<void> _loadSectionRatios(CollectionWindowPredicate predicate, _SectionState state, SortFactor sort, bool reverse, int gen) async {
     final range = _rangeFor(state.header);
     final List<double> ratios;
@@ -1562,16 +1728,22 @@ class PagedCollectionLens extends CollectionLens {
     }
     if (!_current(gen)) return;
     _mosaicRatios[state.key] = ratios;
-    notifyListeners();
   }
 
   /// Maps the effective sort/section factors to a SQL grouping, or null when
   /// the combination needs the legacy path.
-  SectionGrouping? _resolveGrouping() {
+  ///
+  /// [layout], [sortFactor] and [sectionFactor] are the effective values read at
+  /// resolve time, not the factors cached on the lens.
+  SectionGrouping? _resolveGrouping({
+    required TileLayout layout,
+    required SortFactor sortFactor,
+    required EntrySectionFactor sectionFactor,
+  }) {
     if (fixedSort) return SectionGrouping.single;
     // The calendar layout shows one row per day under month sections.
-    if (tileLayout == TileLayout.calendar) return SectionGrouping.month;
-    if (calendar != ACalendar.gregorian) {
+    if (layout == TileLayout.calendar) return SectionGrouping.month;
+    if (settings.calendar != ACalendar.gregorian) {
       if (sectionFactor == EntrySectionFactor.month || sectionFactor == EntrySectionFactor.day) return null;
     }
     switch (sortFactor) {

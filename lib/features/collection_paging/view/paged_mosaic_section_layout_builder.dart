@@ -35,6 +35,7 @@ class PagedMosaicSectionLayoutBuilder<T>({
   required super.tileBuilder,
   required Duration tileAnimationDelay,
   required final List<double>? Function(SectionKey sectionKey) ratioResolver,
+  required final double Function(T item) coverRatioResolver,
 }) extends SectionLayoutBuilder<T> {
   int _currentIndex = 0;
   double _currentOffset = 0;
@@ -76,11 +77,10 @@ class PagedMosaicSectionLayoutBuilder<T>({
     required List<T> section,
     required bool animate,
   }) {
-    final ratios = ratioResolver(sectionKey);
-    // Until the channel lands the section is its header alone: packing the
-    // skeletons would place every tile at ratio `1` and reflow on the next fill.
-    // The engine notifies when the ratios arrive, and the section is rebuilt.
-    final rows = ratios == null
+    final ratios = _packingRatios(sectionKey, section);
+    // A section with no rows is its header alone: there is no row to index, and
+    // subtracting a row spacing would give it a negative extent.
+    final rows = ratios.isEmpty
         ? const <VariableExtentRowLayout>[]
         : MosaicSectionLayoutBuilder.computeMosaicRows<double>(
             section: ratios,
@@ -99,7 +99,7 @@ class PagedMosaicSectionLayoutBuilder<T>({
     final sectionLastIndex = _currentIndex - 1;
 
     final sectionMinOffset = _currentOffset;
-    _currentOffset += headerExtent + rows.map((v) => v.height).sum - spacing;
+    _currentOffset += headerExtent + (rowCount > 0 ? rows.map((v) => v.height).sum - spacing : 0.0);
     final sectionMaxOffset = _currentOffset;
 
     return VariableExtentSectionLayout(
@@ -114,21 +114,23 @@ class PagedMosaicSectionLayoutBuilder<T>({
       builder: (context, listIndex) {
         final textDirection = Directionality.of(context);
         final sectionChildIndex = listIndex - sectionFirstIndex;
-        final isHeader = sectionChildIndex == 0;
-        final row = isHeader ? rows.first : rows[sectionChildIndex - 1];
-        final sectionGridIndex = isHeader ? sectionFirstIndex * columnCount : (sectionChildIndex + 1) * columnCount + row.firstIndex;
+        // The header has no row behind it. Reading `rows.first` here crashed the
+        // whole sliver as soon as a section had no packing yet, which is exactly
+        // the first frame of every switch to the mosaic layout.
+        final row = sectionChildIndex < 1 || rows.isEmpty ? null : rows[sectionChildIndex - 1];
+        final sectionGridIndex = row == null ? sectionFirstIndex * columnCount : (sectionChildIndex + 1) * columnCount + row.firstIndex;
         return buildSectionWidget(
           context: context,
           section: section,
           sectionGridIndex: sectionGridIndex,
           sectionChildIndex: sectionChildIndex,
-          itemIndexRange: () => isHeader ? const (0, 0) : (row.firstIndex, row.lastIndex + 1),
+          itemIndexRange: () => row == null ? const (0, 0) : (row.firstIndex, row.lastIndex + 1),
           sectionKey: sectionKey,
           headerExtent: headerExtent,
-          itemSizes: row.itemWidths.map((v) => Size(v, row.height)).toList(),
+          itemSizes: row == null ? const <Size>[] : row.itemWidths.map((v) => Size(v, row.height)).toList(),
           animate: animate,
           buildGridRow: (children) {
-            return isHeader
+            return row == null
                 ? const SizedBox()
                 : VariableExtentGridRow(
                     rowLayout: row,
@@ -140,5 +142,18 @@ class PagedMosaicSectionLayoutBuilder<T>({
         );
       },
     );
+  }
+
+  /// Ratios to pack [section] with, in its row order.
+  ///
+  /// A measured channel is used only when it covers exactly the section's rows:
+  /// one left over from a different view would index past the section. Until it
+  /// lands, or when it does not match, the section packs itself (unloaded rows
+  /// have ratio 1) instead of rendering as an empty band — the shared packing
+  /// cannot misplace an index, and a filled window replaces it once measured.
+  List<double> _packingRatios(SectionKey sectionKey, List<T> section) {
+    final measured = ratioResolver(sectionKey);
+    if (measured != null && measured.length == section.length) return measured;
+    return [for (final item in section) coverRatioResolver(item)];
   }
 }

@@ -101,29 +101,42 @@ class _CollectionGridState extends State<CollectionGrid> {
   @override
   Widget build(BuildContext context) {
     final filters = context.select<CollectionLens, Set<CollectionFilter>>((v) => v.visibleFilters);
-    final (isCalendar, spacing) = context.select<Settings, (bool, double)>((v) {
-      final layout = v.getEffectiveCollectionTileLayout(filters);
-      return (layout == .calendar, CollectionGrid.spacingForLayout(layout));
-    });
+    // A paged window keeps its own layout until the resolve for a newly chosen
+    // one publishes: switching the grid over immediately painted the old window
+    // with the new packing (skeletons, or a mosaic without its ratios) while the
+    // new one loaded. The settings value is what was *asked* for; the lens
+    // answers what is actually on screen.
+    final resolvedLayout = context.select<CollectionLens, TileLayout?>((v) => v is PagedCollectionLens ? v.resolvedLayout : null);
+    final requestedLayout = context.select<Settings, TileLayout>((v) => v.getEffectiveCollectionTileLayout(filters));
+    final layout = resolvedLayout ?? requestedLayout;
+    final isCalendar = layout == TileLayout.calendar;
+    final spacing = CollectionGrid.spacingForLayout(layout);
 
-    if (isCalendar) {
-      _tileExtentController = TileExtentController(
-        settingsRouteKey: null,
-        columnCountDefault: DateTime.daysPerWeek,
-        extentMin: 0,
-        extentMax: double.infinity,
-        spacing: spacing,
-        horizontalPadding: 2,
-      );
-    } else if (_tileExtentController?.settingsRouteKey != settingsRouteKey || _tileExtentController?.spacing != spacing) {
-      _tileExtentController = TileExtentController(
-        settingsRouteKey: settingsRouteKey,
-        columnCountDefault: CollectionGrid.columnCountDefault,
-        extentMin: CollectionGrid.extentMin,
-        extentMax: CollectionGrid.extentMax,
-        spacing: spacing,
-        horizontalPadding: 2,
-      );
+    final controllerKey = isCalendar ? null : settingsRouteKey;
+    final previous = _tileExtentController;
+    if (previous == null || previous.settingsRouteKey != controllerKey || previous.spacing != spacing) {
+      final controller = isCalendar
+          ? TileExtentController(
+              settingsRouteKey: null,
+              columnCountDefault: DateTime.daysPerWeek,
+              extentMin: 0,
+              extentMax: double.infinity,
+              spacing: spacing,
+              horizontalPadding: 2,
+            )
+          : TileExtentController(
+              settingsRouteKey: settingsRouteKey,
+              columnCountDefault: CollectionGrid.columnCountDefault,
+              extentMin: CollectionGrid.extentMin,
+              extentMax: CollectionGrid.extentMax,
+              spacing: spacing,
+              horizontalPadding: 2,
+            );
+      // A replacement starts with a zero extent until its viewport is measured,
+      // so the first frame of the new layout had no geometry at all. Seeding the
+      // known viewport resolves the extent before that frame.
+      if (previous != null) controller.setViewportSize(previous.viewportSize);
+      _tileExtentController = controller;
     }
 
     return TileExtentControllerProvider(
@@ -162,7 +175,9 @@ class _CollectionGridContentState extends State<_CollectionGridContent> {
     final selectable = context.select<ValueNotifier<AppMode>, bool>((v) => v.value.canSelectMedia) && !BrowseOnlyMode.isActive;
     return Consumer<CollectionLens>(
       builder: (context, collection, child) {
-        final tileLayout = context.select<Settings, TileLayout>((v) => v.getEffectiveCollectionTileLayout(collection.visibleFilters));
+        final requestedLayout = context.select<Settings, TileLayout>((v) => v.getEffectiveCollectionTileLayout(collection.visibleFilters));
+        final resolvedLayout = collection is PagedCollectionLens ? collection.resolvedLayout : null;
+        final tileLayout = resolvedLayout ?? requestedLayout;
         final sectionedListLayoutProvider = ValueListenableBuilder<double>(
           valueListenable: context.select<TileExtentController, ValueNotifier<double>>((controller) => controller.extentNotifier),
           builder: (context, thumbnailExtent, child) {

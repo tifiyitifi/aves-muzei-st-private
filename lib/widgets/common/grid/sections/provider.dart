@@ -55,6 +55,7 @@ abstract class const SectionedListLayoutProvider<T>({
                 tileBuilder: tileBuilder,
                 tileAnimationDelay: tileAnimationDelay,
                 ratioResolver: ratioResolver,
+                coverRatioResolver: coverRatioResolver,
               ).updateLayouts(context);
             }
             return MosaicSectionLayoutBuilder<T>(

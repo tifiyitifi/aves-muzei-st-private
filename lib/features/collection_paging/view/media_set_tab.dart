@@ -1,4 +1,5 @@
 import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/filters/trash.dart';
 import 'package:collection/collection.dart';
 
 /// Whether [filters] is a view a bottom-bar destination declares itself.
@@ -8,6 +9,17 @@ import 'package:collection/collection.dart';
 /// visiting one must not make the media-set tab open it afterwards).
 bool isDestinationView(Set<CollectionFilter> filters, Iterable<Set<CollectionFilter>?> destinationFilters) {
   return destinationFilters.nonNulls.any((v) => const SetEquality().equals(v, filters));
+}
+
+/// Whether a collection view that just mounted may write the media-set slot.
+///
+/// Two kinds of view must not: one a bottom-bar destination owns (see
+/// [isDestinationView]), and one that is its own destination everywhere else.
+/// The bin is the latter — it is a drawer page even though no bar item declares
+/// it, and writing the slot there made the media-library item reopen the trash.
+bool shouldNoteMediaSet(Set<CollectionFilter> filters, Iterable<Set<CollectionFilter>?> destinationFilters) {
+  if (filters.contains(TrashFilter.instance)) return false;
+  return !isDestinationView(filters, destinationFilters);
 }
 
 /// The collection view the media-set destination last showed.

@@ -77,10 +77,11 @@ class _CollectionPageState extends State<CollectionPage> {
     // The media-set slot remembers the view it shows, so the bottom bar's
     // collection item returns to it instead of resetting to the whole library.
     // A view a bottom-bar item declares itself (video, favourites, an album
-    // pinned to the bar) belongs to that item and must not hijack the slot.
+    // pinned to the bar) belongs to that item and must not hijack the slot, and
+    // neither may the bin, which is a drawer page everywhere.
     final routeFilters = (widget.filters ?? const <CollectionFilter?>{}).nonNulls.toSet();
     final declaredFilters = settings.bottomNavigationActions.map((v) => v.filters);
-    if (!isDestinationView(routeFilters, declaredFilters)) {
+    if (shouldNoteMediaSet(routeFilters, declaredFilters)) {
       mediaSetTab.note(routeFilters: routeFilters, currentFilters: () => _collection.filters);
     }
     super.initState();
@@ -147,7 +148,10 @@ class _CollectionPageState extends State<CollectionPage> {
     // "loading". The phase is the only signal and it only moves one way, so a
     // navigation back to all media after the import can never bring the browser
     // back: the grid shows its own loading state instead.
-    final browseOnly = libraryPhase.isBrowsing;
+    //
+    // A pick never takes the browser: it has nothing selectable and no confirm,
+    // so the caller's intent could not be completed at all.
+    final browseOnly = libraryPhase.isBrowsing && !context.watch<ValueNotifier<AppMode>>().value.isPicking;
     final liveFilter = _collection.filters.firstWhereOrNull((v) => v is QueryFilter && v.live) as QueryFilter?;
     return SelectionProvider<AvesEntry>(
       toSelectableItems: (entry) => entry.toSelectableItems(),

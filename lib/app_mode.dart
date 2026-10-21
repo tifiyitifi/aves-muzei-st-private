@@ -49,4 +49,18 @@ extension ExtraAppMode on AppMode {
     .pickFilteredMediaInternal,
     .pickUnfilteredMediaInternal,
   }.contains(this);
+
+  /// Whether the app is showing a view only to return a choice to its caller.
+  ///
+  /// Such a view must never be replaced by the browse-only browser: nothing in it
+  /// is selectable and it has no way to confirm, so a pick that arrives during
+  /// the first import would have no completion path at all.
+  bool get isPicking => <AppMode>{
+    .pickCollectionFiltersExternal,
+    .pickSingleMediaExternal,
+    .pickMultipleMediaExternal,
+    .pickFilteredMediaInternal,
+    .pickUnfilteredMediaInternal,
+    .pickFilterInternal,
+  }.contains(this);
 }

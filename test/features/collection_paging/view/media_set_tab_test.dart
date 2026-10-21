@@ -2,6 +2,7 @@ import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
+import 'package:aves/model/filters/trash.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/navigation/nav_item.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -92,6 +93,22 @@ void main() {
         ]),
         isFalse,
       );
+    });
+  });
+
+  group('shouldNoteMediaSet', () {
+    test('an album opened from the album list still writes the slot', () {
+      expect(shouldNoteMediaSet({album}, [null]), isTrue);
+    });
+
+    test('a bottom-bar destination does not write the slot', () {
+      expect(shouldNoteMediaSet({video}, [null, {video}]), isFalse);
+    });
+
+    test('the bin never writes the slot, even though no bar item declares it', () {
+      // A drawer page from start to finish: writing the slot there made the
+      // media-library item reopen the trash.
+      expect(shouldNoteMediaSet({TrashFilter.instance}, [null, {video}]), isFalse);
     });
   });
 }

@@ -1102,6 +1102,52 @@ void main() {
       expect(collectionPagingPrefs.importComplete, isTrue);
       expect(pagedImportStatus.active, isFalse, reason: 'a complete library must not be scanned again');
     });
+
+    test('emptying the filters widens the view in one refresh', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/a'), entry(3, dir: '/b')});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      final lens = PagedCollectionLens(source: source, filters: {StoredAlbumFilter('/a', null)});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => lens.pagedActive && lens.entryCount == 2);
+
+      // What the filter row's clear action does: the scope's own chip goes too,
+      // so the whole library is what is left.
+      lens.setFilters({});
+      await settle(lens, done: () => lens.entryCount == 3);
+      expect(lens.filters, isEmpty);
+      expect(lens.pagedActive, isTrue);
+    });
+
+    test('a parked view neither drives the state nor resolves; adopting it does', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1), entry(2)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+
+      // A retained scope: its resolve is held back, or the page on screen would
+      // flip to "loading" for rows nobody is looking at.
+      final parked = PagedCollectionLens(source: source, filters: {});
+      addTearDown(parked.dispose);
+      parked.setActive(false);
+      await parked.ready;
+      expect(parked.pagedActive, isTrue);
+      expect(source.state, isNot(SourceState.loading));
+
+      // A change while parked is owed, not read behind the scenes.
+      parked.refresh();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(parked.loadedEntries, isNotEmpty, reason: 'the published window is kept, not rebuilt');
+
+      // The page that adopts an unresolved lens says "loading" until its window
+      // is published, even though the shared state was never set.
+      final adopted = PagedCollectionLens(source: source, filters: {});
+      addTearDown(adopted.dispose);
+      adopted.setActive(false);
+      adopted.setActive(true);
+      expect(source.state, SourceState.loading);
+      await settle(adopted, done: () => adopted.pagedActive && adopted.entryCount == 2);
+      expect(source.state, isNot(SourceState.loading));
+    });
   });
 }
 

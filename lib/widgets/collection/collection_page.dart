@@ -7,6 +7,7 @@ import 'package:aves/features/collection_paging/engine/collection_paging_prefs.d
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
+import 'package:aves/features/collection_paging/lens/scope_registry.dart';
 import 'package:aves/features/collection_paging/view/catalog_prompt_dialog.dart';
 import 'package:aves/features/collection_paging/view/collection_import_intro.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -65,7 +66,10 @@ class _CollectionPageState extends State<CollectionPage> {
     // as the collection properties may change and they should not be reset by a widget update (e.g. with theme change)
     // The paged lens covers both paths: it serves windows from the database on
     // huge collections and morphs to the exact legacy behaviour otherwise.
-    _collection = PagedCollectionLens(
+    // The lens comes from the scope registry: a view that was shown before is
+    // already resolved, so returning to it paints its window instead of
+    // resolving the same rows again behind a loading body.
+    _collection = scopeRegistry.acquire(
       source: widget.source,
       filters: widget.filters,
     );
@@ -105,7 +109,9 @@ class _CollectionPageState extends State<CollectionPage> {
     _subscriptions
       ..forEach((sub) => sub.cancel())
       ..clear();
-    _collection.dispose();
+    // The lens outlives the page: the scope registry keeps it, so the next visit
+    // to this view is a repaint rather than a fresh resolve.
+    scopeRegistry.release(_collection);
     super.dispose();
   }
 

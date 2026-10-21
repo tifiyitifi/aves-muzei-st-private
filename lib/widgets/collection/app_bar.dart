@@ -5,6 +5,7 @@ import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
+import 'package:aves/features/collection_paging/view/clear_filter_button.dart';
 import 'package:aves/features/collection_paging/view/collection_select_all.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
@@ -253,11 +254,18 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
                                     }
                                     return false;
                                   },
-                                  child: FilterBar(
-                                    filters: collection.visibleFilters,
-                                    interactive: true,
-                                    onTap: onFilterTap,
-                                    onRemove: onFilterTap,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: FilterBar(
+                                          filters: collection.visibleFilters,
+                                          interactive: true,
+                                          onTap: onFilterTap,
+                                          onRemove: onFilterTap,
+                                        ),
+                                      ),
+                                      if (canRemoveFilters) ClearFilterButton(collection: collection),
+                                    ],
                                   ),
                                 ),
                               if (layoutBarEnabled) const LayoutBar(),

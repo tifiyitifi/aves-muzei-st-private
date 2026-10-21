@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/collection_paging/lens/scope_registry.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -59,13 +60,17 @@ class const CollectionNavTile({
       }
     }
 
+    final source = context.read<CollectionSource>();
     Navigator.maybeOf(context)?.pop();
+    // A tap on a collection link is the decision to show it: resolve it while
+    // the drawer closes, so the page it opens has its window already.
+    scopeRegistry.prewarm(source: source, filters: _filters);
     unawaited(
       Navigator.maybeOf(context)?.pushAndRemoveUntil(
         MaterialPageRoute(
           settings: const RouteSettings(name: CollectionPage.routeName),
           builder: (context) => CollectionPage(
-            source: context.read<CollectionSource>(),
+            source: source,
             filters: _filters,
           ),
         ),

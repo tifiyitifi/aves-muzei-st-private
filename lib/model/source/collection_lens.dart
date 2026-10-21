@@ -212,6 +212,19 @@ class CollectionLens with ChangeNotifier {
     _onFilterChanged();
   }
 
+  /// Replaces the view's filters in one step.
+  ///
+  /// Dropping a chip one at a time would refresh once per filter, and on a
+  /// windowed collection every refresh is a re-read: a view restoring the
+  /// filters it had, or emptying them all, needs one answer instead of N.
+  void setFilters(Set<CollectionFilter> newFilters) {
+    if (const SetEquality().equals(filters, newFilters)) return;
+    filters
+      ..clear()
+      ..addAll(newFilters);
+    _onFilterChanged();
+  }
+
   void _onFilterChanged() {
     refresh();
     filterChangeNotifier.notify();

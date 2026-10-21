@@ -45,6 +45,23 @@ class PagedCatalogWorker {
   bool _pendingScopedOnly = false;
   CollectionWindowPredicate? _pendingScope;
 
+  /// Whether the view that owns this worker is the one on screen.
+  ///
+  /// A parked scope must not drive the library-wide state: its drain can still
+  /// reach its `finally` after the user has moved to another page, and settling
+  /// the state there would flip that page's app bar to ready mid-resolve.
+  bool Function() isActive = _alwaysActive;
+
+  static bool _alwaysActive() => true;
+
+  void _setState(SourceState value) {
+    if (isActive()) source.state = value;
+  }
+
+  void _setProgress({required int done, required int total}) {
+    if (isActive()) source.setProgress(done: done, total: total);
+  }
+
   new({
     required this.source,
     LocalMediaDb? database,
@@ -169,12 +186,12 @@ class PagedCatalogWorker {
     } finally {
       catalogued = _sessionDone;
       _draining = false;
-      source.state = SourceState.ready;
+      _setState(SourceState.ready);
       // The counters are only meaningful while a pass runs: leaving them behind
       // makes the next "loading" screen show a stale figure that looks like the
       // library is being imported again.
-      source.setProgress(done: 0, total: 0);
-      catalogProgressNotifier.finish();
+      _setProgress(done: 0, total: 0);
+      if (isActive()) catalogProgressNotifier.finish();
       _sessionTotal = 0;
       _sessionDone = 0;
       _sessionStarted = false;
@@ -215,7 +232,7 @@ class PagedCatalogWorker {
   void _reportSession() {
     final total = _sessionTotal;
     final done = total > 0 && _sessionDone > total ? total : _sessionDone;
-    source.setProgress(done: done, total: total);
+    _setProgress(done: done, total: total);
     catalogProgressNotifier.update(done: done, total: total, now: DateTime.now());
   }
 
@@ -261,7 +278,7 @@ class PagedCatalogWorker {
       pending.clear();
     }
 
-    source.state = SourceState.cataloguing;
+    _setState(SourceState.cataloguing);
     _reportSession();
     while (!_stopRequested) {
       final page = await database.loadUncataloguedEntryIds(predicate: predicate, after: after, limit: chunkSize);
@@ -328,7 +345,7 @@ class PagedCatalogWorker {
       pending.clear();
     }
 
-    source.state = SourceState.locatingCountries;
+    _setState(SourceState.locatingCountries);
     // Countries are their own pass but not their own session: the catalog
     // counter keeps its value and clock instead of restarting at zero.
     while (!_stopRequested) {
@@ -387,7 +404,7 @@ class PagedCatalogWorker {
       pending.clear();
     }
 
-    source.state = SourceState.locatingPlaces;
+    _setState(SourceState.locatingPlaces);
     // Same rule as the country pass: a locate pass does not restart the
     // catalog session's counter.
     while (!_stopRequested) {

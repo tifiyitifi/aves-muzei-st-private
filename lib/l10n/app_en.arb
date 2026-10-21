@@ -660,6 +660,7 @@
   "collectionActionHideLayoutBar": "Hide layout bar",
   "collectionActionShowTitleSearch": "Show title filter",
   "collectionActionHideTitleSearch": "Hide title filter",
+  "collectionActionClearFilters": "Clear filters",
   "collectionActionAddDynamicAlbum": "Add dynamic album",
   "collectionActionAddShortcut": "Add shortcut",
   "collectionActionSetHome": "Set as home",

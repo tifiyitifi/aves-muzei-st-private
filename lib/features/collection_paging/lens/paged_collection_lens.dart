@@ -86,6 +86,49 @@ class PagedCollectionLens extends CollectionLens {
 
   bool _pagedActive = false;
 
+  /// Whether a mounted page shows this lens.
+  ///
+  /// Only the visible view may drive the library-wide state: a scope retained by
+  /// the scope registry keeps resolving in the background (a new photo, a delete),
+  /// and its writes would flash "loading" under the page that is actually on
+  /// screen. Parking also releases the catalog worker, so two retained scopes
+  /// never sweep the same backlog twice.
+  bool _active = true;
+
+  bool get isActive => _active;
+
+  /// Marks whether this lens is the view on screen, and resumes what parking
+  /// stopped: the worker and the backlog it owns.
+  void setActive(bool value) {
+    if (_active == value) return;
+    _active = value;
+    if (!value) {
+      _detachCatalogWorker();
+      return;
+    }
+    _announcePending();
+    if (_disposed) return;
+    _attachCatalogWorker();
+    if (!_importingRows) unawaited(_runCatalogBacklog());
+    if (_refreshWhileParked) {
+      // A change landed while nothing showed this view: it is owed now. The
+      // published window stays on screen until the new one lands, so this costs
+      // no blank frame.
+      _refreshWhileParked = false;
+      refresh();
+    }
+  }
+
+  /// Says the view has nothing to show yet.
+  ///
+  /// A lens adopted from the registry may have started its first resolve while
+  /// parked, when it deliberately held the shared state back: the page that now
+  /// shows it has to say "loading" instead of painting an empty collection.
+  void _announcePending() {
+    if (_disposed || _pagedActive || _morphed || _blocked || _ready.isCompleted) return;
+    source.state = SourceState.loading;
+  }
+
   /// False for fixed-selection (viewer) copies, morphed and blocked states.
   bool get pagedActive => _pagedActive && !_blocked && !_morphed && fixedSelection == null;
 
@@ -586,6 +629,13 @@ class PagedCollectionLens extends CollectionLens {
     // vault lock, the import, a catalog sweep). Only a pure presentation change
     // opts out, which is what lets a layout switch reuse the published window.
     if (dataChanged) _dataEpoch++;
+    if (!_active) {
+      // Nothing shows this view right now: re-resolving its window would be
+      // work for a page that is not on screen. It is owed when the view is
+      // adopted again, and that refresh lands over the published window.
+      _refreshWhileParked = true;
+      return;
+    }
     // A run updates the source batch by batch: reloading the view per batch would
     // re-resolve counts, headers and summaries thousands of times. One reload at
     // the end of the run is enough.
@@ -728,9 +778,9 @@ class PagedCollectionLens extends CollectionLens {
       // during the (slow, first-run) bootstrap. A refresh over a view that is
       // already on screen keeps its state: only the first resolve, or a run
       // that is still writing, has nothing to show yet.
-      if (_importingRows || !_ready.isCompleted) source.state = SourceState.loading;
+      _settleState(resolving: true);
 
-      await PagedBootstrap.ensure(source);
+      await PagedBootstrap.ensure(source, driveState: _active);
       if (!_current(gen)) return;
 
       // Steady-state MediaStore sync: one cheap generation query when quiet,
@@ -1010,7 +1060,7 @@ class PagedCollectionLens extends CollectionLens {
     _sectionStates = const [];
     _flat = PagedFlatList(const []);
     sections = Map.unmodifiable(const {});
-    source.state = SourceState.ready;
+    if (_active) source.state = SourceState.ready;
     notifyListeners();
   }
 
@@ -1059,9 +1109,16 @@ class PagedCollectionLens extends CollectionLens {
     _settleState(resolving: true);
     final windowSize = prefs.windowSize;
     final prefetch = prefs.prefetchScreens;
+    // The router already counted the exact predicate this view resolves to, so
+    // reuse that total instead of reading it twice. A view that hides stack
+    // members (a different predicate) or adds its own atoms (the slideshow) has
+    // to count its own.
+    final reuseTotal = identical(base, resolved) && identical(predicate, base);
     final total = dayRows
         ? await localMediaDb.countDays(predicate: predicate)
-        : await localMediaDb.countEntries(predicate);
+        : reuseTotal
+            ? decision.total
+            : await localMediaDb.countEntries(predicate);
     if (!_current(gen)) return;
     // Denominator for the count line. A calendar view counts days and a filtered
     // view counts matches, so neither can be compared with the library size: the
@@ -1286,9 +1343,10 @@ class PagedCollectionLens extends CollectionLens {
   /// keying the settle off it left every new lens stuck in `loading`.
   void _settleState({bool resolving = false}) {
     if (_importingRows || (resolving && !_ready.isCompleted)) {
-      source.state = SourceState.loading;
+      if (_active) source.state = SourceState.loading;
       return;
     }
+    if (!_active) return;
     switch (source.state) {
       case SourceState.cataloguing:
       case SourceState.locatingCountries:
@@ -1314,8 +1372,15 @@ class PagedCollectionLens extends CollectionLens {
     _summaries = null;
   }
 
+  /// Whether a change arrived while the view was parked; the refresh it owes
+  /// lands when the view is shown again.
+  bool _refreshWhileParked = false;
+
   void _attachCatalogWorker() {
-    _catalogWorker ??= _catalogWorkerFactory(source: source);
+    // A parked view owns no worker: two retained scopes sweeping the same
+    // backlog would double the reads and race on the progress line.
+    if (!_active) return;
+    _catalogWorker ??= _catalogWorkerFactory(source: source)..isActive = () => _active;
   }
 
   Future<void> _runCatalogBacklog() async {

@@ -27,7 +27,10 @@ const _log = AreaKeyLog(collectionPagingLogKey);
 class PagedBootstrap {
   static bool _essentialsDone = false;
 
-  static Future<void> ensure(CollectionSource source) async {
+  /// [driveState] lets a parked view reuse the essentials without touching the
+  /// library-wide state: the page on screen owns that, and a background resolve
+  /// settling it would flip another page's app bar to "ready".
+  static Future<void> ensure(CollectionSource source, {bool driveState = true}) async {
     final stopwatch = Stopwatch()..start();
     await localMediaDb.init();
     if (!_essentialsDone) {
@@ -49,19 +52,20 @@ class PagedBootstrap {
 
     final deviceOffset = DateTime.now().timeZoneOffset.inMilliseconds;
     final catalogOffset = settings.catalogTimeZoneOffsetMillis;
-    if (deviceOffset != catalogOffset) {
+    final datesInvalidated = deviceOffset != catalogOffset;
+    if (datesInvalidated) {
       await localMediaDb.clearDates();
       await localMediaDb.clearCatalogMetadata();
       settings.catalogTimeZoneOffsetMillis = deviceOffset;
     }
-    await source.loadDates();
+    await source.loadDates(force: datesInvalidated);
 
     source.addDirectories(albums: settings.pinnedFilters.whereType<StoredAlbumFilter>().map((v) => v.album).toSet());
     if (source is MediaStoreSource) {
       await source.updateGeneration();
     }
     source.pauseMonitoring();
-    source.state = SourceState.ready;
+    if (driveState) source.state = SourceState.ready;
     source.notifyAlbumsChanged();
     _log.d('paged bootstrap complete in ${stopwatch.elapsed.inMilliseconds}ms');
   }

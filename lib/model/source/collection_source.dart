@@ -160,8 +160,18 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
   // known date by entry ID
   late Map<int?, int?> _savedDates;
 
-  Future<void> loadDates() async {
+  bool _datesLoaded = false;
+
+  /// Loads the catalogued dates once per source.
+  ///
+  /// The paged path called this on every view mount, and it is a whole table
+  /// read: the dates only change when the catalog pass rewrites them (it writes
+  /// them onto the entries it touches) or when the time zone invalidates the
+  /// table, which passes [force].
+  Future<void> loadDates({bool force = false}) async {
+    if (_datesLoaded && !force) return;
     _savedDates = Map.unmodifiable(await localMediaDb.loadDates());
+    _datesLoaded = true;
   }
 
   Set<CollectionFilter> _getAppHiddenFilters() => {

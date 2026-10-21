@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/lens/scope_registry.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/container/group_base.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
@@ -198,10 +199,12 @@ class _FilterNavigationPageState<T extends CollectionFilter, CSAD extends ChipSe
   }
 
   Route _buildCollectionPageRoute(CollectionFilter filter) {
+    final source = context.read<CollectionSource>();
+    scopeRegistry.prewarm(source: source, filters: {filter});
     return MaterialPageRoute(
       settings: const RouteSettings(name: CollectionPage.routeName),
       builder: (context) => CollectionPage(
-        source: context.read<CollectionSource>(),
+        source: source,
         filters: {filter},
       ),
     );

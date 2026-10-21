@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:aves/features/collection_paging/lens/scope_registry.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -55,6 +56,11 @@ class AvesNavItem extends Equatable {
 
   Future<void> goTo(BuildContext context, {bool? topLevel}) async {
     topLevel ??= _defaultTopLevel;
+    if (this.route == CollectionPage.routeName) {
+      // A tap on a collection item is the decision to show it: resolve it while
+      // the route transition runs, so its page opens on a published window.
+      scopeRegistry.prewarm(source: context.read<CollectionSource>(), filters: filters);
+    }
     final route = routeBuilder(context, topLevel: topLevel);
     if (topLevel) {
       await Navigator.maybeOf(context)?.pushAndRemoveUntil(

@@ -43,6 +43,21 @@ void main() {
     expect(notifications, afterEnd);
   });
 
+  test('ignores progress a finished run left in flight', () {
+    status.begin();
+    status.update(100, total: 200);
+    status.end();
+
+    var notifications = 0;
+    status.addListener(() => notifications++);
+    // The platform row count can land after the run ended: writing it back would
+    // revive the figures `end` cleared, which the next resolve's loading screen
+    // reads as a live run.
+    status.update(200, total: 200);
+    expect(status.done, 100);
+    expect(notifications, 0);
+  });
+
   test('raises the explainer once until a surface takes it', () {
     status.requestExplainer();
     expect(status.explainerPending, isTrue);

@@ -81,6 +81,21 @@ enum PagedResolvePhase {
   firstWindow,
 }
 
+/// What a resolve has to do about the database it reads.
+enum _ImportNeed {
+  /// The database already holds the library.
+  none,
+
+  /// The library was never imported: a first run, or a preference that lost the
+  /// fact. The phase is already browsing for it.
+  firstFill,
+
+  /// The database was emptied under a preference that says it is whole. Its
+  /// rows have to be discovered again, and the one-way phase has to reopen for
+  /// it (see `LibraryPhaseController.reopen`).
+  afterReset,
+}
+
 /// A [CollectionLens] that materializes only the visible windows.
 ///
 /// The grid, drawer, viewer and selection consume the exact same interface as
@@ -263,6 +278,15 @@ class PagedCollectionLens extends CollectionLens {
   Completer<void>? _inFlightLoadWait;
   VoidCallback? _inFlightLoadListener;
 
+  /// How long a foreign full load may stay `loading` before the resolve stops
+  /// waiting for it.
+  ///
+  /// The wait exists to avoid starting a second load, not to outlast a dead
+  /// one: a platform call lost during engine startup would otherwise pin this
+  /// lens's reload, its `ready` future and every viewer lookup behind it.
+  static const defaultInFlightLoadTimeout = Duration(seconds: 30);
+  final Duration inFlightLoadTimeout;
+
   /// Completes once the first load resolved (paged, morphed or blocked).
   /// Callers that must know which path was taken (the paged slideshow) await
   /// this instead of polling.
@@ -293,6 +317,7 @@ class PagedCollectionLens extends CollectionLens {
     PagedCatalogWorker Function({required CollectionSource source})? catalogWorkerFactory,
     bool stackEntries = true,
     List<WindowFragment> extraFragments = const [],
+    this.inFlightLoadTimeout = defaultInFlightLoadTimeout,
   })  : _catalogWorkerFactory = catalogWorkerFactory ?? PagedCatalogWorker.new,
         _stackEntries = stackEntries,
         _extraFragments = extraFragments,
@@ -789,6 +814,8 @@ class PagedCollectionLens extends CollectionLens {
     if (!_pagedActive || _importingRows || _pagedDataEpoch != _dataEpoch) return false;
     // An external full load is about to replace the source: let the normal path
     // wait for it instead of publishing a layout over a window that is going away.
+    // That wait is bounded by `inFlightLoadTimeout` (30s by default), so this is
+    // the worst case a layout switch can spend on someone else's load.
     if (source.state == SourceState.loading) return false;
     final layout = settings.getEffectiveCollectionTileLayout(filters);
     if (layout == _pagedLayout) return false;
@@ -849,12 +876,13 @@ class PagedCollectionLens extends CollectionLens {
       // only turns into an explanation a second later. A reload that lands while
       // the import runs must not start a second one: it only re-resolves the
       // rows that have arrived.
-      final needsImport = !prefs.importComplete && !await _recoverImportMarker(prefs);
+      final importNeed = await _needsImport(prefs);
       if (!_current(gen)) return;
       // A failed import is not retried behind the user's back: the browser stays
       // up and the notice bar's retry reopens the phase. Without this, every
       // surface that followed the failed run (and every later mount) would start
       // the same failing scan again.
+      final needsImport = importNeed != _ImportNeed.none;
       final canImport = needsImport && !libraryPhase.hasFailed;
       // Another surface may already be importing (a second collection route):
       // join that run instead of scanning MediaStore again.
@@ -866,6 +894,11 @@ class PagedCollectionLens extends CollectionLens {
         _grewDuringImport = false;
         if (startImport) {
           pagedImportStatus.begin();
+          // A database emptied under a preference that says it is whole is the
+          // one case the one-way phase may leave `ready` for: the browser is the
+          // surface that explains an empty collection while MediaStore is read
+          // again. Every other signal stays latched.
+          if (importNeed == _ImportNeed.afterReset) libraryPhase.reopen();
           source.setProgress(done: 0, total: 0);
         }
         // Surfaces switch to the browse-only browser on this frame rather than
@@ -873,48 +906,63 @@ class PagedCollectionLens extends CollectionLens {
         notifyListeners();
       }
 
-      // The view is about to resolve: say so instead of showing an empty
-      // collection with a zero count, which reads as "your library is gone"
-      // during the (slow, first-run) bootstrap. A refresh over a view that is
-      // already on screen keeps its state: only the first resolve, or a run
-      // that is still writing, has nothing to show yet.
-      _settleState(resolving: true);
-      _setResolvePhase(PagedResolvePhase.syncing);
+      // A run announced above is handed to `importAll` in this same pass. Every
+      // early return in between (a scope evicted mid-resolve) would leave that
+      // announcement to nobody, and the whole app would report "organizing" for
+      // the rest of the process, so the end of the pass hands it back.
+      var importStarted = false;
+      try {
+        // The view is about to resolve: say so instead of showing an empty
+        // collection with a zero count, which reads as "your library is gone"
+        // during the (slow, first-run) bootstrap. A refresh over a view that is
+        // already on screen keeps its state: only the first resolve, or a run
+        // that is still writing, has nothing to show yet.
+        _settleState(resolving: true);
+        _setResolvePhase(PagedResolvePhase.syncing);
 
-      await PagedBootstrap.ensure(source, driveState: _active);
-      if (!_current(gen)) return;
-
-      // Steady-state MediaStore sync: one cheap generation query when quiet,
-      // bounded change handling otherwise. New files appear without a restart.
-      // Bounded, like the bootstrap's own generation read: a platform reply lost
-      // while the engine restarts would otherwise freeze the resolve on its
-      // loading body (see `withPlatformTimeout`).
-      await withPlatformTimeout(() => PagedDiscoverer().syncIfChanged(), label: 'media store sync');
-      if (!_current(gen)) return;
-
-      var decision = await const CollectionEngineRouter().resolve(filters: filters);
-      if (!_current(gen)) return;
-
-      if (startImport) {
-        // Unseen library, or an import that never finished: fill the database
-        // (resumably) and paint after the first batch, then re-resolve against
-        // what has landed. The empty-scope case is covered too: an empty
-        // library completes with zero rows and stops asking.
-        await _initialImport(gen);
+        await PagedBootstrap.ensure(source, driveState: _active);
         if (!_current(gen)) return;
-        decision = await const CollectionEngineRouter().resolve(filters: filters);
-        if (!_current(gen)) return;
-      } else if (joinImport) {
-        // The run belongs to another surface: its status ending is our signal,
-        // and its rows are already reaching the shared index.
-        _followExternalImport();
-      }
 
-      if (decision.route == CollectionRoute.legacy) {
-        await _enterLegacy(decision, gen);
-        return;
+        // Steady-state MediaStore sync: one cheap generation query when quiet,
+        // bounded change handling otherwise. New files appear without a restart.
+        // Bounded, like the bootstrap's own generation read: a platform reply lost
+        // while the engine restarts would otherwise freeze the resolve on its
+        // loading body (see `withPlatformTimeout`).
+        await withPlatformTimeout(() => PagedDiscoverer().syncIfChanged(), label: 'media store sync');
+        if (!_current(gen)) return;
+
+        var decision = await const CollectionEngineRouter().resolve(filters: filters);
+        if (!_current(gen)) return;
+
+        if (startImport) {
+          // `_initialImport` hands the stream to `importAll` before its first
+          // await; from then on the import owns ending the shared status, even
+          // when this lens is gone (see `_endImportRun`).
+          importStarted = true;
+          // Unseen library, or an import that never finished: fill the database
+          // (resumably) and paint after the first batch, then re-resolve against
+          // what has landed. The empty-scope case is covered too: an empty
+          // library completes with zero rows and stops asking.
+          await _initialImport(gen);
+          if (!_current(gen)) return;
+          decision = await const CollectionEngineRouter().resolve(filters: filters);
+          if (!_current(gen)) return;
+        } else if (joinImport) {
+          // The run belongs to another surface: its status ending is our signal,
+          // and its rows are already reaching the shared index.
+          _followExternalImport();
+        }
+
+        if (decision.route == CollectionRoute.legacy) {
+          await _enterLegacy(decision, gen);
+          return;
+        }
+        await _enterPaged(decision, gen);
+      } finally {
+        // The run was announced (browse-only frame, loading state) but this pass
+        // never reached the import: end it here instead of leaving it active.
+        if (startImport && !importStarted) _endImportRun(failed: false);
       }
-      await _enterPaged(decision, gen);
     } catch (error, stack) {
       if (!_current(gen)) return;
       _log.e('paged reload failed', error, stack);
@@ -940,7 +988,7 @@ class PagedCollectionLens extends CollectionLens {
   /// analysis that follows, and that analysis stays visible through the legacy
   /// progress display. A load that never settles would leave the whole app on its
   /// loading screen anyway, so this adds no wait that was not already there.
-  Future<void> _awaitInFlightLoad() {
+  Future<void> _awaitInFlightLoad() async {
     // Our own import keeps the source in `loading` without being an external
     // load: waiting for it here would deadlock the reload that paints it.
     if (_importingRows) return Future<void>.value();
@@ -957,7 +1005,15 @@ class PagedCollectionLens extends CollectionLens {
     final completer = _inFlightLoadWait = Completer<void>();
     _inFlightLoadListener = listener;
     source.stateNotifier.addListener(listener);
-    return completer.future;
+    try {
+      await completer.future.timeout(inFlightLoadTimeout);
+    } on TimeoutException {
+      // A load that never settles would otherwise keep the whole view waiting.
+      // Give up on it and let the resolve answer from the database; the next
+      // refresh retries once the source reports something.
+      _log.w('external library load did not settle within ${inFlightLoadTimeout.inSeconds}s, resolving anyway');
+      _cancelInFlightLoadWait();
+    }
   }
 
   /// Releases the wait, resuming the reload so it can observe the disposal and
@@ -971,6 +1027,40 @@ class PagedCollectionLens extends CollectionLens {
     final completer = _inFlightLoadWait;
     _inFlightLoadWait = null;
     if (completer != null && !completer.isCompleted) completer.complete();
+  }
+
+  /// Whether the database still has to be filled from MediaStore, and whether
+  /// the database it describes is a reset one.
+  ///
+  /// The persisted flag is the fast path, but it can outlive the database it
+  /// describes: a reset database with `importComplete == true` used to read as
+  /// a complete, permanently empty library. The database marker is the truth
+  /// when it survives, and an empty database whose preference says complete is
+  /// only believed when the platform has no rows either — a genuinely empty
+  /// library must not be re-scanned on every launch.
+  Future<_ImportNeed> _needsImport(CollectionPagingPrefs prefs) async {
+    final markerComplete = await _recoverImportMarker(prefs);
+    if (!prefs.importComplete) return _ImportNeed.firstFill;
+    if (markerComplete) return _ImportNeed.none;
+    try {
+      await localMediaDb.init();
+      if (await localMediaDb.countEntries() > 0) return _ImportNeed.none;
+    } catch (error, stack) {
+      // A count that cannot be read is not proof that the database is empty.
+      _log.w('paged entry count failed', error, stack);
+      return _ImportNeed.none;
+    }
+    // An empty database behind a complete preference is either a reset (the
+    // marker is written next to the rows, so it went with them) or a library
+    // that genuinely holds no rows. Only the platform can tell them apart, and
+    // a count it cannot answer is not proof of an empty library: reading it as
+    // one presented a reset database as a permanent empty collection.
+    final platformRows = await withPlatformTimeout(mediaStoreService.countEntries, label: 'media store count');
+    if (platformRows == null) {
+      _log.w('media store count unavailable, reading the empty database as a reset one');
+      return _ImportNeed.afterReset;
+    }
+    return platformRows > 0 ? _ImportNeed.afterReset : _ImportNeed.none;
   }
 
   /// Restores the import flag from the database when preferences lost it.
@@ -1030,36 +1120,47 @@ class PagedCollectionLens extends CollectionLens {
     unawaited(import.then((imported) async {
       _log.i('paged bulk import complete: $imported rows');
       if (!firstBatch.isCompleted) firstBatch.complete();
-      // Record completion next to the rows first: preferences can be reset,
-      // the database cannot without losing the library itself.
-      try {
-        await localMediaDb.writeImportComplete();
-      } catch (error, stack) {
-        _log.w('paged import marker write failed', error, stack);
-      }
-      await collectionPagingPrefs.setImportComplete(true);
+      // `setImportComplete` updates the in-memory flag before its first await,
+      // which is what the re-resolve below reads. Persisting it is best-effort:
+      // a slow platform preference store must not hold the shared status and
+      // leave the app organizing a library that is already whole.
+      unawaited(collectionPagingPrefs.setImportComplete(true));
+      // The database marker is written before the re-resolve, so it cannot read
+      // the just-imported rows as a reset database. A stuck marker write is
+      // bounded like the platform steps.
+      await _recordImportComplete().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => _log.w('paged import marker write timed out'),
+      );
       _onImportFinished();
     }, onError: (Object error, StackTrace stack) {
       // Never leave the caller waiting on a batch that will not come.
       if (!firstBatch.isCompleted) firstBatch.complete();
       _log.e('paged bulk import failed', error, stack);
-      _importingRows = false;
-      pagedImportStatus.end();
       // The database now holds part of the library: keep the browser, which
       // reads the media store, and let the user retry instead of handing a
       // truncated collection over as if the import had succeeded.
-      libraryPhase.markFailed();
-      source.setProgress(done: 0, total: 0);
+      _endImportRun(failed: true);
       if (!_current(gen)) return;
       // Settle without refreshing: a reload would immediately retry the same
       // failing import. The next launch tries again, and rows already written
       // stay browsable in the meantime.
-      _ownsLoading = false;
-      source.state = SourceState.ready;
       notifyListeners();
     }));
 
     await firstBatch.future;
+  }
+
+  /// Writes the import marker next to the rows, best-effort.
+  ///
+  /// The marker is what lets a preference reset over a complete database avoid
+  /// a re-scan; a failed write leaves the preference as the fallback.
+  Future<void> _recordImportComplete() async {
+    try {
+      await localMediaDb.writeImportComplete();
+    } catch (error, stack) {
+      _log.w('paged import marker write failed', error, stack);
+    }
   }
 
   /// Lets the grid grow once, midway through a long import.
@@ -1104,15 +1205,9 @@ class PagedCollectionLens extends CollectionLens {
   /// the handler was considered stale. The import ending is a source fact, so it
   /// applies to whichever resolve is current, and the reload coalesces.
   void _onImportFinished() {
+    _endImportRun(failed: false);
     if (_disposed || _morphed) return;
-    _importingRows = false;
-    pagedImportStatus.end();
-    // The import's counter must not outlive it: the loading screen renders any
-    // progress it finds, so a stale "32804/32804" would read as a re-import on
-    // the next resolve.
-    source.setProgress(done: 0, total: 0);
-    _ownsLoading = false;
-    source.state = SourceState.ready;
+    _settleState();
     notifyListeners();
     if (libraryPhase.hasFailed) {
       // This surface may only have been following the run: a failure is not an
@@ -1124,6 +1219,29 @@ class PagedCollectionLens extends CollectionLens {
     // The view still shows the rows of the batches that landed: re-resolve
     // against the whole library, coalescing into the running pass if there is.
     refresh();
+  }
+
+  /// Settles the shared import state, even when this lens is already gone.
+  ///
+  /// The import outlives the lens that started it: a scope can be evicted while
+  /// the stream is still writing, and leaving `pagedImportStatus` active would
+  /// keep the browser in front of a complete library for the rest of the
+  /// process (the status is the only thing that ends the phase).
+  void _endImportRun({required bool failed}) {
+    _importingRows = false;
+    pagedImportStatus.end();
+    // The import's counter must not outlive it: the loading screen renders any
+    // progress it finds, so a stale "32804/32804" would read as a re-import on
+    // the next resolve.
+    source.setProgress(done: 0, total: 0);
+    final ownedLoading = _ownsLoading;
+    _ownsLoading = false;
+    // Hand back only the loading this lens announced; another surface may own
+    // the shared state by now.
+    if (ownedLoading && source.state == SourceState.loading) {
+      source.state = SourceState.ready;
+    }
+    if (failed) libraryPhase.markFailed();
   }
 
   bool _current(int gen) => gen == _reloadGen && !_disposed;
@@ -1193,6 +1311,11 @@ class PagedCollectionLens extends CollectionLens {
       _enterBlocked('the view has no window predicate');
       return;
     }
+    // The rows this pass reads must belong to one epoch: a change that lands
+    // while the counts and headers are read bumps `_dataEpoch` and queues a
+    // reload, and publishing this pass would paint the old totals under the new
+    // epoch (and let a later layout switch reuse them).
+    final epoch = _dataEpoch;
     // A view may add its own atoms (the slideshow's video exclusion): they are
     // not collection filters but they still define the rows the view contains,
     // so they ride on the same predicate the totals and windows use.
@@ -1362,6 +1485,15 @@ class PagedCollectionLens extends CollectionLens {
       _log.d('paged resolve for ${layout.name} superseded before publish');
       return;
     }
+    // The rows a view can show changed while this pass was reading them. The
+    // pending pass owns the new epoch; publishing now would paint old totals
+    // under the new one (and let a later layout switch reuse them). A parked
+    // view keeps its publish: its refresh is owed on adoption, and dropping the
+    // first window would leave it with nothing to paint.
+    if (epoch != _dataEpoch && _active) {
+      _log.d('paged resolve superseded by a data change before publish');
+      return;
+    }
 
     _total = total;
     _sectionStates = List.unmodifiable(states);
@@ -1379,7 +1511,7 @@ class PagedCollectionLens extends CollectionLens {
     _pagedReverse = reverse;
     _pagedDayRows = dayRows;
     _pagedLayout = layout;
-    _pagedDataEpoch = _dataEpoch;
+    _pagedDataEpoch = epoch;
     _blocked = false;
     _morphed = false;
     _pagedActive = true;

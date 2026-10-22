@@ -68,9 +68,42 @@ void main() {
     await prefs.setImportComplete(true);
     expect(phase.isBrowsing, isFalse);
 
-    // A sync reports progress without starting a run; the flag is untouched.
+    // A sync reports progress without starting a run: the status drops a report
+    // it never began, and the flag is untouched either way.
     status.update(10);
     status.update(11);
+    expect(phase.phase, LibraryPhase.ready);
+    expect(phase.isBrowsing, isFalse);
+  });
+
+  test('a reset database browses again while it is read back', () async {
+    await prefs.setImportComplete(true);
+    expect(phase.phase, LibraryPhase.ready);
+
+    // The preference outlived the database it describes, and the lens found the
+    // rows gone: the browser is what explains the empty collection while
+    // MediaStore is walked again, so the one-way edge is the one thing that has
+    // to reopen.
+    status.begin(total: 2);
+    phase.reopen();
+    expect(phase.phase, LibraryPhase.importing);
+    expect(phase.isBrowsing, isTrue);
+
+    // ...and it latches again once that run is over.
+    status.end();
+    expect(phase.phase, LibraryPhase.ready);
+    expect(phase.isBrowsing, isFalse);
+    status.begin(total: 2);
+    expect(phase.phase, LibraryPhase.ready, reason: 'a stray run cannot reopen the handover again');
+  });
+
+  test('reopening without a run leaves the phase alone', () async {
+    await prefs.setImportComplete(true);
+    expect(phase.isBrowsing, isFalse);
+
+    // The signal is only meaningful while the new run is active: without one the
+    // phase reads the same complete library and stays where it was.
+    phase.reopen();
     expect(phase.phase, LibraryPhase.ready);
     expect(phase.isBrowsing, isFalse);
   });

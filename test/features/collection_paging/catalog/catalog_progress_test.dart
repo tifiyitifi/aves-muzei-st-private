@@ -108,6 +108,31 @@ void main() {
       expect(progress.done, 150);
       expect(progress.total, 150);
     });
+
+    test('a stale owner cannot update or finish the current session', () {
+      final notifier = CatalogProgressNotifier();
+      final stale = notifier.begin(total: 10, now: start);
+      final current = notifier.begin(total: 20, now: start);
+      expect(notifier.value!.total, 20);
+
+      notifier.update(owner: stale, done: 5, total: 10, now: start.add(const Duration(seconds: 1)));
+      expect(notifier.value!.done, 0, reason: 'the parked drain must not move the new clock');
+
+      notifier.update(owner: current, done: 4, total: 20, now: start.add(const Duration(seconds: 2)));
+      expect(notifier.value!.done, 4);
+
+      notifier.finish(owner: stale);
+      expect(notifier.value, isNotNull, reason: 'the parked drain must not clear the new clock');
+
+      notifier.finish(owner: current);
+      expect(notifier.value, isNull);
+    });
+
+    test('a no-owner finish still clears the current session', () {
+      final notifier = CatalogProgressNotifier()..begin(total: 10, now: start);
+      notifier.finish();
+      expect(notifier.value, isNull);
+    });
   });
 
   group('formatCatalogDuration', () {

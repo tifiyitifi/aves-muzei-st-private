@@ -203,11 +203,14 @@ class CollectionPagingPrefs extends ChangeNotifier {
     }
   }
 
-  /// Records whether the library is fully imported.
+  /// Records whether the library finished importing.
   ///
-  /// Written as `false` when an import starts and `true` when it completes, so
-  /// an interrupted run resumes on the next launch instead of leaving a
-  /// permanently partial collection.
+  /// The in-memory flag is what callers read, and it is updated before the
+  /// first await: the completion path re-resolves the collection without
+  /// waiting on this future, so its correctness cannot depend on the preference
+  /// store having landed (the database marker is the persisted fallback). An
+  /// unfinished import stays `false` — the default — so the next launch resumes
+  /// instead of trusting a partial collection.
   Future<void> setImportComplete(bool complete) async {
     if (complete == _importComplete) return;
     _importComplete = complete;

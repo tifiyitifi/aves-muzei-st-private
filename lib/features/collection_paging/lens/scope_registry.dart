@@ -1,5 +1,6 @@
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/summary/paged_summary_registry.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/source/collection_source.dart';
@@ -114,7 +115,11 @@ class ScopeRegistry {
     final key = scopeKeyOf(filters);
     if (_entries.containsKey(key)) return _entries[key]?.lens;
     final entry = _obtain(source: source, filters: filters);
-    _evict();
+    // Keep the view just prewarmed. When the pinned home and a mounted page
+    // already fill the retained slots, the new entry is the only eviction
+    // candidate, and dropping it here made every album-to-album prewarm a
+    // no-op. The page's own acquire evicts the parked scope as it activates.
+    _evict(keep: entry.key);
     return entry.lens;
   }
 
@@ -122,6 +127,10 @@ class ScopeRegistry {
   /// reset; the app itself keeps them for its whole life.
   void reset() {
     for (final entry in _entries.values.toList()) {
+      // The summary provider is keyed by source and outlives any one lens; a
+      // reset is the point where a source (and its cached entries) is no longer
+      // wanted.
+      forgetPagedSummaries(entry.lens.source);
       entry.lens.dispose();
     }
     _entries.clear();
@@ -181,15 +190,16 @@ class ScopeRegistry {
 
   /// Drops the least recently used view that nothing is showing.
   ///
-  /// A view with a mounted page, the pinned home, and the view being opened are
-  /// never victims, so the count can exceed [retainedScopes] for the one frame a
-  /// route transition keeps two pages alive.
-  void _evict() {
+  /// A view with a mounted page, the pinned home, the view being opened and
+  /// [keep] are never victims, so the count can exceed [retainedScopes] for the
+  /// one frame a route transition keeps two pages alive.
+  void _evict({String? keep}) {
     while (_entries.length > retainedScopes) {
       _ScopeEntry? victim;
       for (final entry in _entries.values) {
         if (entry.key == _homeKey) continue;
         if (entry.key == _activeKey) continue;
+        if (entry.key == keep) continue;
         if (entry.refCount > 0) continue;
         if (victim == null || entry.lastUsed < victim.lastUsed) victim = entry;
       }

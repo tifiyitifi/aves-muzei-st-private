@@ -76,6 +76,11 @@ class BrowseLibrary extends ChangeNotifier {
   /// duplicate.
   final Map<int, int> _indexByKey = {};
 
+  /// URI to position for rows the provider reports without a content id. Those
+  /// rows have no identity otherwise (their database id is 0), and a replayed
+  /// scan would append them again.
+  final Map<String, int> _indexByUri = {};
+
   /// Folder to the positions of its rows, newest first.
   final Map<String, List<int>> _albumRows = {};
 
@@ -113,7 +118,12 @@ class BrowseLibrary extends ChangeNotifier {
   /// runs (the database is already complete). The surface is only shown until
   /// the collection resolves, so the scan is short-lived and its early batches
   /// are what the first frame paints.
-  Future<void> scan() => _scan ??= _scanLibrary();
+  Future<void> scan() {
+    // A disposed index has nothing to fill, and resubscribing would leak a
+    // media store subscription for the rest of the process.
+    if (_disposed) return Future<void>.value();
+    return _scan ??= _scanLibrary();
+  }
 
   /// Stops a scan whose surface is gone (the collection took over).
   ///
@@ -221,11 +231,24 @@ class BrowseLibrary extends ChangeNotifier {
     var added = 0;
     for (final entry in entries) {
       if (entry.trashed) continue;
-      final key = entry.contentId ?? entry.id;
-      if (key != 0 && _indexByKey.containsKey(key)) continue;
+      final contentId = entry.contentId;
+      final usableContentId = contentId != null && contentId > 0 ? contentId : null;
+      // A provider can report the same file with and without an id across
+      // scans, so either identity makes the row known.
+      final known = (usableContentId != null ? _indexByKey[usableContentId] : null) ?? _indexByUri[entry.uri];
+      if (known != null) {
+        // The replay may be the first report that carries the id: learn it, or a
+        // URI that changes later (a remounted volume) would no longer find the
+        // row already indexed under this id.
+        if (usableContentId != null) _indexByKey[usableContentId] = known;
+        continue;
+      }
       final row = BrowseRow.fromEntry(entry);
       final index = _rows.length;
-      if (key != 0) _indexByKey[key] = index;
+      // Both identities are recorded: whichever form a replayed scan reports,
+      // the row it names is already in the index.
+      if (usableContentId != null) _indexByKey[usableContentId] = index;
+      _indexByUri[entry.uri] = index;
       _rows.add(row);
       final directory = row.directory;
       if (directory != null && directory.isNotEmpty) {
@@ -271,9 +294,6 @@ class BrowseLibrary extends ChangeNotifier {
     }
     return entry;
   }
-
-  /// The position of a row by its media store identity, or -1.
-  int indexOfContentId(int contentId) => _indexByKey[contentId] ?? -1;
 
   /// Visible albums, sorted by display name. Hidden albums are filtered here
   /// rather than at insert time, so a preference change applies to what is
@@ -450,6 +470,7 @@ class BrowseLibrary extends ChangeNotifier {
     _total = 0;
     _rows.clear();
     _indexByKey.clear();
+    _indexByUri.clear();
     _albumRows.clear();
     _entries.clear();
     _albums = null;
@@ -465,11 +486,19 @@ class BrowseLibrary extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _scanToken++;
+    _scan = null;
     _notifyTimer?.cancel();
     _notifyTimer = null;
     final subscription = _scanSubscription;
     _scanSubscription = null;
     if (subscription != null) unawaited(subscription.cancel());
+    // The scan loop waits on this future; without completing it, disposing
+    // mid-scan leaves `_scanLibrary` (and everything waiting on it) hung.
+    final done = _scanDone;
+    _scanDone = null;
+    if (done != null && !done.isCompleted) done.complete();
+    _scanning = false;
     super.dispose();
   }
 

@@ -52,21 +52,38 @@ class CatalogProgressNotifier extends ValueNotifier<CatalogProgress?> {
   int _total = 0;
   final List<({DateTime at, int done})> _samples = [];
 
+  /// The drain that owns the current session.
+  ///
+  /// Two workers can overlap for the moment a parked one is winding down while
+  /// the newly active one starts. Only the owner may update or finish the
+  /// session, so the parked drain cannot overwrite the live one and the live
+  /// one's completion cannot be cleared by the stale one.
+  Object? _sessionOwner;
+
   new() : super(null);
 
-  /// Starts a session. [total] is the backlog the session will work through and
-  /// stays fixed for its whole duration; 0 means the size is unknown.
-  void begin({required int total, required DateTime now}) {
+  /// Starts a session and returns its owner token.
+  ///
+  /// [total] is the backlog the session will work through and stays fixed for
+  /// its whole duration; 0 means the size is unknown.
+  Object begin({required int total, required DateTime now}) {
+    final owner = Object();
+    _sessionOwner = owner;
     _startedAt = now;
     _done = 0;
     _total = total;
     _samples.clear();
     value = CatalogProgress(done: 0, total: total, elapsed: Duration.zero);
+    return owner;
   }
 
   /// Reports the session's progress. Neither number moves backwards: a pass
   /// that starts over cannot rewind what the session already achieved.
-  void update({required int done, required int total, required DateTime now}) {
+  ///
+  /// [owner] is checked when given: a drain that was stopped and replaced must
+  /// not write into the session that replaced it.
+  void update({required int done, required int total, required DateTime now, Object? owner}) {
+    if (owner != null && !identical(owner, _sessionOwner)) return;
     final startedAt = _startedAt ??= now;
     final nextTotal = total > _total ? total : _total;
     var nextDone = done > _done ? done : _done;
@@ -86,7 +103,11 @@ class CatalogProgressNotifier extends ValueNotifier<CatalogProgress?> {
   }
 
   /// Clears the session, e.g. when the worker is done and the source goes ready.
-  void finish() {
+  ///
+  /// A stale owner cannot clear the session that replaced it.
+  void finish({Object? owner}) {
+    if (owner != null && !identical(owner, _sessionOwner)) return;
+    _sessionOwner = null;
     _startedAt = null;
     _done = 0;
     _total = 0;

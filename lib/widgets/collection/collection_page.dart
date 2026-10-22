@@ -81,7 +81,11 @@ class _CollectionPageState extends State<CollectionPage> {
     // neither may the bin, which is a drawer page everywhere.
     final routeFilters = (widget.filters ?? const <CollectionFilter?>{}).nonNulls.toSet();
     final declaredFilters = settings.bottomNavigationActions.map((v) => v.filters);
-    if (shouldNoteMediaSet(routeFilters, declaredFilters)) {
+    // A pick is not the media-set view: its filters belong to the caller's
+    // intent, and remembering them would make the bottom bar reopen the picker's
+    // scope after the picker is gone.
+    final picking = context.read<ValueNotifier<AppMode>>().value.isPicking;
+    if (!picking && shouldNoteMediaSet(routeFilters, declaredFilters)) {
       mediaSetTab.note(routeFilters: routeFilters, currentFilters: () => _collection.filters);
     }
     super.initState();

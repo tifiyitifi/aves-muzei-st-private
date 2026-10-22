@@ -128,7 +128,9 @@ void main() {
       if (done()) return;
       await Future<void>.delayed(const Duration(milliseconds: 25));
     }
-    fail('paged lens did not settle (entryCount=${lens.entryCount}, active=${lens.pagedActive}, blocked=${lens.pagedBlocked}, importing=${lens.importingRows}, state=${lens.source.state}, sections=${lens.sections.length}, loaded=${lens.loadedEntries.length})');
+    fail(
+      'paged lens did not settle (entryCount=${lens.entryCount}, active=${lens.pagedActive}, blocked=${lens.pagedBlocked}, importing=${lens.importingRows}, state=${lens.source.state}, sections=${lens.sections.length}, loaded=${lens.loadedEntries.length})',
+    );
   }
 
   /// Reads every row, kicking off fetches like the sliver would, until none
@@ -213,6 +215,64 @@ void main() {
       expect(source.state, isNot(SourceState.loading));
     });
 
+    test('an import that outlives its lens still ends the shared status', () async {
+      final store = mediaStoreService as FakeMediaStoreService;
+      store.entries = {};
+      final controller = StreamController<AvesEntry>();
+      addTearDown(controller.close);
+      store.entriesStream = controller.stream;
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setImportComplete(false);
+      addTearDown(() => collectionPagingPrefs.setImportComplete(true));
+      addTearDown(pagedImportStatus.reset);
+
+      final lens = PagedCollectionLens(source: source, filters: {});
+      for (var id = 1; id <= CollectionPagingPrefs.firstImportBatchSize; id++) {
+        controller.add(entry(id));
+      }
+      await lens.ready;
+      expect(pagedImportStatus.active, isTrue);
+
+      // The scope is evicted while the import is still writing: the status is
+      // the only thing that ends the browse-only phase, so its ending must not
+      // depend on the lens still being alive.
+      lens.dispose();
+      await controller.close();
+      for (var i = 0; i < 200 && pagedImportStatus.active; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+      expect(pagedImportStatus.active, isFalse);
+      expect(collectionPagingPrefs.importComplete, isTrue);
+    });
+
+    test('a run announced before the lens is disposed does not stay active', () async {
+      final store = mediaStoreService as FakeMediaStoreService;
+      store.entries = {};
+      // Hold the resolve after the announcement (the bootstrap and the sync both
+      // read the generation), so the scope can be evicted in that window.
+      store.latency = const Duration(milliseconds: 100);
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setImportComplete(false);
+      addTearDown(() => collectionPagingPrefs.setImportComplete(true));
+      addTearDown(pagedImportStatus.reset);
+
+      final lens = PagedCollectionLens(source: source, filters: {});
+      for (var i = 0; i < 100 && !pagedImportStatus.active; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(pagedImportStatus.active, isTrue, reason: 'the resolve announces the run before it starts it');
+
+      // Between the announcement and `_initialImport` nobody else owns the run:
+      // leaving the status active would report "organizing" for the rest of the
+      // process, with no import behind it.
+      lens.dispose();
+      for (var i = 0; i < 200 && pagedImportStatus.active; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(pagedImportStatus.active, isFalse);
+      expect(store.entryRequestCount, 0, reason: 'the abandoned run must not scan the library');
+    });
+
     test('morphs to legacy below the threshold', () async {
       final service = await drift();
       await service.insertEntries({entry(1), entry(2)});
@@ -249,6 +309,22 @@ void main() {
       expect(loading.initCount, 0);
       expect(lens.pagedActive, isFalse);
       expect(lens.pagedBlocked, isFalse);
+    });
+
+    test('a foreign load that never settles does not pin the resolve', () async {
+      final service = await drift();
+      await service.insertEntries({entry(1)});
+      await collectionPagingPrefs.setLargeThreshold(1);
+      final loading = _LoadingSource()
+        ..canAnalyze = false
+        ..state = SourceState.loading;
+      final lens = PagedCollectionLens(source: loading, filters: {}, inFlightLoadTimeout: const Duration(milliseconds: 50));
+      addTearDown(lens.dispose);
+
+      // The load stays `loading`; the lens gives up on it instead of keeping
+      // `_reloading` and `_ready` pending forever, and serves the database.
+      await settle(lens, done: () => lens.pagedActive);
+      expect(lens.entryCount, 1);
     });
 
     test('pages above the threshold with lazy sections', () async {
@@ -1214,6 +1290,78 @@ void main() {
       await settle(lens, done: () => lens.pagedActive && lens.entryCount == 2);
       expect(collectionPagingPrefs.importComplete, isTrue);
       expect(pagedImportStatus.active, isFalse, reason: 'a complete library must not be scanned again');
+    });
+
+    test('a complete preference cannot hide a reset database', () async {
+      final store = mediaStoreService as FakeMediaStoreService;
+      store.entries = {entry(1), entry(2)};
+      // The database (and its marker) is gone, but the preference still says
+      // complete: the platform's rows are the proof that it is not.
+      await collectionPagingPrefs.setImportComplete(true);
+      await collectionPagingPrefs.setLargeThreshold(1);
+      addTearDown(() => collectionPagingPrefs.setImportComplete(true));
+      addTearDown(pagedImportStatus.reset);
+
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => !lens.importingRows && lens.entryCount == 2);
+      expect(await driftDb.countEntries(), 2);
+      expect(collectionPagingPrefs.importComplete, isTrue);
+    });
+
+    test('a reset database browses again while it is read back', () async {
+      final store = mediaStoreService as FakeMediaStoreService;
+      // The platform count is the proof that the empty database is a reset one:
+      // MediaStore still holds the rows the database lost.
+      final rows = {for (var id = 1; id <= CollectionPagingPrefs.firstImportBatchSize; id++) entry(id)};
+      store.entries = rows;
+      final controller = StreamController<AvesEntry>();
+      addTearDown(controller.close);
+      store.entriesStream = controller.stream;
+      await collectionPagingPrefs.setImportComplete(true);
+      await collectionPagingPrefs.setLargeThreshold(1);
+      addTearDown(() => collectionPagingPrefs.setImportComplete(true));
+      addTearDown(pagedImportStatus.reset);
+      await libraryPhase.init();
+
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      // The first batch is awaited by the lens, so the run is still open when
+      // `ready` resolves and the phase can be read mid-run.
+      for (final row in rows) {
+        controller.add(row);
+      }
+      await lens.ready;
+      expect(lens.importingRows, isTrue);
+      expect(
+        libraryPhase.isBrowsing,
+        isTrue,
+        reason: 'the browser is what explains the empty collection while MediaStore is read again',
+      );
+
+      await controller.close();
+      await settle(lens, done: () => !lens.importingRows && lens.entryCount == rows.length);
+      expect(libraryPhase.isBrowsing, isFalse, reason: 'the run ending hands the collection back');
+    });
+
+    test('a platform count that fails does not read as an empty library', () async {
+      final store = mediaStoreService as FakeMediaStoreService;
+      store.entries = {entry(1), entry(2)};
+      // An empty database under a complete preference is either a reset or a
+      // library that really holds nothing, and only the platform count can tell.
+      // A count it could not answer is not proof of an empty library: reading it
+      // as one presents the reset database as a permanent empty collection.
+      store.countError = StateError('media store went away');
+      addTearDown(() => store.countError = null);
+      await collectionPagingPrefs.setImportComplete(true);
+      await collectionPagingPrefs.setLargeThreshold(1);
+      addTearDown(() => collectionPagingPrefs.setImportComplete(true));
+      addTearDown(pagedImportStatus.reset);
+
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => !lens.importingRows && lens.entryCount == 2);
+      expect(await driftDb.countEntries(), 2);
     });
 
     test('emptying the filters widens the view in one refresh', () async {

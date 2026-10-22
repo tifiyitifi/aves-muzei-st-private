@@ -58,6 +58,16 @@ void main() {
     await expectLater(scan, completes);
   });
 
+  test('a disposed index does not resubscribe to the media store', () async {
+    final store = mediaStoreService as FakeMediaStoreService;
+    store.entries = {};
+
+    final library = BrowseLibrary()..dispose();
+    await library.scan();
+
+    expect(store.entryRequestCount, 0, reason: 'a disposed index has nothing to fill');
+  });
+
   test('the last batch notifies even when it arrived within the notify interval', () async {
     final store = mediaStoreService as FakeMediaStoreService;
     final controller = StreamController<AvesEntry>();

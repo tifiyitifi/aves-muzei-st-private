@@ -73,7 +73,10 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
       final canWrite = appMode.canEditEntry && !settings.isReadOnly && !BrowseOnlyMode.isActive;
       switch (action) {
         case .toggleFavourite:
-          return collection != null;
+          // Favourites are a write too: pause them with the rest while the
+          // import runs, and never store the synthetic identity a browse row
+          // carries (negative ids are not database entries).
+          return canWrite && collection != null && targetEntry.id > 0;
         case .delete:
         case .rename:
         case .move:
@@ -219,7 +222,11 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
           if (!success) showNoMatchingAppDialog(context);
         });
       case .toggleFavourite:
-        targetEntry.toggleFavourite();
+        // `isVisible` already gates this, but a stale menu or a shortcut can
+        // still reach the action: never write a browse row's synthetic id.
+        if (!BrowseOnlyMode.isActive && !settings.isReadOnly && targetEntry.id > 0) {
+          targetEntry.toggleFavourite();
+        }
       // raster
       case .rotateCCW:
         _rotate(context, targetEntry, clockwise: false);

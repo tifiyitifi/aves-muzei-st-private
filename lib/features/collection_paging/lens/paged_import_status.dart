@@ -35,7 +35,12 @@ class PagedImportStatus extends ChangeNotifier {
   }
 
   /// Reports progress. [total] of 0 keeps the previous denominator.
+  ///
+  /// Ignored once the run is over: the platform row count can land after the
+  /// import ended, and writing it back would revive the figures [end] cleared,
+  /// which the next resolve's loading screen would then read as a live run.
   void update(int done, {int total = 0}) {
+    if (!_active) return;
     final nextTotal = total > 0 ? total : _total;
     if (_done == done && _total == nextTotal) return;
     _done = done;

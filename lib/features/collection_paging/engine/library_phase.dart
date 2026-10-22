@@ -45,6 +45,15 @@ class LibraryPhaseController extends ChangeNotifier {
   bool _failed = false;
   Future<void>? _init;
 
+  /// Whether the phase reached [LibraryPhase.ready] and stays there.
+  ///
+  /// Everything that reaches this class after the handover — a late status
+  /// event, a preference write racing it — must not swap the grid for the
+  /// browser again. A database that was emptied under a complete preference is
+  /// the one case that has to start over, and it says so through [reopen], not
+  /// through one of those signals.
+  bool _latched = false;
+
   /// Incremented when the user asks to resume a failed import; the collection
   /// page watches it and re-runs its lens.
   int _retryToken = 0;
@@ -80,6 +89,10 @@ class LibraryPhaseController extends ChangeNotifier {
   void markFailed() {
     if (_failed) return;
     _failed = true;
+    // A failure outranks the handover: a run that broke after the phase already
+    // read `ready` (a preference write racing it) left the grid over a partial
+    // database.
+    _latched = false;
     _recompute();
   }
 
@@ -92,17 +105,33 @@ class LibraryPhaseController extends ChangeNotifier {
     _recompute();
   }
 
+  /// Releases the one-way latch for a database that was emptied under a
+  /// preference that says the library is whole.
+  ///
+  /// The lens owns that evidence (see `PagedCollectionLens._needsImport`): the
+  /// marker is written next to the rows, so a missing marker over an empty
+  /// database means the rows have to be discovered again, and browsing is what
+  /// that looks like. Called while the new run is active, so the phase lands on
+  /// [LibraryPhase.importing] and latches back on [LibraryPhase.ready] when the
+  /// run ends — a reopening without a run leaves the phase where it was.
+  void reopen() {
+    _latched = false;
+    _recompute();
+  }
+
   void _recompute() {
     // One way. Once the library is whole, nothing brings the browser back —
-    // not a late import-status event, not a possibly lost preference. A new
-    // install is a new process (and a new controller), which is the only thing
-    // allowed to start over.
-    if (_phase == LibraryPhase.ready) return;
+    // not a late import-status event, not a possibly lost preference. A reset
+    // database is not one of those signals: only [reopen] releases the latch.
+    if (_latched) return;
     final next = _failed
         ? LibraryPhase.failed
         : _status.active || !_prefs.importComplete
         ? LibraryPhase.importing
         : LibraryPhase.ready;
+    // Latch on the reading, not on the transition: a recompute that finds the
+    // library already whole must lock it just the same.
+    if (next == LibraryPhase.ready) _latched = true;
     if (next == _phase) return;
     _log.i('library phase ${_phase.name} -> ${next.name}');
     _phase = next;

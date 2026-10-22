@@ -18,11 +18,17 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   /// be restarted behind the user's back, and this is how a test proves it.
   int entryRequestCount = 0;
 
+  /// When set, `countEntries` fails instead of answering. The platform count is
+  /// best-effort in the app, and a test needs the "cannot tell" answer it
+  /// produces on a timeout.
+  Object? countError;
+
   void reset() {
     entries = {};
     entriesStream = null;
     latency = null;
     entryRequestCount = 0;
+    countError = null;
   }
 
   @override
@@ -50,7 +56,11 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   }
 
   @override
-  Future<int> countEntries() async => entries.length;
+  Future<int> countEntries() async {
+    final error = countError;
+    if (error != null) throw error;
+    return entries.length;
+  }
 
   static var _lastId = 1;
 

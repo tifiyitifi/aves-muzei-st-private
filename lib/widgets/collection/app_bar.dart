@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/features/collection_paging/view/clear_filter_button.dart';
@@ -103,7 +104,12 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
   bool get showFilterBar => collection.visibleFilters.isNotEmpty;
 
   /// Whether the browse-only strip is part of the app bar right now.
-  bool get _showBrowseOnlyBar => pagedImportStatus.active && collectionPagingPrefs.browseOnlyBar;
+  /// The strip is shown while the first import runs (when the notice setting is
+  /// on), and always when it failed: the retry lives in the strip, and a pick
+  /// keeps the collection surface (no browse page to carry it), so hiding it
+  /// would leave the failure with no way back. The setting only hides the notice
+  /// line, not the status and the retry.
+  bool get _showBrowseOnlyBar => libraryPhase.hasFailed || (pagedImportStatus.active && collectionPagingPrefs.browseOnlyBar);
 
   static const _trashSelectionQuickActions = <EntrySetAction>[
     .delete,
@@ -214,7 +220,7 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
                       // (the first import runs behind it), so the bar rebuilds on
                       // both the import status and the setting that shows it.
                       return ListenableBuilder(
-                        listenable: Listenable.merge([pagedImportStatus, collectionPagingPrefs]),
+                        listenable: Listenable.merge([pagedImportStatus, collectionPagingPrefs, libraryPhase]),
                         builder: (context, child) => AvesAppBar(
                           contentHeight: _getAppBarContentHeight(context),
                           pinned: context.select<Selection<AvesEntry>, bool>((selection) => selection.isSelecting),
@@ -226,7 +232,7 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
                           actions: (context, maxWidth) => useTvLayout ? [] : _buildActions(context, selection, maxWidth),
                           bottom: Column(
                             children: [
-                              if (_showBrowseOnlyBar) const BrowseOnlyNoticeBar(),
+                              if (_showBrowseOnlyBar) BrowseOnlyNoticeBar(showNotice: collectionPagingPrefs.browseOnlyBar),
                               if (useTvLayout)
                                 SizedBox(
                                   height: CaptionedButton.getTelevisionButtonHeight(context),

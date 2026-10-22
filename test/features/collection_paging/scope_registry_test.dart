@@ -245,6 +245,32 @@ void main() {
       expect(adopted.pagedActive, isTrue);
     });
 
+    test('prewarming from a mounted album keeps the prewarmed lens', () async {
+      await driftDb.insertEntries({entry(1, dir: '/a'), entry(2, dir: '/b')});
+      final home = scopeRegistry.acquire(source: source, filters: scopeOf(null));
+      await home.ready;
+      scopeRegistry.release(home);
+      final first = scopeRegistry.acquire(source: source, filters: scopeOf('/a'));
+      await first.ready;
+
+      // The first album's page is still mounted when the next one is tapped:
+      // home is pinned and the current page is still in use, so the new view is
+      // the only eviction candidate. It must not be dropped before its page
+      // adopts it.
+      final prewarmed = scopeRegistry.prewarm(source: source, filters: scopeOf('/b'));
+      expect(prewarmed, isNotNull);
+      expect(prewarmed!.lensAlive, isTrue);
+
+      final second = scopeRegistry.acquire(source: source, filters: scopeOf('/b'));
+      expect(identical(second, prewarmed), isTrue);
+      expect(second.lensAlive, isTrue);
+
+      // The route transition releases the old page after the new one mounts.
+      scopeRegistry.release(first);
+      expect(first.lensAlive, isFalse, reason: 'the album that was left is discarded');
+      expect(scopeRegistry.scopeCount, 2);
+    });
+
     test('a settled library resolves on the first visit instead of waiting on itself', () async {
       await driftDb.insertEntries({entry(1), entry(2), entry(3, dir: '/b')});
       // Everything catalogued, as it is on a device that has used the app for a

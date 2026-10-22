@@ -113,6 +113,20 @@ void main() {
       prefs.dispose();
     });
 
+    test('records completion in memory before touching the preference store', () async {
+      await clearKeys();
+      final prefs = CollectionPagingPrefs();
+      await prefs.init();
+      final write = prefs.setImportComplete(true);
+      // The import's re-resolve reads the flag synchronously, so it must not
+      // wait on the platform preference store (the database marker covers a
+      // write lost with the process).
+      expect(prefs.importComplete, isTrue);
+      await write;
+      expect(prefs.importComplete, isTrue);
+      prefs.dispose();
+    });
+
     test('notifies listeners only on actual change', () async {
       await clearKeys();
       final prefs = CollectionPagingPrefs();

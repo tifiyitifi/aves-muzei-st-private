@@ -45,6 +45,10 @@ class PagedCatalogWorker {
   bool _pendingScopedOnly = false;
   CollectionWindowPredicate? _pendingScope;
 
+  /// The global progress session this drain owns, if it started one while it
+  /// was the visible view.
+  Object? _progressOwner;
+
   /// Whether the view that owns this worker is the one on screen.
   ///
   /// A parked scope must not drive the library-wide state: its drain can still
@@ -161,6 +165,10 @@ class PagedCatalogWorker {
   /// already running.
   Future<int> _drain(int chunkSize) async {
     if (_draining) return 0;
+    // A worker that was stopped may be handed a new request (the analyzer
+    // creates one per run; a caller may reuse a worker): clear the latch here,
+    // or the new drain would exit on its first check.
+    _stopRequested = false;
     _draining = true;
     _drainDone = Completer<void>();
     var catalogued = 0;
@@ -191,7 +199,12 @@ class PagedCatalogWorker {
       // makes the next "loading" screen show a stale figure that looks like the
       // library is being imported again.
       _setProgress(done: 0, total: 0);
-      if (isActive()) catalogProgressNotifier.finish();
+      // Clearing is not gated on `isActive()`: a parked drain still owns the
+      // session it began, and leaving the value behind would show its stale
+      // clock on the next page. The owner token keeps a newer session intact.
+      final owner = _progressOwner;
+      _progressOwner = null;
+      if (owner != null) catalogProgressNotifier.finish(owner: owner);
       _sessionTotal = 0;
       _sessionDone = 0;
       _sessionStarted = false;
@@ -223,7 +236,9 @@ class PagedCatalogWorker {
     }
     _sessionTotal = total;
     _sessionDone = 0;
-    catalogProgressNotifier.begin(total: total, now: DateTime.now());
+    // Only the view on screen drives the app bar; a parked drain still runs for
+    // its own rows, but its clock belongs to nobody.
+    if (isActive()) _progressOwner = catalogProgressNotifier.begin(total: total, now: DateTime.now());
     if (total > 0) _reportSession();
   }
 
@@ -233,7 +248,10 @@ class PagedCatalogWorker {
     final total = _sessionTotal;
     final done = total > 0 && _sessionDone > total ? total : _sessionDone;
     _setProgress(done: done, total: total);
-    catalogProgressNotifier.update(done: done, total: total, now: DateTime.now());
+    final owner = _progressOwner;
+    if (owner != null && isActive()) {
+      catalogProgressNotifier.update(owner: owner, done: done, total: total, now: DateTime.now());
+    }
   }
 
   /// Absorbs work that other owners did, so the counter does not stall while the

@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/l10n/l10n.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -56,6 +57,10 @@ void main() {
 
   testWidgets('offers a retry once a wait with nothing countable behind it drags on', (tester) async {
     final source = MediaStoreSource()..canAnalyze = false;
+    // The wait under test is the one with no import behind it: mark the library
+    // complete so mounting the lens does not start one.
+    await collectionPagingPrefs.init();
+    await collectionPagingPrefs.setImportComplete(true);
     final lens = PagedCollectionLens(source: source, filters: {});
     addTearDown(lens.dispose);
 

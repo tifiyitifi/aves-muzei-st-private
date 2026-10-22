@@ -73,6 +73,48 @@ void main() {
     expect(library.rowAt(0).id, 1);
   });
 
+  test('de-duplicates re-streamed rows without a usable content id', () {
+    // The scan gives such a row neither a content id nor a database id: only
+    // the URI identifies it, and keying by 0 would append it on every replay.
+    final withoutId = entry(1)
+      ..id = 0
+      ..contentId = null;
+    final zeroId1 = entry(2)
+      ..id = 0
+      ..contentId = 0;
+    final zeroId2 = entry(3)
+      ..id = 0
+      ..contentId = 0;
+
+    library.addEntries([withoutId, zeroId1, zeroId2]);
+    library.addEntries([withoutId, zeroId1, zeroId2]);
+
+    expect(library.length, 3);
+  });
+
+  test('de-duplicates a row that changes identity between scans', () {
+    // A provider can report the same file with an id on one scan and without one
+    // on the next: either identity must find the row already indexed.
+    library.addEntries([entry(1)]);
+    library.addEntries([entry(1)..contentId = null]);
+    expect(library.length, 1);
+
+    library.clear();
+    library.addEntries([entry(1)..contentId = null]);
+    library.addEntries([entry(1)]);
+    expect(library.length, 1);
+  });
+
+  test('learns the content id a row was first indexed without', () {
+    // The replay can be the first report that carries the id. It has to be
+    // learned, not just used for the lookup: a remounted volume can change the
+    // URI, and the id is then the only thing that still names this row.
+    library.addEntries([entry(1)..contentId = null]);
+    library.addEntries([entry(1)]);
+    library.addEntries([entry(1)..uri = 'content://remounted/101']);
+    expect(library.length, 1);
+  });
+
   test('hides rows of hidden albums from the media grid too', () async {
     library.addEntries([entry(1, dir: '/visible'), entry(2, dir: '/hidden')]);
     final previous = settings.hiddenFilters;

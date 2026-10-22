@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
@@ -176,6 +178,110 @@ void main() {
       expect(await discoverer.importAll(onProgress: (_) {}), 0);
       expect(await driftDb.countEntries(), 2);
     });
+
+    test('keeps the newest of repeated rows in one batch', () async {
+      // Rows are streamed newest first, but a provider can repeat one. The
+      // identity must keep the newest report, not the last one the map saw.
+      final newest = entry(1)..dateModifiedMillis = 20;
+      final older = entry(2)
+        ..contentId = newest.contentId
+        ..uri = newest.uri
+        ..dateModifiedMillis = 10;
+      final store = _ScriptedMediaStore()..entries = {newest, older};
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+
+      expect(await discoverer.importAll(onProgress: (_) {}), 1);
+      expect(await driftDb.countEntries(), 1);
+      final stored = (await driftDb.loadEntriesByContentIds({newest.contentId!})).single;
+      expect(stored.path, newest.path, reason: 'the older duplicate must not win');
+      expect(stored.dateModifiedMillis, 20);
+    });
+
+    test('merges a file repeated in one batch under both identities', () async {
+      // A repeated row can arrive once with a content id and once without. Keyed
+      // separately by id and by URI, the two reports each reached the insert, and
+      // nothing in the schema stops two rows for one file.
+      final withId = entry(1)..dateModifiedMillis = 20;
+      final withoutId = entry(2)
+        ..contentId = null
+        ..uri = withId.uri
+        ..dateModifiedMillis = 10;
+      final store = _ScriptedMediaStore()..entries = {withId, withoutId};
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+
+      expect(await discoverer.importAll(onProgress: (_) {}), 1);
+      expect(await driftDb.countEntries(), 1);
+      final stored = (await driftDb.loadEntriesByUris({withId.uri})).single;
+      expect(stored.contentId, withId.contentId);
+      expect(stored.dateModifiedMillis, 20);
+    });
+
+    test('keeps the id when the report without one wins the merge', () async {
+      // The newer report is the one without an id: it wins, but the id the other
+      // report carried has to survive with it, or the stored row loses the
+      // identity the change sync keys on.
+      final withId = entry(1)..dateModifiedMillis = 10;
+      final newerWithoutId = entry(2)
+        ..contentId = null
+        ..uri = withId.uri
+        ..dateModifiedMillis = 20;
+      final store = _ScriptedMediaStore()..entries = {withId, newerWithoutId};
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+
+      expect(await discoverer.importAll(onProgress: (_) {}), 1);
+      final stored = (await driftDb.loadEntriesByUris({withId.uri})).single;
+      expect(stored.dateModifiedMillis, 20);
+      expect(stored.contentId, withId.contentId, reason: 'the winning report inherits the identity');
+    });
+
+    test('keeps the content id a stored row already had', () async {
+      // The provider reports the same URI without an id on a later pass. URI
+      // matching is a fallback, not a reason to forget the identity the row
+      // already has: losing it would make a legacy refresh insert the file
+      // again under a second row.
+      final stored = entry(1);
+      await driftDb.insertEntries({stored});
+      final replayed = entry(1)
+        ..contentId = null
+        ..dateModifiedMillis = 10;
+      final store = _ScriptedMediaStore()..entries = {replayed};
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+
+      expect(await discoverer.importAll(onProgress: (_) {}), 1);
+      expect(await driftDb.countEntries(), 1);
+      final row = (await driftDb.loadEntriesByUris({stored.uri})).single;
+      expect(row.contentId, stored.contentId, reason: 'uri matching must not degrade the stored identity');
+    });
+
+    test('fails instead of hanging when the media store stream goes silent', () async {
+      final controller = StreamController<AvesEntry>();
+      addTearDown(controller.close);
+      final store = _ScriptedMediaStore()..entriesStream = controller.stream;
+      final discoverer = PagedDiscoverer(
+        mediaStore: store,
+        database: driftDb,
+        streamIdleTimeout: const Duration(milliseconds: 20),
+      );
+
+      await expectLater(
+        discoverer.importAll(onProgress: (_) {}),
+        throwsA(isA<TimeoutException>()),
+      );
+    });
+
+    test('imports rows that all report a zero content id', () async {
+      // A provider with no ids hands back 0 for every row: keying the batch by
+      // content id would collapse them into one and lose the rest.
+      final store = _ScriptedMediaStore()
+        ..entries = {
+          entry(1)..contentId = 0,
+          entry(2)..contentId = 0,
+        };
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+
+      expect(await discoverer.importAll(onProgress: (_) {}), 2);
+      expect(await driftDb.countEntries(), 2);
+    });
   });
 
   group('PagedDiscoverer.syncIfChanged', () {
@@ -237,18 +343,129 @@ void main() {
         ..generation = {'primary': 8}
         ..changedUris = ['content://media/external/images/media/101']
         ..obsoleteContentIds = [101];
-      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb, catalogEntry: (_) async {})
-        ..lastGeneration = {'primary': 7};
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
       expect(await discoverer.syncIfChanged(), 1);
       expect(await driftDb.countEntries(), 0);
+    });
+
+    test('updates a changed row without a content id by URI instead of inserting it again', () async {
+      final known = entry(1)..contentId = null;
+      await driftDb.insertEntries({known});
+      final changed = entry(1)
+        ..contentId = null
+        ..dateModifiedMillis = 10;
+      final store = _ScriptedMediaStore()
+        ..generation = {'primary': 8}
+        ..changedUris = [changed.uri];
+      final fetch = FakeMediaFetchService()..entries = {changed};
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: fetch, database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
+
+      expect(await discoverer.syncIfChanged(), 1);
+      expect(await driftDb.countEntries(), 1);
+      expect((await driftDb.loadEntriesByUris({changed.uri})).single.dateModifiedMillis, 10);
+    });
+
+    test('removes an obsolete row that was stored without a content id', () async {
+      final known = entry(1)..contentId = null;
+      await driftDb.insertEntries({known});
+      final store = _ScriptedMediaStore()
+        ..generation = {'primary': 8}
+        ..changedUris = [known.uri]
+        ..obsoleteContentIds = [101];
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
+
+      expect(await discoverer.syncIfChanged(), 1);
+      expect(await driftDb.countEntries(), 0);
+    });
+
+    test('treats a zero content id as absent', () async {
+      final known = entry(1)..contentId = 0;
+      await driftDb.insertEntries({known});
+      final changed = entry(1)
+        ..contentId = 0
+        ..dateModifiedMillis = 10;
+      final store = _ScriptedMediaStore()
+        ..generation = {'primary': 8}
+        ..changedUris = [changed.uri];
+      final fetch = FakeMediaFetchService()..entries = {changed};
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: fetch, database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
+
+      expect(await discoverer.syncIfChanged(), 1);
+      expect(await driftDb.countEntries(), 1);
+    });
+
+    test('checks obsolescence once for the whole change set', () async {
+      // The check scans the whole media store: a bulk delete must not cost one
+      // full scan per deleted file.
+      final one = entry(1), two = entry(2);
+      await driftDb.insertEntries({one, two});
+      final store = _ScriptedMediaStore()
+        ..generation = {'primary': 8}
+        ..changedUris = [one.uri, two.uri]
+        ..obsoleteContentIds = [101, 102];
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
+
+      expect(await discoverer.syncIfChanged(), 2);
+      expect(await driftDb.countEntries(), 0);
+      expect(store.obsoleteCheckCount, 1, reason: 'one platform scan for the whole change set');
+    });
+
+    test('removes a row whose id was handed to another file', () async {
+      // Ids are not reuse-proof. The row was stored without a content id, and
+      // its URI's id is live again for a different file: the path is what says
+      // the stored row is the one that went away.
+      final known = entry(1)..contentId = null;
+      await driftDb.insertEntries({known});
+      final store = _ScriptedMediaStore()
+        ..generation = {'primary': 8}
+        ..changedUris = [known.uri]
+        ..obsoleteContentIds = const []
+        ..obsoletePaths = [101];
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
+
+      expect(await discoverer.syncIfChanged(), 1);
+      expect(await driftDb.countEntries(), 0);
+      expect(store.pathCheckCount, 1);
+    });
+
+    test('keeps a row whose live id still names the same file', () async {
+      // `getEntry` can fail transiently while the file is there: the obsolete
+      // check is the guard against deleting a live row over a bad read.
+      final known = entry(1)..contentId = null;
+      await driftDb.insertEntries({known});
+      final store = _ScriptedMediaStore()
+        ..generation = {'primary': 8}
+        ..changedUris = [known.uri]
+        ..obsoleteContentIds = const []
+        ..obsoletePaths = const [];
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
+
+      expect(await discoverer.syncIfChanged(), 0);
+      expect(await driftDb.countEntries(), 1);
+    });
+
+    test('keeps the content id a row already had when the provider stops reporting it', () async {
+      final known = entry(1);
+      await driftDb.insertEntries({known});
+      final changed = entry(1)
+        ..contentId = null
+        ..dateModifiedMillis = 10;
+      final store = _ScriptedMediaStore()
+        ..generation = {'primary': 8}
+        ..changedUris = [known.uri];
+      final fetch = FakeMediaFetchService()..entries = {changed};
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: fetch, database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
+
+      expect(await discoverer.syncIfChanged(), 1);
+      final row = (await driftDb.loadEntriesByUris({known.uri})).single;
+      expect(row.contentId, known.contentId, reason: 'uri matching must not degrade the stored identity');
     });
 
     test('ignores unresolvable changes', () async {
       final store = _ScriptedMediaStore()
         ..generation = {'primary': 8}
         ..changedUris = ['content://media/external/images/media/999'];
-      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb, catalogEntry: (_) async {})
-        ..lastGeneration = {'primary': 7};
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: FakeMediaFetchService(), database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
       expect(await discoverer.syncIfChanged(), 0);
       expect(await driftDb.countEntries(), 0);
     });
@@ -281,6 +498,17 @@ class _ScriptedMediaStore extends Fake implements MediaStoreService {
   List<String> changedUris = const [];
   List<int> obsoleteContentIds = const [];
 
+  /// Ids the platform still carries but under another path, as
+  /// `checkObsoletePaths` reports them (a reused id).
+  List<int> obsoletePaths = const [];
+
+  int obsoleteCheckCount = 0;
+  int pathCheckCount = 0;
+
+  /// When set, `getEntries` streams this instead of [entries], so a test can
+  /// keep the stream open (or dead) and observe the import behavior.
+  Stream<AvesEntry>? entriesStream;
+
   @override
   Future<Map<String, int>?> getGenerationByVolume() async => generation;
 
@@ -288,10 +516,19 @@ class _ScriptedMediaStore extends Fake implements MediaStoreService {
   Future<List<String>> getChangedUris(Map<String, int?> sinceGenerationByVolume) async => changedUris;
 
   @override
-  Future<List<int>> checkObsoleteContentIds(List<int?> knownContentIds) async => obsoleteContentIds;
+  Future<List<int>> checkObsoleteContentIds(List<int?> knownContentIds) async {
+    obsoleteCheckCount++;
+    return obsoleteContentIds;
+  }
 
   @override
-  Stream<AvesEntry> getEntries(Map<int?, int?> knownEntries, {String? directory}) => Stream.fromIterable(entries);
+  Future<List<int>> checkObsoletePaths(Map<int?, String?> knownPathById) async {
+    pathCheckCount++;
+    return obsoletePaths;
+  }
+
+  @override
+  Stream<AvesEntry> getEntries(Map<int?, int?> knownEntries, {String? directory}) => entriesStream ?? Stream.fromIterable(entries);
 
   @override
   Future<int> countEntries() async => entries.length;

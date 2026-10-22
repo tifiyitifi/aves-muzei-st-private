@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:aves/features/browse_only/model/browse_grid_items.dart';
 import 'package:aves/features/browse_only/services/browse_library.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
@@ -18,6 +19,14 @@ import 'package:aves/widgets/common/thumbnail/decorated.dart';
 import 'package:aves/widgets/viewer/entry_viewer_page.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
+
+/// The height of a month header, and the gap between tiles.
+const double _headerExtent = 32;
+const double _tileSpacing = 1;
+const double _bottomPadding = 8;
+
+/// Builds the tile at a position of the displayed order.
+typedef BrowseTileBuilder = Widget Function(BuildContext context, int position);
 
 /// The media grid of the browse-only surface: a timeline of months, or a flat
 /// grid when the order is not chronological.
@@ -40,29 +49,48 @@ class BrowseMediaGrid extends StatefulWidget {
   /// Shown when there is nothing to render.
   final String? emptyText;
 
+  /// Builds one tile, by default the browse surface's own thumbnail tile.
+  ///
+  /// A caller that only cares about the layout (this grid's own tests do) can
+  /// pass a cheaper tile instead of standing up the image pipeline.
+  final BrowseTileBuilder? tileBuilder;
+
   const new({
     super.key,
     required this.library,
     required this.indexes,
     this.sectioned = true,
     this.emptyText,
+    this.tileBuilder,
   });
 
   @override
   State<BrowseMediaGrid> createState() => _BrowseMediaGridState();
 }
 
-/// A month's slice of the displayed order, as positions (not row indexes), so
-/// the grid can build a tile without translating back through the sort.
-class _SectionRange {
-  final int year, month, start, count;
+/// The header above a month's rows.
+///
+/// It is an ordinary item of the list, not a pinned sliver (see
+/// [browseGridItems] for why).
+class BrowseMonthHeader extends StatelessWidget {
+  final int year, month;
 
-  const new({
-    required this.year,
-    required this.month,
-    required this.start,
-    required this.count,
-  });
+  const new({super.key, required this.year, required this.month});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      height: _headerExtent,
+      color: theme.colorScheme.surface,
+      padding: const EdgeInsetsDirectional.only(start: 16),
+      alignment: AlignmentDirectional.centerStart,
+      child: Text(
+        settings.avesLocale.yMMMM(DateTime(year, month)),
+        style: theme.textTheme.titleSmall,
+      ),
+    );
+  }
 }
 
 class _BrowseMediaGridState extends State<BrowseMediaGrid> {
@@ -70,8 +98,9 @@ class _BrowseMediaGridState extends State<BrowseMediaGrid> {
   /// screens, so the rows are there before the user reaches them.
   static const double _pagingThreshold = 1200;
 
-  List<_SectionRange>? _sections;
-  List<int>? _sectionsFor;
+  List<BrowseGridItem>? _items;
+  List<int>? _itemsFor;
+  int _itemsColumns = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -79,16 +108,21 @@ class _BrowseMediaGridState extends State<BrowseMediaGrid> {
       listenable: widget.library,
       builder: (context, child) {
         if (widget.indexes.isEmpty) return _buildEmpty(context);
-        if (widget.sectioned) {
-          // Sections are derived from the same list instance the library
-          // returns for a given order, so identity is a safe cache key.
-          if (!identical(_sectionsFor, widget.indexes)) {
-            _sections = _sectionsOf(widget.library, widget.indexes);
-            _sectionsFor = widget.indexes;
-          }
-          return _buildSectionedGrid(context, _sections!);
-        }
-        return _buildFlatGrid(context);
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final extent = _tileExtent(constraints.maxWidth);
+            final columns = (constraints.maxWidth / extent).round().clamp(2, 12);
+            // Tiles share a row exactly, so the last column reaches the edge at
+            // every column count instead of leaving the remainder to chance.
+            final tileExtent = (constraints.maxWidth - (columns - 1) * _tileSpacing) / columns;
+            return GridTheme(
+              extent: tileExtent,
+              child: _withPaging(
+                widget.sectioned ? _buildSectionedGrid(context, columns, tileExtent) : _buildFlatGrid(context, columns, tileExtent),
+              ),
+            );
+          },
+        );
       },
     );
   }
@@ -98,80 +132,88 @@ class _BrowseMediaGridState extends State<BrowseMediaGrid> {
     // A view with no rows can read as "nothing here" or as "not imported yet":
     // while the library is still being organized the second is the truth, even
     // for a narrowed view (videos) that has a text of its own.
-    text: libraryPhase.isBrowsing && pagedImportStatus.active
-        ? context.l10n.sourceStateImporting
-        : widget.emptyText ?? context.l10n.browseOnlyEmptyLibrary,
+    text: libraryPhase.isBrowsing && pagedImportStatus.active ? context.l10n.sourceStateImporting : widget.emptyText ?? context.l10n.browseOnlyEmptyLibrary,
   );
 
-  Widget _buildSectionedGrid(BuildContext context, List<_SectionRange> sections) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final extent = _tileExtent(constraints.maxWidth);
-        final columns = (constraints.maxWidth / extent).round().clamp(2, 12);
-        return GridTheme(
-          extent: extent,
-          child: _withPaging(
-            CustomScrollView(
-              primary: false,
-              slivers: [
-                for (final section in sections) ...[
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _MonthHeaderDelegate(section: section),
-                  ),
-                  SliverGrid(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: columns,
-                      mainAxisSpacing: 1,
-                      crossAxisSpacing: 1,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, offset) => _BrowseTile(
-                        library: widget.library,
-                        order: widget.indexes,
-                        position: section.start + offset,
-                      ),
-                      childCount: section.count,
-                    ),
-                  ),
-                ],
-                const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              ],
-            ),
+  /// The sectioned grid is one list: a month header, then the rows of tiles
+  /// under it, then the next month.
+  ///
+  /// One sliver, not one sliver per section: the sections are consecutive rows
+  /// of the same order, so a single list is also the cheaper way to lay them
+  /// out (a grid per section builds the beginning of each one offscreen, cf.
+  /// `SectionedListSliver`).
+  Widget _buildSectionedGrid(BuildContext context, int columns, double tileExtent) {
+    // The items are derived from the same list instance the library returns for
+    // a given order, so identity is a safe cache key.
+    if (!identical(_itemsFor, widget.indexes) || _itemsColumns != columns) {
+      _items = browseGridItems(widget.library, widget.indexes, columns: columns);
+      _itemsFor = widget.indexes;
+      _itemsColumns = columns;
+    }
+    final items = _items!;
+    return CustomScrollView(
+      primary: false,
+      slivers: [
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) => switch (items[index]) {
+              BrowseMonthItem(:final year, :final month) => BrowseMonthHeader(year: year, month: month),
+              BrowseRowItem(:final start, :final count) => _buildRow(context, tileExtent, start, count),
+            },
+            childCount: items.length,
           ),
-        );
-      },
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: _bottomPadding)),
+      ],
     );
   }
 
-  Widget _buildFlatGrid(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final extent = _tileExtent(constraints.maxWidth);
-        final columns = (constraints.maxWidth / extent).round().clamp(2, 12);
-        return GridTheme(
-          extent: extent,
-          child: _withPaging(
-            GridView.builder(
-              primary: false,
-              padding: const EdgeInsets.only(bottom: 8),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: columns,
-                mainAxisSpacing: 1,
-                crossAxisSpacing: 1,
-              ),
-              itemCount: widget.indexes.length,
-              itemBuilder: (context, position) => _BrowseTile(
-                library: widget.library,
-                order: widget.indexes,
-                position: position,
+  /// One row of tiles.
+  ///
+  /// The tiles are sized explicitly rather than spread over the row, so a short
+  /// last row keeps the size of the rows above it instead of stretching. The
+  /// slots are flexible so a row can never overflow by a rounding error.
+  Widget _buildRow(BuildContext context, double tileExtent, int start, int count) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: _tileSpacing),
+      child: Row(
+        children: [
+          for (var i = 0; i < count; i++) ...[
+            if (i > 0) const SizedBox(width: _tileSpacing),
+            Flexible(
+              child: SizedBox(
+                width: tileExtent,
+                height: tileExtent,
+                child: _buildTile(context, start + i),
               ),
             ),
-          ),
-        );
-      },
+          ],
+        ],
+      ),
     );
   }
+
+  Widget _buildFlatGrid(BuildContext context, int columns, double tileExtent) {
+    return GridView.builder(
+      primary: false,
+      padding: const EdgeInsets.only(bottom: _bottomPadding),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columns,
+        mainAxisSpacing: _tileSpacing,
+        crossAxisSpacing: _tileSpacing,
+      ),
+      itemCount: widget.indexes.length,
+      itemBuilder: _buildTile,
+    );
+  }
+
+  Widget _buildTile(BuildContext context, int position) =>
+      widget.tileBuilder?.call(context, position) ??
+      _BrowseTile(
+        library: widget.library,
+        order: widget.indexes,
+        position: position,
+      );
 
   /// Asks for the next page when the grid comes near its end.
   ///
@@ -190,65 +232,12 @@ class _BrowseMediaGridState extends State<BrowseMediaGrid> {
     );
   }
 
-  /// Splits the order into consecutive month runs. Chronological order makes
-  /// each run contiguous, so a section is a start position plus a length.
-  static List<_SectionRange> _sectionsOf(BrowseLibrary library, List<int> order) {
-    final ranges = <_SectionRange>[];
-    int? year, month;
-    var start = 0;
-    for (var position = 0; position < order.length; position++) {
-      final date = DateTime.fromMillisecondsSinceEpoch(library.rowAt(order[position]).bestDateMillis);
-      if (date.year != year || date.month != month) {
-        if (position > 0) {
-          ranges.add(_SectionRange(year: year!, month: month!, start: start, count: position - start));
-        }
-        year = date.year;
-        month = date.month;
-        start = position;
-      }
-    }
-    if (order.isNotEmpty) {
-      ranges.add(_SectionRange(year: year!, month: month!, start: start, count: order.length - start));
-    }
-    return ranges;
-  }
-
   /// The tile size the collection grid would use, so both surfaces read the
   /// same way. Falls back to four columns on a phone.
   static double _tileExtent(double width) {
     final configured = settings.getTileExtent(CollectionPage.routeName);
     return configured > 0 ? configured : width / 4;
   }
-}
-
-class _MonthHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final _SectionRange section;
-
-  const new({required this.section});
-
-  @override
-  double get minExtent => 32;
-
-  @override
-  double get maxExtent => 32;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    final theme = Theme.of(context);
-    return Container(
-      color: theme.colorScheme.surface,
-      padding: const EdgeInsetsDirectional.only(start: 16),
-      alignment: AlignmentDirectional.centerStart,
-      child: Text(
-        settings.avesLocale.yMMMM(DateTime(section.year, section.month)),
-        style: theme.textTheme.titleSmall,
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _MonthHeaderDelegate oldDelegate) =>
-      oldDelegate.section.year != section.year || oldDelegate.section.month != section.month;
 }
 
 class _BrowseTile extends StatelessWidget {

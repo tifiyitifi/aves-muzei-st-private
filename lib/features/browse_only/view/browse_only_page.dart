@@ -6,7 +6,6 @@ import 'package:aves/features/browse_only/view/browse_albums_view.dart';
 import 'package:aves/features/browse_only/view/browse_bottom_bar.dart';
 import 'package:aves/features/browse_only/view/browse_media_grid.dart';
 import 'package:aves/features/browse_only/view/browse_sort_button.dart';
-import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/icons.dart';
@@ -49,15 +48,6 @@ class _BrowseOnlyPageState extends State<BrowseOnlyPage> {
     // time.
     unawaited(browseLibrary.loadFirstPage());
     unawaited(browsePrefs.init());
-  }
-
-  @override
-  void dispose() {
-    // The browser retires with the wait it covered. Once the phase is ready
-    // nothing can navigate back here, so the window can go immediately; while
-    // the wait is still on, the rows stay for the page that comes back to them.
-    if (libraryPhase.isReady) browseLibrary.clear();
-    super.dispose();
   }
 
   @override

@@ -144,6 +144,25 @@ void main() {
     expect(names(BrowseAlbumSort.count, reverse: true), ['apple', 'mango', 'zebra']);
   });
 
+  test('a failed read can be retried', () async {
+    store.albumError = StateError('media store went away');
+
+    final albums = BrowseAlbums();
+    addTearDown(albums.dispose);
+    await albums.load();
+    expect(albums.error, isNotNull);
+
+    store.albumError = null;
+    store.albumSummaries = [
+      MediaStoreAlbumSummary(directory: '/dcim/Camera', count: 2, sizeBytes: 10, cover: entry('/dcim/Camera', 'a', dateTaken: millis(2024, 3))),
+    ];
+    await albums.load();
+
+    expect(albums.error, isNull, reason: 'the error clears when the read is asked for again');
+    expect(albums.albums.map((v) => v.directory), ['/dcim/Camera']);
+    expect(store.albumSummaryRequestCount, 2);
+  });
+
   test('a failed read leaves the list empty and reports the error', () async {
     store.albumError = StateError('media store went away');
 

@@ -4,6 +4,7 @@ import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/trash.dart';
 import 'package:aves/widgets/about/about_page.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
+import 'package:aves/widgets/common/search/page.dart';
 import 'package:aves/widgets/debug/app_debug_page.dart';
 import 'package:aves/widgets/explorer/explorer_page.dart';
 import 'package:aves/widgets/filter_grids/albums_page.dart';
@@ -40,12 +41,14 @@ void main() {
     expect(browseDrawerEntryEnabled(browsing: true, route: CollectionPage.routeName, filters: {MimeFilter.video}), isFalse);
     expect(browseDrawerEntryEnabled(browsing: true, route: CollectionPage.routeName, filters: {FavouriteFilter.instance}), isFalse);
     expect(browseDrawerEntryEnabled(browsing: true, route: CollectionPage.routeName, filters: {TrashFilter.instance}), isFalse);
-    for (final route in [CountryListPage.routeName, PlaceListPage.routeName, TagListPage.routeName]) {
+    for (final route in [CountryListPage.routeName, PlaceListPage.routeName, TagListPage.routeName, SearchPage.routeName]) {
       expect(browseDrawerEntryEnabled(browsing: true, route: route), isFalse, reason: route);
     }
   });
 
-  test('an unknown destination is left alone', () {
-    expect(browseDrawerEntryEnabled(browsing: true, route: '/some-future-page'), isTrue);
+  test('a destination the whitelist does not know is greyed', () {
+    // A whitelist fails closed: a page added later cannot open a half-written
+    // library until someone decides that it can.
+    expect(browseDrawerEntryEnabled(browsing: true, route: '/some-future-page'), isFalse);
   });
 }

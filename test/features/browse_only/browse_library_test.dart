@@ -1,3 +1,4 @@
+import 'package:aves/features/browse_only/model/browse_row.dart';
 import 'package:aves/features/browse_only/services/browse_library.dart';
 import 'package:aves/features/browse_only/services/browse_prefs.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -58,6 +59,24 @@ void main() {
 
   int millis(int year, int month, [int day = 15]) => DateTime.utc(year, month, day).millisecondsSinceEpoch;
 
+  test('the sort date falls back the way the SQL expression does', () {
+    final image = entry(1);
+    // A present-but-zero capture date wins, as COALESCE does: 1970 is a date,
+    // not a missing one.
+    image.sourceDateTakenMillis = 0;
+    image.dateModifiedMillis = 5000;
+    expect(BrowseRow.fromEntry(image).bestDateMillis, 0);
+
+    image.sourceDateTakenMillis = null;
+    expect(BrowseRow.fromEntry(image).bestDateMillis, 5000);
+
+    // A null modified date must not read as 0, which would stop the fallback
+    // before the added date the platform sorted by.
+    image.dateModifiedMillis = null;
+    image.dateAddedSecs = 7;
+    expect(BrowseRow.fromEntry(image).bestDateMillis, 7000);
+  });
+
   test('keeps arrival order and ignores rows a page repeats', () {
     library.addEntries([entry(1, dateTaken: millis(2024, 3)), entry(2, dateTaken: millis(2024, 2))]);
     // A page boundary can overlap what is already indexed.
@@ -65,6 +84,19 @@ void main() {
 
     expect(library.length, 3);
     expect([for (var i = 0; i < library.length; i++) library.rowAt(i).id], [1, 2, 3]);
+  });
+
+  test('two collections sharing a content id are two rows', () {
+    // Images and videos live in separate tables and number their rows
+    // independently, so the same content id is not the same row.
+    final image = entry(1);
+    final video = entry(2, mime: 'video/mp4');
+    image.contentId = 7;
+    video.contentId = 7;
+
+    library.addEntries([image, video]);
+    expect(library.length, 2);
+    expect(library.rowAt(0).uri, isNot(library.rowAt(1).uri));
   });
 
   test('leaves trashed rows out', () {

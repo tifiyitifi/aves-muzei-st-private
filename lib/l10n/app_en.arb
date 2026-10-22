@@ -1309,6 +1309,7 @@
   "browseOnlyImportFailed": "Organizing stopped",
   "browseOnlyImportRetry": "Retry",
   "browseOnlyEmptyLibrary": "No media yet",
+  "browseOnlyAlbumsFailed": "Could not read the folders",
   "browseOnlyProgress": "Organizing library · {done} / {total}",
   "@browseOnlyProgress": {
     "placeholders": {

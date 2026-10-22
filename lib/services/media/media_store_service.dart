@@ -26,17 +26,18 @@ abstract class MediaStoreService {
 
   /// One bounded page of media rows, newest first, for the browse-only surface.
   ///
-  /// [beforeSortDateSecs] and [beforeId] are the last row of the previous page,
-  /// so the read resumes after it instead of walking everything newer.
-  /// [directory] scopes the page to one folder, for an album's contents.
+  /// [before] is the cursor the previous page ended on, so the read resumes
+  /// after it instead of walking everything newer. It carries one key per
+  /// collection: images and videos are separate tables whose ids are
+  /// independent, so a single merged key cannot address both. [directory] scopes
+  /// the page to one folder, for an album's contents.
   ///
   /// This is not [getEntries]: the rows arrive in one reply, without the file
   /// stats and embedded probes the import pays for, which is what makes a first
   /// screen a bounded query instead of a whole-library pass.
   Future<MediaStorePage> getMediaPage({
     required int limit,
-    int? beforeSortDateSecs,
-    int? beforeId,
+    MediaStorePageCursor? before,
     String? directory,
   });
 
@@ -57,7 +58,55 @@ class MediaStorePage {
   /// Whether the page was cut: rows exist behind it.
   final bool hasMore;
 
-  const new({required this.entries, required this.hasMore});
+  /// Where the next page resumes, one key per collection.
+  final MediaStorePageCursor cursor;
+
+  const new({required this.entries, required this.hasMore, this.cursor = MediaStorePageCursor.none});
+}
+
+/// The keyset one media store collection resumes from.
+///
+/// Images and videos live in separate tables whose `_ID`s are independent and
+/// can collide, so a page keeps one key per collection instead of one merged
+/// `(date, id)` that would be read against both.
+class MediaStorePageKey {
+  final int sortDateSecs;
+  final int id;
+
+  const new({required this.sortDateSecs, required this.id});
+
+  @override
+  bool operator ==(Object other) => other is MediaStorePageKey && other.sortDateSecs == sortDateSecs && other.id == id;
+
+  @override
+  int get hashCode => Object.hash(sortDateSecs, id);
+
+  @override
+  String toString() => 'MediaStorePageKey($sortDateSecs, $id)';
+}
+
+/// Where a media store page ended, per collection.
+///
+/// A null key means the collection has no row to resume from: the next read
+/// starts at its newest row.
+class MediaStorePageCursor {
+  final MediaStorePageKey? images;
+  final MediaStorePageKey? videos;
+
+  const new({this.images, this.videos});
+
+  static const none = MediaStorePageCursor();
+
+  bool get isEmpty => images == null && videos == null;
+
+  @override
+  bool operator ==(Object other) => other is MediaStorePageCursor && other.images == images && other.videos == videos;
+
+  @override
+  int get hashCode => Object.hash(images, videos);
+
+  @override
+  String toString() => 'MediaStorePageCursor(images: $images, videos: $videos)';
 }
 
 /// One folder of [MediaStoreService.getAlbumSummaries].
@@ -149,21 +198,23 @@ class PlatformMediaStoreService implements MediaStoreService {
   @override
   Future<MediaStorePage> getMediaPage({
     required int limit,
-    int? beforeSortDateSecs,
-    int? beforeId,
+    MediaStorePageCursor? before,
     String? directory,
   }) async {
     try {
       final result = await _platform.invokeMethod('getMediaPage', <String, Object?>{
         'limit': limit,
-        'beforeSortDateSecs': beforeSortDateSecs,
-        'beforeId': beforeId,
+        'beforeSortDateSecs': before?.images?.sortDateSecs,
+        'beforeId': before?.images?.id,
+        'beforeVideoSortDateSecs': before?.videos?.sortDateSecs,
+        'beforeVideoId': before?.videos?.id,
         'directory': directory,
       });
       if (result is Map) {
         return MediaStorePage(
           entries: _entriesOf(result['rows']),
           hasMore: result['hasMore'] == true,
+          cursor: _cursorOf(result['cursor']),
         );
       }
       return const MediaStorePage(entries: [], hasMore: false);
@@ -173,6 +224,25 @@ class PlatformMediaStoreService implements MediaStoreService {
       await reportService.recordError(e, stack);
       rethrow;
     }
+  }
+
+  /// The page cursor the platform reported, per collection. A missing or
+  /// unreadable entry leaves that collection without a key, which reads its
+  /// newest row again rather than resuming from an invented one.
+  static MediaStorePageCursor _cursorOf(Object? value) {
+    if (value is! Map) return MediaStorePageCursor.none;
+    return MediaStorePageCursor(
+      images: _keyOf(value['images']),
+      videos: _keyOf(value['videos']),
+    );
+  }
+
+  static MediaStorePageKey? _keyOf(Object? value) {
+    if (value is! Map) return null;
+    final sortDateSecs = (value['sortDateSecs'] as num?)?.toInt();
+    final id = (value['id'] as num?)?.toInt();
+    if (sortDateSecs == null || id == null || id <= 0) return null;
+    return MediaStorePageKey(sortDateSecs: sortDateSecs, id: id);
   }
 
   @override

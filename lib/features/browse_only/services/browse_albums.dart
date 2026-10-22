@@ -74,6 +74,7 @@ class BrowseAlbums extends ChangeNotifier {
 
   Future<void> _read() async {
     _loading = true;
+    _error = null;
     _notify();
     try {
       final summaries = await mediaStoreService.getAlbumSummaries();

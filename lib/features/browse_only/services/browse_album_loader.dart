@@ -17,5 +17,14 @@ class BrowseAlbumLoader {
   /// the folder's count is already whole when the album is opened.
   Future<void> load() => library.loadAll();
 
+  /// Resumes a folder whose last page failed: the rows already read stay, and
+  /// the rest is read again.
+  Future<void> retry() async {
+    await library.retry();
+    while (library.hasMore) {
+      await library.loadMore();
+    }
+  }
+
   void dispose() => library.dispose();
 }

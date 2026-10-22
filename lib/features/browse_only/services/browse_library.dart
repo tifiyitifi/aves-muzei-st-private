@@ -8,6 +8,7 @@ import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:aves/services/media/media_store_service.dart';
 import 'package:flutter/foundation.dart';
 
 const _log = AreaKeyLog(collectionPagingLogKey);
@@ -66,7 +67,11 @@ class BrowseLibrary extends ChangeNotifier {
 
   /// Row identity to position, so a page that overlaps what is already indexed
   /// cannot duplicate it.
-  final Map<int, int> _indexByKey = {};
+  ///
+  /// Keyed by URI, not by content id: images and videos number their rows in
+  /// separate tables, so `images/media/5` and `video/media/5` are two different
+  /// rows that a shared content id would merge into one.
+  final Map<String, int> _indexByUri = {};
 
   final LinkedHashMap<int, AvesEntry> _entries = LinkedHashMap();
 
@@ -89,6 +94,10 @@ class BrowseLibrary extends ChangeNotifier {
   bool _hasMore = true;
   bool _limitRaised = false;
   Object? _error;
+
+  /// Where the last page ended, per collection. The platform owns it: it is the
+  /// only side that knows how many rows it filtered out of a page.
+  MediaStorePageCursor? _cursor;
 
   /// Bumped by `clear`: a page still in flight belongs to the window that was
   /// dropped, not to the one that replaced it.
@@ -163,22 +172,23 @@ class BrowseLibrary extends ChangeNotifier {
     final token = _token;
     _notify();
     try {
-      final cursor = _rows.isEmpty ? null : _cursorOf(_rows.last);
-      if (_rows.isNotEmpty && cursor == null) {
-        // Without an identity there is nothing to resume from, and asking for
-        // the first page again would loop: stopping is the only safe answer.
-        _log.w('browse-only page cannot resume: the last row has no content id');
-        _hasMore = false;
-        return;
-      }
-      final page = await mediaStoreService.getMediaPage(
-        limit: pageSize,
-        beforeSortDateSecs: cursor?.$1,
-        beforeId: cursor?.$2,
-        directory: directory,
-      );
+      var before = _cursor;
+      var page = await mediaStoreService.getMediaPage(limit: pageSize, before: before, directory: directory);
       if (_disposed || token != _token) return;
+      // The platform can filter a whole page out (a folder query that only
+      // matched subfolders, a row without a path or a MIME type). Its cursor
+      // still moved, so read on instead of leaving the window stalled on an
+      // empty page; a cursor that does not move would ask the same question
+      // forever, so that case stops with an error rather than hanging.
+      while (page.entries.isEmpty && page.hasMore) {
+        final next = page.cursor;
+        if (next == before) throw StateError('browse page made no progress');
+        before = next;
+        page = await mediaStoreService.getMediaPage(limit: pageSize, before: before, directory: directory);
+        if (_disposed || token != _token) return;
+      }
       _error = null;
+      _cursor = page.cursor;
       addEntries(page.entries);
       _hasMore = page.hasMore;
     } catch (error, stack) {
@@ -194,26 +204,20 @@ class BrowseLibrary extends ChangeNotifier {
     }
   }
 
-  /// The keyset a page resumes from: the row's sort date and its media store id,
-  /// exactly as the platform orders them.
-  static (int, int)? _cursorOf(BrowseRow row) {
-    final id = row.contentId;
-    if (id == null || id <= 0) return null;
-    return (row.bestDateMillis ~/ 1000, id);
-  }
-
   /// Appends rows from a page. Duplicates are ignored and trashed rows are left
   /// out: this is the library, not the bin.
   void addEntries(Iterable<AvesEntry> entries) {
     var added = 0;
     for (final entry in entries) {
       if (entry.trashed) continue;
-      final contentId = entry.contentId;
-      final usableContentId = contentId != null && contentId > 0 ? contentId : null;
-      if (usableContentId != null && _indexByKey.containsKey(usableContentId)) continue;
+      final uri = entry.uri;
+      // The platform filters trashed rows before handing them over, and always
+      // gives a row a URI: an empty one cannot identify anything, so it is not
+      // used to drop a row as a duplicate.
+      if (uri.isNotEmpty && _indexByUri.containsKey(uri)) continue;
       final row = BrowseRow.fromEntry(entry);
       final index = _rows.length;
-      if (usableContentId != null) _indexByKey[usableContentId] = index;
+      if (uri.isNotEmpty) _indexByUri[uri] = index;
       _rows.add(row);
       added++;
     }
@@ -338,10 +342,11 @@ class BrowseLibrary extends ChangeNotifier {
 
   void _reset() {
     _rows.clear();
-    _indexByKey.clear();
+    _indexByUri.clear();
     _entries.clear();
     _months = null;
     _mediaOrder = null;
+    _cursor = null;
     _hasMore = true;
     _loading = false;
     _started = false;

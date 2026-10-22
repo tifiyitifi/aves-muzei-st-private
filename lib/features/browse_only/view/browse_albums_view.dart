@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/browse_only/services/browse_album_loader.dart';
 import 'package:aves/features/browse_only/services/browse_albums.dart';
+import 'package:aves/features/browse_only/services/browse_library.dart';
 import 'package:aves/features/browse_only/services/browse_prefs.dart';
 import 'package:aves/features/browse_only/view/browse_media_grid.dart';
 import 'package:aves/features/browse_only/view/browse_sort_button.dart';
@@ -44,6 +45,21 @@ class _BrowseAlbumsViewState extends State<BrowseAlbumsView> {
       builder: (context, child) {
         final albums = browseAlbums.albumsSorted(sort: browsePrefs.albumSort, reverse: browsePrefs.albumReverse);
         if (albums.isEmpty) {
+          if (browseAlbums.loading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (browseAlbums.error != null) {
+            // A failed read is not an empty library: say so and let the user
+            // ask again, instead of claiming there are no folders.
+            return EmptyContent(
+              icon: AIcons.error,
+              text: context.l10n.browseOnlyAlbumsFailed,
+              bottom: TextButton(
+                onPressed: () => unawaited(browseAlbums.load()),
+                child: Text(context.l10n.collectionLoadingRetry),
+              ),
+            );
+          }
           return EmptyContent(
             icon: AIcons.album,
             text: libraryPhase.isBrowsing && pagedImportStatus.active ? context.l10n.sourceStateImporting : context.l10n.albumEmpty,
@@ -195,6 +211,8 @@ class _BrowseAlbumPageState extends State<BrowseAlbumPage> {
     super.dispose();
   }
 
+  void _retry() => unawaited(_loader.retry());
+
   @override
   Widget build(BuildContext context) {
     final library = _loader.library;
@@ -219,18 +237,88 @@ class _BrowseAlbumPageState extends State<BrowseAlbumPage> {
             actions: const [BrowseMediaSortButton()],
             bottom: browseOnlyNoticeBar(),
           ),
-          // A read still in flight is not an empty album: say so instead of
-          // showing "no media" for the moment the directory query takes.
-          body: indexes.isEmpty && library.loading
-              ? const Center(child: CircularProgressIndicator())
-              : BrowseMediaGrid(
-                  library: library,
-                  indexes: indexes,
-                  sectioned: sort == BrowseMediaSort.date,
-                  emptyText: context.l10n.albumEmpty,
-                ),
+          body: _buildBody(context, library, indexes, sort),
         );
       },
+    );
+  }
+
+  Widget _buildBody(BuildContext context, BrowseLibrary library, List<int> indexes, BrowseMediaSort sort) {
+    final grid = BrowseMediaGrid(
+      library: library,
+      indexes: indexes,
+      sectioned: sort == BrowseMediaSort.date,
+      emptyText: context.l10n.albumEmpty,
+    );
+    if (indexes.isEmpty) {
+      // A read still in flight is not an empty album: say so instead of showing
+      // "no media" for the moment the directory query takes. A read that failed
+      // is not an empty one either: say so and let the user ask again.
+      if (library.loading) return const Center(child: CircularProgressIndicator());
+      if (library.error != null) {
+        return EmptyContent(
+          icon: AIcons.error,
+          text: context.l10n.browseOnlyAlbumsFailed,
+          bottom: TextButton(onPressed: _retry, child: Text(context.l10n.collectionLoadingRetry)),
+        );
+      }
+      return grid;
+    }
+    return Column(
+      children: [
+        Expanded(child: grid),
+        // The rows already read stay; the failed tail can be asked for again
+        // without leaving the folder.
+        if (library.error != null) _BrowseReadErrorBar(onRetry: _retry),
+      ],
+    );
+  }
+}
+
+/// The strip under an album whose last page failed.
+class _BrowseReadErrorBar extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const new({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.onErrorContainer;
+    return Material(
+      color: theme.colorScheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(16, 6, 16, 6),
+        child: Row(
+          children: [
+            Icon(AIcons.error, size: 16, color: color),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                context.l10n.browseOnlyAlbumsFailed,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.fade,
+                style: theme.textTheme.bodySmall?.copyWith(color: color),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              style: TextButton.styleFrom(
+                // The strip is one line high: a default-sized button would
+                // overflow it.
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+                foregroundColor: color,
+              ),
+              onPressed: onRetry,
+              child: Text(context.l10n.collectionLoadingRetry),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

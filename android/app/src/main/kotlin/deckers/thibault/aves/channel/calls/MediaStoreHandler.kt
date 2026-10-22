@@ -89,10 +89,20 @@ class MediaStoreHandler(private val context: Context) : MethodCallHandler {
             result.error("getMediaPage-args", "missing or invalid limit", null)
             return
         }
-        val beforeSortDateSecs = call.argument<Number>("beforeSortDateSecs")?.toLong()
-        val beforeId = call.argument<Number>("beforeId")?.toLong()
         val directory = call.argument<String>("directory")
-        result.success(BrowseMediaStore.fetchPage(context, limit, beforeSortDateSecs, beforeId, directory))
+        // Each collection has its own `_ID` space, so each resumes from its own
+        // last row instead of one merged key that could address both.
+        val before = BrowseMediaStore.PageCursor(
+            images = cursorKey(call, "beforeSortDateSecs", "beforeId"),
+            videos = cursorKey(call, "beforeVideoSortDateSecs", "beforeVideoId"),
+        )
+        result.success(BrowseMediaStore.fetchPage(context, limit, before, directory))
+    }
+
+    private fun cursorKey(call: MethodCall, sortDateKey: String, idKey: String): BrowseMediaStore.PageKey? {
+        val sortDateSecs = call.argument<Number>(sortDateKey)?.toLong() ?: return null
+        val id = call.argument<Number>(idKey)?.toLong() ?: return null
+        return BrowseMediaStore.PageKey(sortDateSecs, id)
     }
 
     private fun getAlbumSummaries(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {

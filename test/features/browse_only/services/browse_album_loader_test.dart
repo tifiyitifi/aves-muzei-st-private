@@ -105,6 +105,26 @@ void main() {
     expect(loader.library.isEmpty, isTrue);
   });
 
+  test('a failed read can be resumed', () async {
+    store.honorDirectory = true;
+    store.entries = {
+      for (var i = 1; i <= BrowseLibrary.pageSize + 1; i++) entry(i, dir: '/a', dateTaken: millis(2024, 1) + i * 60000),
+    };
+    store.pageError = StateError('media store went away');
+
+    final loader = BrowseAlbumLoader(directory: '/a');
+    addTearDown(loader.dispose);
+    await loader.load();
+    expect(loader.library.error, isNotNull);
+
+    store.pageError = null;
+    await loader.retry();
+
+    expect(loader.library.error, isNull);
+    expect(loader.library.length, BrowseLibrary.pageSize + 1, reason: 'the folder is whole again, not just its first page');
+    expect(loader.library.hasMore, isFalse);
+  });
+
   test('notifies the page while it loads and once the rows land', () async {
     store.entries = {entry(1, dir: '/a')};
     store.honorDirectory = true;

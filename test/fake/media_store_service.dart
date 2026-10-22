@@ -47,6 +47,8 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   String? lastPageDirectory;
   int? lastPageBeforeSortDateSecs;
   int? lastPageBeforeId;
+  int? lastPageBeforeVideoSortDateSecs;
+  int? lastPageBeforeVideoId;
 
   /// When set, `getMediaPage` fails. A read that broke is not an empty library,
   /// and the surface has to be able to tell them apart.
@@ -55,6 +57,14 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   /// When set, `getMediaPage` waits on it before answering, so a test can hold a
   /// page in flight.
   Completer<void>? pageHold;
+
+  /// Pages answered with no rows but a moved cursor, the way the platform
+  /// filters a whole page out. The window must read past them.
+  int emptyPages = 0;
+
+  /// With [emptyPages], answer the cursor that was asked for again: a page that
+  /// cannot advance has to stop with an error instead of asking forever.
+  bool emptyPageCursorStalls = false;
 
   /// When set, `getAlbumSummaries` fails.
   Object? albumError;
@@ -79,8 +89,12 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
     lastPageDirectory = null;
     lastPageBeforeSortDateSecs = null;
     lastPageBeforeId = null;
+    lastPageBeforeVideoSortDateSecs = null;
+    lastPageBeforeVideoId = null;
     pageError = null;
     pageHold = null;
+    emptyPages = 0;
+    emptyPageCursorStalls = false;
     albumError = null;
     albumSummaryRequestCount = 0;
     albumSummaries = null;
@@ -128,35 +142,89 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   @override
   Future<MediaStorePage> getMediaPage({
     required int limit,
-    int? beforeSortDateSecs,
-    int? beforeId,
+    MediaStorePageCursor? before,
     String? directory,
   }) async {
     pageRequestCount++;
     lastPageLimit = limit;
     lastPageDirectory = directory;
-    lastPageBeforeSortDateSecs = beforeSortDateSecs;
-    lastPageBeforeId = beforeId;
+    lastPageBeforeSortDateSecs = before?.images?.sortDateSecs;
+    lastPageBeforeId = before?.images?.id;
+    lastPageBeforeVideoSortDateSecs = before?.videos?.sortDateSecs;
+    lastPageBeforeVideoId = before?.videos?.id;
     final hold = pageHold;
     if (hold != null) await hold.future;
     final error = pageError;
     if (error != null) throw error;
 
-    var candidates = (honorDirectory && directory != null ? entries.where((entry) => entry.directory == directory) : entries).toList();
-    // The platform orders newest first and resumes after the cursor it is given,
-    // so a page after the cursor must not re-read what the cursor already named.
-    candidates.sort((a, b) {
-      final c = (b.bestDate?.millisecondsSinceEpoch ?? 0).compareTo(a.bestDate?.millisecondsSinceEpoch ?? 0);
-      return c != 0 ? c : (b.contentId ?? 0).compareTo(a.contentId ?? 0);
-    });
-    if (beforeSortDateSecs != null && beforeId != null) {
-      candidates = candidates.where((entry) {
-        final date = (entry.bestDate?.millisecondsSinceEpoch ?? 0) ~/ 1000;
-        if (date != beforeSortDateSecs) return date < beforeSortDateSecs;
-        return (entry.contentId ?? 0) < beforeId;
-      }).toList();
+    final source = honorDirectory && directory != null ? entries.where((entry) => entry.directory == directory) : entries;
+    // Images and videos are two collections with independent `_ID` spaces, and
+    // each is read and bounded on its own, exactly like the platform side.
+    final images = source.where((entry) => !_isVideo(entry));
+    final videos = source.where(_isVideo);
+    final imagePage = _pageOf(images, before?.images, limit);
+    final videoPage = _pageOf(videos, before?.videos, limit);
+
+    final candidates = [...imagePage.rows, ...videoPage.rows]..sort(_compareNewestFirst);
+    final page = candidates.take(limit).toList();
+    // One cursor per collection: the last row the page took from it. A
+    // collection with nothing taken keeps its cursor, unless it read rows and
+    // kept none (the platform filtered them), in which case it moves on.
+    AvesEntry? lastImage, lastVideo;
+    for (final entry in page) {
+      if (_isVideo(entry)) {
+        lastVideo = entry;
+      } else {
+        lastImage = entry;
+      }
     }
-    return MediaStorePage(entries: candidates.take(limit).toList(), hasMore: candidates.length > limit);
+    final cursor = MediaStorePageCursor(
+      images: lastImage != null ? _keyOf(lastImage) : (imagePage.rows.isEmpty ? imagePage.rawLast ?? before?.images : before?.images),
+      videos: lastVideo != null ? _keyOf(lastVideo) : (videoPage.rows.isEmpty ? videoPage.rawLast ?? before?.videos : before?.videos),
+    );
+    if (emptyPages > 0) {
+      // The platform looked at a page and kept none of its rows. Its cursor
+      // moved, so the window reads the rows behind it; a stalled cursor must
+      // make the window stop with an error rather than loop.
+      emptyPages--;
+      return MediaStorePage(
+        entries: const [],
+        hasMore: true,
+        cursor: emptyPageCursorStalls ? MediaStorePageCursor(images: before?.images, videos: before?.videos) : cursor,
+      );
+    }
+    return MediaStorePage(
+      entries: page,
+      hasMore: imagePage.truncated || videoPage.truncated || candidates.length > limit,
+      cursor: cursor,
+    );
+  }
+
+  static bool _isVideo(AvesEntry entry) => entry.sourceMimeType.startsWith('video/');
+
+  static int _sortDateSecs(AvesEntry entry) =>
+      // The three dates the platform sorts by, in the same order: capture, then
+      // modification, then addition.
+      (entry.sourceDateTakenMillis ?? entry.dateModifiedMillis ?? (entry.dateAddedSecs ?? 0) * 1000) ~/ 1000;
+
+  static MediaStorePageKey _keyOf(AvesEntry entry) => MediaStorePageKey(sortDateSecs: _sortDateSecs(entry), id: entry.contentId ?? 0);
+
+  static int _compareNewestFirst(AvesEntry a, AvesEntry b) {
+    final c = _sortDateSecs(b).compareTo(_sortDateSecs(a));
+    return c != 0 ? c : (b.contentId ?? 0).compareTo(a.contentId ?? 0);
+  }
+
+  /// One collection's page: at most [limit] rows after [before], plus the raw
+  /// last row it read, so a page that filters every row out still advances.
+  static _FakePage _pageOf(Iterable<AvesEntry> rows, MediaStorePageKey? before, int limit) {
+    final sorted = rows.where((entry) {
+      if (before == null) return true;
+      final date = _sortDateSecs(entry);
+      final id = entry.contentId ?? 0;
+      return date < before.sortDateSecs || (date == before.sortDateSecs && id < before.id);
+    }).toList()..sort(_compareNewestFirst);
+    final page = sorted.take(limit).toList();
+    return _FakePage(page, sorted.length >= limit, page.isEmpty ? null : _keyOf(page.last));
   }
 
   @override
@@ -248,4 +316,14 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
       deleted: false,
     );
   }
+}
+
+/// What one fake collection read returned, mirroring the platform page: the rows
+/// it kept and the last row it read, filtered or not.
+class _FakePage {
+  final List<AvesEntry> rows;
+  final bool truncated;
+  final MediaStorePageKey? rawLast;
+
+  const new(this.rows, this.truncated, this.rawLast);
 }

@@ -1,4 +1,7 @@
-import 'package:aves/features/browse_only/services/browse_library.dart';
+import 'dart:async';
+
+import 'package:aves/features/browse_only/services/browse_album_loader.dart';
+import 'package:aves/features/browse_only/services/browse_albums.dart';
 import 'package:aves/features/browse_only/services/browse_prefs.dart';
 import 'package:aves/features/browse_only/view/browse_media_grid.dart';
 import 'package:aves/features/browse_only/view/browse_sort_button.dart';
@@ -15,18 +18,30 @@ import 'package:material_ui/material_ui.dart';
 
 /// The album grid of the browse-only surface.
 ///
-/// The list, the covers and the counts all come from the MediaStore index, so
-/// it is whole as soon as the scan reaches the last row: an album never shows a
-/// partial count because a database was mid-import.
-class BrowseAlbumsView extends StatelessWidget {
+/// The list, the covers and the counts come from one aggregate read of the media
+/// store, so a count is never seen growing and a folder is complete even while
+/// the timeline is only a preview of the newest rows. An album's *contents* are
+/// read when it is opened (see `BrowseAlbumLoader`).
+class BrowseAlbumsView extends StatefulWidget {
   const new({super.key});
+
+  @override
+  State<BrowseAlbumsView> createState() => _BrowseAlbumsViewState();
+}
+
+class _BrowseAlbumsViewState extends State<BrowseAlbumsView> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(browseAlbums.load());
+  }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([browseLibrary, browsePrefs]),
+      listenable: Listenable.merge([browseAlbums, browsePrefs]),
       builder: (context, child) {
-        final albums = browseLibrary.albumsSorted(sort: browsePrefs.albumSort, reverse: browsePrefs.albumReverse);
+        final albums = browseAlbums.albumsSorted(sort: browsePrefs.albumSort, reverse: browsePrefs.albumReverse);
         if (albums.isEmpty) {
           return EmptyContent(
             icon: AIcons.album,
@@ -80,7 +95,7 @@ class _BrowseAlbumTile extends StatelessWidget {
                   final extent = constraints.biggest.shortestSide;
                   return Center(
                     child: DecoratedThumbnail(
-                      entry: browseLibrary.entryAt(album.coverIndex),
+                      entry: album.cover,
                       tileExtent: extent,
                       selectable: false,
                       highlightable: false,
@@ -134,7 +149,12 @@ class BrowseOnlyAlbumsPage extends StatelessWidget {
 }
 
 /// One album's media, pushed from the album grid.
-class BrowseAlbumPage extends StatelessWidget {
+///
+/// The rows are read from the media store for this directory alone, the way the
+/// album list itself is read: a page paints immediately, the folder's remaining
+/// rows follow, and the count in the app bar is the whole one the album grid
+/// showed.
+class BrowseAlbumPage extends StatefulWidget {
   static const routeName = '/browse-only/album';
 
   final BrowseAlbum album;
@@ -142,21 +162,42 @@ class BrowseAlbumPage extends StatelessWidget {
   const new({super.key, required this.album});
 
   @override
+  State<BrowseAlbumPage> createState() => _BrowseAlbumPageState();
+}
+
+class _BrowseAlbumPageState extends State<BrowseAlbumPage> {
+  late final BrowseAlbumLoader _loader;
+
+  @override
+  void initState() {
+    super.initState();
+    _loader = BrowseAlbumLoader(directory: widget.album.directory);
+    unawaited(_loader.load());
+  }
+
+  @override
+  void dispose() {
+    _loader.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final library = _loader.library;
     return ListenableBuilder(
-      listenable: Listenable.merge([browsePrefs, browseLibrary, libraryPhase, pagedImportStatus]),
+      listenable: Listenable.merge([browsePrefs, library, libraryPhase, pagedImportStatus]),
       builder: (context, child) {
         final sort = browsePrefs.mediaSort;
-        final indexes = browseLibrary.albumIndexes(album.directory, sort: sort, reverse: browsePrefs.mediaReverse);
+        final indexes = library.mediaIndexes(sort: sort, reverse: browsePrefs.mediaReverse);
         return AvesScaffold(
           appBar: AppBar(
             title: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(album.name),
+                Text(widget.album.name),
                 Text(
-                  context.l10n.browseOnlyAlbumCount(album.count),
+                  context.l10n.browseOnlyAlbumCount(widget.album.count),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -164,11 +205,16 @@ class BrowseAlbumPage extends StatelessWidget {
             actions: const [BrowseMediaSortButton()],
             bottom: browseOnlyNoticeBar(),
           ),
-          body: BrowseMediaGrid(
-            indexes: indexes,
-            sectioned: sort == BrowseMediaSort.date,
-            emptyText: context.l10n.albumEmpty,
-          ),
+          // A read still in flight is not an empty album: say so instead of
+          // showing "no media" for the moment the directory query takes.
+          body: indexes.isEmpty && library.loading
+              ? const Center(child: CircularProgressIndicator())
+              : BrowseMediaGrid(
+                  library: library,
+                  indexes: indexes,
+                  sectioned: sort == BrowseMediaSort.date,
+                  emptyText: context.l10n.albumEmpty,
+                ),
         );
       },
     );

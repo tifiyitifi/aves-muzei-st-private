@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:aves/features/browse_only/services/browse_library.dart';
@@ -22,9 +23,13 @@ import 'package:provider/provider.dart';
 /// grid when the order is not chronological.
 ///
 /// It renders exactly the rows it is given, in exactly that order. The ordering
-/// belongs to [BrowseLibrary] (it owns the index and its caches), so this widget
-/// stays a renderer: a sort change is a new list, not a different code path.
+/// belongs to the [BrowseLibrary] it is handed (the whole-library timeline, or
+/// one album loaded from the media store), so this widget stays a renderer: a
+/// sort change is a new list, not a different code path.
 class BrowseMediaGrid extends StatefulWidget {
+  /// The rows [indexes] point into.
+  final BrowseLibrary library;
+
   /// Row positions in display order.
   final List<int> indexes;
 
@@ -37,6 +42,7 @@ class BrowseMediaGrid extends StatefulWidget {
 
   const new({
     super.key,
+    required this.library,
     required this.indexes,
     this.sectioned = true,
     this.emptyText,
@@ -60,20 +66,24 @@ class _SectionRange {
 }
 
 class _BrowseMediaGridState extends State<BrowseMediaGrid> {
+  /// How close to the end of the grid the next page is asked for: about two
+  /// screens, so the rows are there before the user reaches them.
+  static const double _pagingThreshold = 1200;
+
   List<_SectionRange>? _sections;
   List<int>? _sectionsFor;
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: browseLibrary,
+      listenable: widget.library,
       builder: (context, child) {
         if (widget.indexes.isEmpty) return _buildEmpty(context);
         if (widget.sectioned) {
           // Sections are derived from the same list instance the library
           // returns for a given order, so identity is a safe cache key.
           if (!identical(_sectionsFor, widget.indexes)) {
-            _sections = _sectionsOf(widget.indexes);
+            _sections = _sectionsOf(widget.library, widget.indexes);
             _sectionsFor = widget.indexes;
           }
           return _buildSectionedGrid(context, _sections!);
@@ -100,31 +110,34 @@ class _BrowseMediaGridState extends State<BrowseMediaGrid> {
         final columns = (constraints.maxWidth / extent).round().clamp(2, 12);
         return GridTheme(
           extent: extent,
-          child: CustomScrollView(
-            primary: false,
-            slivers: [
-              for (final section in sections) ...[
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _MonthHeaderDelegate(section: section),
-                ),
-                SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    mainAxisSpacing: 1,
-                    crossAxisSpacing: 1,
+          child: _withPaging(
+            CustomScrollView(
+              primary: false,
+              slivers: [
+                for (final section in sections) ...[
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _MonthHeaderDelegate(section: section),
                   ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, offset) => _BrowseTile(
-                      order: widget.indexes,
-                      position: section.start + offset,
+                  SliverGrid(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: columns,
+                      mainAxisSpacing: 1,
+                      crossAxisSpacing: 1,
                     ),
-                    childCount: section.count,
+                    delegate: SliverChildBuilderDelegate(
+                      (context, offset) => _BrowseTile(
+                        library: widget.library,
+                        order: widget.indexes,
+                        position: section.start + offset,
+                      ),
+                      childCount: section.count,
+                    ),
                   ),
-                ),
+                ],
+                const SliverToBoxAdapter(child: SizedBox(height: 8)),
               ],
-              const SliverToBoxAdapter(child: SizedBox(height: 8)),
-            ],
+            ),
           ),
         );
       },
@@ -138,18 +151,21 @@ class _BrowseMediaGridState extends State<BrowseMediaGrid> {
         final columns = (constraints.maxWidth / extent).round().clamp(2, 12);
         return GridTheme(
           extent: extent,
-          child: GridView.builder(
-            primary: false,
-            padding: const EdgeInsets.only(bottom: 8),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              mainAxisSpacing: 1,
-              crossAxisSpacing: 1,
-            ),
-            itemCount: widget.indexes.length,
-            itemBuilder: (context, position) => _BrowseTile(
-              order: widget.indexes,
-              position: position,
+          child: _withPaging(
+            GridView.builder(
+              primary: false,
+              padding: const EdgeInsets.only(bottom: 8),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisSpacing: 1,
+                crossAxisSpacing: 1,
+              ),
+              itemCount: widget.indexes.length,
+              itemBuilder: (context, position) => _BrowseTile(
+                library: widget.library,
+                order: widget.indexes,
+                position: position,
+              ),
             ),
           ),
         );
@@ -157,14 +173,31 @@ class _BrowseMediaGridState extends State<BrowseMediaGrid> {
     );
   }
 
+  /// Asks for the next page when the grid comes near its end.
+  ///
+  /// The window owns the loading state, so a scroll that fires on every frame
+  /// still reads one page at a time, and a window that stopped (at the end of
+  /// the library, or at its own preview limit) ignores the request entirely.
+  Widget _withPaging(Widget child) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.extentAfter < _pagingThreshold) {
+          unawaited(widget.library.loadMore());
+        }
+        return false;
+      },
+      child: child,
+    );
+  }
+
   /// Splits the order into consecutive month runs. Chronological order makes
   /// each run contiguous, so a section is a start position plus a length.
-  static List<_SectionRange> _sectionsOf(List<int> order) {
+  static List<_SectionRange> _sectionsOf(BrowseLibrary library, List<int> order) {
     final ranges = <_SectionRange>[];
     int? year, month;
     var start = 0;
     for (var position = 0; position < order.length; position++) {
-      final date = DateTime.fromMillisecondsSinceEpoch(browseLibrary.rowAt(order[position]).bestDateMillis);
+      final date = DateTime.fromMillisecondsSinceEpoch(library.rowAt(order[position]).bestDateMillis);
       if (date.year != year || date.month != month) {
         if (position > 0) {
           ranges.add(_SectionRange(year: year!, month: month!, start: start, count: position - start));
@@ -219,12 +252,16 @@ class _MonthHeaderDelegate extends SliverPersistentHeaderDelegate {
 }
 
 class _BrowseTile extends StatelessWidget {
+  /// The store the row indexes point into.
+  final BrowseLibrary library;
+
   /// The displayed order, so the viewer opens on the same sequence the grid
   /// shows and swiping follows the sort.
   final List<int> order;
   final int position;
 
   const new({
+    required this.library,
     required this.order,
     required this.position,
   });
@@ -235,9 +272,9 @@ class _BrowseTile extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) => GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => openBrowseOnlyViewer(context, order, position),
+        onTap: () => openBrowseOnlyViewer(context, library, order, position),
         child: DecoratedThumbnail(
-          entry: browseLibrary.entryAt(index),
+          entry: library.entryAt(index),
           tileExtent: constraints.maxWidth,
           selectable: false,
           highlightable: false,
@@ -252,14 +289,14 @@ class _BrowseTile extends StatelessWidget {
 /// The viewer gets a bounded selection instead of the whole index: a selection
 /// of 30,000 rows would materialize exactly the library the index exists to
 /// keep compact, and swiping stays useful across a few hundred neighbours.
-void openBrowseOnlyViewer(BuildContext context, List<int> order, int position) {
+void openBrowseOnlyViewer(BuildContext context, BrowseLibrary library, List<int> order, int position) {
   if (position < 0 || position >= order.length) return;
   final source = context.read<CollectionSource>();
   const radius = 250;
   final from = max(0, position - radius);
   final to = min(order.length, position + radius + 1);
   final entries = <AvesEntry>[
-    for (var i = from; i < to; i++) browseLibrary.entryAt(order[i]),
+    for (var i = from; i < to; i++) library.entryAt(order[i]),
   ];
   final collection = CollectionLens(
     source: source,
@@ -274,7 +311,7 @@ void openBrowseOnlyViewer(BuildContext context, List<int> order, int position) {
         keyOf: (entry) => entry.id,
         child: EntryViewerPage(
           collection: collection,
-          initialEntry: browseLibrary.entryAt(order[position]),
+          initialEntry: library.entryAt(order[position]),
         ),
       ),
     ),

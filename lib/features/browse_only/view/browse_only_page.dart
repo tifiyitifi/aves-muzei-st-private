@@ -9,6 +9,7 @@ import 'package:aves/features/browse_only/view/browse_sort_button.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/model/settings/settings.dart';
+import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/navigation/nav_item.dart';
@@ -42,18 +43,19 @@ class _BrowseOnlyPageState extends State<BrowseOnlyPage> {
   @override
   void initState() {
     super.initState();
-    // The index scans on its own instead of waiting for the import's row
-    // stream: the import is only as fast as the database writes, so a browsing
-    // surface fed by it would grow one album at a time.
-    unawaited(browseLibrary.scan());
+    // The window reads its first page straight from the media store instead of
+    // waiting for the import's row stream: the import is only as fast as the
+    // database writes, so a browsing surface fed by it would grow one row at a
+    // time.
+    unawaited(browseLibrary.loadFirstPage());
     unawaited(browsePrefs.init());
   }
 
   @override
   void dispose() {
-    browseLibrary.stopScan();
     // The browser retires with the wait it covered. Once the phase is ready
-    // nothing can navigate back here, so the index can go immediately.
+    // nothing can navigate back here, so the window can go immediately; while
+    // the wait is still on, the rows stay for the page that comes back to them.
     if (libraryPhase.isReady) browseLibrary.clear();
     super.dispose();
   }
@@ -123,13 +125,77 @@ class _BrowseOnlyPageState extends State<BrowseOnlyPage> {
       listenable: Listenable.merge([browsePrefs, browseLibrary]),
       builder: (context, child) {
         final sort = browsePrefs.mediaSort;
-        return BrowseMediaGrid(
+        final grid = BrowseMediaGrid(
+          library: browseLibrary,
           key: PageStorageKey(storageKey),
           indexes: browseLibrary.mediaIndexes(sort: sort, reverse: browsePrefs.mediaReverse, videosOnly: videosOnly),
           sectioned: sort == BrowseMediaSort.date,
           emptyText: videosOnly ? context.l10n.collectionEmptyVideos : null,
         );
+        if (!_showTimelineFooter) return grid;
+        // The timeline is a preview of the newest rows: the album list is whole
+        // and the collection takes over with the full timeline, so say where the
+        // rest is instead of letting the end of the grid read as the end of the
+        // library.
+        return Column(
+          children: [
+            Expanded(child: grid),
+            const _BrowseTimelinePreview(),
+          ],
+        );
       },
+    );
+  }
+
+  /// Whether the timeline footer has something to say: the window stopped at its
+  /// own limit, or the last page failed and the rest of the rows are still out
+  /// there.
+  bool get _showTimelineFooter => browseLibrary.atLimit || browseLibrary.error != null;
+}
+
+/// The strip under a timeline that is a preview, pointing at the whole album
+/// list and offering the rows the preview stopped short of.
+class _BrowseTimelinePreview extends StatelessWidget {
+  const new();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.onSecondaryContainer;
+    return Material(
+      color: theme.colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(16, 6, 16, 6),
+        child: Row(
+          children: [
+            Icon(AIcons.image, size: 16, color: color),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                context.l10n.browseOnlyTimelinePreview(browseLibrary.length),
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.fade,
+                style: theme.textTheme.bodySmall?.copyWith(color: color),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              style: TextButton.styleFrom(
+                // The strip is one line high: a default-sized button would
+                // overflow it.
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+                foregroundColor: color,
+              ),
+              onPressed: browseLibrary.error != null ? () => unawaited(browseLibrary.retry()) : () => unawaited(browseLibrary.loadMore(beyondPreviewLimit: true)),
+              child: Text(context.l10n.browseOnlyTimelineContinue),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

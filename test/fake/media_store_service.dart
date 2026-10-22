@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/keys.dart';
 import 'package:aves/model/entry/origins.dart';
@@ -7,7 +9,7 @@ import 'package:aves/services/media/media_store_service.dart';
 import 'package:test/fake.dart';
 
 class FakeMediaStoreService extends Fake implements MediaStoreService {
-  late Set<AvesEntry> entries;
+  Set<AvesEntry> entries = {};
   Duration? latency;
 
   /// When set, `getEntries` streams this instead of [entries], so a test can
@@ -18,17 +20,70 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   /// be restarted behind the user's back, and this is how a test proves it.
   int entryRequestCount = 0;
 
+  /// The last `directory` a stream was asked for, for a caller that must prove
+  /// it scoped the query to one folder.
+  String? lastRequestedDirectory;
+
+  /// When set, `getEntries` honors `directory` the way the native provider
+  /// does. Off by default: the legacy load walks the library one directory at a
+  /// time and its tests seed a single entry set, so filtering by default would
+  /// starve them.
+  bool honorDirectory = false;
+
   /// When set, `countEntries` fails instead of answering. The platform count is
   /// best-effort in the app, and a test needs the "cannot tell" answer it
   /// produces on a timeout.
   Object? countError;
+
+  /// When set, `countEntries` answers this instead of the row count. The real
+  /// provider answers 0 on any query failure, which is indistinguishable from a
+  /// genuinely empty library: a test needs both readings.
+  int? countAnswer;
+
+  /// How many pages were asked for, and with what. The browse-only timeline is
+  /// read a page at a time, and a test proves it by reading the cursor back.
+  int pageRequestCount = 0;
+  int? lastPageLimit;
+  String? lastPageDirectory;
+  int? lastPageBeforeSortDateSecs;
+  int? lastPageBeforeId;
+
+  /// When set, `getMediaPage` fails. A read that broke is not an empty library,
+  /// and the surface has to be able to tell them apart.
+  Object? pageError;
+
+  /// When set, `getMediaPage` waits on it before answering, so a test can hold a
+  /// page in flight.
+  Completer<void>? pageHold;
+
+  /// When set, `getAlbumSummaries` fails.
+  Object? albumError;
+
+  int albumSummaryRequestCount = 0;
+
+  /// Folder summaries the fake answers. Unset means "derive them from
+  /// [entries]", which is what the app's own reads produce.
+  List<MediaStoreAlbumSummary>? albumSummaries;
 
   void reset() {
     entries = {};
     entriesStream = null;
     latency = null;
     entryRequestCount = 0;
+    lastRequestedDirectory = null;
+    honorDirectory = false;
     countError = null;
+    countAnswer = null;
+    pageRequestCount = 0;
+    lastPageLimit = null;
+    lastPageDirectory = null;
+    lastPageBeforeSortDateSecs = null;
+    lastPageBeforeId = null;
+    pageError = null;
+    pageHold = null;
+    albumError = null;
+    albumSummaryRequestCount = 0;
+    albumSummaries = null;
   }
 
   @override
@@ -52,14 +107,81 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   @override
   Stream<AvesEntry> getEntries(Map<int?, int?> knownEntries, {String? directory}) {
     entryRequestCount++;
-    return entriesStream ?? Stream.fromIterable(entries);
+    lastRequestedDirectory = directory;
+    final stream = entriesStream;
+    if (stream != null) return stream;
+    // The native provider filters a directory query by the file's parent; the
+    // fake does too when a test asks for it (see [honorDirectory]).
+    final source = honorDirectory && directory != null ? entries.where((entry) => entry.directory == directory) : entries;
+    return Stream.fromIterable(source);
   }
 
   @override
   Future<int> countEntries() async {
     final error = countError;
     if (error != null) throw error;
+    final answer = countAnswer;
+    if (answer != null) return answer;
     return entries.length;
+  }
+
+  @override
+  Future<MediaStorePage> getMediaPage({
+    required int limit,
+    int? beforeSortDateSecs,
+    int? beforeId,
+    String? directory,
+  }) async {
+    pageRequestCount++;
+    lastPageLimit = limit;
+    lastPageDirectory = directory;
+    lastPageBeforeSortDateSecs = beforeSortDateSecs;
+    lastPageBeforeId = beforeId;
+    final hold = pageHold;
+    if (hold != null) await hold.future;
+    final error = pageError;
+    if (error != null) throw error;
+
+    var candidates = (honorDirectory && directory != null ? entries.where((entry) => entry.directory == directory) : entries).toList();
+    // The platform orders newest first and resumes after the cursor it is given,
+    // so a page after the cursor must not re-read what the cursor already named.
+    candidates.sort((a, b) {
+      final c = (b.bestDate?.millisecondsSinceEpoch ?? 0).compareTo(a.bestDate?.millisecondsSinceEpoch ?? 0);
+      return c != 0 ? c : (b.contentId ?? 0).compareTo(a.contentId ?? 0);
+    });
+    if (beforeSortDateSecs != null && beforeId != null) {
+      candidates = candidates.where((entry) {
+        final date = (entry.bestDate?.millisecondsSinceEpoch ?? 0) ~/ 1000;
+        if (date != beforeSortDateSecs) return date < beforeSortDateSecs;
+        return (entry.contentId ?? 0) < beforeId;
+      }).toList();
+    }
+    return MediaStorePage(entries: candidates.take(limit).toList(), hasMore: candidates.length > limit);
+  }
+
+  @override
+  Future<List<MediaStoreAlbumSummary>> getAlbumSummaries() async {
+    albumSummaryRequestCount++;
+    final error = albumError;
+    if (error != null) throw error;
+    final configured = albumSummaries;
+    if (configured != null) return configured;
+
+    final buckets = <String, List<AvesEntry>>{};
+    for (final entry in entries) {
+      final directory = entry.directory;
+      if (directory == null || directory.isEmpty) continue;
+      buckets.putIfAbsent(directory, () => []).add(entry);
+    }
+    return [
+      for (final bucket in buckets.entries)
+        MediaStoreAlbumSummary(
+          directory: bucket.key,
+          count: bucket.value.length,
+          sizeBytes: bucket.value.fold(0, (sum, row) => sum + (row.sizeBytes ?? 0)),
+          cover: bucket.value.reduce((a, b) => (a.bestDate?.millisecondsSinceEpoch ?? 0) >= (b.bestDate?.millisecondsSinceEpoch ?? 0) ? a : b),
+        ),
+    ];
   }
 
   static var _lastId = 1;

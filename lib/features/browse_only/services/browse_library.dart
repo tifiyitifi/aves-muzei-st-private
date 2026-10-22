@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:collection';
 
 import 'package:aves/features/browse_only/model/browse_row.dart';
@@ -9,29 +8,9 @@ import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/services/common/services.dart';
-import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
 const _log = AreaKeyLog(collectionPagingLogKey);
-
-/// A folder as the browser lists it: what the album shows and how much of it.
-class BrowseAlbum {
-  final String directory;
-
-  /// Display name, disambiguated against same-named folders on other paths.
-  final String name;
-  final int count;
-
-  /// Row index of the newest item, used as the cover.
-  final int coverIndex;
-
-  const new({
-    required this.directory,
-    required this.name,
-    required this.count,
-    required this.coverIndex,
-  });
-}
 
 /// One month of rows, for the media grid's sticky headers.
 class BrowseMonth {
@@ -47,229 +26,202 @@ class BrowseMonth {
   });
 }
 
-/// The whole library as browsing needs it, independent of the import.
+/// A window of the library as browsing needs it: rows read in pages, plus the
+/// order and sections the grid renders.
 ///
-/// Rows arrive from the media store stream (newest first) and are kept in that
-/// order, so index 0 is the newest row and appending never reorders what is
-/// already on screen. Nothing here touches the database or `CollectionSource`:
-/// a partial import cannot make an album empty, and a surface can never read a
-/// half-built aggregate.
+/// The rows come from the media store a page at a time (`getMediaPage`), not
+/// from a walk over the whole library: a first screen costs one bounded query,
+/// and deeper scrolling costs one more per screen. Nothing here touches the
+/// database or `CollectionSource`, so a half-built import cannot make a folder
+/// look empty and a surface can never read a half-written aggregate.
+///
+/// The whole-library timeline is a *preview*: it stops at [previewRowLimit]
+/// rows (the album list is whole, and the collection takes over with the full
+/// timeline when the import ends). An album's contents are the same window with
+/// no limit and a [directory].
 class BrowseLibrary extends ChangeNotifier {
+  /// Rows a page read returns. One native query, one reply: the first page is
+  /// what the first frame paints.
+  static const int pageSize = 250;
+
+  /// Rows the browse-only timeline keeps before it stops loading on its own.
+  ///
+  /// A compact row is a few hundred bytes, so this is a few MB: enough to browse
+  /// through a long import, bounded so the preview can never grow into the
+  /// library the collection exists to hold. Past it the user can ask for more.
+  static const int previewRowLimit = 5000;
+
   /// Materialized entries kept around for the visible rows. Small on purpose:
   /// the compact rows are the index, entries are a rendering detail.
   static const int _entryCacheMax = 600;
 
-  /// Rows the scan gathers before handing a batch over to the index.
-  static const int _scanBatchSize = 250;
+  /// The folder this window is scoped to, or null for the whole library.
+  final String? directory;
 
-  /// How often an intermediate scan batch may rebuild the surfaces.
-  ///
-  /// A batch invalidates the display orders and section lists, and rebuilding
-  /// them costs a full sort of the rows indexed so far: notifying per batch
-  /// makes a large scan quadratic in the row count. The last batch always
-  /// notifies immediately, so the counter and the grid still end up whole.
-  static const Duration _notifyInterval = Duration(milliseconds: 200);
+  /// Rows the window keeps before it stops loading on its own, or null for a
+  /// window that reads its folder whole.
+  final int? rowLimit;
 
   final List<BrowseRow> _rows = [];
 
-  /// Row identity to position, so a resumed import's re-streamed rows do not
-  /// duplicate.
+  /// Row identity to position, so a page that overlaps what is already indexed
+  /// cannot duplicate it.
   final Map<int, int> _indexByKey = {};
-
-  /// URI to position for rows the provider reports without a content id. Those
-  /// rows have no identity otherwise (their database id is 0), and a replayed
-  /// scan would append them again.
-  final Map<String, int> _indexByUri = {};
-
-  /// Folder to the positions of its rows, newest first.
-  final Map<String, List<int>> _albumRows = {};
 
   final LinkedHashMap<int, AvesEntry> _entries = LinkedHashMap();
 
-  int _total = 0;
   int _version = 0;
-  List<BrowseAlbum>? _albums;
   List<BrowseMonth>? _months;
 
   /// Display orders, keyed by what they were computed from. A sort change or a
-  /// new batch invalidates them; the index itself never moves.
+  /// new page invalidates them; the index itself never moves.
   List<int>? _mediaOrder;
   String _mediaOrderKey = '';
   int _mediaOrderVersion = -1;
-  List<BrowseAlbum>? _albumOrder;
-  String _albumOrderKey = '';
-  int _albumOrderVersion = -1;
-  Map<String, int>? _albumDates;
-  int _albumDatesVersion = -1;
 
-  /// The hidden-album set the caches were built with: a preferences change has
-  /// to show immediately, and the index itself does not change.
-  String _albumsHidden = '';
+  /// The hidden-album set the month cache was built with: a preferences change
+  /// has to show immediately, and the index itself does not change.
   String _monthsHidden = '';
+
   bool _disposed = false;
-  bool _scanning = false;
-  int _scanToken = 0;
-  StreamSubscription<AvesEntry>? _scanSubscription;
-  Completer<void>? _scanDone;
-  Timer? _notifyTimer;
-  Future<void>? _scan;
+  bool _loading = false;
+  bool _started = false;
+  bool _hasMore = true;
+  bool _limitRaised = false;
+  Object? _error;
 
-  /// Streams the library straight from MediaStore, for a start where no import
-  /// runs (the database is already complete). The surface is only shown until
-  /// the collection resolves, so the scan is short-lived and its early batches
-  /// are what the first frame paints.
-  Future<void> scan() {
-    // A disposed index has nothing to fill, and resubscribing would leak a
-    // media store subscription for the rest of the process.
-    if (_disposed) return Future<void>.value();
-    return _scan ??= _scanLibrary();
-  }
+  /// Bumped by `clear`: a page still in flight belongs to the window that was
+  /// dropped, not to the one that replaced it.
+  int _token = 0;
 
-  /// Stops a scan whose surface is gone (the collection took over).
-  ///
-  /// Cancels the subscription rather than asking the loop to stop: a flag read
-  /// between stream events left a scan that was already waiting running, and it
-  /// then indexed into the index the handoff had just cleared.
-  void stopScan() {
-    _scanToken++;
-    final done = _scanDone;
-    _scanDone = null;
-    if (done != null && !done.isCompleted) done.complete();
-    final subscription = _scanSubscription;
-    _scanSubscription = null;
-    if (subscription != null) unawaited(subscription.cancel());
-    _scan = null;
-    _scanning = false;
-  }
+  new({this.directory, this.rowLimit});
 
-  /// Publishes a coalesced batch now instead of waiting for the timer.
-  ///
-  /// A scan that ends with a pending notification would otherwise leave its last
-  /// rows unpainted until the timer fires.
-  void _publishPending() {
-    final timer = _notifyTimer;
-    if (timer == null) return;
-    timer.cancel();
-    _notifyTimer = null;
-    _notify();
-  }
-
-  Future<void> _scanLibrary() async {
-    if (_scanning) return;
-    _scanning = true;
-    final token = ++_scanToken;
-    final done = _scanDone = Completer<void>();
-    final stopwatch = Stopwatch()..start();
-    final buffer = <AvesEntry>[];
-
-    void flush({required bool immediately}) {
-      if (buffer.isEmpty) return;
-      addEntries(buffer, immediately: immediately);
-      buffer.clear();
-    }
-
-    try {
-      unawaited(
-        mediaStoreService.countEntries().then(setTotal, onError: (Object error, StackTrace stack) {
-          _log.w('browse-only count failed', error, stack);
-        }),
-      );
-      _scanSubscription = mediaStoreService.getEntries(const {}).listen(
-        (entry) {
-          if (token != _scanToken) return;
-          buffer.add(entry);
-          if (buffer.length >= _scanBatchSize) flush(immediately: false);
-        },
-        onError: (Object error, StackTrace stack) {
-          // Keep what arrived: the collection page takes over either way.
-          _log.w('browse-only scan failed', error, stack);
-          if (token != _scanToken) return;
-          flush(immediately: true);
-          _publishPending();
-        },
-        onDone: () {
-          if (token != _scanToken) return;
-          flush(immediately: true);
-          _publishPending();
-          _log.i('browse-only scan indexed $length rows in ${stopwatch.elapsedMilliseconds}ms');
-          if (!done.isCompleted) done.complete();
-        },
-      );
-      await done.future;
-    } finally {
-      if (token == _scanToken) {
-        _scanning = false;
-        _scanSubscription = null;
-      }
-    }
-  }
-
-  /// Rows indexed so far.
+  /// Rows read so far.
   int get length => _rows.length;
 
-  /// Rows MediaStore reported for the library, or 0 while unknown.
-  int get total => _total;
-
   bool get isEmpty => _rows.isEmpty;
+
+  /// Whether a page read is in flight.
+  bool get loading => _loading;
+
+  /// Whether more rows can still be read.
+  bool get hasMore => _hasMore && !atLimit;
+
+  /// Whether the window stopped at its own limit rather than at the end of the
+  /// library.
+  bool get atLimit => rowLimit != null && !_limitRaised && _rows.length >= rowLimit!;
+
+  /// The last page failed. The rows already read are still shown: a read that
+  /// broke is not the end of the library.
+  Object? get error => _error;
 
   /// Bumped whenever rows arrive, for surfaces that cache derived lists.
   int get version => _version;
 
-  void setTotal(int total) {
-    if (total <= 0 || total == _total) return;
-    _total = total;
-    _notify();
+  /// Reads the first page. Idempotent: a surface that mounts again does not
+  /// re-read what it already has.
+  Future<void> loadFirstPage() {
+    if (_started || _disposed) return Future<void>.value();
+    _started = true;
+    return _loadPage();
   }
 
-  /// Appends rows from the media store stream. Duplicates (a resumed import
-  /// re-streams what is already indexed) are ignored, and trashed rows are left
-  /// out: this is the library, not the bin.
+  /// Reads the page after the rows already read.
   ///
-  /// [immediately] false coalesces the notification into at most one per
-  /// [_notifyInterval], for a scan handing batches over back to back.
-  void addEntries(Iterable<AvesEntry> entries, {bool immediately = true}) {
+  /// [beyondPreviewLimit] is the user asking for more than the preview keeps:
+  /// the window keeps loading for as long as they do.
+  Future<void> loadMore({bool beyondPreviewLimit = false}) {
+    if (_disposed || _loading || !_hasMore) return Future<void>.value();
+    if (atLimit) {
+      if (!beyondPreviewLimit) return Future<void>.value();
+      _limitRaised = true;
+    }
+    return _loadPage();
+  }
+
+  /// Reads the whole window, a page at a time. Used by an album's contents,
+  /// whose folder is shown whole the way its count already is.
+  Future<void> loadAll() async {
+    await loadFirstPage();
+    while (hasMore) {
+      await loadMore();
+    }
+  }
+
+  /// Retries the page that failed. The rows already read stay on screen: a read
+  /// that broke is not the end of the library.
+  Future<void> retry() {
+    if (_disposed || _loading || _error == null) return Future<void>.value();
+    _error = null;
+    _hasMore = true;
+    return _loadPage();
+  }
+
+  Future<void> _loadPage() async {
+    if (_disposed || _loading) return;
+    _loading = true;
+    final token = _token;
+    _notify();
+    try {
+      final cursor = _rows.isEmpty ? null : _cursorOf(_rows.last);
+      if (_rows.isNotEmpty && cursor == null) {
+        // Without an identity there is nothing to resume from, and asking for
+        // the first page again would loop: stopping is the only safe answer.
+        _log.w('browse-only page cannot resume: the last row has no content id');
+        _hasMore = false;
+        return;
+      }
+      final page = await mediaStoreService.getMediaPage(
+        limit: pageSize,
+        beforeSortDateSecs: cursor?.$1,
+        beforeId: cursor?.$2,
+        directory: directory,
+      );
+      if (_disposed || token != _token) return;
+      _error = null;
+      addEntries(page.entries);
+      _hasMore = page.hasMore;
+    } catch (error, stack) {
+      if (_disposed || token != _token) return;
+      _log.w('browse-only page failed for directory=$directory', error, stack);
+      _error = error;
+      _hasMore = false;
+    } finally {
+      if (!_disposed && token == _token) {
+        _loading = false;
+        _notify();
+      }
+    }
+  }
+
+  /// The keyset a page resumes from: the row's sort date and its media store id,
+  /// exactly as the platform orders them.
+  static (int, int)? _cursorOf(BrowseRow row) {
+    final id = row.contentId;
+    if (id == null || id <= 0) return null;
+    return (row.bestDateMillis ~/ 1000, id);
+  }
+
+  /// Appends rows from a page. Duplicates are ignored and trashed rows are left
+  /// out: this is the library, not the bin.
+  void addEntries(Iterable<AvesEntry> entries) {
     var added = 0;
     for (final entry in entries) {
       if (entry.trashed) continue;
       final contentId = entry.contentId;
       final usableContentId = contentId != null && contentId > 0 ? contentId : null;
-      // A provider can report the same file with and without an id across
-      // scans, so either identity makes the row known.
-      final known = (usableContentId != null ? _indexByKey[usableContentId] : null) ?? _indexByUri[entry.uri];
-      if (known != null) {
-        // The replay may be the first report that carries the id: learn it, or a
-        // URI that changes later (a remounted volume) would no longer find the
-        // row already indexed under this id.
-        if (usableContentId != null) _indexByKey[usableContentId] = known;
-        continue;
-      }
+      if (usableContentId != null && _indexByKey.containsKey(usableContentId)) continue;
       final row = BrowseRow.fromEntry(entry);
       final index = _rows.length;
-      // Both identities are recorded: whichever form a replayed scan reports,
-      // the row it names is already in the index.
       if (usableContentId != null) _indexByKey[usableContentId] = index;
-      _indexByUri[entry.uri] = index;
       _rows.add(row);
-      final directory = row.directory;
-      if (directory != null && directory.isNotEmpty) {
-        (_albumRows[directory] ??= []).add(index);
-      }
       added++;
     }
     if (added == 0) return;
     _version++;
-    _albums = null;
     _months = null;
-    if (immediately) {
-      _notifyTimer?.cancel();
-      _notifyTimer = null;
-      _notify();
-    } else {
-      _notifyTimer ??= Timer(_notifyInterval, () {
-        _notifyTimer = null;
-        _notify();
-      });
-    }
+    _mediaOrder = null;
+    _notify();
   }
 
   BrowseRow rowAt(int index) => _rows[index];
@@ -295,45 +247,6 @@ class BrowseLibrary extends ChangeNotifier {
     return entry;
   }
 
-  /// Visible albums, sorted by display name. Hidden albums are filtered here
-  /// rather than at insert time, so a preference change applies to what is
-  /// already indexed.
-  List<BrowseAlbum> get albums {
-    final hidden = _hiddenDirectories();
-    final fingerprint = hidden.join('\u0000');
-    final cached = _albums;
-    if (cached != null && _albumsHidden == fingerprint) return cached;
-
-    final directories = _albumRows.keys.whereNot(hidden.contains).toList();
-    // Disambiguate same-named folders, the way the album page does.
-    final nameCount = <String, int>{};
-    for (final directory in directories) {
-      final name = _folderName(directory);
-      nameCount[name] = (nameCount[name] ?? 0) + 1;
-    }
-    final albums = [
-      for (final directory in directories)
-        BrowseAlbum(
-          directory: directory,
-          name: nameCount[_folderName(directory)]! > 1 ? _disambiguatedName(directory) : _folderName(directory),
-          count: _albumRows[directory]!.length,
-          coverIndex: _albumRows[directory]!.first,
-        ),
-    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    _albumsHidden = fingerprint;
-    return _albums = albums;
-  }
-
-  /// Row positions of one album, newest first.
-  List<int> rowsOfAlbum(String directory) => _albumRows[directory] ?? const [];
-
-  /// Row positions of one album in display order.
-  List<int> albumIndexes(String directory, {required BrowseMediaSort sort, required bool reverse}) {
-    final indexes = _albumRows[directory];
-    if (indexes == null || indexes.isEmpty) return const [];
-    return _sorted(indexes, sort, reverse);
-  }
-
   /// Row positions in display order, narrowed to videos when asked.
   ///
   /// The videos view is the same index filtered by what MediaStore itself says
@@ -355,34 +268,6 @@ class BrowseLibrary extends ChangeNotifier {
 
   /// Positions of the video rows, in display order.
   List<int> get videoIndexes => mediaIndexes(sort: BrowseMediaSort.date, reverse: false, videosOnly: true);
-
-  /// Visible albums in display order.
-  List<BrowseAlbum> albumsSorted({required BrowseAlbumSort sort, required bool reverse}) {
-    final hidden = _hiddenDirectories();
-    final key = '${sort.name}|$reverse|${hidden.join('\u0000')}';
-    final cached = _albumOrder;
-    if (cached != null && _albumOrderKey == key && _albumOrderVersion == _version) return cached;
-    final dates = _albumMaxDates();
-    var albums = List<BrowseAlbum>.of(this.albums);
-    switch (sort) {
-      case BrowseAlbumSort.date:
-        albums.sort((a, b) {
-          final c = (dates[b.directory] ?? 0).compareTo(dates[a.directory] ?? 0);
-          return c != 0 ? c : _compareAlbumNames(a, b);
-        });
-      case BrowseAlbumSort.name:
-        albums.sort(_compareAlbumNames);
-      case BrowseAlbumSort.count:
-        albums.sort((a, b) {
-          final c = b.count.compareTo(a.count);
-          return c != 0 ? c : _compareAlbumNames(a, b);
-        });
-    }
-    if (reverse) albums = albums.reversed.toList(growable: false);
-    _albumOrderKey = key;
-    _albumOrderVersion = _version;
-    return _albumOrder = albums;
-  }
 
   /// Month sections over [indexes], in the order they are given.
   List<BrowseMonth> monthsOf(List<int> indexes) {
@@ -419,26 +304,6 @@ class BrowseLibrary extends ChangeNotifier {
     return reverse ? sorted.reversed.toList(growable: false) : sorted;
   }
 
-  Map<String, int> _albumMaxDates() {
-    final cached = _albumDates;
-    if (cached != null && _albumDatesVersion == _version) return cached;
-    final dates = <String, int>{};
-    for (var index = 0; index < _rows.length; index++) {
-      final directory = _rows[index].directory;
-      if (directory == null) continue;
-      final date = _rows[index].bestDateMillis;
-      final current = dates[directory];
-      if (current == null || date > current) dates[directory] = date;
-    }
-    _albumDatesVersion = _version;
-    return _albumDates = dates;
-  }
-
-  static int _compareAlbumNames(BrowseAlbum a, BrowseAlbum b) {
-    final c = a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    return c != 0 ? c : a.directory.compareTo(b.directory);
-  }
-
   static bool _isVisible(BrowseRow row, Set<String> hidden) {
     final directory = row.directory;
     return directory == null || !hidden.contains(directory);
@@ -458,47 +323,36 @@ class BrowseLibrary extends ChangeNotifier {
     return _months = months;
   }
 
-  /// Drops the index, for the handoff back to the collection.
+  /// Drops the window, for the handoff back to the collection.
   ///
-  /// Stops the scan first: a scan still streaming would keep indexing into the
-  /// rows cleared below, refilling a library nothing will show again.
+  /// A page still in flight is released with it: it belongs to the window that
+  /// was dropped, and landing it would refill a library nothing will show again.
   void clear() {
-    stopScan();
-    _notifyTimer?.cancel();
-    _notifyTimer = null;
-    final hadContent = _rows.isNotEmpty || _total != 0;
-    _total = 0;
-    _rows.clear();
-    _indexByKey.clear();
-    _indexByUri.clear();
-    _albumRows.clear();
-    _entries.clear();
-    _albums = null;
-    _months = null;
-    _mediaOrder = null;
-    _albumOrder = null;
-    _albumDates = null;
+    _token++;
+    final hadContent = _rows.isNotEmpty || _error != null || !_hasMore;
+    _reset();
     if (!hadContent) return;
     _version++;
     _notify();
   }
 
+  void _reset() {
+    _rows.clear();
+    _indexByKey.clear();
+    _entries.clear();
+    _months = null;
+    _mediaOrder = null;
+    _hasMore = true;
+    _loading = false;
+    _started = false;
+    _limitRaised = false;
+    _error = null;
+  }
+
   @override
   void dispose() {
     _disposed = true;
-    _scanToken++;
-    _scan = null;
-    _notifyTimer?.cancel();
-    _notifyTimer = null;
-    final subscription = _scanSubscription;
-    _scanSubscription = null;
-    if (subscription != null) unawaited(subscription.cancel());
-    // The scan loop waits on this future; without completing it, disposing
-    // mid-scan leaves `_scanLibrary` (and everything waiting on it) hung.
-    final done = _scanDone;
-    _scanDone = null;
-    if (done != null && !done.isCompleted) done.complete();
-    _scanning = false;
+    _token++;
     super.dispose();
   }
 
@@ -509,20 +363,8 @@ class BrowseLibrary extends ChangeNotifier {
   /// Directories the user hid from the collection: the browser hides them too,
   /// instead of surfacing a folder Aves was told not to show.
   static Set<String> _hiddenDirectories() => settings.hiddenFilters.whereType<StoredAlbumFilter>().map((v) => v.album).toSet();
-
-  static String _folderName(String directory) {
-    final normalized = directory.endsWith('/') ? directory.substring(0, directory.length - 1) : directory;
-    final separator = normalized.lastIndexOf('/');
-    return separator < 0 ? normalized : normalized.substring(separator + 1);
-  }
-
-  static String _disambiguatedName(String directory) {
-    final parts = directory.split('/').where((v) => v.isNotEmpty).toList();
-    if (parts.length < 2) return _folderName(directory);
-    return '${parts[parts.length - 2]}/${parts.last}';
-  }
 }
 
-/// The app's single browse index, filled by the import and read by the
-/// browse-only surfaces.
-final BrowseLibrary browseLibrary = BrowseLibrary();
+/// The app's browse-only timeline window, filled a page at a time and read by
+/// the browse-only surfaces.
+final BrowseLibrary browseLibrary = BrowseLibrary(rowLimit: BrowseLibrary.previewRowLimit);

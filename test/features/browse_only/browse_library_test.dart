@@ -8,8 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../common.dart';
 
-/// The browse index: order, de-duplication, album and month grouping, and the
-/// on-demand entry materialization. No database, no collection.
+/// The browse window: order, de-duplication, month grouping, and the on-demand
+/// entry materialization. No database, no collection, no media store read.
 void main() {
   setUpAll(() async {
     await setUpAllServices();
@@ -58,9 +58,9 @@ void main() {
 
   int millis(int year, int month, [int day = 15]) => DateTime.utc(year, month, day).millisecondsSinceEpoch;
 
-  test('keeps arrival order and ignores re-streamed rows', () {
+  test('keeps arrival order and ignores rows a page repeats', () {
     library.addEntries([entry(1, dateTaken: millis(2024, 3)), entry(2, dateTaken: millis(2024, 2))]);
-    // A resumed import re-walks the rows that are already indexed.
+    // A page boundary can overlap what is already indexed.
     library.addEntries([entry(1, dateTaken: millis(2024, 3)), entry(3, dateTaken: millis(2024, 1))]);
 
     expect(library.length, 3);
@@ -71,48 +71,6 @@ void main() {
     library.addEntries([entry(1), entry(2, trashed: true)]);
     expect(library.length, 1);
     expect(library.rowAt(0).id, 1);
-  });
-
-  test('de-duplicates re-streamed rows without a usable content id', () {
-    // The scan gives such a row neither a content id nor a database id: only
-    // the URI identifies it, and keying by 0 would append it on every replay.
-    final withoutId = entry(1)
-      ..id = 0
-      ..contentId = null;
-    final zeroId1 = entry(2)
-      ..id = 0
-      ..contentId = 0;
-    final zeroId2 = entry(3)
-      ..id = 0
-      ..contentId = 0;
-
-    library.addEntries([withoutId, zeroId1, zeroId2]);
-    library.addEntries([withoutId, zeroId1, zeroId2]);
-
-    expect(library.length, 3);
-  });
-
-  test('de-duplicates a row that changes identity between scans', () {
-    // A provider can report the same file with an id on one scan and without one
-    // on the next: either identity must find the row already indexed.
-    library.addEntries([entry(1)]);
-    library.addEntries([entry(1)..contentId = null]);
-    expect(library.length, 1);
-
-    library.clear();
-    library.addEntries([entry(1)..contentId = null]);
-    library.addEntries([entry(1)]);
-    expect(library.length, 1);
-  });
-
-  test('learns the content id a row was first indexed without', () {
-    // The replay can be the first report that carries the id. It has to be
-    // learned, not just used for the lookup: a remounted volume can change the
-    // URI, and the id is then the only thing that still names this row.
-    library.addEntries([entry(1)..contentId = null]);
-    library.addEntries([entry(1)]);
-    library.addEntries([entry(1)..uri = 'content://remounted/101']);
-    expect(library.length, 1);
   });
 
   test('hides rows of hidden albums from the media grid too', () async {
@@ -135,31 +93,6 @@ void main() {
     expect(library.videoIndexes, [0]);
     expect(library.rowAt(0).isVideo, isTrue);
     expect(library.rowAt(1).isVideo, isFalse);
-  });
-
-  test('groups albums with counts and the newest row as cover', () {
-    library.addEntries([
-      entry(1, dir: '/zebra', dateTaken: millis(2024, 3)),
-      entry(2, dir: '/apple', dateTaken: millis(2024, 3)),
-      entry(3, dir: '/zebra', dateTaken: millis(2024, 2)),
-    ]);
-
-    final albums = library.albums;
-    expect(albums.map((v) => v.name), ['apple', 'zebra']);
-    final zebra = albums.last;
-    expect(zebra.count, 2);
-    // Row 0 is the newest zebra row: the stream is newest first.
-    expect(library.rowAt(zebra.coverIndex).id, 1);
-    expect(library.rowsOfAlbum('/zebra'), [0, 2]);
-  });
-
-  test('hides albums the user hid from the collection', () async {
-    library.addEntries([entry(1, dir: '/visible'), entry(2, dir: '/hidden')]);
-    final previous = settings.hiddenFilters;
-    settings.hiddenFilters = {StoredAlbumFilter('/hidden', null)};
-    addTearDown(() => settings.hiddenFilters = previous);
-
-    expect(library.albums.map((v) => v.directory), ['/visible']);
   });
 
   test('groups the media grid into months, newest first', () {
@@ -190,38 +123,6 @@ void main() {
     expect(ids(library.mediaIndexes(sort: BrowseMediaSort.name, reverse: true)), [3, 1, 2]);
   });
 
-  test('orders albums by recency, name or item count', () {
-    library.addEntries([
-      entry(1, dir: '/zebra', dateTaken: millis(2024, 3)),
-      entry(2, dir: '/apple', dateTaken: millis(2024, 1)),
-      entry(3, dir: '/zebra', dateTaken: millis(2024, 2)),
-      entry(4, dir: '/mango', dateTaken: millis(2024, 2)),
-    ]);
-
-    List<String> names(List<BrowseAlbum> albums) => [for (final album in albums) album.name];
-
-    // Default: the album holding the newest item first.
-    expect(names(library.albumsSorted(sort: BrowseAlbumSort.date, reverse: false)), ['zebra', 'mango', 'apple']);
-    expect(names(library.albumsSorted(sort: BrowseAlbumSort.date, reverse: true)), ['apple', 'mango', 'zebra']);
-    expect(names(library.albumsSorted(sort: BrowseAlbumSort.name, reverse: false)), ['apple', 'mango', 'zebra']);
-    expect(names(library.albumsSorted(sort: BrowseAlbumSort.count, reverse: false)), ['zebra', 'apple', 'mango']);
-    expect(names(library.albumsSorted(sort: BrowseAlbumSort.count, reverse: true)), ['mango', 'apple', 'zebra']);
-  });
-
-  test('orders one album by the same media sort', () {
-    library.addEntries([
-      entry(1, dir: '/a', path: '/a/z.jpg', dateTaken: millis(2024, 3)),
-      entry(2, dir: '/a', path: '/a/y.jpg', dateTaken: millis(2024, 1)),
-      entry(3, dir: '/b', path: '/b/x.jpg', dateTaken: millis(2024, 2)),
-    ]);
-
-    List<int> ids(List<int> order) => [for (final index in order) library.rowAt(index).id];
-
-    expect(ids(library.albumIndexes('/a', sort: BrowseMediaSort.date, reverse: false)), [1, 2]);
-    expect(ids(library.albumIndexes('/a', sort: BrowseMediaSort.name, reverse: false)), [2, 1]);
-    expect(library.albumIndexes('/missing', sort: BrowseMediaSort.date, reverse: false), isEmpty);
-  });
-
   test('materializes an entry on demand and reuses it', () {
     library.addEntries([entry(7, dateTaken: millis(2024, 3))]);
 
@@ -245,10 +146,10 @@ void main() {
     expect(ids.every((id) => id < 0), isTrue, reason: 'a synthetic id must not alias a real database id');
   });
 
-  test('clears the index for the handoff back to the collection', () {
+  test('clears the window for the handoff back to the collection', () {
     library.addEntries([entry(1)]);
     library.clear();
     expect(library.isEmpty, isTrue);
-    expect(library.albums, isEmpty);
+    expect(library.hasMore, isTrue, reason: 'a cleared window is ready to be read again');
   });
 }

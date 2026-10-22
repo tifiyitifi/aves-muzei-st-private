@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safe
+import deckers.thibault.aves.model.provider.BrowseMediaStore
 import deckers.thibault.aves.model.provider.MediaStoreImageProvider
 import deckers.thibault.aves.utils.LogUtils
 import io.flutter.plugin.common.MethodCall
@@ -27,6 +28,8 @@ class MediaStoreHandler(private val context: Context) : MethodCallHandler {
             "getChangedUris" -> ioScope.launch { safe(call, result, ::getChangedUris) }
             "getGenerationByVolume" -> ioScope.launch { safe(call, result, ::getGenerationByVolume) }
             "countEntries" -> ioScope.launch { safe(call, result, ::countEntries) }
+            "getMediaPage" -> ioScope.launch { safe(call, result, ::getMediaPage) }
+            "getAlbumSummaries" -> ioScope.launch { safe(call, result, ::getAlbumSummaries) }
             "scanFile" -> ioScope.launch { safe(call, result, ::scanFile) }
             else -> result.notImplemented()
         }
@@ -78,6 +81,22 @@ class MediaStoreHandler(private val context: Context) : MethodCallHandler {
 
     private fun countEntries(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
         result.success(MediaStoreImageProvider().countEntries(context))
+    }
+
+    private fun getMediaPage(call: MethodCall, result: MethodChannel.Result) {
+        val limit = call.argument<Number>("limit")?.toInt()
+        if (limit == null || limit <= 0) {
+            result.error("getMediaPage-args", "missing or invalid limit", null)
+            return
+        }
+        val beforeSortDateSecs = call.argument<Number>("beforeSortDateSecs")?.toLong()
+        val beforeId = call.argument<Number>("beforeId")?.toLong()
+        val directory = call.argument<String>("directory")
+        result.success(BrowseMediaStore.fetchPage(context, limit, beforeSortDateSecs, beforeId, directory))
+    }
+
+    private fun getAlbumSummaries(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        result.success(BrowseMediaStore.fetchAlbumSummaries(context))
     }
 
     private fun scanFile(call: MethodCall, result: MethodChannel.Result) {

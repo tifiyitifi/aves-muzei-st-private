@@ -1,6 +1,8 @@
 import 'package:aves/features/collection_paging/engine/collection_engine.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/lens/scope_registry.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/features/drift_db/app_database.dart';
@@ -104,6 +106,20 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 25));
     }
     fail('scope view did not settle (entryCount=${lens.entryCount}, paged=${lens.pagedActive}, state=${lens.source.state})');
+  }
+
+  /// Waits for the library-wide state to leave `loading`.
+  ///
+  /// A settled library must not be left waiting, but the instant the window is
+  /// published is not the instant to read it: a sibling view's run can still own
+  /// the state for a moment. The invariant is that it ends settled, so the test
+  /// waits for that instead of racing it.
+  Future<void> expectSettled(MediaStoreSource source) async {
+    for (var i = 0; i < 40; i++) {
+      if (source.state != SourceState.loading) return;
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+    }
+    fail('the library stayed on loading (importing=${pagedImportStatus.active}, phase=${libraryPhase.phase})');
   }
 
   group('ScopeRegistry', () {
@@ -282,13 +298,13 @@ void main() {
       await settle(home, done: () => home.pagedActive);
       expect(home.entryCount, 3);
       expect(home.awaitingFirstWindow, isFalse);
-      expect(source.state, isNot(SourceState.loading));
+      await expectSettled(source);
 
       // The album opened next behaves the same.
       final album = scopeRegistry.acquire(source: source, filters: scopeOf('/a'));
       await settle(album, done: () => album.pagedActive);
       expect(album.entryCount, 2);
-      expect(source.state, isNot(SourceState.loading));
+      await expectSettled(source);
     });
 
     test('the scope key names the filters, not the order they arrive in', () {

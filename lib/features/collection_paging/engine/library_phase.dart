@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/logging/log.dart';
+import 'package:aves/services/common/services.dart';
 import 'package:flutter/foundation.dart';
 
 const _log = AreaKeyLog(collectionPagingLogKey);
@@ -79,9 +80,36 @@ class LibraryPhaseController extends ChangeNotifier {
 
   Future<void> _initPhase() async {
     await _prefs.init();
+    // The reset has to be decided before the first page: a complete preference
+    // over a database that lost its rows used to read as `ready`, so the
+    // collection painted its loading body until the lens worked out that the
+    // library had to be read again. Browsing is what explains that state, and
+    // it has to be the surface from the first frame (see `_needsImport`).
+    await _demoteStaleComplete();
     _prefs.addListener(_recompute);
     _status.addListener(_recompute);
     _recompute();
+  }
+
+  /// Drops a complete preference that outlived the rows it described.
+  ///
+  /// The marker is written next to the rows, so it goes with them: a missing
+  /// marker over an empty database means a reset, and the import has to run
+  /// again. Anything else — a marker that survived, rows that survived, a
+  /// database that cannot be read — is not proof of a reset, and the preference
+  /// is left alone.
+  Future<void> _demoteStaleComplete() async {
+    if (!_prefs.importComplete) return;
+    try {
+      await localMediaDb.init();
+      if (await localMediaDb.readImportComplete()) return;
+      if (await localMediaDb.countEntries() > 0) return;
+    } catch (error, stack) {
+      _log.w('library phase could not read the database', error, stack);
+      return;
+    }
+    await _prefs.setImportComplete(false);
+    _log.i('library phase: empty database behind a complete preference, browsing until it is filled');
   }
 
   /// Records that the import stopped with an error. The surface stays on the

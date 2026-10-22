@@ -1,22 +1,49 @@
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
+import 'package:aves/features/drift_db/app_database.dart';
+import 'package:aves/features/drift_db/drift_local_media_db.dart';
+import 'package:aves/model/db/db.dart';
+import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/entry/origins.dart';
+import 'package:aves/services/common/services.dart';
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 import '../../common.dart';
+import '../../helpers/sqlite3_loader.dart';
 
 /// The one-way switch between the browser and the collection.
 ///
 /// The point of these tests is the invariants that used to be broken: browsing
-/// while the flag is unset, leaving exactly once, and never coming back on a
-/// failure or on new rows.
+/// while the flag is unset, leaving exactly once, never coming back on a
+/// failure or on new rows, and starting on the browser when the database lost
+/// the rows a complete preference still describes.
 void main() {
   setUpAll(() async {
+    ensureSqlite3Loaded();
+    SharedPreferencesStorePlatform.instance = InMemorySharedPreferencesStore.empty();
     await setUpAllServices();
+    // A real (in-memory) database: the phase reads it to tell a reset from a
+    // whole library, and a fake cannot be swapped in after `localMediaDb` bound
+    // its instance.
+    db = AppDatabase(NativeDatabase.memory());
+    driftDb = DriftLocalMediaDb(database: db);
+    await driftDb.init();
+    getIt.unregister<LocalMediaDb>();
+    getIt.registerLazySingleton<LocalMediaDb>(() => driftDb);
+  });
+
+  tearDownAll(() async {
+    await tearDownAllServices();
+    await db.close();
   });
 
   setUp(() async {
     await setUpServices();
+    await driftDb.clearEntries();
+    await db.customStatement('DELETE FROM appMeta WHERE key = ?', [DriftLocalMediaDb.importCompleteKey]);
   });
 
   late CollectionPagingPrefs prefs;
@@ -128,4 +155,62 @@ void main() {
     expect(phase.phase, LibraryPhase.importing);
     expect(phase.hasFailed, isFalse);
   });
+
+  test('a complete preference over a database that lost its rows browses from the first frame', () async {
+    // No rows, no marker: the preference outlived the database it describes.
+    await prefs.setImportComplete(true);
+    final reset = LibraryPhaseController(prefs: prefs, status: status);
+    addTearDown(reset.dispose);
+    await reset.init();
+
+    // The reset is decided before the first page: the collection used to paint
+    // its loading body until the lens found out the rows were gone.
+    expect(reset.phase, LibraryPhase.importing, reason: 'browsing has to be the surface from the first frame');
+    expect(prefs.importComplete, isFalse, reason: 'the stale preference is dropped so the import runs again');
+  });
+
+  test('a marker that survived keeps the library whole', () async {
+    await driftDb.writeImportComplete();
+    await prefs.setImportComplete(true);
+    final kept = LibraryPhaseController(prefs: prefs, status: status);
+    addTearDown(kept.dispose);
+    await kept.init();
+
+    expect(kept.phase, LibraryPhase.ready);
+    expect(prefs.importComplete, isTrue, reason: 'a marker that outlived the preference is the truth');
+  });
+
+  test('rows without a marker are not a reset', () async {
+    await driftDb.insertEntries({_entry(1)});
+    await prefs.setImportComplete(true);
+    final kept = LibraryPhaseController(prefs: prefs, status: status);
+    addTearDown(kept.dispose);
+    await kept.init();
+
+    expect(kept.phase, LibraryPhase.ready);
+    expect(prefs.importComplete, isTrue, reason: 'only an empty database is proof that the rows went');
+  });
 }
+
+late AppDatabase db;
+late DriftLocalMediaDb driftDb;
+
+AvesEntry _entry(int id) => AvesEntry(
+  id: id,
+  uri: 'content://$id',
+  path: '/album/$id.jpg',
+  contentId: 100 + id,
+  pageId: null,
+  sourceMimeType: 'image/jpeg',
+  width: 10,
+  height: 20,
+  sourceRotationDegrees: 0,
+  sizeBytes: 5,
+  sourceTitle: 'title$id',
+  dateAddedSecs: 1,
+  dateModifiedMillis: 2,
+  sourceDateTakenMillis: 0,
+  durationMillis: 0,
+  trashed: false,
+  origin: EntryOrigins.mediaStoreContent,
+);

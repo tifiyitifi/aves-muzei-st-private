@@ -215,6 +215,37 @@ void main() {
       expect(source.state, isNot(SourceState.loading));
     });
 
+    test('a first import that fails before its first batch does not resolve the view', () async {
+      final store = mediaStoreService as FakeMediaStoreService;
+      store.entries = {};
+      final controller = StreamController<AvesEntry>();
+      addTearDown(controller.close);
+      store.entriesStream = controller.stream;
+      store.entryRequestCount = 0;
+      await collectionPagingPrefs.setLargeThreshold(1);
+      await collectionPagingPrefs.setImportComplete(false);
+      addTearDown(() => collectionPagingPrefs.setImportComplete(true));
+      addTearDown(libraryPhase.retry);
+      addTearDown(pagedImportStatus.reset);
+
+      // A source whose `init` is observable: a legacy morph (or any full load)
+      // after the failed import would call it, and that is exactly the extra
+      // resolve this test exists to forbid.
+      final loading = _LoadingSource()..canAnalyze = false;
+      final lens = PagedCollectionLens(source: loading, filters: {});
+      addTearDown(lens.dispose);
+
+      controller.addError(StateError('media store went away'));
+      await settle(lens, done: () => libraryPhase.hasFailed && !lens.importingRows);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      expect(lens.pagedActive, isFalse, reason: 'a failed first import has nothing to publish');
+      expect(lens.pagedBlocked, isFalse);
+      expect(lens.entryCount, 0);
+      expect(loading.initCount, 0, reason: 'the caller must stop instead of resolving a half-written database');
+      expect(store.entryRequestCount, 1, reason: 'the failed run must not be retried behind the user');
+    });
+
     test('an import that outlives its lens still ends the shared status', () async {
       final store = mediaStoreService as FakeMediaStoreService;
       store.entries = {};
@@ -1353,6 +1384,25 @@ void main() {
       // as one presents the reset database as a permanent empty collection.
       store.countError = StateError('media store went away');
       addTearDown(() => store.countError = null);
+      await collectionPagingPrefs.setImportComplete(true);
+      await collectionPagingPrefs.setLargeThreshold(1);
+      addTearDown(() => collectionPagingPrefs.setImportComplete(true));
+      addTearDown(pagedImportStatus.reset);
+
+      final lens = PagedCollectionLens(source: source, filters: {});
+      addTearDown(lens.dispose);
+      await settle(lens, done: () => !lens.importingRows && lens.entryCount == 2);
+      expect(await driftDb.countEntries(), 2);
+    });
+
+    test('a platform count that answers 0 does not hide a reset database', () async {
+      final store = mediaStoreService as FakeMediaStoreService;
+      store.entries = {entry(1), entry(2)};
+      // The real provider answers 0 on any query failure, which is exactly the
+      // reading of a genuinely empty library. The missing marker is the proof
+      // that the rows are gone, so the import must run without consulting it.
+      store.countAnswer = 0;
+      addTearDown(() => store.countAnswer = null);
       await collectionPagingPrefs.setImportComplete(true);
       await collectionPagingPrefs.setLargeThreshold(1);
       addTearDown(() => collectionPagingPrefs.setImportComplete(true));

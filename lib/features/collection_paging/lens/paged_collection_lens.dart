@@ -852,6 +852,12 @@ class PagedCollectionLens extends CollectionLens {
   }
 
   Future<void> _reloadOnce() async {
+    // The import stopped with an error: the browser owns the surface until the
+    // user retries, and the retry clears the phase before asking for this
+    // resolve. Resolving here would publish a window over a half-written
+    // database that nobody sees; the pass queued behind a failed first import
+    // (the constructor's own refresh) used to do exactly that.
+    if (libraryPhase.hasFailed) return;
     // A layout change alone keeps the same rows: publish it over the current
     // window instead of re-reading counts, headers and rows. A full resolve here
     // dropped every loaded row, so the grid had to fill a whole screen of
@@ -945,6 +951,18 @@ class PagedCollectionLens extends CollectionLens {
           // library completes with zero rows and stops asking.
           await _initialImport(gen);
           if (!_current(gen)) return;
+          // A run that died before its first batch leaves nothing to resolve.
+          // `_endImportRun(failed: true)` has already settled the shared state
+          // synchronously, the browser is still the surface, and the notice bar
+          // owns the retry: resolving here would publish a window nobody sees
+          // (and over a half-written database), which is exactly what
+          // `_onImportFinished` refuses to do below.
+          if (libraryPhase.hasFailed) {
+            // The import that was just awaited died before its first batch:
+            // the browser stays the surface and the notice bar owns the retry
+            // (see the guard at the top of this method for the queued pass).
+            return;
+          }
           decision = await const CollectionEngineRouter().resolve(filters: filters);
           if (!_current(gen)) return;
         } else if (joinImport) {
@@ -1035,9 +1053,9 @@ class PagedCollectionLens extends CollectionLens {
   /// The persisted flag is the fast path, but it can outlive the database it
   /// describes: a reset database with `importComplete == true` used to read as
   /// a complete, permanently empty library. The database marker is the truth
-  /// when it survives, and an empty database whose preference says complete is
-  /// only believed when the platform has no rows either — a genuinely empty
-  /// library must not be re-scanned on every launch.
+  /// when it survives: it is written next to the rows, so a missing marker over
+  /// an empty database means the rows went with it, and there is nothing left
+  /// to decide with.
   Future<_ImportNeed> _needsImport(CollectionPagingPrefs prefs) async {
     final markerComplete = await _recoverImportMarker(prefs);
     if (!prefs.importComplete) return _ImportNeed.firstFill;
@@ -1050,17 +1068,15 @@ class PagedCollectionLens extends CollectionLens {
       _log.w('paged entry count failed', error, stack);
       return _ImportNeed.none;
     }
-    // An empty database behind a complete preference is either a reset (the
-    // marker is written next to the rows, so it went with them) or a library
-    // that genuinely holds no rows. Only the platform can tell them apart, and
-    // a count it cannot answer is not proof of an empty library: reading it as
-    // one presented a reset database as a permanent empty collection.
-    final platformRows = await withPlatformTimeout(mediaStoreService.countEntries, label: 'media store count');
-    if (platformRows == null) {
-      _log.w('media store count unavailable, reading the empty database as a reset one');
-      return _ImportNeed.afterReset;
-    }
-    return platformRows > 0 ? _ImportNeed.afterReset : _ImportNeed.none;
+    // The platform row count cannot arbitrate here: `countEntries` answers 0
+    // both for a genuinely empty library and for a provider that failed (the
+    // Dart wrapper swallows the `PlatformException`, and the native provider
+    // swallows the query error too). Reading that 0 as "empty" presented a
+    // reset database as a permanent empty collection, on every launch. The
+    // marker is the only proof of a completed import, so an empty database
+    // without one is read again; a genuinely empty library pays one empty scan
+    // and then has its marker, and the next launch short-circuits above.
+    return _ImportNeed.afterReset;
   }
 
   /// Restores the import flag from the database when preferences lost it.

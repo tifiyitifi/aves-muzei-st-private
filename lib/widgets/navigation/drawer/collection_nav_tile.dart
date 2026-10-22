@@ -21,6 +21,8 @@ class const CollectionNavTile({
   final Widget? trailing,
   required final Set<CollectionFilter?>? filters,
   required final bool Function() isSelected,
+  // Greyed and inert while the browse-only surface cannot serve this filter.
+  final bool enabled = true,
 }) extends StatelessWidget with FeedbackMixin, VaultAwareMixin {
   @override
   Widget build(BuildContext context) {
@@ -28,6 +30,7 @@ class const CollectionNavTile({
       top: false,
       bottom: false,
       child: ListTile(
+        enabled: enabled,
         leading: leading,
         title: title,
         trailing: trailing != null
@@ -44,7 +47,7 @@ class const CollectionNavTile({
                 },
               )
             : null,
-        onTap: () => _goToCollection(context),
+        onTap: enabled ? () => _goToCollection(context) : null,
         selected: context.currentRouteName == CollectionPage.routeName && isSelected(),
       ),
     );
@@ -84,12 +87,14 @@ class const AlbumNavTile({
   super.key,
   required final AlbumBaseFilter filter,
   required final bool Function() isSelected,
+  final bool enabled = true,
 }) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final _filter = filter;
     final storageVolume = _filter is StoredAlbumFilter ? _filter.storageVolume : null;
     return CollectionNavTile(
+      enabled: enabled,
       leading: DrawerFilterIcon(filter: _filter),
       title: DrawerFilterTitle(filter: _filter),
       trailing: storageVolume?.isRemovable ?? false

@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:aves/features/browse_only/model/browse_grid_items.dart';
+import 'package:aves/features/browse_only/model/browse_scroll_map.dart';
 import 'package:aves/features/browse_only/services/browse_library.dart';
+import 'package:aves/features/browse_only/view/browse_timeline_scroller.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -109,6 +111,20 @@ class _BrowseMediaGridState extends State<BrowseMediaGrid> {
   List<int>? _itemsFor;
   int _itemsColumns = 0;
 
+  /// The scrollbar's month starts, cached on the same key as [_items] plus the
+  /// tile size (a row's height follows from it).
+  BrowseScrollMap? _scrollMap;
+  List<BrowseGridItem>? _scrollMapFor;
+  double _scrollMapRowExtent = 0;
+
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -158,8 +174,9 @@ class _BrowseMediaGridState extends State<BrowseMediaGrid> {
       _itemsColumns = columns;
     }
     final items = _items!;
-    return CustomScrollView(
+    final scrollView = CustomScrollView(
       primary: false,
+      controller: _scrollController,
       slivers: [
         SliverList(
           delegate: SliverChildBuilderDelegate(
@@ -173,6 +190,30 @@ class _BrowseMediaGridState extends State<BrowseMediaGrid> {
         const SliverToBoxAdapter(child: SizedBox(height: _bottomPadding)),
       ],
     );
+    final scrollMap = _scrollMapOf(items, tileExtent);
+    if (!BrowseTimelineScroller.appliesTo(scrollMap)) return scrollView;
+    return BrowseTimelineScroller(
+      controller: _scrollController,
+      map: scrollMap,
+      child: scrollView,
+    );
+  }
+
+  /// The month starts of the list being rendered, cached until the items or the
+  /// tile size change.
+  BrowseScrollMap _scrollMapOf(List<BrowseGridItem> items, double tileExtent) {
+    final rowExtent = tileExtent + _tileSpacing;
+    if (!identical(_scrollMapFor, items) || _scrollMapRowExtent != rowExtent) {
+      _scrollMap = BrowseScrollMap.of(
+        items,
+        headerExtent: _headerExtent,
+        rowExtent: rowExtent,
+        bottomPadding: _bottomPadding,
+      );
+      _scrollMapFor = items;
+      _scrollMapRowExtent = rowExtent;
+    }
+    return _scrollMap!;
   }
 
   /// One row of tiles.

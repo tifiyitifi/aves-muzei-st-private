@@ -12,6 +12,8 @@ class const PageNavTile({
   final Widget? trailing,
   required final AvesNavItem navItem,
   final bool Function()? isSelected,
+  // Greyed and inert while the browse-only surface cannot serve this page.
+  final bool enabled = true,
 }) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -22,6 +24,7 @@ class const PageNavTile({
       child: ListTile(
         // key is expected by test driver
         key: Key('$routeName-tile'),
+        enabled: enabled,
         leading: leading ?? DrawerPageIcon(route: routeName),
         title: title ?? DrawerPageTitle(route: routeName),
         trailing: trailing != null
@@ -34,10 +37,12 @@ class const PageNavTile({
                 ),
               )
             : null,
-        onTap: () {
-          Navigator.maybeOf(context)?.pop();
-          navItem.goTo(context);
-        },
+        onTap: enabled
+            ? () {
+                Navigator.maybeOf(context)?.pop();
+                navItem.goTo(context);
+              }
+            : null,
         selected: context.currentRouteName == routeName && (isSelected?.call() ?? true),
       ),
     );

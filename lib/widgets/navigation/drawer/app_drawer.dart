@@ -1,3 +1,5 @@
+import 'package:aves/features/browse_only/model/browse_drawer_entry.dart';
+import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/trash.dart';
@@ -116,49 +118,58 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final drawerItems = <Widget>[
-      _buildHeader(context),
-      _buildHomeLink(),
-      ..._buildTypeLinks(),
-      _buildAlbumLinks(context),
-      ..._buildPageLinks(context),
-      if (settings.enableBin) ...[
-        const Divider(),
-        binTile(context),
-      ],
-      if (!kReleaseMode) ...[
-        const Divider(),
-        debugTile,
-      ],
-    ];
+    // The drawer keeps every entry; while the browser is the library surface the
+    // ones it cannot serve are greyed instead of opening a half-written
+    // collection (see `browseDrawerEntryEnabled`).
+    return ListenableBuilder(
+      listenable: libraryPhase,
+      builder: (context, child) {
+        final browsing = libraryPhase.isBrowsing;
+        final drawerItems = <Widget>[
+          _buildHeader(context),
+          _buildHomeLink(browsing),
+          ..._buildTypeLinks(browsing),
+          _buildAlbumLinks(context, browsing),
+          ..._buildPageLinks(context, browsing),
+          if (settings.enableBin) ...[
+            const Divider(),
+            binTile(context, enabled: browseDrawerEntryEnabled(browsing: browsing, route: CollectionPage.routeName, filters: {TrashFilter.instance})),
+          ],
+          if (!kReleaseMode) ...[
+            const Divider(),
+            debugTile,
+          ],
+        ];
 
-    return Drawer(
-      child: ListTileTheme.merge(
-        selectedColor: Theme.of(context).colorScheme.primary,
-        horizontalTitleGap: 20,
-        visualDensity: VisualDensity.comfortable,
-        child: Selector<MediaQueryData, double>(
-          selector: (context, mq) => mq.safeBottomPadding,
-          builder: (context, safeBottomPadding, child) {
-            final textScaler = MediaQuery.textScalerOf(context);
-            final iconTheme = IconTheme.of(context);
-            return SingleChildScrollView(
-              controller: _scrollController,
-              // key is expected by test driver
-              key: const Key('drawer-scrollview'),
-              padding: EdgeInsets.only(bottom: safeBottomPadding),
-              child: IconTheme(
-                data: iconTheme.copyWith(
-                  size: textScaler.scale(iconTheme.size!),
-                ),
-                child: Column(
-                  children: drawerItems,
-                ),
-              ),
-            );
-          },
-        ),
-      ),
+        return Drawer(
+          child: ListTileTheme.merge(
+            selectedColor: Theme.of(context).colorScheme.primary,
+            horizontalTitleGap: 20,
+            visualDensity: VisualDensity.comfortable,
+            child: Selector<MediaQueryData, double>(
+              selector: (context, mq) => mq.safeBottomPadding,
+              builder: (context, safeBottomPadding, child) {
+                final textScaler = MediaQuery.textScalerOf(context);
+                final iconTheme = IconTheme.of(context);
+                return SingleChildScrollView(
+                  controller: _scrollController,
+                  // key is expected by test driver
+                  key: const Key('drawer-scrollview'),
+                  padding: EdgeInsets.only(bottom: safeBottomPadding),
+                  child: IconTheme(
+                    data: iconTheme.copyWith(
+                      size: textScaler.scale(iconTheme.size!),
+                    ),
+                    child: Column(
+                      children: drawerItems,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -276,7 +287,7 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildHomeLink() {
+  Widget _buildHomeLink(bool browsing) {
     // route name used for display purposes, no actual routing
     const displayRoute = HomePage.routeName;
     const leading = DrawerPageIcon(route: displayRoute);
@@ -290,6 +301,7 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
             leading: leading,
             title: title,
             filters: filters,
+            enabled: browseDrawerEntryEnabled(browsing: browsing, route: CollectionPage.routeName, filters: filters),
             isSelected: () => setEquals(currentCollection?.filters, filters),
           );
         }
@@ -300,6 +312,7 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
             leading: leading,
             title: title,
             navItem: AvesNavItem(route: ExplorerPage.routeName, path: path),
+            enabled: browseDrawerEntryEnabled(browsing: browsing, route: ExplorerPage.routeName),
             isSelected: () => widget.currentExplorerPath == path,
           );
         }
@@ -307,7 +320,7 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
     return const SizedBox();
   }
 
-  List<Widget> _buildTypeLinks() {
+  List<Widget> _buildTypeLinks(bool browsing) {
     final hiddenFilters = settings.hiddenFilters;
     final typeBookmarks = settings.drawerTypeBookmarks;
     final currentFilters = currentCollection?.filters;
@@ -320,6 +333,7 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
             leading: DrawerFilterIcon(filter: filter),
             title: DrawerFilterTitle(filter: filter),
             filters: {filter},
+            enabled: browseDrawerEntryEnabled(browsing: browsing, route: CollectionPage.routeName, filters: {filter}),
             isSelected: () {
               if (currentFilters == null || currentFilters.length > 1) return false;
               return currentFilters.firstOrNull == filter;
@@ -333,7 +347,7 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
     ];
   }
 
-  Widget _buildAlbumLinks(BuildContext context) {
+  Widget _buildAlbumLinks(BuildContext context, bool browsing) {
     final source = context.read<CollectionSource>();
     final currentFilters = currentCollection?.filters;
     return StreamBuilder<AlbumsChangedEvent>(
@@ -347,6 +361,7 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
             ...albums.map(
               (filter) => AlbumNavTile(
                 filter: filter,
+                enabled: browseDrawerEntryEnabled(browsing: browsing, route: CollectionPage.routeName, filters: {filter}),
                 isSelected: () {
                   if (currentFilters == null || currentFilters.length != 1) return false;
                   return currentFilters.firstOrNull == filter;
@@ -359,7 +374,7 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
     );
   }
 
-  List<Widget> _buildPageLinks(BuildContext context) {
+  List<Widget> _buildPageLinks(BuildContext context, bool browsing) {
     final pageBookmarks = settings.drawerPageBookmarks;
     if (pageBookmarks.isEmpty) return [];
 
@@ -397,17 +412,19 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
           key: Key('drawer-page-$route'),
           trailing: trailing,
           navItem: AvesNavItem(route: route),
+          enabled: browseDrawerEntryEnabled(browsing: browsing, route: route),
         );
       }),
     ];
   }
 
-  Widget binTile(BuildContext context) {
+  Widget binTile(BuildContext context, {bool enabled = true}) {
     final source = context.read<CollectionSource>();
     final trashSize = source.trashedEntries.map((entry) => entry.sizeBytes).sum;
 
     const filter = TrashFilter.instance;
     return CollectionNavTile(
+      enabled: enabled,
       leading: const DrawerFilterIcon(filter: filter),
       title: const DrawerFilterTitle(filter: filter),
       trailing: Text(formatFileSize(settings.avesLocale, trashSize, round: 0)),

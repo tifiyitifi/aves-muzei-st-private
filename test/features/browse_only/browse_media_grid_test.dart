@@ -4,6 +4,7 @@ import 'package:aves/features/browse_only/view/browse_media_grid.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/settings/settings.dart';
+import 'package:aves/widgets/common/basic/draggable_scrollbar/scrollbar.dart';
 import 'package:aves/widgets/common/providers/media_query_data_provider.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -165,5 +166,38 @@ void main() {
 
     expect(find.byType(BrowseMonthHeader), findsNothing);
     expect(find.byType(_TestTile), findsWidgets);
+  });
+
+  testWidgets('a long timeline gets the drag handle, and a drag lands on a month', (tester) async {
+    // The handle is for a timeline long enough that either end is more than a
+    // flick away: five months.
+    library.addEntries([
+      ...month(9, 1000),
+      ...month(8, 2000),
+      ...month(7, 3000),
+      ...month(6, 4000),
+      ...month(5, 5000),
+    ]);
+
+    await tester.pumpWidget(app());
+    await tester.pump();
+
+    expect(find.byType(DraggableScrollbar), findsOneWidget);
+    final position = tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+    expect(position.pixels, 0);
+
+    // The handle fades in with a scroll and out again after a moment, as a
+    // scrollbar does: reveal it the way a scroll does before grabbing it.
+    position.jumpTo(200);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // Grab the handle at the top of the right edge and pull it down: the drag
+    // jumps the timeline instead of scrolling it pixel by pixel.
+    final size = tester.getSize(find.byType(BrowseMediaGrid));
+    await tester.dragFrom(Offset(size.width - 12, 24), const Offset(0, 240));
+    await tester.pump();
+
+    expect(position.pixels, greaterThan(200));
   });
 }

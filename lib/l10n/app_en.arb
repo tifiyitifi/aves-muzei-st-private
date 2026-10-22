@@ -1304,11 +1304,9 @@
   "settingsCollectionBrowseOnlyBarTile": "Browse-only bar while organizing",
   "browseOnlyBarMessage": "Browse-only mode · editing paused",
   "browseOnlyBarDetails": "Details",
-  "browseOnlyMediaTab": "Media",
   "browseOnlyTimelineTab": "Timeline",
   "browseOnlyAlbumsTab": "Albums",
   "browseOnlyVideosTab": "Videos",
-  "browseOnlyUnavailable": "Available after the library is organized",
   "browseOnlyImportFailed": "Organizing stopped",
   "browseOnlyImportRetry": "Retry",
   "browseOnlyEmptyLibrary": "No media yet",
@@ -1329,6 +1327,19 @@
       "count": {
         "type": "int",
         "format": "decimalPattern"
+      }
+    }
+  },
+  "browseOnlyAlbumSummary": "{count} items · {date}",
+  "@browseOnlyAlbumSummary": {
+    "description": "Subtitle of an album tile: how many items the folder holds and when its newest item is from",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "date": {
+        "type": "String"
       }
     }
   },

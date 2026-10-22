@@ -8,6 +8,7 @@ import 'package:aves/features/browse_only/view/browse_sort_button.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
+import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
@@ -55,9 +56,9 @@ class _BrowseAlbumsViewState extends State<BrowseAlbumsView> {
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: 190,
-              mainAxisSpacing: 12,
+              mainAxisSpacing: 8,
               crossAxisSpacing: 8,
-              childAspectRatio: .74,
+              childAspectRatio: .7,
             ),
             itemCount: albums.length,
             itemBuilder: (context, index) => _BrowseAlbumTile(album: albums[index]),
@@ -77,7 +78,7 @@ class _BrowseAlbumTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(16),
       onTap: () => Navigator.maybeOf(context)?.push(
         MaterialPageRoute(
           settings: const RouteSettings(name: BrowseAlbumPage.routeName),
@@ -89,7 +90,7 @@ class _BrowseAlbumTile extends StatelessWidget {
         children: [
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(16),
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final extent = constraints.biggest.shortestSide;
@@ -113,12 +114,25 @@ class _BrowseAlbumTile extends StatelessWidget {
             style: theme.textTheme.bodyMedium,
           ),
           Text(
-            context.l10n.browseOnlyAlbumCount(album.count),
+            _subtitle(context),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ),
     );
+  }
+
+  /// How much the folder holds, and when its newest item is from.
+  ///
+  /// The date comes from the same aggregate read as the count, so it costs one
+  /// format call per visible tile and no extra media-store query.
+  String _subtitle(BuildContext context) {
+    final l10n = context.l10n;
+    if (album.maxDateMillis <= 0) return l10n.browseOnlyAlbumCount(album.count);
+    final date = settings.avesLocale.yMMMd(DateTime.fromMillisecondsSinceEpoch(album.maxDateMillis));
+    return l10n.browseOnlyAlbumSummary(album.count, date);
   }
 }
 

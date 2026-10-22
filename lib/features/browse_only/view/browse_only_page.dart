@@ -8,14 +8,10 @@ import 'package:aves/features/browse_only/view/browse_media_grid.dart';
 import 'package:aves/features/browse_only/view/browse_sort_button.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
-import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
-import 'package:aves/widgets/navigation/nav_item.dart';
-import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:provider/provider.dart';
 
 /// The browsing surface used until the collection can serve the library.
 ///
@@ -95,42 +91,30 @@ class _BrowseOnlyPageState extends State<BrowseOnlyPage> {
     );
   }
 
-  String _title(BuildContext context) {
-    // The bar keeps the user's own items, so the title follows the item that
-    // owns the current view instead of inventing a second set of names.
-    final items = context.select<Settings, List<AvesNavItem>>((v) => v.bottomNavigationActions);
-    final item = items.firstWhereOrNull((item) => BrowseOnlyBottomBar.viewFor(item) == _view);
-    if (item != null) return item.getText(context);
-    final l10n = context.l10n;
-    return switch (_view) {
-      BrowseView.timeline => l10n.browseOnlyTimelineTab,
-      BrowseView.albums => l10n.browseOnlyAlbumsTab,
-      BrowseView.videos => l10n.browseOnlyVideosTab,
-    };
-  }
+  String _title(BuildContext context) => switch (_view) {
+    BrowseView.timeline => context.l10n.browseOnlyTimelineTab,
+    BrowseView.albums => context.l10n.browseOnlyAlbumsTab,
+  };
 
   Widget _buildBody(BuildContext context) {
     switch (_view) {
       case BrowseView.albums:
         return const BrowseAlbumsView();
       case BrowseView.timeline:
-        return _buildMedia(context, videosOnly: false, storageKey: 'browse-timeline');
-      case BrowseView.videos:
-        return _buildMedia(context, videosOnly: true, storageKey: 'browse-videos');
+        return _buildTimeline(context);
     }
   }
 
-  Widget _buildMedia(BuildContext context, {required bool videosOnly, required String storageKey}) {
+  Widget _buildTimeline(BuildContext context) {
     return ListenableBuilder(
       listenable: Listenable.merge([browsePrefs, browseLibrary]),
       builder: (context, child) {
         final sort = browsePrefs.mediaSort;
         final grid = BrowseMediaGrid(
           library: browseLibrary,
-          key: PageStorageKey(storageKey),
-          indexes: browseLibrary.mediaIndexes(sort: sort, reverse: browsePrefs.mediaReverse, videosOnly: videosOnly),
+          key: const PageStorageKey('browse-timeline'),
+          indexes: browseLibrary.mediaIndexes(sort: sort, reverse: browsePrefs.mediaReverse),
           sectioned: sort == BrowseMediaSort.date,
-          emptyText: videosOnly ? context.l10n.collectionEmptyVideos : null,
         );
         if (!_showTimelineFooter) return grid;
         // The timeline is a preview of the newest rows: the album list is whole

@@ -21,9 +21,13 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 /// The height of a month header, and the gap between tiles.
-const double _headerExtent = 32;
-const double _tileSpacing = 1;
-const double _bottomPadding = 8;
+///
+/// A gallery reads as a grid of pictures, not a wall of them: the gap is the
+/// smallest one that still separates two neighbours, and it matches the album
+/// grid's.
+const double _headerExtent = 44;
+const double _tileSpacing = 2;
+const double _bottomPadding = 16;
 
 /// Builds the tile at a position of the displayed order.
 typedef BrowseTileBuilder = Widget Function(BuildContext context, int position);
@@ -83,11 +87,14 @@ class BrowseMonthHeader extends StatelessWidget {
     return Container(
       height: _headerExtent,
       color: theme.colorScheme.surface,
-      padding: const EdgeInsetsDirectional.only(start: 16),
-      alignment: AlignmentDirectional.centerStart,
-      child: Text(
-        settings.avesLocale.yMMMM(DateTime(year, month)),
-        style: theme.textTheme.titleSmall,
+      padding: const EdgeInsetsDirectional.only(start: 16, end: 16),
+      alignment: AlignmentDirectional.bottomStart,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          settings.avesLocale.yMMMM(DateTime(year, month)),
+          style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurface),
+        ),
       ),
     );
   }

@@ -249,8 +249,8 @@ class BrowseLibrary extends ChangeNotifier {
 
   /// Row positions in display order, narrowed to videos when asked.
   ///
-  /// The videos view is the same index filtered by what MediaStore itself says
-  /// the file is: no catalogue, no database, and the switch is instant.
+  /// The narrowing is by what MediaStore itself says the file is: no catalogue,
+  /// no database, and the switch is instant.
   List<int> mediaIndexes({required BrowseMediaSort sort, required bool reverse, bool videosOnly = false}) {
     final hidden = _hiddenDirectories();
     final key = '${sort.name}|$reverse|$videosOnly|${hidden.join('\u0000')}';

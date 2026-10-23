@@ -13,6 +13,9 @@
     <uses-feature
         android:name="android.software.leanback"
         android:required="false" />
+    <uses-feature
+        android:name="android.software.live_wallpaper"
+        android:required="false" />
 
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission
@@ -312,6 +315,21 @@
             <meta-data
                 android:name="android.service.dream"
                 android:resource="@xml/screen_saver" />
+        </service>
+
+        <service
+            android:name=".features.live_wallpaper.AvesLiveWallpaperService"
+            android:directBootAware="true"
+            android:exported="true"
+            android:label="@string/live_wallpaper_label"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/live_wallpaper" />
         </service>
 
         <!-- file provider to share files having a file:// URI -->

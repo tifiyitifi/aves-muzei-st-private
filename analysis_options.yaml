@@ -3,6 +3,9 @@ include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
     - lib/generated_plugin_registrant.dart
+    # Play-only report backend: outside the custom workspace, so its
+    # Firebase imports only resolve under the play flavor.
+    - plugins/aves_report_crashlytics/**
     - build/**
     - android/**
     - ios/**

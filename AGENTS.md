@@ -53,8 +53,9 @@ There are four flavors: `play`, `izzy`, `libre`, `custom` (the last is the priva
 - Platform backends are swapped by choosing different workspace members that share the same Dart package name:
   - `aves_services_google` (play, izzy, custom) vs `aves_services_none` (libre) → imported as `aves_services_platform`.
   - `aves_report_crashlytics` (play) vs `aves_report_console` (izzy, libre, custom) → imported as `aves_report_platform`.
+    - `aves_report_crashlytics` is excluded from analysis (`analysis_options.yaml`): it is a play-only backend outside the `custom` workspace, and it has no tests.
   - Video uses `aves_video_mpv`; `aves_video_exo` exists but is commented out in every flavor.
-- The committed root `pubspec.yaml` is the **`custom`** variant (the fork's primary build) and matches `flavors/pubspec_custom.yaml`; the root `pubspec.lock` matches `flavors/pubspec_custom.lock`. Where a play manifest is needed (CI analysis, upstream comparison), apply `play` explicitly.
+- The committed root `pubspec.yaml` is the **`custom`** variant (the fork's primary build) and matches `flavors/pubspec_custom.yaml`; the root `pubspec.lock` matches `flavors/pubspec_custom.lock`. Apply `play` explicitly only for upstream comparison.
 - Every pub dependency lives in **all** `flavors/pubspec_<flavor>.yaml` (+ `.lock`), since a flavor swap replaces the root manifest. Add new dependencies there too, or regenerate the flavor files.
 
 ## Commands
@@ -69,10 +70,10 @@ Order matters: `pub get` → codegen (if needed) → `gen-l10n` → `analyze`/`t
 - Single test file: `./flutterw test test/model/filters_test.dart`
 - Single test name: `./flutterw test --plain-name "some test"`
 - Run: `./flutterw run -t lib/main_play.dart --flavor play`
-- Profile build (what CI uses to type-check Android): `./flutterw build apk --profile -t lib/main_play.dart --flavor play`
+- Profile build (what CI uses to type-check Android): `./flutterw build apk --profile -t lib/main_custom.dart --flavor custom`
 - Screenshots: `./flutterw drive --flavor play -t test_driver/driver_screenshots.dart --profile` (needs a connected device/emulator), then `scripts/screenshot_post_process.sh` (needs ImageMagick 6).
 
-CI (`quality-check.yml`) runs exactly: `apply_flavor_play.sh`, `gen-l10n`, `analyze`, `test` (the flavor step also fetches packages). Generated code is committed, so CI does not run codegen.
+CI (`quality-check.yml`) runs exactly: `apply_flavor_custom.sh`, `gen-l10n`, `analyze`, `test` (the flavor step also fetches packages). Generated code is committed, so CI does not run codegen.
 
 CI (`build-custom-apk.yml`) builds a signed `custom`-flavor release APK on pushes/PRs to `muzei-dev`/`release` (and manual dispatch) and uploads it as an artifact. Signing secrets: `KEYSTORE`, `STORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` (optional `GOOGLE_API_KEY`). A push to the **`release`** branch additionally auto-tags `v<X.Y.Z>` (skipped when the tag already exists), extracts that section from `CHANGELOG.md` via `scripts/extract_log.py`, and publishes a GitHub Release with the APK and `SHA256SUMS.txt`. So a release is created only when `X.Y.Z` is bumped.
 

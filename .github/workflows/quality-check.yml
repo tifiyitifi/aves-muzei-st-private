@@ -26,9 +26,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The committed root pubspec is the `custom` flavor; this job analyzes and
-      # tests the `play` flavor so the Crashlytics workspace member resolves.
-      - name: Apply play flavor
-        run: scripts/apply_flavor_play.sh
+      # tests the shipped `custom` build. `aves_report_crashlytics` is a
+      # play-only backend outside the custom workspace (see analysis_options.yaml).
+      - name: Apply custom flavor
+        run: scripts/apply_flavor_custom.sh
 
       - name: Generate app localizations
         run: ./flutterw gen-l10n
@@ -87,9 +88,8 @@ jobs:
         # build in profile mode, instead of release,
         # so that setting up signing environment variables is not required
         run: |
-          scripts/gen_flavor_play.sh
-          scripts/apply_flavor_play.sh
-          ./flutterw build apk --profile -t lib/main_play.dart --flavor play
+          scripts/apply_flavor_custom.sh
+          ./flutterw build apk --profile -t lib/main_custom.dart --flavor custom
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2

@@ -1,8 +1,9 @@
 # Muzei wallpaper
 
 This feature is a fork-only port of [Muzei](https://github.com/muzei/muzei)
-(Apache-2.0) to Aves. It is not an independent design; the product behaviour and
-the Android wallpaper lifecycle intentionally follow Muzei.
+(Apache-2.0), created by Ian Lake, to Aves. It is not an independent design; the
+product behaviour and the Android wallpaper lifecycle intentionally follow
+Muzei.
 
 The development reference was the sibling `muzei` checkout.
 

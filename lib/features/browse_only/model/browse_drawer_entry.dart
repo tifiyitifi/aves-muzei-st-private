@@ -1,3 +1,4 @@
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/widgets/about/about_page.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
@@ -31,6 +32,7 @@ bool browseDrawerEntryEnabled({
       return filters == null || filters.whereType<CollectionFilter>().isEmpty;
     case AlbumListPage.routeName:
     case ExplorerPage.routeName:
+    case MuzeiWallpaperPage.routeName:
     case SettingsPage.routeName:
     case AboutPage.routeName:
     case AppDebugPage.routeName:

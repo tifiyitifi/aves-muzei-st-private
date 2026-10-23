@@ -1,3 +1,4 @@
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
@@ -51,6 +52,8 @@ class NavigationDisplay {
         return 'Debug';
       case ExplorerPage.routeName:
         return l10n.explorerPageTitle;
+      case MuzeiWallpaperPage.routeName:
+        return l10n.muzeiWallpaperPageTitle;
       case SearchPage.routeName:
         return MaterialLocalizations.of(context).searchFieldLabel;
       case SettingsPage.routeName:
@@ -78,6 +81,8 @@ class NavigationDisplay {
         return AIcons.debug;
       case ExplorerPage.routeName:
         return AIcons.explorer;
+      case MuzeiWallpaperPage.routeName:
+        return AIcons.wallpaper;
       case SearchPage.routeName:
         return AIcons.search;
       case SettingsPage.routeName:

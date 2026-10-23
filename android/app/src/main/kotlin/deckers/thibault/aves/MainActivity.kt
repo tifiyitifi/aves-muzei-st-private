@@ -58,6 +58,7 @@ import deckers.thibault.aves.channel.streams.platformtodart.MediaStoreChangeStre
 import deckers.thibault.aves.channel.streams.platformtodart.MessageStreamHandler
 import deckers.thibault.aves.channel.streams.platformtodart.SettingsChangeStreamHandler
 import deckers.thibault.aves.channel.streams.platformtodart.WindowChangeStreamHandler
+import deckers.thibault.aves.features.muzei_wallpaper.LiveWallpaperHandler
 import deckers.thibault.aves.model.FieldMap
 import deckers.thibault.aves.storage.apis.SafPermissions
 import deckers.thibault.aves.utils.LogUtils
@@ -174,6 +175,8 @@ open class MainActivity : FlutterFragmentActivity() {
         MethodChannel(messenger, StorageHandler.CHANNEL).setMethodCallHandler(StorageHandler(this))
         MethodChannel(messenger, StoragePermissionHandler.CHANNEL).setMethodCallHandler(StoragePermissionHandler(this))
         MethodChannel(messenger, WallpaperHandler.CHANNEL).setMethodCallHandler(WallpaperHandler(this))
+        // - live wallpaper lifecycle, state lives in `filesDir/muzei_wallpaper`
+        MethodChannel(messenger, LiveWallpaperHandler.CHANNEL).setMethodCallHandler(LiveWallpaperHandler(this))
         // - need Activity
         MethodChannel(messenger, AppProfileHandler.CHANNEL).setMethodCallHandler(AppProfileHandler(this))
         MethodChannel(messenger, WindowHandler.CHANNEL).setMethodCallHandler(ActivityWindowHandler(this))

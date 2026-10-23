@@ -53,7 +53,7 @@ class AvesLiveWallpaperService : GLWallpaperService() {
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
-            renderer = WallpaperRenderer(this@AvesLiveWallpaperService)
+            renderer = WallpaperRenderer(this@AvesLiveWallpaperService) { requestRender() }
             setEGLContextClientVersion(2)
             setEGLConfigChooser(8, 8, 8, 0, 0, 0)
             setRenderer(renderer)

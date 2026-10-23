@@ -1,5 +1,6 @@
 import 'package:aves/features/browse_only/model/browse_drawer_entry.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/trash.dart';
@@ -376,47 +377,65 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
 
   List<Widget> _buildPageLinks(BuildContext context, bool browsing) {
     final pageBookmarks = settings.drawerPageBookmarks;
-    if (pageBookmarks.isEmpty) return [];
-
     final source = context.read<CollectionSource>();
     final itemCountFormatter = settings.avesLocale.decimalNumberFormat();
-    return [
-      const Divider(),
-      ...pageBookmarks.map((route) {
-        Widget? trailing;
-        switch (route) {
-          case AlbumListPage.routeName:
-            trailing = StreamBuilder<AlbumsChangedEvent>(
-              stream: source.eventBus.on<AlbumsChangedEvent>(),
-              builder: (context, _) => Text(itemCountFormatter.format(source.rawAlbums.length)),
-            );
-          case CountryListPage.routeName:
-            trailing = StreamBuilder<CountriesChangedEvent>(
-              stream: source.eventBus.on<CountriesChangedEvent>(),
-              builder: (context, _) => Text(itemCountFormatter.format(source.sortedCountries.length)),
-            );
-          case PlaceListPage.routeName:
-            trailing = StreamBuilder<PlacesChangedEvent>(
-              stream: source.eventBus.on<PlacesChangedEvent>(),
-              builder: (context, _) => Text(itemCountFormatter.format(source.sortedPlaces.length)),
-            );
-          case TagListPage.routeName:
-            trailing = StreamBuilder<TagsChangedEvent>(
-              stream: source.eventBus.on<TagsChangedEvent>(),
-              builder: (context, _) => Text(itemCountFormatter.format(source.sortedTags.length)),
-            );
-        }
 
-        return PageNavTile(
-          // key is expected by test driver
-          key: Key('drawer-page-$route'),
-          trailing: trailing,
-          navItem: AvesNavItem(route: route),
-          enabled: browseDrawerEntryEnabled(browsing: browsing, route: route),
-        );
-      }),
-    ];
+    Widget tileFor(String route) {
+      Widget? trailing;
+      switch (route) {
+        case AlbumListPage.routeName:
+          trailing = StreamBuilder<AlbumsChangedEvent>(
+            stream: source.eventBus.on<AlbumsChangedEvent>(),
+            builder: (context, _) => Text(itemCountFormatter.format(source.rawAlbums.length)),
+          );
+        case CountryListPage.routeName:
+          trailing = StreamBuilder<CountriesChangedEvent>(
+            stream: source.eventBus.on<CountriesChangedEvent>(),
+            builder: (context, _) => Text(itemCountFormatter.format(source.sortedCountries.length)),
+          );
+        case PlaceListPage.routeName:
+          trailing = StreamBuilder<PlacesChangedEvent>(
+            stream: source.eventBus.on<PlacesChangedEvent>(),
+            builder: (context, _) => Text(itemCountFormatter.format(source.sortedPlaces.length)),
+          );
+        case TagListPage.routeName:
+          trailing = StreamBuilder<TagsChangedEvent>(
+            stream: source.eventBus.on<TagsChangedEvent>(),
+            builder: (context, _) => Text(itemCountFormatter.format(source.sortedTags.length)),
+          );
+      }
+
+      return PageNavTile(
+        // key is expected by test driver
+        key: Key('drawer-page-$route'),
+        trailing: trailing,
+        navItem: AvesNavItem(route: route),
+        enabled: browseDrawerEntryEnabled(browsing: browsing, route: route),
+      );
+    }
+
+    // The live-wallpaper page is a fixed entry, independent of the editable page
+    // bookmarks, and sits before Explorer as the fork's own destination.
+    final tiles = <Widget>[];
+    var wallpaperInserted = false;
+    for (final route in pageBookmarks) {
+      if (!wallpaperInserted && route == ExplorerPage.routeName) {
+        tiles.add(_wallpaperTile(browsing));
+        wallpaperInserted = true;
+      }
+      tiles.add(tileFor(route));
+    }
+    if (!wallpaperInserted) tiles.add(_wallpaperTile(browsing));
+
+    return [const Divider(), ...tiles];
   }
+
+  Widget _wallpaperTile(bool browsing) => PageNavTile(
+    // key is expected by test driver
+    key: const Key('drawer-page-/muzei_wallpaper'),
+    navItem: const AvesNavItem(route: MuzeiWallpaperPage.routeName),
+    enabled: browseDrawerEntryEnabled(browsing: browsing, route: MuzeiWallpaperPage.routeName),
+  );
 
   Widget binTile(BuildContext context, {bool enabled = true}) {
     final source = context.read<CollectionSource>();

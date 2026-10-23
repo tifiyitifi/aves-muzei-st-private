@@ -156,6 +156,7 @@ class AIcons {
   static const search = Symbols.search;
   static const select = Symbols.select_all;
   static const setAs = Symbols.wallpaper;
+  static const wallpaper = Symbols.wallpaper;
   static const setBoundEnd = MdiIcons.rayEnd;
   static const setBoundStart = MdiIcons.rayStart;
   static const setCover = MdiIcons.imageEditOutline;

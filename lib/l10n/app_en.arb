@@ -860,6 +860,29 @@
   "explorerPageTitle": "Explorer",
   "explorerActionSelectStorageVolume": "Select storage",
 
+  "muzeiWallpaperPageTitle": "Muzei Wallpaper",
+  "muzeiWallpaperSetAction": "Set as live wallpaper",
+  "muzeiWallpaperActive": "Live wallpaper active",
+  "muzeiWallpaperNextAction": "Next artwork",
+  "muzeiWallpaperOpenArtwork": "Open artwork",
+  "muzeiWallpaperAttribution": "Ported from Muzei by Ian Lake (Apache-2.0)",
+  "muzeiWallpaperChooserUnavailable": "No live wallpaper picker available",
+  "muzeiWallpaperRefreshStatus": "Refresh status",
+  "muzeiWallpaperSyncRuntime": "Sync runtime",
+  "muzeiWallpaperDebugInfo": "Debug info",
+  "muzeiWallpaperEmpty": "No artwork to show",
+  "muzeiWallpaperUnsupported": "This source needs filters the background query cannot run",
+  "muzeiWallpaperMissing": "The chosen artwork is no longer available",
+  "muzeiWallpaperErrorTitle": "Wallpaper unavailable",
+  "muzeiWallpaperLoadError": "Failed to prepare the wallpaper: {error}",
+  "@muzeiWallpaperLoadError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+
   "selectStorageVolumeDialogTitle": "Select Storage",
 
   "searchCollectionFieldHint": "Search collection",

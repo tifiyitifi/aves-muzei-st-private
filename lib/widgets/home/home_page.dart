@@ -9,6 +9,7 @@ import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart'
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator.dart';
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/locale/intl.dart';
 import 'package:aves/model/app/intent.dart';
@@ -81,6 +82,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
     CollectionPage.routeName,
     ExplorerPage.routeName,
     MapPage.routeName,
+    MuzeiWallpaperPage.routeName,
     SearchPage.routeName,
     SettingsPage.routeName,
   ];
@@ -544,6 +546,8 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
         return buildRoute((context) => ExplorerPage(path: path));
       case HomeWidgetSettingsPage.routeName:
         return buildRoute((context) => HomeWidgetSettingsPage(widgetId: _widgetId!));
+      case MuzeiWallpaperPage.routeName:
+        return buildRoute((context) => const MuzeiWallpaperPage());
       case ScreenSaverPage.routeName:
         return buildRoute((context) => ScreenSaverPage(source: source));
       case ScreenSaverSettingsPage.routeName:

@@ -27,21 +27,24 @@ import deckers.thibault.aves.R
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 /**
- * Minimal GL renderer used by the live-wallpaper spike.
+ * State-driven wallpaper renderer.
  *
  * Adapted from Muzei's `render/MuzeiBlurRenderer.kt` and `render/GLPictureSet.kt`
- * (https://github.com/muzei/muzei, Apache-2.0) for cover-fit matrices, focus and
- * the sharp/effect crossfade. The state-driven renderer extends this file.
- *
- * It deliberately draws a single texture with cover-fit semantics so the risky part
- * (WallpaperService + EGL lifecycle) can be verified before the state-driven renderer
- * and the Muzei-style effects are added.
+ * (https://github.com/muzei/muzei, Apache-2.0) for the texture upload, cover-fit
+ * crop and reload contract. The Flutter side bakes `slots/<id>/sharp.png`, and
+ * this renderer only uploads that bitmap; effects, gestures and crossfades land
+ * in the next milestones.
  */
-class WallpaperRenderer(private val context: Context) : GLSurfaceView.Renderer {
+class WallpaperRenderer(
+    private val context: Context,
+    private val requestRender: () -> Unit,
+) : GLSurfaceView.Renderer {
     companion object {
         private const val TAG = "AvesLiveWallpaper"
 
@@ -64,6 +67,20 @@ class WallpaperRenderer(private val context: Context) : GLSurfaceView.Renderer {
             }
         """
     }
+
+    private val store = WallpaperStateStore.forContext(context)
+
+    /** Disk reads and PNG decodes never run on the GL thread. */
+    private val loader = Executors.newSingleThreadExecutor()
+
+    private val reloadInFlight = AtomicBoolean(false)
+    private val reloadAgain = AtomicBoolean(false)
+
+    @Volatile
+    private var destroyed = false
+
+    @Volatile
+    private var pending: LoadedState? = null
 
     private var program = 0
     private var texture = 0
@@ -92,12 +109,17 @@ class WallpaperRenderer(private val context: Context) : GLSurfaceView.Renderer {
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         Log.d(TAG, "surface.created")
+        destroyed = false
         try {
             program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
             aPosition = GLES20.glGetAttribLocation(program, "aPosition")
             aTexCoord = GLES20.glGetAttribLocation(program, "aTexCoord")
             uTexture = GLES20.glGetUniformLocation(program, "uTexture")
+            // The spike is a neutral placeholder while the first state loads; a
+            // real artwork replaces it as soon as the loader finishes.
             loadSpikeTexture()
+            WallpaperRenderBus.attach(this)
+            requestReload()
         } catch (t: Throwable) {
             Log.e(TAG, "renderer init failed, falling back to solid color", t)
             program = 0
@@ -113,6 +135,11 @@ class WallpaperRenderer(private val context: Context) : GLSurfaceView.Renderer {
     }
 
     override fun onDrawFrame(gl: GL10?) {
+        pending?.let { loaded ->
+            pending = null
+            uploadTexture(loaded)
+        }
+
         GLES20.glClearColor(0.05f, 0.06f, 0.08f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         if (program == 0 || texture == 0) {
@@ -140,8 +167,48 @@ class WallpaperRenderer(private val context: Context) : GLSurfaceView.Renderer {
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
     }
 
+    /**
+     * Asks the loader thread to read `state.json` and decode the current slot.
+     *
+     * Called from the Flutter channel (any thread) and from the bus. Coalesces
+     * concurrent requests: at most one decode runs, and a request that arrives
+     * during it is replayed once.
+     */
+    fun requestReload() {
+        if (destroyed) return
+        if (!reloadInFlight.compareAndSet(false, true)) {
+            reloadAgain.set(true)
+            return
+        }
+        try {
+            loader.execute {
+                val loaded = loadState()
+                if (destroyed) {
+                    loaded?.bitmap?.recycle()
+                    reloadInFlight.set(false)
+                    return@execute
+                }
+                pending = loaded
+                reloadInFlight.set(false)
+                requestRender()
+                if (reloadAgain.compareAndSet(true, false)) {
+                    requestReload()
+                }
+            }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            // The engine was destroyed between the check and the submit.
+            reloadInFlight.set(false)
+            Log.d(TAG, "reload ignored after renderer shutdown")
+        }
+    }
+
     fun destroy() {
         Log.d(TAG, "renderer.destroy")
+        destroyed = true
+        WallpaperRenderBus.detach(this)
+        loader.shutdownNow()
+        pending?.bitmap?.recycle()
+        pending = null
         if (texture != 0) {
             GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
             texture = 0
@@ -150,6 +217,49 @@ class WallpaperRenderer(private val context: Context) : GLSurfaceView.Renderer {
             GLES20.glDeleteProgram(program)
             program = 0
         }
+    }
+
+    private fun loadState(): LoadedState? {
+        return try {
+            val state = store.readState() ?: return null
+            val sharp = state.currentSharp ?: return null
+            val bitmap = BitmapFactory.decodeFile(sharp.absolutePath) ?: run {
+                Log.e(TAG, "failed to decode ${sharp.absolutePath}")
+                return null
+            }
+            LoadedState(state.generation, state.current, state.next, bitmap)
+        } catch (t: Throwable) {
+            Log.e(TAG, "failed to load wallpaper state", t)
+            null
+        }
+    }
+
+    private fun uploadTexture(loaded: LoadedState) {
+        val bitmap: Bitmap = loaded.bitmap
+        if (bitmap.isRecycled || bitmap.width <= 0 || bitmap.height <= 0) {
+            bitmap.recycle()
+            return
+        }
+        if (texture != 0) {
+            GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
+        }
+        texture = createTexture(bitmap)
+        textureWidth = bitmap.width
+        textureHeight = bitmap.height
+        updateTexCoords()
+        bitmap.recycle()
+        try {
+            store.writeRuntime(
+                WallpaperRuntime(
+                    generation = loaded.generation,
+                    current = loaded.current,
+                    next = loaded.next,
+                ),
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "failed to write runtime", t)
+        }
+        Log.d(TAG, "texture.loaded generation=${loaded.generation} slot=${loaded.current} w=$textureWidth h=$textureHeight")
     }
 
     private fun loadSpikeTexture() {
@@ -163,7 +273,7 @@ class WallpaperRenderer(private val context: Context) : GLSurfaceView.Renderer {
         texture = createTexture(bitmap)
         bitmap.recycle()
         updateTexCoords()
-        Log.d(TAG, "texture.loaded w=$textureWidth h=$textureHeight")
+        Log.d(TAG, "texture.spike w=$textureWidth h=$textureHeight")
     }
 
     private fun createTexture(bitmap: Bitmap): Int {
@@ -239,4 +349,11 @@ class WallpaperRenderer(private val context: Context) : GLSurfaceView.Renderer {
         }
         return shader
     }
+
+    private data class LoadedState(
+        val generation: Int,
+        val current: Int,
+        val next: Int,
+        val bitmap: Bitmap,
+    )
 }

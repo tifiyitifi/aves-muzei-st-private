@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:aves/features/collection_paging/lens/scope_registry.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -92,6 +93,7 @@ class AvesNavItem extends Equatable {
     switch (route) {
       case AboutPage.routeName:
       case AppDebugPage.routeName:
+      case MuzeiWallpaperPage.routeName:
       case SearchPage.routeName:
       case SettingsPage.routeName:
         return false;
@@ -140,6 +142,8 @@ class AvesNavItem extends Equatable {
         return (_) => const AppDebugPage();
       case ExplorerPage.routeName:
         return (_) => ExplorerPage(path: path);
+      case MuzeiWallpaperPage.routeName:
+        return (_) => const MuzeiWallpaperPage();
       case SettingsPage.routeName:
         return (_) => const SettingsPage();
       default:

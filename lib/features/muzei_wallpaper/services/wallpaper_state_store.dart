@@ -49,6 +49,12 @@ class WallpaperStateStore {
 
   File slotFile(int slotId, String name) => File(p.join(slotDirectory(slotId).path, name));
 
+  /// Path of a slot file as stored in `state.json`.
+  ///
+  /// Always POSIX-style: the native renderer resolves it against the wallpaper
+  /// root with `/`, and the value must not change when tests run on Windows.
+  static String relativeSlotFile(int slotId, String name) => p.posix.join(slotsDirName, '$slotId', name);
+
   Future<void> ensureLayout() async {
     await root.create(recursive: true);
     await slotsDir.create(recursive: true);

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/collection_paging/engine/collection_paging_keys.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/lens/paged_bootstrap.dart';
 import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
@@ -14,6 +15,7 @@ import 'package:aves/services/common/services.dart';
 import 'package:aves/services/media/media_store_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 import '../../common.dart';
@@ -23,10 +25,14 @@ import '../../helpers/sqlite3_loader.dart';
 /// Paged sync (fresh discovery + changed-based sync) and paged mutation
 /// (delete without materializing), against an in-memory Drift database.
 void main() {
+  late _RecordingPrefsStore prefsStore;
+
   setUpAll(() async {
     ensureSqlite3Loaded();
-    SharedPreferencesStorePlatform.instance = InMemorySharedPreferencesStore.empty();
     await setUpAllServices();
+    // Installed after the shared services, which reset the store themselves. The
+    // recorder lets a test tell the retry list's write from the cursor's.
+    SharedPreferencesStorePlatform.instance = prefsStore = _RecordingPrefsStore();
   });
 
   late AppDatabase db;
@@ -48,6 +54,13 @@ void main() {
 
   setUp(() async {
     await collectionPagingPrefs.init();
+    // The cursor and the retry list are process-wide: a test must not inherit
+    // the previous one's snapshot.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(CollectionPagingKeys.mediaGeneration);
+    await prefs.remove(CollectionPagingKeys.pendingSyncUris);
+    prefsStore.writes.clear();
+    prefsStore.failingKeys.clear();
     await driftDb.clearEntries();
     await driftDb.clearCatalogMetadata();
     await driftDb.clearDates();
@@ -57,6 +70,8 @@ void main() {
   });
 
   tearDown(() async {
+    // A failing key would take the settings writes of the next test down with it.
+    prefsStore.failingKeys.clear();
     await setUpServices();
   });
 
@@ -282,6 +297,25 @@ void main() {
       expect(await discoverer.importAll(onProgress: (_) {}), 2);
       expect(await driftDb.countEntries(), 2);
     });
+
+    test('stores a cursor a change during the scan is still newer than', () async {
+      // The stream is ordered newest first: a file that lands while the scan
+      // runs is behind the cursor it has already passed. A cursor taken at the
+      // end of the run would claim that change had been applied, and the sync
+      // would never offer it again.
+      final store = _ScriptedMediaStore()
+        ..entries = {for (var id = 1; id <= 4; id++) entry(id)}
+        ..generation = {'primary': 5};
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+
+      await discoverer.importAll(
+        onProgress: (_) {},
+        firstBatchLimit: 2,
+        onFirstBatch: () async => store.generation = {'primary': 9},
+      );
+
+      expect(discoverer.lastGeneration, {'primary': 5}, reason: 'the change during the scan must stay readable');
+    });
   });
 
   group('PagedDiscoverer.syncIfChanged', () {
@@ -312,6 +346,70 @@ void main() {
       expect(await discoverer.syncIfChanged(), 1);
       expect(await driftDb.countEntries(), 1);
       expect(discoverer.lastGeneration, {'primary': 8});
+    });
+
+    test('retries a change a transient failure left behind instead of losing it', () async {
+      final fresh = entry(1);
+      final store = _ScriptedMediaStore()
+        ..generation = {'primary': 8}
+        ..changedUris = [fresh.uri];
+      final fetch = FakeMediaFetchService()
+        ..entries = {fresh}
+        ..failingUris = {fresh.uri};
+      final first = PagedDiscoverer(mediaStore: store, mediaFetch: fetch, database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
+
+      expect(await first.syncIfChanged(), 0);
+      expect(await driftDb.countEntries(), 0);
+      expect(first.lastGeneration, {'primary': 8}, reason: 'the read itself completed');
+      expect(first.pendingUris, {fresh.uri}, reason: 'the change is owed, not dropped');
+
+      // A later sync with the same generation must still offer the failed URI,
+      // even across a restart: the list is persisted next to the cursor.
+      fetch.failingUris = {};
+      final second = PagedDiscoverer(mediaStore: store, mediaFetch: fetch, database: driftDb, catalogEntry: (_) async {});
+      expect(await second.syncIfChanged(), 1);
+      expect((await driftDb.loadEntriesByUris({fresh.uri})).single.dateModifiedMillis, fresh.dateModifiedMillis);
+      expect(second.pendingUris, isEmpty);
+    });
+
+    test('writes the retry list before the cursor that would hide it', () async {
+      // The two writes cannot be atomic. Landing the cursor first leaves the
+      // change set behind it, so a process death between them loses the retry
+      // the list exists to keep.
+      final fresh = entry(1);
+      final store = _ScriptedMediaStore()
+        ..generation = {'primary': 8}
+        ..changedUris = [fresh.uri];
+      final fetch = FakeMediaFetchService()
+        ..entries = {fresh}
+        ..failingUris = {fresh.uri};
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: fetch, database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
+
+      await discoverer.syncIfChanged();
+
+      final pendingAt = prefsStore.writes.indexOf(CollectionPagingKeys.pendingSyncUris);
+      final generationAt = prefsStore.writes.indexOf(CollectionPagingKeys.mediaGeneration);
+      expect(pendingAt, isNonNegative, reason: 'the failed uri must be persisted');
+      expect(generationAt, greaterThan(pendingAt), reason: 'the cursor may only move once the retry is on disk');
+    });
+
+    test('keeps the cursor when the retry list cannot be persisted', () async {
+      // A write the platform rejects is the same loss as a crash between the two:
+      // the failed change has nowhere to be retried from, so the cursor has to
+      // stay where the change set can be read again.
+      final fresh = entry(1);
+      final store = _ScriptedMediaStore()
+        ..generation = {'primary': 8}
+        ..changedUris = [fresh.uri];
+      final fetch = FakeMediaFetchService()
+        ..entries = {fresh}
+        ..failingUris = {fresh.uri};
+      final discoverer = PagedDiscoverer(mediaStore: store, mediaFetch: fetch, database: driftDb, catalogEntry: (_) async {})..lastGeneration = {'primary': 7};
+      prefsStore.failingKeys.add(CollectionPagingKeys.pendingSyncUris);
+
+      expect(await discoverer.syncIfChanged(), 0);
+      expect(discoverer.lastGeneration, {'primary': 7}, reason: 'the whole change set is re-read next time');
+      expect(discoverer.pendingUris, {fresh.uri});
     });
 
     test('catalogs synced files inline', () async {
@@ -532,4 +630,37 @@ class _ScriptedMediaStore extends Fake implements MediaStoreService {
 
   @override
   Future<int> countEntries() async => entries.length;
+}
+
+/// Records the order preferences are written, and can reject one key.
+///
+/// The sync has two independent writes and no transaction between them, so a
+/// test has to be able to see which one landed first, and to make the first one
+/// fail the way a platform store can.
+class _RecordingPrefsStore extends InMemorySharedPreferencesStore {
+  new() : super.empty();
+
+  final List<String> writes = [];
+  final Set<String> failingKeys = {};
+
+  // The legacy API prefixes every key it hands to the store.
+  static const _prefix = 'flutter.';
+
+  static String _logicalKey(String key) => key.startsWith(_prefix) ? key.substring(_prefix.length) : key;
+
+  @override
+  Future<bool> remove(String key) {
+    final logical = _logicalKey(key);
+    writes.add(logical);
+    if (failingKeys.contains(logical)) throw StateError('preferences write failed for $key');
+    return super.remove(key);
+  }
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) {
+    final logical = _logicalKey(key);
+    writes.add(logical);
+    if (failingKeys.contains(logical)) throw StateError('preferences write failed for $key');
+    return super.setValue(valueType, key, value);
+  }
 }

@@ -191,6 +191,11 @@ class PagedCatalogWorker {
           if (await canLocate()) await _runPlaces(chunkSize);
         }
       }
+    } catch (error, stack) {
+      // A pass is best effort: a busy database must not escape as an unhandled
+      // async error. The rows it did not reach stay in the backlog, which the
+      // next probe picks up.
+      _log.w('catalog drain failed; the backlog will be retried', error, stack);
     } finally {
       catalogued = _sessionDone;
       _draining = false;

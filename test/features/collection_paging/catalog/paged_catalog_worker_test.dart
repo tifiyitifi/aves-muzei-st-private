@@ -84,6 +84,28 @@ void main() {
       );
 
   group('PagedCatalogWorker', () {
+    test('a failed backlog probe ends the drain without escaping it', () async {
+      await database.insertEntries({for (var i = 1; i <= 3; i++) entry(i)});
+      final flaky = _FlakyDb(database: db)..failOnCountUncatalogued = 2;
+      await flaky.init();
+      final w = PagedCatalogWorker(
+        source: source,
+        database: flaky,
+        catalogEntry: (entry) async => entry.catalogMetadata = CatalogMetadata(id: entry.id, xmpSubjects: 't'),
+      );
+
+      // The second count is the pass itself, not the session's denominator: the
+      // drain must end normally, with the rows still owed.
+      await w.run(chunkSize: 2);
+      expect(w.isRunning, isFalse);
+      expect(await database.countUncatalogued(), 3);
+
+      // The next probe picks the backlog up, so the failure costs a pass, not
+      // the rows.
+      await w.run(chunkSize: 2);
+      expect(await database.countUncatalogued(), 0);
+    });
+
     test('catalogs the backlog in chunks and notifies', () async {
       await database.insertEntries({for (var i = 1; i <= 5; i++) entry(i)});
       var catalogEvents = 0;
@@ -337,4 +359,19 @@ void main() {
       expect(await database.loadUnlocatedGpsIds(after: LocalMediaDb.backlogStart, limit: 10), isEmpty);
     });
   });
+}
+
+/// A database whose backlog count can fail once, like a busy connection.
+class _FlakyDb extends DriftLocalMediaDb {
+  new({required super.database});
+
+  int failOnCountUncatalogued = 0;
+  int _countCalls = 0;
+
+  @override
+  Future<int> countUncatalogued([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) {
+    _countCalls++;
+    if (_countCalls == failOnCountUncatalogued) throw StateError('database busy');
+    return super.countUncatalogued(predicate);
+  }
 }

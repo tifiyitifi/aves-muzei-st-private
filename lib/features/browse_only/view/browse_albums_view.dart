@@ -41,7 +41,7 @@ class _BrowseAlbumsViewState extends State<BrowseAlbumsView> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([browseAlbums, browsePrefs]),
+      listenable: Listenable.merge([browseAlbums, browsePrefs, settings]),
       builder: (context, child) {
         final albums = browseAlbums.albumsSorted(sort: browsePrefs.albumSort, reverse: browsePrefs.albumReverse);
         if (albums.isEmpty) {
@@ -217,7 +217,7 @@ class _BrowseAlbumPageState extends State<BrowseAlbumPage> {
   Widget build(BuildContext context) {
     final library = _loader.library;
     return ListenableBuilder(
-      listenable: Listenable.merge([browsePrefs, library, libraryPhase, pagedImportStatus]),
+      listenable: Listenable.merge([browsePrefs, library, libraryPhase, pagedImportStatus, settings]),
       builder: (context, child) {
         final sort = browsePrefs.mediaSort;
         final indexes = library.mediaIndexes(sort: sort, reverse: browsePrefs.mediaReverse);

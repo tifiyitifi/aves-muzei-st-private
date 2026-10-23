@@ -120,6 +120,36 @@ void main() {
     expect(library.length, 0, reason: 'a page landing after the handoff must not index into a cleared window');
   });
 
+  test('clearing a window during its first read tells its listeners', () async {
+    seed(300);
+    final hold = Completer<void>();
+    store.pageHold = hold;
+
+    final library = BrowseLibrary();
+    addTearDown(library.dispose);
+    addTearDown(() {
+      if (!hold.isCompleted) hold.complete();
+    });
+
+    var notifications = 0;
+    library.addListener(() => notifications++);
+
+    final loading = library.loadFirstPage();
+    expect(library.loading, isTrue);
+    final before = notifications;
+
+    // The handoff drops the window while the first page is still in flight: no
+    // rows and no error, so the clear itself has to be the event that turns the
+    // spinner off.
+    library.clear();
+    expect(library.loading, isFalse);
+    expect(notifications, greaterThan(before), reason: 'the cleared window must tell its listeners');
+    expect(library.length, 0);
+
+    hold.complete();
+    await loading;
+  });
+
   test('a failed page keeps the rows and can be retried', () async {
     seed(300);
     final library = BrowseLibrary();
@@ -208,6 +238,79 @@ void main() {
     expect(library.length, 600, reason: 'an album is whole, like its count');
     expect(library.hasMore, isFalse);
     expect(store.lastPageDirectory, '/album', reason: 'the read must be scoped to the folder');
+  });
+
+  test('an empty library loads as empty, not as an error', () async {
+    seed(0);
+    final library = BrowseLibrary();
+    addTearDown(library.dispose);
+
+    await library.loadFirstPage();
+
+    expect(library.length, 0);
+    expect(library.loading, isFalse);
+    expect(library.error, isNull);
+    expect(library.hasMore, isFalse);
+    expect(store.pageRequestCount, 1);
+  });
+
+  test('a page that never answers times out and can be retried', () async {
+    seed(300);
+    final hold = Completer<void>();
+    store.pageHold = hold;
+    final library = BrowseLibrary(pageTimeout: const Duration(milliseconds: 20));
+    addTearDown(library.dispose);
+    addTearDown(() {
+      if (!hold.isCompleted) hold.complete();
+    });
+
+    await library.loadFirstPage();
+    expect(library.error, isA<TimeoutException>());
+    expect(library.loading, isFalse);
+    expect(library.length, 0);
+
+    store.pageHold = null;
+    await library.retry();
+    expect(library.error, isNull);
+    expect(library.length, BrowseLibrary.pageSize);
+  });
+
+  test('an exact multiple of the page size ends with one empty read, not a lost row', () async {
+    seed(BrowseLibrary.pageSize * 2);
+    final library = BrowseLibrary();
+    addTearDown(library.dispose);
+
+    await library.loadFirstPage();
+    await library.loadMore();
+    expect(library.length, BrowseLibrary.pageSize * 2);
+    expect(library.hasMore, isTrue, reason: 'a full last page is not proof of the end');
+
+    await library.loadMore();
+    expect(library.length, BrowseLibrary.pageSize * 2);
+    expect(library.hasMore, isFalse);
+    expect(store.pageRequestCount, 3);
+  });
+
+  test('the default timeline limit is 5000 and only the user passes it', () async {
+    seed(BrowseLibrary.previewRowLimit + 200);
+    final library = BrowseLibrary(rowLimit: BrowseLibrary.previewRowLimit);
+    addTearDown(library.dispose);
+
+    await library.loadFirstPage();
+    while (!library.atLimit) {
+      await library.loadMore();
+    }
+    expect(library.length, BrowseLibrary.previewRowLimit);
+    expect(library.hasMore, isFalse);
+
+    final requests = store.pageRequestCount;
+    await library.loadMore();
+    expect(store.pageRequestCount, requests, reason: 'the preview does not grow on its own');
+
+    await library.loadMore(beyondPreviewLimit: true);
+    expect(store.pageRequestCount, requests + 1);
+    expect(library.length, BrowseLibrary.previewRowLimit + 200);
+    expect(library.hasMore, isFalse);
   });
 
   test('a disposed window does not read', () async {

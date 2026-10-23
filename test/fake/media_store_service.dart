@@ -69,6 +69,10 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   /// When set, `getAlbumSummaries` fails.
   Object? albumError;
 
+  /// When set, `getAlbumSummaries` waits on it before answering, so a test can
+  /// hold the one aggregate read in flight.
+  Completer<void>? albumHold;
+
   int albumSummaryRequestCount = 0;
 
   /// Folder summaries the fake answers. Unset means "derive them from
@@ -96,6 +100,7 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
     emptyPages = 0;
     emptyPageCursorStalls = false;
     albumError = null;
+    albumHold = null;
     albumSummaryRequestCount = 0;
     albumSummaries = null;
   }
@@ -207,7 +212,13 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
       // modification, then addition.
       (entry.sourceDateTakenMillis ?? entry.dateModifiedMillis ?? (entry.dateAddedSecs ?? 0) * 1000) ~/ 1000;
 
-  static MediaStorePageKey _keyOf(AvesEntry entry) => MediaStorePageKey(sortDateSecs: _sortDateSecs(entry), id: entry.contentId ?? 0);
+  static MediaStorePageKey? _keyOf(AvesEntry entry) {
+    final contentId = entry.contentId;
+    // The platform reads `_ID` and never reports 0; the Dart parser drops a
+    // non-positive id, so the fake must not invent a cursor the real one cannot.
+    if (contentId == null || contentId <= 0) return null;
+    return MediaStorePageKey(sortDateSecs: _sortDateSecs(entry), id: contentId);
+  }
 
   static int _compareNewestFirst(AvesEntry a, AvesEntry b) {
     final c = _sortDateSecs(b).compareTo(_sortDateSecs(a));
@@ -230,6 +241,8 @@ class FakeMediaStoreService extends Fake implements MediaStoreService {
   @override
   Future<List<MediaStoreAlbumSummary>> getAlbumSummaries() async {
     albumSummaryRequestCount++;
+    final hold = albumHold;
+    if (hold != null) await hold.future;
     final error = albumError;
     if (error != null) throw error;
     final configured = albumSummaries;

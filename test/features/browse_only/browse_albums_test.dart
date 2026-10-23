@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/features/browse_only/services/browse_albums.dart';
 import 'package:aves/features/browse_only/services/browse_prefs.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -161,6 +163,88 @@ void main() {
     expect(albums.error, isNull, reason: 'the error clears when the read is asked for again');
     expect(albums.albums.map((v) => v.directory), ['/dcim/Camera']);
     expect(store.albumSummaryRequestCount, 2);
+  });
+
+  test('hiding an album updates the loaded list without re-reading it', () async {
+    store.albumSummaries = [
+      MediaStoreAlbumSummary(directory: '/visible', count: 1, sizeBytes: 5, cover: entry('/visible', 'a', dateTaken: millis(2024, 3))),
+      MediaStoreAlbumSummary(directory: '/hidden', count: 1, sizeBytes: 5, cover: entry('/hidden', 'b', dateTaken: millis(2024, 2))),
+    ];
+    final previous = settings.hiddenFilters;
+    settings.hiddenFilters = {};
+    addTearDown(() => settings.hiddenFilters = previous);
+
+    final albums = BrowseAlbums();
+    addTearDown(albums.dispose);
+    await albums.load();
+    expect(albums.albums.map((v) => v.directory), containsAll(['/visible', '/hidden']));
+
+    settings.hiddenFilters = {StoredAlbumFilter('/hidden', null)};
+
+    expect(albums.albums.map((v) => v.directory), ['/visible']);
+    expect(albums.albumsSorted(sort: BrowseAlbumSort.name, reverse: false).map((v) => v.directory), ['/visible']);
+    expect(store.albumSummaryRequestCount, 1, reason: 'the hidden set is applied to the loaded summaries');
+  });
+
+  test('clear drops the list so a handoff can read it again', () async {
+    store.albumSummaries = [
+      MediaStoreAlbumSummary(directory: '/album', count: 1, sizeBytes: 5, cover: entry('/album', 'a', dateTaken: millis(2024, 3))),
+    ];
+    final albums = BrowseAlbums();
+    addTearDown(albums.dispose);
+    await albums.load();
+    expect(albums.albums, hasLength(1));
+
+    albums.clear();
+    expect(albums.albums, isEmpty);
+    expect(albums.loading, isFalse);
+
+    await albums.load();
+    expect(store.albumSummaryRequestCount, 2, reason: 'a cleared list is read again');
+    expect(albums.albums, hasLength(1));
+  });
+
+  test('a read landing after clear cannot refill the list', () async {
+    store.albumSummaries = [
+      MediaStoreAlbumSummary(directory: '/album', count: 1, sizeBytes: 5, cover: entry('/album', 'a', dateTaken: millis(2024, 3))),
+    ];
+    final hold = Completer<void>();
+    store.albumHold = hold;
+    final albums = BrowseAlbums();
+    addTearDown(albums.dispose);
+    addTearDown(() {
+      if (!hold.isCompleted) hold.complete();
+    });
+
+    final loading = albums.load();
+    albums.clear();
+    if (!hold.isCompleted) hold.complete();
+    await loading;
+
+    expect(albums.albums, isEmpty);
+    expect(albums.loading, isFalse);
+  });
+
+  test('a read that never answers times out and can be retried', () async {
+    final hold = Completer<void>();
+    store.albumHold = hold;
+    final albums = BrowseAlbums(readTimeout: const Duration(milliseconds: 20));
+    addTearDown(albums.dispose);
+    addTearDown(() {
+      if (!hold.isCompleted) hold.complete();
+    });
+
+    await albums.load();
+    expect(albums.error, isA<TimeoutException>());
+    expect(albums.loading, isFalse);
+
+    store.albumHold = null;
+    store.albumSummaries = [
+      MediaStoreAlbumSummary(directory: '/album', count: 1, sizeBytes: 5, cover: entry('/album', 'a', dateTaken: millis(2024, 3))),
+    ];
+    await albums.load();
+    expect(albums.error, isNull);
+    expect(albums.albums, hasLength(1));
   });
 
   test('a failed read leaves the list empty and reports the error', () async {

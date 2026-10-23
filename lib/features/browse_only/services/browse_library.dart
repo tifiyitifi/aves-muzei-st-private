@@ -63,6 +63,12 @@ class BrowseLibrary extends ChangeNotifier {
   /// window that reads its folder whole.
   final int? rowLimit;
 
+  /// How long one page read may stay unanswered before the window reports it.
+  ///
+  /// A platform reply can be lost while the engine restarts, and a page has no
+  /// deadline of its own: without this the window would load forever.
+  final Duration pageTimeout;
+
   final List<BrowseRow> _rows = [];
 
   /// Row identity to position, so a page that overlaps what is already indexed
@@ -88,6 +94,10 @@ class BrowseLibrary extends ChangeNotifier {
   /// has to show immediately, and the index itself does not change.
   String _monthsHidden = '';
 
+  /// The row version the month cache was built from, so a write path that
+  /// forgets to drop it cannot serve a stale section list.
+  int _monthsVersion = -1;
+
   bool _disposed = false;
   bool _loading = false;
   bool _started = false;
@@ -103,7 +113,11 @@ class BrowseLibrary extends ChangeNotifier {
   /// dropped, not to the one that replaced it.
   int _token = 0;
 
-  new({this.directory, this.rowLimit});
+  new({
+    this.directory,
+    this.rowLimit,
+    this.pageTimeout = const Duration(seconds: 15),
+  });
 
   /// Rows read so far.
   int get length => _rows.length;
@@ -173,7 +187,7 @@ class BrowseLibrary extends ChangeNotifier {
     _notify();
     try {
       var before = _cursor;
-      var page = await mediaStoreService.getMediaPage(limit: pageSize, before: before, directory: directory);
+      var page = await mediaStoreService.getMediaPage(limit: pageSize, before: before, directory: directory).timeout(pageTimeout);
       if (_disposed || token != _token) return;
       // The platform can filter a whole page out (a folder query that only
       // matched subfolders, a row without a path or a MIME type). Its cursor
@@ -184,7 +198,7 @@ class BrowseLibrary extends ChangeNotifier {
         final next = page.cursor;
         if (next == before) throw StateError('browse page made no progress');
         before = next;
-        page = await mediaStoreService.getMediaPage(limit: pageSize, before: before, directory: directory);
+        page = await mediaStoreService.getMediaPage(limit: pageSize, before: before, directory: directory).timeout(pageTimeout);
         if (_disposed || token != _token) return;
       }
       _error = null;
@@ -320,10 +334,11 @@ class BrowseLibrary extends ChangeNotifier {
     final hidden = _hiddenDirectories();
     final fingerprint = hidden.join('\u0000');
     final cached = _months;
-    if (cached != null && _monthsHidden == fingerprint) return cached;
+    if (cached != null && _monthsHidden == fingerprint && _monthsVersion == _version) return cached;
 
     final months = monthsOf(mediaIndexes(sort: BrowseMediaSort.date, reverse: false));
     _monthsHidden = fingerprint;
+    _monthsVersion = _version;
     return _months = months;
   }
 
@@ -333,7 +348,9 @@ class BrowseLibrary extends ChangeNotifier {
   /// was dropped, and landing it would refill a library nothing will show again.
   void clear() {
     _token++;
-    final hadContent = _rows.isNotEmpty || _error != null || !_hasMore;
+    // A first read still in flight is content too: without it, clearing an empty
+    // window that is loading would leave its listeners on the spinner forever.
+    final hadContent = _rows.isNotEmpty || _error != null || !_hasMore || _loading;
     _reset();
     if (!hadContent) return;
     _version++;

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/browse_only/services/browse_albums.dart';
 import 'package:aves/features/browse_only/services/browse_library.dart';
 import 'package:aves/features/browse_only/view/browse_only_page.dart';
 import 'package:aves/features/collection_paging/catalog/catalog_prompt.dart';
@@ -139,7 +140,10 @@ class _CollectionPageState extends State<CollectionPage> {
     // and this page is the surface that stays mounted through it: clearing from
     // `BrowseOnlyPage.dispose` alone would miss a handoff that happens while
     // that page is not in the tree (a pick, for instance).
-    if (libraryPhase.isReady) browseLibrary.clear();
+    if (libraryPhase.isReady) {
+      browseLibrary.clear();
+      browseAlbums.clear();
+    }
     final token = libraryPhase.retryToken;
     if (token != _lastRetryToken) {
       // The user asked to resume a stopped import: the lens owns the work.

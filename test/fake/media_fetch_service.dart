@@ -6,6 +6,10 @@ import 'package:test/fake.dart';
 class FakeMediaFetchService extends Fake implements MediaFetchService {
   Set<AvesEntry> entries = {};
 
+  /// URIs whose read fails, for a test that must prove a transient failure is
+  /// retried instead of being lost with the generation cursor.
+  Set<String> failingUris = {};
+
   /// Decoder caches live on the platform; nothing to clear here. Called when a
   /// catalogued mime/rotation replaces the source one on an entry.
   @override
@@ -13,6 +17,7 @@ class FakeMediaFetchService extends Fake implements MediaFetchService {
 
   @override
   Future<AvesEntry?> getEntry(String uri, String? mimeType, {bool allowUnsized = false}) async {
+    if (failingUris.contains(uri)) throw StateError('fetch failed for $uri');
     return entries.firstWhereOrNull((v) => v.uri == uri);
   }
 }

@@ -11,6 +11,7 @@ import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
+import 'package:aves/widgets/common/identity/empty.dart';
 import 'package:aves/widgets/navigation/nav_item.dart';
 import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
@@ -109,8 +110,25 @@ class _BrowseOnlyPageState extends State<BrowseOnlyPage> {
 
   Widget _buildTimeline(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([browsePrefs, browseLibrary]),
+      // Hiding an album has to land on the window already loaded, not only on
+      // the next page: the rows and months are derived from the setting.
+      listenable: Listenable.merge([browsePrefs, browseLibrary, settings]),
       builder: (context, child) {
+        if (browseLibrary.length == 0) {
+          if (browseLibrary.loading) return const Center(child: CircularProgressIndicator());
+          if (browseLibrary.error != null) {
+            // A failed first page is not an empty library: say so and let the
+            // user ask again instead of painting the empty state.
+            return EmptyContent(
+              icon: AIcons.error,
+              text: context.l10n.browseOnlyMediaFailed,
+              bottom: TextButton(
+                onPressed: () => unawaited(browseLibrary.retry()),
+                child: Text(context.l10n.collectionLoadingRetry),
+              ),
+            );
+          }
+        }
         final sort = browsePrefs.mediaSort;
         final grid = BrowseMediaGrid(
           library: browseLibrary,

@@ -1310,6 +1310,7 @@
   "browseOnlyImportRetry": "Retry",
   "browseOnlyEmptyLibrary": "No media yet",
   "browseOnlyAlbumsFailed": "Could not read the folders",
+  "browseOnlyMediaFailed": "Could not read the media",
   "browseOnlyProgress": "Organizing library · {done} / {total}",
   "@browseOnlyProgress": {
     "placeholders": {

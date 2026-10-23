@@ -47,7 +47,15 @@ class PagedDiscoverer {
   final Future<void> Function(AvesEntry entry) catalogEntry;
   final Duration streamIdleTimeout;
 
+  /// Upper bound on the failed URIs kept for a later retry.
+  ///
+  /// A bulk failure is better retried as a whole: the generation cursor is kept,
+  /// so the next sync reads the same change set again, instead of writing an
+  /// unbounded list to preferences.
+  static const int maxPendingUris = 5000;
+
   Map<String, int>? _lastGeneration;
+  Set<String>? _pendingUris;
   bool _importing = false;
   new({
     MediaStoreService? mediaStore,
@@ -76,6 +84,10 @@ class PagedDiscoverer {
   @visibleForTesting
   set lastGeneration(Map<String, int>? generation) => _lastGeneration = generation;
 
+  /// URIs a failed sync still owes, for tests.
+  @visibleForTesting
+  Set<String>? get pendingUris => _pendingUris;
+
   /// Discovers MediaStore changes since the last generation. Returns the
   /// number of applied changes (0 when quiet or untrackable).
   Future<int> syncIfChanged() async {
@@ -86,10 +98,28 @@ class PagedDiscoverer {
       await _storeGeneration(generation);
       return 0;
     }
-    if (_equalGenerations(since, generation)) return 0;
-    final applied = await _syncChanged(since);
+    // A URI that failed earlier changed before the cursor the sync stored, so
+    // the generation alone would never offer it again.
+    final pending = await _readPendingUris();
+    if (_equalGenerations(since, generation) && pending.isEmpty) return 0;
+    final result = await _syncChanged(since, pending);
+    if (result.failed.length > maxPendingUris) {
+      // Too many to carry: keep the old cursor so the next sync re-reads the
+      // whole change set, and leave the previously persisted list in place.
+      _log.w('paged sync could not settle ${result.failed.length} uris, keeping the generation for a full retry');
+      return result.applied;
+    }
+    // The retry list has to be on disk before the cursor moves past it: the
+    // writes are not atomic, and a process death in between would leave the
+    // change behind a cursor that will never offer it again (see
+    // [_readPendingUris]). Nothing is lost if the cursor stays put instead: the
+    // change set is read again, and applying it twice is idempotent.
+    if (!await _storePendingUris(result.failed)) {
+      _log.w('paged sync could not persist the retry list, keeping the generation for a full retry');
+      return result.applied;
+    }
     await _storeGeneration(generation);
-    return applied;
+    return result.applied;
   }
 
   /// Chunked full import. Safe to rerun: rows already in the database (by
@@ -110,6 +140,15 @@ class PagedDiscoverer {
     if (_importing) return 0;
     _importing = true;
     final stopwatch = Stopwatch()..start();
+    // The cursor is taken before the scan, not after it: the stream is ordered
+    // newest first, so a file that changes while the scan runs is behind the
+    // rows it has already passed, and a cursor read at the end would claim that
+    // change had been applied. The request goes out with the first row and is
+    // awaited with the last, so a slow ack delays the completion, not the
+    // first paint. Nothing is lost if it never answers: the cursor the
+    // bootstrap stored stays, and the next sync re-reads the change set (the
+    // import is idempotent).
+    final generationFuture = withPlatformTimeout(mediaStore.getGenerationByVolume, label: 'media store generation');
     try {
       var processed = 0;
       var written = 0;
@@ -170,11 +209,15 @@ class PagedDiscoverer {
       await signalFirstBatch();
       await flush();
 
-      // Same lost-reply risk as the stream itself: without the bound, a
-      // completed import would never resolve and the collection would keep
-      // claiming it is still organizing. A missed generation only costs the
-      // next sync a re-read.
-      final generation = await withPlatformTimeout(mediaStore.getGenerationByVolume, label: 'media store generation');
+      // A retry list from before this run is deliberately left in place: the
+      // import upserts but never deletes, so an entry can still be the only
+      // record of a row the media store no longer serves. The next sync settles
+      // those instead of dropping them with the list.
+      //
+      // The cursor is the one captured before the scan; a completed import is
+      // resumable and writes by content id, so re-reading a change costs one
+      // row, whereas a cursor past it would lose the file for good.
+      final generation = await generationFuture;
       if (generation != null) await _storeGeneration(generation);
       return written;
     } finally {
@@ -296,11 +339,13 @@ class PagedDiscoverer {
     }
   }
 
-  /// Syncs exactly the URIs changed since [sinceGeneration].
-  Future<int> _syncChanged(Map<String, int> sinceGeneration) async {
-    final changedUris = await mediaStore.getChangedUris(sinceGeneration);
-    if (changedUris.isEmpty) return 0;
+  /// Syncs exactly the URIs changed since [sinceGeneration], plus [pending]
+  /// URIs a previous run could not settle.
+  Future<({int applied, Set<String> failed})> _syncChanged(Map<String, int> sinceGeneration, Set<String> pending) async {
+    final changedUris = {...await mediaStore.getChangedUris(sinceGeneration), ...pending};
+    if (changedUris.isEmpty) return (applied: 0, failed: <String>{});
     var applied = 0;
+    final failed = <String>{};
     // The URIs the platform no longer serves are settled together, after the
     // reads: the obsolete check scans the whole media store, so asking it per
     // URI made a bulk delete cost one full scan per file.
@@ -314,7 +359,10 @@ class PagedDiscoverer {
           applied++;
         }
       } catch (error, stack) {
-        _log.w('paged sync failed for uri=$uri', error, stack);
+        // The generation cursor must not move past this row: hand the URI to
+        // the next sync instead of dropping the change.
+        failed.add(uri);
+        _log.w('paged sync failed for uri=$uri (will retry)', error, stack);
       }
       // Cooperative yield between platform round-trips.
       await Future<void>.delayed(Duration.zero);
@@ -322,9 +370,10 @@ class PagedDiscoverer {
     try {
       applied += await _removeObsoleteUris(vanished);
     } catch (error, stack) {
-      _log.w('paged sync failed to remove ${vanished.length} obsolete uris', error, stack);
+      failed.addAll(vanished);
+      _log.w('paged sync failed to remove ${vanished.length} obsolete uris (will retry)', error, stack);
     }
-    return applied;
+    return (applied: applied, failed: failed);
   }
 
   /// Returns true when [entry] produced a database write.
@@ -457,6 +506,39 @@ class PagedDiscoverer {
     } catch (error, stack) {
       _log.w('failed to read media generation', error, stack);
       return _lastGeneration;
+    }
+  }
+
+  Future<Set<String>> _readPendingUris() async {
+    final cached = _pendingUris;
+    if (cached != null) return cached;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(CollectionPagingKeys.pendingSyncUris);
+      if (raw == null || raw.isEmpty) return _pendingUris = {};
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return _pendingUris = {};
+      return _pendingUris = decoded.whereType<String>().toSet();
+    } catch (error, stack) {
+      _log.w('failed to read pending sync uris', error, stack);
+      return _pendingUris = {};
+    }
+  }
+
+  /// Persists [uris] as the changes the next sync still owes.
+  ///
+  /// Returns whether the platform accepted the write: the caller must not move
+  /// the generation cursor past a retry list it could not store.
+  Future<bool> _storePendingUris(Set<String> uris) async {
+    _pendingUris = Set.of(uris);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = uris.isEmpty ? await prefs.remove(CollectionPagingKeys.pendingSyncUris) : await prefs.setString(CollectionPagingKeys.pendingSyncUris, jsonEncode(uris.toList()));
+      if (!stored) _log.w('pending sync uris were not persisted');
+      return stored;
+    } catch (error, stack) {
+      _log.e('failed to persist pending sync uris', error, stack);
+      return false;
     }
   }
 

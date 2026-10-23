@@ -337,7 +337,7 @@ class PagedCollectionLens extends CollectionLens {
       // The locations domain loads when the user opens a places surface;
       // lazily backfill fine addresses then, instead of geocoding a huge
       // library up front.
-      source.eventBus.on<PlacesChangedEvent>().listen((_) => _runPlacesBacklog()),
+      source.eventBus.on<PlacesChangedEvent>().listen((_) => unawaited(_runPlacesBacklog())),
     ]);
     _vaultsListener = refresh;
     vaults.lockStateChangeNotifier.addListener(_vaultsListener!);
@@ -1671,16 +1671,23 @@ class PagedCollectionLens extends CollectionLens {
   Future<void> _runCatalogBacklog() async {
     final worker = _catalogWorker;
     if (worker == null || worker.isRunning) return;
-    final uncatalogued = await _probeUncatalogued();
-    if (uncatalogued == 0) return;
-    if (catalogPrompt.shouldAsk(askBeforeCatalog: collectionPagingPrefs.askBeforeCatalog, uncatalogued: uncatalogued)) {
-      // A backlog this large is long invisible work, so it waits for an answer
-      // instead of starting silently. The lens only raises the question: the UI
-      // layer owns dialogs, and answers it by calling [runCatalogBacklog].
-      catalogPrompt.markAsked(uncatalogued);
-      return;
+    try {
+      final uncatalogued = await _probeUncatalogued();
+      if (uncatalogued == 0) return;
+      if (catalogPrompt.shouldAsk(askBeforeCatalog: collectionPagingPrefs.askBeforeCatalog, uncatalogued: uncatalogued)) {
+        // A backlog this large is long invisible work, so it waits for an answer
+        // instead of starting silently. The lens only raises the question: the UI
+        // layer owns dialogs, and answers it by calling [runCatalogBacklog].
+        catalogPrompt.markAsked(uncatalogued);
+        return;
+      }
+      await _sweepBacklog(worker, uncatalogued);
+    } catch (error, stack) {
+      // This is called fire-and-forget from a resolve: an error escaping here
+      // would reach the zone with no caller to report it. The rows stay in the
+      // backlog, so the next probe retries.
+      _log.w('paged catalog backlog failed; the next probe retries', error, stack);
     }
-    await _sweepBacklog(worker, uncatalogued);
   }
 
   /// Sweeps the catalog backlog now, starting with this view's own scope.
@@ -1689,9 +1696,13 @@ class PagedCollectionLens extends CollectionLens {
   Future<void> runCatalogBacklog() async {
     final worker = _catalogWorker;
     if (worker == null || worker.isRunning) return;
-    final uncatalogued = await _probeUncatalogued();
-    if (uncatalogued == 0) return;
-    await _sweepBacklog(worker, uncatalogued);
+    try {
+      final uncatalogued = await _probeUncatalogued();
+      if (uncatalogued == 0) return;
+      await _sweepBacklog(worker, uncatalogued);
+    } catch (error, stack) {
+      _log.w('paged catalog backlog failed; the next probe retries', error, stack);
+    }
   }
 
   /// Catalogues one album's rows, on demand from its section header badge.
@@ -1702,9 +1713,13 @@ class PagedCollectionLens extends CollectionLens {
   Future<void> catalogAlbum(String directory) async {
     final worker = _catalogWorker;
     if (worker == null || worker.isRunning) return;
-    final predicate = predicateForFilters({StoredAlbumFilter(directory, null)});
-    if (predicate == null) return;
-    _settleAfterSweep(await worker.run(scope: predicate, scopedOnly: true));
+    try {
+      final predicate = predicateForFilters({StoredAlbumFilter(directory, null)});
+      if (predicate == null) return;
+      _settleAfterSweep(await worker.run(scope: predicate, scopedOnly: true));
+    } catch (error, stack) {
+      _log.w('paged album catalog failed; the next probe retries', error, stack);
+    }
   }
 
   /// Rows of [directory] that still need cataloguing, for its header badge.
@@ -1775,7 +1790,11 @@ class PagedCollectionLens extends CollectionLens {
       _log.w('paged places backlog probe failed', error, stack);
       return;
     }
-    await worker.runPlaces();
+    try {
+      await worker.runPlaces();
+    } catch (error, stack) {
+      _log.w('paged places backlog failed; the next probe retries', error, stack);
+    }
   }
 
   /// Rebuilds the flat global-index map from the loaded section rows.

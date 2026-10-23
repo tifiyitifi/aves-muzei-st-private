@@ -36,4 +36,10 @@ abstract final class CollectionPagingKeys {
 
   /// Persisted MediaStore generation cursor for change-based sync.
   static const String mediaGeneration = 'collection_paging.media_generation';
+
+  /// Changed URIs a sync could not settle, retried with the next one.
+  ///
+  /// The generation cursor is advanced when a row fails, so without this list
+  /// the change would never be offered again.
+  static const String pendingSyncUris = 'collection_paging.pending_sync_uris';
 }

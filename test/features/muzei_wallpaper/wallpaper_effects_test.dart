@@ -1,4 +1,4 @@
-import 'package:aves/features/live_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

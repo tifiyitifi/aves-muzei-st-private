@@ -1,5 +1,5 @@
-import 'package:aves/features/live_wallpaper/model/wallpaper_source_kind.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_source_scope.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aves/features/live_wallpaper/log.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_artwork.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_state.dart';
+import 'package:aves/features/muzei_wallpaper/log.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_artwork.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_state.dart';
 import 'package:path/path.dart' as p;
 
 /// Owns the on-disk live-wallpaper directory.
@@ -32,9 +32,9 @@ class WallpaperStateStore {
 
   new(this.root);
 
-  /// The production location: `<app files>/live_wallpaper`.
+  /// The production location: `<app files>/muzei_wallpaper`.
   static WallpaperStateStore inAppFiles(Directory filesDir) {
-    return WallpaperStateStore(Directory(p.join(filesDir.path, 'live_wallpaper')));
+    return WallpaperStateStore(Directory(p.join(filesDir.path, 'muzei_wallpaper')));
   }
 
   File get stateFile => File(p.join(root.path, stateFileName));

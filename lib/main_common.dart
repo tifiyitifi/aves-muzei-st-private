@@ -2,9 +2,9 @@ import 'dart:isolate';
 
 import 'package:aves/app_flavor.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
-import 'package:aves/features/live_wallpaper/log.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
+import 'package:aves/features/muzei_wallpaper/log.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/widgets/aves_app.dart';
 import 'package:flutter/foundation.dart';
@@ -15,7 +15,7 @@ import 'package:material_ui/material_ui.dart';
 void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
   debugProfilePlatformChannels = false;
 
-  Log.init(debugChannels: [...collectionPagingDebugLogKeys, ...liveWallpaperDebugLogKeys]);
+  Log.init(debugChannels: [...collectionPagingDebugLogKeys, ...muzeiWallpaperDebugLogKeys]);
   const appLog = AreaKeyLog(LogKeys.app);
   appLog.i('app start flavor=${flavor.name}');
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package deckers.thibault.aves.features.live_wallpaper
+package deckers.thibault.aves.features.muzei_wallpaper
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -32,6 +32,10 @@ import javax.microedition.khronos.opengles.GL10
 
 /**
  * Minimal GL renderer used by the live-wallpaper spike.
+ *
+ * Adapted from Muzei's `render/MuzeiBlurRenderer.kt` and `render/GLPictureSet.kt`
+ * (https://github.com/muzei/muzei, Apache-2.0) for cover-fit matrices, focus and
+ * the sharp/effect crossfade. The state-driven renderer extends this file.
  *
  * It deliberately draws a single texture with cover-fit semantics so the risky part
  * (WallpaperService + EGL lifecycle) can be verified before the state-driven renderer

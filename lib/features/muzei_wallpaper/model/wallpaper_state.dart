@@ -1,6 +1,6 @@
-import 'package:aves/features/live_wallpaper/model/wallpaper_artwork.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_effects.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_gestures.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_artwork.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 

@@ -1,11 +1,11 @@
 import 'dart:async';
 
-import 'package:aves/features/live_wallpaper/log.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_auto_advance.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_effects.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_gestures.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_source_kind.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_source_scope.dart';
+import 'package:aves/features/muzei_wallpaper/log.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,29 +16,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// only to this feature and must be readable by the headless background isolate
 /// without booting the whole settings engine.
 abstract final class WallpaperPrefsKeys {
-  static const String sourceKind = 'live_wallpaper.source.kind';
-  static const String sourceFilters = 'live_wallpaper.source.filters';
-  static const String sourceSingleId = 'live_wallpaper.source.single_id';
+  static const String sourceKind = 'muzei_wallpaper.source.kind';
+  static const String sourceFilters = 'muzei_wallpaper.source.filters';
+  static const String sourceSingleId = 'muzei_wallpaper.source.single_id';
 
-  static const String effectsHomeBlur = 'live_wallpaper.effects.home_blur';
-  static const String effectsHomeDim = 'live_wallpaper.effects.home_dim';
-  static const String effectsHomeGrey = 'live_wallpaper.effects.home_grey';
-  static const String effectsLockBlur = 'live_wallpaper.effects.lock_blur';
-  static const String effectsLockDim = 'live_wallpaper.effects.lock_dim';
-  static const String effectsLockGrey = 'live_wallpaper.effects.lock_grey';
-  static const String effectsLink = 'live_wallpaper.effects.link';
+  static const String effectsHomeBlur = 'muzei_wallpaper.effects.home_blur';
+  static const String effectsHomeDim = 'muzei_wallpaper.effects.home_dim';
+  static const String effectsHomeGrey = 'muzei_wallpaper.effects.home_grey';
+  static const String effectsLockBlur = 'muzei_wallpaper.effects.lock_blur';
+  static const String effectsLockDim = 'muzei_wallpaper.effects.lock_dim';
+  static const String effectsLockGrey = 'muzei_wallpaper.effects.lock_grey';
+  static const String effectsLink = 'muzei_wallpaper.effects.link';
 
-  static const String gesturesDoubleTap = 'live_wallpaper.gestures.double_tap';
-  static const String gesturesThreeFinger = 'live_wallpaper.gestures.three_finger';
+  static const String gesturesDoubleTap = 'muzei_wallpaper.gestures.double_tap';
+  static const String gesturesThreeFinger = 'muzei_wallpaper.gestures.three_finger';
 
-  static const String autoIntervalSeconds = 'live_wallpaper.auto.interval_seconds';
-  static const String autoOrdering = 'live_wallpaper.auto.ordering';
-  static const String lastAdvancedAt = 'live_wallpaper.last_advanced_at';
-  static const String currentIndex = 'live_wallpaper.current_index';
+  static const String autoIntervalSeconds = 'muzei_wallpaper.auto.interval_seconds';
+  static const String autoOrdering = 'muzei_wallpaper.auto.ordering';
+  static const String lastAdvancedAt = 'muzei_wallpaper.last_advanced_at';
+  static const String currentIndex = 'muzei_wallpaper.current_index';
 
-  static const String viewportX = 'live_wallpaper.viewport.x';
-  static const String viewportY = 'live_wallpaper.viewport.y';
-  static const String viewportZoom = 'live_wallpaper.viewport.zoom';
+  static const String viewportX = 'muzei_wallpaper.viewport.x';
+  static const String viewportY = 'muzei_wallpaper.viewport.y';
+  static const String viewportZoom = 'muzei_wallpaper.viewport.zoom';
 }
 
 /// Feature settings shared by the UI, the controller and the background worker.

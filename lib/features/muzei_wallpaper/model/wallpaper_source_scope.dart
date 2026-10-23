@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:aves/features/live_wallpaper/model/wallpaper_source_kind.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:equatable/equatable.dart';

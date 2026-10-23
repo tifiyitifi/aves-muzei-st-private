@@ -318,7 +318,7 @@
         </service>
 
         <service
-            android:name=".features.live_wallpaper.AvesLiveWallpaperService"
+            android:name=".features.muzei_wallpaper.AvesLiveWallpaperService"
             android:directBootAware="true"
             android:exported="true"
             android:label="@string/live_wallpaper_label"

@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aves/features/live_wallpaper/model/wallpaper_artwork.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_effects.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_gestures.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_state.dart';
-import 'package:aves/features/live_wallpaper/services/wallpaper_state_store.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_artwork.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_state.dart';
+import 'package:aves/features/muzei_wallpaper/services/wallpaper_state_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -101,7 +101,7 @@ void main() {
     late WallpaperStateStore store;
 
     setUp(() async {
-      root = await Directory.systemTemp.createTemp('aves_live_wallpaper_test_');
+      root = await Directory.systemTemp.createTemp('aves_muzei_wallpaper_test_');
       store = WallpaperStateStore(root);
       await store.ensureLayout();
     });

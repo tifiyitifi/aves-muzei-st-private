@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+/*
+ * Vendored from Muzei's copy of the AOSP GL wallpaper service
+ * (https://github.com/muzei/muzei, Apache-2.0). Keep this file close to upstream.
+ */
+
 package net.rbgrn.android.glwallpaperservice;
 
 import java.io.Writer;

@@ -1,9 +1,9 @@
-import 'package:aves/features/live_wallpaper/model/wallpaper_auto_advance.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_effects.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_gestures.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_source_kind.dart';
-import 'package:aves/features/live_wallpaper/model/wallpaper_source_scope.dart';
-import 'package:aves/features/live_wallpaper/services/wallpaper_prefs.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
+import 'package:aves/features/muzei_wallpaper/services/wallpaper_prefs.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:flutter_test/flutter_test.dart';

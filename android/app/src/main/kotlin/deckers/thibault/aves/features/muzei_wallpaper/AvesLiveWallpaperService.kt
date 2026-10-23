@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package deckers.thibault.aves.features.live_wallpaper
+package deckers.thibault.aves.features.muzei_wallpaper
 
 import android.os.Bundle
 import android.util.Log
@@ -23,6 +23,10 @@ import net.rbgrn.android.glwallpaperservice.GLWallpaperService
 
 /**
  * Live wallpaper entry point.
+ *
+ * Ported from Muzei's `MuzeiWallpaperService.kt`
+ * (https://github.com/muzei/muzei, Apache-2.0): the service/engine lifecycle,
+ * `directBootAware`, desktop gestures and offset notifications follow it.
  *
  * v1 keeps the service in the app process (like Muzei) and only renders baked
  * bitmaps; it never touches the database. The background worker owns all querying.

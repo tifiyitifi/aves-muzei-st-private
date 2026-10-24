@@ -104,7 +104,10 @@ class _MuzeiWallpaperAlbumPickPageState extends State<MuzeiWallpaperAlbumPickPag
                                   // Share the album tab's grid layout so the picker
                                   // feels like the page it mirrors.
                                   settingsRouteKey: AlbumListPage.routeName,
-                                  appBar: FilterGridAppBar(
+                                  // `T` is only used by the nullable callback below, so
+                                  // inference would fall back to `CollectionFilter` and
+                                  // the app bar would look up the wrong selection provider.
+                                  appBar: FilterGridAppBar<AlbumBaseFilter, AlbumChipSetActionDelegate>(
                                     source: source,
                                     title: context.l10n.muzeiWallpaperSourcesChooseAlbum,
                                     actionDelegate: AlbumChipSetActionDelegate(gridItems),

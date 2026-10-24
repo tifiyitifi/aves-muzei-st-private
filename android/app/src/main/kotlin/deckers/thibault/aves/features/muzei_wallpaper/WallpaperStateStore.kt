@@ -22,14 +22,53 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/** The slot and file the renderer needs from one `state.json` snapshot. */
+/** One slot's files, as recorded in `state.json`. */
+data class WallpaperSlotFiles(
+    val id: Int,
+    val entryId: Int,
+    val sharp: String,
+    val effectsHome: String,
+    val effectsLock: String,
+) {
+    /**
+     * The effect image for the surface being drawn.
+     *
+     * The baker may reuse the sharp PNG for an identity effect and always writes
+     * both files, so a missing one falls back to the other surface rather than
+     * dropping the effect entirely.
+     */
+    fun effectFor(lockScreen: Boolean): String? {
+        val path = if (lockScreen) {
+            effectsLock.ifEmpty { effectsHome }
+        } else {
+            effectsHome.ifEmpty { effectsLock }
+        }
+        return path.ifEmpty { null }
+    }
+}
+
+/** The slots, generation and gestures the renderer needs from `state.json`. */
 data class WallpaperFileState(
     val generation: Int,
     val current: Int,
     val next: Int,
-    val currentSharp: File?,
-    val nextSharp: File?,
-)
+    val slots: Map<Int, WallpaperSlotFiles>,
+    val doubleTapAction: String,
+    val threeFingerAction: String,
+) {
+    /**
+     * The slot to draw.
+     *
+     * A native advance promotes `next` and records it in `runtime.json` before
+     * Dart adopts it, so a runtime that matches this generation wins over the
+     * state; a stale runtime (older generation) is ignored.
+     */
+    fun displaySlot(runtime: WallpaperRuntime?): WallpaperSlotFiles? {
+        val runtimeCurrent = runtime?.takeIf { it.generation == generation }?.current
+        if (runtimeCurrent != null) slots[runtimeCurrent]?.let { return it }
+        return slots[current]
+    }
+}
 
 /**
  * Reads the Dart-owned wallpaper state and writes the native-owned runtime.
@@ -67,25 +106,31 @@ class WallpaperStateStore(val root: File) {
             return null
         }
 
-        val slots = mutableMapOf<Int, String>()
+        val slots = mutableMapOf<Int, WallpaperSlotFiles>()
         val rawSlots: JSONArray = json.optJSONArray("slots") ?: JSONArray()
         for (i in 0 until rawSlots.length()) {
             val slot = rawSlots.optJSONObject(i) ?: continue
             val id = slot.optInt("id", -1)
             if (id < 0 || slots.containsKey(id)) continue
             val files = slot.optJSONObject("files") ?: continue
-            val sharp = files.optString("sharp", "")
-            if (sharp.isNotEmpty()) slots[id] = sharp
+            slots[id] = WallpaperSlotFiles(
+                id = id,
+                entryId = slot.optInt("entryId", 0),
+                sharp = files.optString("sharp", ""),
+                effectsHome = files.optString("effectsHome", ""),
+                effectsLock = files.optString("effectsLock", ""),
+            )
         }
 
-        val current = json.optInt("current", -1)
-        val next = json.optInt("next", -1)
+        val gestures = json.optJSONObject("gestures")
         return WallpaperFileState(
             generation = json.optInt("generation", 0),
-            current = current,
-            next = next,
-            currentSharp = slots[current]?.let(::resolveExisting),
-            nextSharp = slots[next]?.let(::resolveExisting),
+            current = json.optInt("current", -1),
+            next = json.optInt("next", -1),
+            slots = slots,
+            // Must match `WallpaperGestures`' defaults on the Dart side.
+            doubleTapAction = gestures?.optString("doubleTap", "temporaryDisable") ?: "temporaryDisable",
+            threeFingerAction = gestures?.optString("threeFinger", "none") ?: "none",
         )
     }
 
@@ -100,7 +145,7 @@ class WallpaperStateStore(val root: File) {
     }
 
     /** Resolves a `slots/<id>/<name>` path and rejects escapes from the root. */
-    private fun resolveExisting(relative: String): File? {
+    fun resolve(relative: String): File? {
         val file = File(root, relative)
         return try {
             val canonicalRoot = root.canonicalFile

@@ -55,6 +55,8 @@ class WallpaperController extends ChangeNotifier {
   bool _disposed = false;
   String? _error;
   int _cursor = 0;
+  WallpaperEffectsConfig? _pendingEffects;
+  int _effectsSequence = 0;
   Future<void>? _initFuture;
   Future<void>? _advanceFuture;
   Future<void>? _prefetchFuture;
@@ -88,16 +90,18 @@ class WallpaperController extends ChangeNotifier {
 
   String? get error => _error;
 
-  File? get currentFile {
-    final slot = current;
-    if (slot == null || !slot.artwork.files.hasSharp) return null;
-    return store.slotFile(slot.id, WallpaperSlotFiles.sharpName);
-  }
+  File? get currentFile => _slotFile(current);
 
-  File? get nextFile {
-    final slot = next;
-    if (slot == null || !slot.artwork.files.hasSharp) return null;
-    return store.slotFile(slot.id, WallpaperSlotFiles.sharpName);
+  File? get nextFile => _slotFile(next);
+
+  /// Resolves the sharp file of [slot] from the path recorded in the state.
+  ///
+  /// This is the same relative path the native renderer reads, so the preview
+  /// and the desktop can never point at different files.
+  File? _slotFile(WallpaperSlot? slot) {
+    final relative = slot?.artwork.files.sharp;
+    if (slot == null || relative == null || relative.isEmpty) return null;
+    return store.resolveSlotPath(relative);
   }
 
   Future<void> init() => _initFuture ??= _doInit();
@@ -427,8 +431,17 @@ class WallpaperController extends ChangeNotifier {
   }
 
   /// Rebakes only the effect images from the existing `sharp.png` files.
+  ///
+  /// Slider changes arrive faster than a rebake, so a change that lands while
+  /// another is baking is folded into the running loop instead of being
+  /// dropped: the last value the user picked always reaches the baked images.
   Future<void> setEffects(WallpaperEffectsConfig effects) async {
+    final sequence = ++_effectsSequence;
     await prefs.setEffects(effects);
+    // A newer change overtook this one while the preferences were being stored;
+    // that call owns the bake.
+    if (sequence != _effectsSequence) return;
+    _pendingEffects = effects;
     if (_baking) return;
 
     _baking = true;
@@ -436,32 +449,44 @@ class WallpaperController extends ChangeNotifier {
     _notify();
     try {
       await idle;
-      var rebaked = false;
-      for (final slot in _state.slots) {
-        final sharpFile = store.slotFile(slot.id, WallpaperSlotFiles.sharpName);
-        if (!await sharpFile.exists()) continue;
-        try {
-          final bake = await baker.bakeEffects(
-            sharpPng: await sharpFile.readAsBytes(),
-            home: effects.home,
-            lock: effects.effectiveLock,
-          );
-          await store.writeSlotBytes(slot.id, WallpaperSlotFiles.effectsHomeName, bake.effectsHomePng);
-          await store.writeSlotBytes(slot.id, WallpaperSlotFiles.effectsLockName, bake.effectsLockPng);
-          rebaked = true;
-        } on WallpaperBakeException catch (error, stack) {
-          wallpaperLog.w('effects rebake failed slot=${slot.id}', error, stack);
+      while (_pendingEffects != null && !_disposed) {
+        final target = _pendingEffects!;
+        _pendingEffects = null;
+        final rebaked = await _rebakeEffects(target);
+        if (rebaked) {
+          await _commit(_state.copyWith(generation: _state.generation + 1, effects: target));
+        } else {
+          _state = _state.copyWith(effects: target);
         }
-      }
-      if (rebaked) {
-        await _commit(_state.copyWith(generation: _state.generation + 1, effects: effects));
-      } else {
-        _state = _state.copyWith(effects: effects);
       }
     } finally {
       _baking = false;
       _notify();
     }
+  }
+
+  /// Rewrites both effect images of every slot; returns whether any was written.
+  Future<bool> _rebakeEffects(WallpaperEffectsConfig effects) async {
+    var rebaked = false;
+    for (final slot in _state.slots) {
+      final sharpPath = slot.artwork.files.sharp;
+      if (sharpPath.isEmpty) continue;
+      final sharpFile = store.resolveSlotPath(sharpPath);
+      if (!await sharpFile.exists()) continue;
+      try {
+        final bake = await baker.bakeEffects(
+          sharpPng: await sharpFile.readAsBytes(),
+          home: effects.home,
+          lock: effects.effectiveLock,
+        );
+        await store.writeSlotBytes(slot.id, WallpaperSlotFiles.effectsHomeName, bake.effectsHomePng);
+        await store.writeSlotBytes(slot.id, WallpaperSlotFiles.effectsLockName, bake.effectsLockPng);
+        rebaked = true;
+      } on WallpaperBakeException catch (error, stack) {
+        wallpaperLog.w('effects rebake failed slot=${slot.id}', error, stack);
+      }
+    }
+    return rebaked;
   }
 
   Future<void> setGestures(WallpaperGestures gestures) async {
@@ -508,6 +533,10 @@ class WallpaperController extends ChangeNotifier {
     if (slot == null) return null;
     return repository.entryById(slot.artwork.entryId);
   }
+
+  /// Loads one entry by id, so the source editor can label a single choice that
+  /// is not the artwork currently on the wallpaper.
+  Future<AvesEntry?> loadEntry(int id) => repository.entryById(id);
 
   Future<void> _adoptRuntime(WallpaperRuntime? runtime) async {
     if (runtime == null || !runtime.matches(_state)) return;

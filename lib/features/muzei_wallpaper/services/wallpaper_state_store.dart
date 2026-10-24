@@ -49,6 +49,13 @@ class WallpaperStateStore {
 
   File slotFile(int slotId, String name) => File(p.join(slotDirectory(slotId).path, name));
 
+  /// Resolves a slot path as stored in `state.json`.
+  ///
+  /// The page and the native renderer must both read the file the state points
+  /// at, instead of rebuilding the name from the slot id, so a layout change
+  /// cannot make them disagree.
+  File resolveSlotPath(String relative) => File(p.join(root.path, relative));
+
   /// Path of a slot file as stored in `state.json`.
   ///
   /// Always POSIX-style: the native renderer resolves it against the wallpaper

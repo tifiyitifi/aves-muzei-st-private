@@ -8,6 +8,10 @@ import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_prefs.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_source_repository.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_state_store.dart';
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_effects_page.dart';
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_gestures_page.dart';
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_sources_page.dart';
+import 'package:aves/features/muzei_wallpaper/view/slot_artwork_image.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
@@ -34,6 +38,9 @@ class MuzeiWallpaperPage extends StatefulWidget {
 }
 
 enum _WallpaperMenuAction {
+  sources,
+  effects,
+  gestures,
   openArtwork,
   setWallpaper,
   refreshStatus,
@@ -103,6 +110,33 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
     );
   }
 
+  Future<void> _openSources(BuildContext context, WallpaperController controller) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: MuzeiWallpaperSourcesPage.routeName),
+        builder: (_) => MuzeiWallpaperSourcesPage(controller: controller),
+      ),
+    );
+  }
+
+  Future<void> _openEffects(BuildContext context, WallpaperController controller) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: MuzeiWallpaperEffectsPage.routeName),
+        builder: (_) => MuzeiWallpaperEffectsPage(controller: controller),
+      ),
+    );
+  }
+
+  Future<void> _openGestures(BuildContext context, WallpaperController controller) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: MuzeiWallpaperGesturesPage.routeName),
+        builder: (_) => MuzeiWallpaperGesturesPage(controller: controller),
+      ),
+    );
+  }
+
   Future<void> _openChooser(BuildContext context, WallpaperController controller) async {
     final opened = await controller.openChooser();
     if (!context.mounted || opened) return;
@@ -139,6 +173,12 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
 
   Future<void> _onMenu(_WallpaperMenuAction action, WallpaperController controller) async {
     switch (action) {
+      case _WallpaperMenuAction.sources:
+        await _openSources(context, controller);
+      case _WallpaperMenuAction.effects:
+        await _openEffects(context, controller);
+      case _WallpaperMenuAction.gestures:
+        await _openGestures(context, controller);
       case _WallpaperMenuAction.openArtwork:
         await _openArtwork(context);
       case _WallpaperMenuAction.setWallpaper:
@@ -186,10 +226,12 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
       fit: StackFit.expand,
       children: [
         const ColoredBox(color: Colors.black),
-        if (file != null)
-          Image.file(
-            file,
-            key: ValueKey('${current?.id}-${current?.artwork.entryId}'),
+        if (file != null && current != null)
+          Image(
+            // The preview must decode the artwork currently in the slot, not
+            // the first artwork the slot ever held; see [SlotArtworkImage].
+            image: SlotArtworkImage(file: file, contentKey: current.artwork.entryId),
+            key: ValueKey('${current.id}-${current.artwork.entryId}'),
             fit: BoxFit.cover,
             gaplessPlayback: true,
             errorBuilder: (context, error, stack) => const SizedBox(),
@@ -249,6 +291,18 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
                   tooltip: MaterialLocalizations.of(context).showMenuTooltip,
                   onSelected: (action) => _onMenu(action, controller),
                   itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: _WallpaperMenuAction.sources,
+                      child: Text(l10n.muzeiWallpaperSources),
+                    ),
+                    PopupMenuItem(
+                      value: _WallpaperMenuAction.effects,
+                      child: Text(l10n.muzeiWallpaperEffects),
+                    ),
+                    PopupMenuItem(
+                      value: _WallpaperMenuAction.gestures,
+                      child: Text(l10n.muzeiWallpaperGestures),
+                    ),
                     PopupMenuItem(
                       value: _WallpaperMenuAction.openArtwork,
                       child: Text(l10n.muzeiWallpaperOpenArtwork),

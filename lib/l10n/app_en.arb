@@ -883,6 +883,38 @@
     }
   },
 
+  "muzeiWallpaperSources": "Sources",
+  "muzeiWallpaperSourcesMyPhotos": "My photos",
+  "muzeiWallpaperSourcesSingle": "Single artwork",
+  "muzeiWallpaperSourcesAllPhotos": "All photos",
+  "muzeiWallpaperSourcesChooseArtwork": "Choose artwork",
+  "muzeiWallpaperSourcesEditFilters": "Choose albums and filters",
+  "muzeiWallpaperSourcesCount": "{count, plural, =1{1 photo} other{{count} photos}}",
+  "@muzeiWallpaperSourcesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "muzeiWallpaperEffects": "Effects",
+  "muzeiWallpaperEffectsHome": "Home screen",
+  "muzeiWallpaperEffectsLock": "Lock screen",
+  "muzeiWallpaperEffectsBlur": "Blur",
+  "muzeiWallpaperEffectsDim": "Dim",
+  "muzeiWallpaperEffectsGrey": "Grayscale",
+  "muzeiWallpaperEffectsLink": "Link home and lock screen",
+  "muzeiWallpaperEffectsReset": "Reset effects",
+
+  "muzeiWallpaperGestures": "Gestures",
+  "muzeiWallpaperGesturesDoubleTap": "Double tap",
+  "muzeiWallpaperGesturesThreeFinger": "Three-finger tap",
+  "muzeiWallpaperTapTemporaryDisable": "Temporarily disable effects",
+  "muzeiWallpaperTapNextArtwork": "Next artwork",
+  "muzeiWallpaperTapViewArtwork": "Open Aves",
+  "muzeiWallpaperTapNone": "Do nothing",
+
   "selectStorageVolumeDialogTitle": "Select Storage",
 
   "searchCollectionFieldHint": "Search collection",

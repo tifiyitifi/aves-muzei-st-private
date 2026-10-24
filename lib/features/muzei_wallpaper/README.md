@@ -12,10 +12,13 @@ The development reference was the sibling `muzei` checkout.
 - `main/src/main/java/com/google/android/apps/muzei/MuzeiWallpaperService.kt`
   - WallpaperService/Engine lifecycle, `directBootAware`, touch/offset
     notifications.
+- `main/src/main/java/com/google/android/apps/muzei/wallpaper/LockscreenObserver.kt`
+  - Home/lock surface detection from the screen broadcasts and the keyguard.
 - `main/src/main/java/com/google/android/apps/muzei/render/MuzeiBlurRenderer.kt`
   - Blur, dim and greyscale values; sharp/effect crossfade; focus behaviour.
+  - 750 ms artwork crossfade, 500 ms effect fade, queueing a frame while fading.
 - `main/src/main/java/com/google/android/apps/muzei/render/GLPictureSet.kt`
-  - Cover-fit matrices, desktop offset and zoom.
+  - Cover-fit crop, desktop offset and zoom, ported as `WallpaperViewport`.
 - Muzei's tap actions and auto-advance settings
   (`temporarily disable effects`, `next artwork`, `view artwork`, intervals and
   ordering).
@@ -33,4 +36,7 @@ Apache-2.0 headers. See the repository root `LICENSE` for Aves's own license.
 - Source queries go through Aves's Drift database instead of Muzei's content
   providers.
 - The Dart/native contract is `state.json` / `runtime.json` plus slot PNGs,
-  owned by `WallpaperStateStore`.
+  owned by `WallpaperStateStore`. A wallpaper tap that advances the artwork
+  writes the new slot to `runtime.json`; while the generations match, the
+  renderer (and the next Dart adoption) treat the runtime as the current slot,
+  so an advance survives without Flutter running.

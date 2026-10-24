@@ -261,6 +261,34 @@ void main() {
     }
   });
 
+  test('rapid effect changes keep the last value', () async {
+    await driftDb.insertEntries({
+      for (var id = 1; id <= 3; id++) entry(id: id, dateTaken: id * 10),
+    });
+    await controller.init();
+    await controller.idle;
+
+    final first = controller.setEffects(
+      const WallpaperEffectsConfig(
+        home: WallpaperEffects(blur: 100, dim: 0, grey: 0),
+        lock: WallpaperEffects(blur: 100, dim: 0, grey: 0),
+      ),
+    );
+    final second = controller.setEffects(
+      const WallpaperEffectsConfig(
+        home: WallpaperEffects(blur: 200, dim: 0, grey: 0),
+        lock: WallpaperEffects(blur: 200, dim: 0, grey: 0),
+      ),
+    );
+    await Future.wait([first, second]);
+    await controller.idle;
+
+    expect(controller.state.effects.home.blur, 200);
+    expect(baker.effectsHomeBlur, isNotEmpty);
+    expect(baker.effectsHomeBlur.every((blur) => blur == 200), isTrue, reason: 'the superseded value is never baked');
+    expect((await store.readState())?.effects.home.blur, 200);
+  });
+
   test('setEffects rebakes only the effect images', () async {
     await driftDb.insertEntries({
       for (var id = 1; id <= 3; id++) entry(id: id, dateTaken: id * 10),
@@ -302,6 +330,7 @@ void main() {
 class FakeWallpaperBaker extends Fake implements WallpaperBaker {
   final Set<int> failingEntryIds = {};
   final List<int> attemptedEntryIds = [];
+  final List<int> effectsHomeBlur = [];
   int bakeCalls = 0;
   int effectsCalls = 0;
 
@@ -333,6 +362,7 @@ class FakeWallpaperBaker extends Fake implements WallpaperBaker {
     required WallpaperEffects lock,
   }) async {
     effectsCalls++;
+    effectsHomeBlur.add(home.blur);
     return WallpaperBake(
       size: const Size(100, 100),
       darkness: .5,

@@ -29,7 +29,13 @@ enum WallpaperTapAction {
 /// Gesture bindings, matching Muzei's double-tap and three-finger actions.
 @immutable
 class WallpaperGestures with Equatable {
-  static const WallpaperTapAction defaultDoubleTap = WallpaperTapAction.temporaryDisable;
+  /// Double tap advances, unlike Muzei's "temporarily disable effects".
+  ///
+  /// Not an oversight: the page shows the sharp artwork (effects belong to the
+  /// wallpaper), so temporarily disabling them is invisible there, while moving
+  /// to the next artwork is the action a wallpaper viewer reaches for. The Muzei
+  /// binding is still selectable in the gestures screen.
+  static const WallpaperTapAction defaultDoubleTap = WallpaperTapAction.nextArtwork;
   static const WallpaperTapAction defaultThreeFinger = WallpaperTapAction.none;
 
   final WallpaperTapAction doubleTap;

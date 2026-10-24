@@ -127,7 +127,8 @@ class WallpaperState with Equatable {
   /// [recent] with [artwork] moved to the front, de-duplicated and capped.
   ///
   /// The slot file paths are dropped on purpose: `recent` outlives the slot the
-  /// artwork was baked into.
+  /// artwork was baked into. The bake metrics (`width`/`height`/`darkness`) go
+  /// with them, because they describe that same bake.
   static List<WallpaperArtwork> promoteRecent(List<WallpaperArtwork> recent, WallpaperArtwork? artwork) {
     if (artwork == null) return recent;
     final metadata = WallpaperArtwork(

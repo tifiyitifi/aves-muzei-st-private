@@ -58,6 +58,19 @@ class WallpaperArtwork with Equatable {
   final int? dateMillis;
   final WallpaperSlotFiles files;
 
+  /// Size of the baked sharp image, in pixels.
+  ///
+  /// The page lays the artwork out at its cover size so panning can reveal the
+  /// parts the wallpaper crop hides; that needs the aspect ratio without waiting
+  /// for a decode. Absent for history entries and for slots baked before the
+  /// field existed.
+  final int? width;
+  final int? height;
+
+  /// Average luminance of the baked artwork in `0..1`, as measured for the dim
+  /// effect. Lets the effects preview apply the same dim curve as the bake.
+  final double? darkness;
+
   const new({
     required this.entryId,
     required this.uri,
@@ -66,7 +79,17 @@ class WallpaperArtwork with Equatable {
     this.attribution,
     this.dateMillis,
     this.files = WallpaperSlotFiles.empty,
+    this.width,
+    this.height,
+    this.darkness,
   });
+
+  /// Whether the layout can size the artwork itself instead of the viewport.
+  double? get aspectRatio {
+    final w = width, h = height;
+    if (w == null || h == null || w <= 0 || h <= 0) return null;
+    return w / h;
+  }
 
   WallpaperArtwork copyWith({
     int? entryId,
@@ -76,6 +99,9 @@ class WallpaperArtwork with Equatable {
     String? attribution,
     int? dateMillis,
     WallpaperSlotFiles? files,
+    int? width,
+    int? height,
+    double? darkness,
   }) => WallpaperArtwork(
     entryId: entryId ?? this.entryId,
     uri: uri ?? this.uri,
@@ -84,6 +110,9 @@ class WallpaperArtwork with Equatable {
     attribution: attribution ?? this.attribution,
     dateMillis: dateMillis ?? this.dateMillis,
     files: files ?? this.files,
+    width: width ?? this.width,
+    height: height ?? this.height,
+    darkness: darkness ?? this.darkness,
   );
 
   Map<String, Object?> toJsonMap() => {
@@ -94,6 +123,9 @@ class WallpaperArtwork with Equatable {
     if (attribution != null) 'attribution': attribution,
     if (dateMillis != null) 'dateMillis': dateMillis,
     'files': files.toJsonMap(),
+    if (width != null) 'width': width,
+    if (height != null) 'height': height,
+    if (darkness != null) 'darkness': darkness,
   };
 
   static WallpaperArtwork? tryFromJsonMap(Map<String, Object?> json) {
@@ -103,6 +135,9 @@ class WallpaperArtwork with Equatable {
     if (entryId <= 0 || uri is! String || uri.isEmpty) return null;
     final rawDate = json['dateMillis'];
     final dateMillis = rawDate is int ? rawDate : (rawDate is num ? rawDate.toInt() : null);
+    final width = _positiveInt(json['width']);
+    final height = _positiveInt(json['height']);
+    final darkness = _unitDouble(json['darkness']);
     return WallpaperArtwork(
       entryId: entryId,
       uri: uri,
@@ -115,13 +150,29 @@ class WallpaperArtwork with Equatable {
               (json['files'] as Map).map((key, value) => MapEntry(key.toString(), value)),
             )
           : WallpaperSlotFiles.empty,
+      // A mismatched pair cannot describe an aspect ratio; drop both.
+      width: width != null && height != null ? width : null,
+      height: width != null && height != null ? height : null,
+      darkness: darkness,
     );
+  }
+
+  static int? _positiveInt(Object? value) {
+    final int? parsed = value is int ? value : (value is num ? value.toInt() : null);
+    return parsed != null && parsed > 0 ? parsed : null;
+  }
+
+  static double? _unitDouble(Object? value) {
+    if (value is! num) return null;
+    final parsed = value.toDouble();
+    if (parsed.isNaN || parsed.isInfinite) return null;
+    return parsed.clamp(0.0, 1.0).toDouble();
   }
 
   static String? _nullableString(Object? value) => value is String && value.isNotEmpty ? value : null;
 
   @override
-  List<Object?> get props => [entryId, uri, title, byline, attribution, dateMillis, files];
+  List<Object?> get props => [entryId, uri, title, byline, attribution, dateMillis, files, width, height, darkness];
 }
 
 /// A baked slot: its id plus the artwork it represents.

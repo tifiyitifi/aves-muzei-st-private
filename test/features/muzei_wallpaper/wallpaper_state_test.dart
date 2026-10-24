@@ -23,6 +23,9 @@ void main() {
     attribution: 'Aves',
     dateMillis: 1700000000000,
     files: files,
+    width: 2160,
+    height: 3840,
+    darkness: 0.35,
   );
 
   const slot = WallpaperSlot(id: 0, artwork: artwork);
@@ -104,6 +107,8 @@ void main() {
       final first = WallpaperState.promoteRecent(const [], artwork);
       expect(first.single.entryId, artwork.entryId);
       expect(first.single.files, WallpaperSlotFiles.empty, reason: 'the slot is recycled by later bakes');
+      expect(first.single.width, isNull, reason: 'the bake metrics belong to the slot too');
+      expect(first.single.darkness, isNull);
 
       final second = artwork.copyWith(entryId: 13);
       var recent = WallpaperState.promoteRecent(first, second);

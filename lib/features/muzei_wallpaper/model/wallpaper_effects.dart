@@ -14,9 +14,21 @@ class WallpaperEffects with Equatable {
   static const int maxDim = 255;
   static const int maxGrey = 500;
 
-  static const int defaultBlur = 250;
-  static const int defaultDim = 128;
+  /// Our defaults leave the photo untouched: no blur, no dim, no greyscale.
+  ///
+  /// This differs from Muzei on purpose (its defaults are 250/128/0); it is not
+  /// a bug or an oversight. The wallpaper exists to show the photo, and every
+  /// effect is opt-in. Muzei's values remain one tap away, as [muzeiDefaults].
+  static const int defaultBlur = 0;
+  static const int defaultDim = 0;
   static const int defaultGrey = 0;
+
+  /// Muzei's own defaults, offered as an explicit preset on the effects screen.
+  ///
+  /// Kept separate from the constructor defaults so neither can drift into the
+  /// other: [muzeiDefaults] is a product decision inherited from Muzei, while
+  /// the defaults above are ours.
+  static const WallpaperEffects muzeiDefaults = WallpaperEffects(blur: 250, dim: 128, grey: 0);
 
   final int blur;
   final int dim;
@@ -111,6 +123,26 @@ class WallpaperEffectsConfig with Equatable {
 
   /// The lock-surface values actually rendered.
   WallpaperEffects get effectiveLock => link ? home : lock;
+
+  /// [this] with [value] stored on the surface being edited.
+  ///
+  /// With the link on the two surfaces are one setting, so both are written:
+  /// storing only one side would leave the other stale for when the link is
+  /// turned off again.
+  WallpaperEffectsConfig applyTo({required bool onLock, required WallpaperEffects value}) {
+    if (link) return copyWith(home: value, lock: value);
+    return onLock ? copyWith(lock: value) : copyWith(home: value);
+  }
+
+  /// [this] linked or unlinked, copying the edited surface onto the other.
+  ///
+  /// Linking in Muzei makes the two surfaces equal from that moment on, which is
+  /// why the values of the surface being edited win.
+  WallpaperEffectsConfig withLink({required bool linked, required bool fromLock}) {
+    if (!linked) return copyWith(link: false);
+    final value = fromLock ? effectiveLock : home;
+    return copyWith(home: value, lock: value, link: true);
+  }
 
   WallpaperEffectsConfig copyWith({
     WallpaperEffects? home,

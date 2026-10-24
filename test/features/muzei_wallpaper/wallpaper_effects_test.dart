@@ -3,12 +3,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('WallpaperEffects', () {
-    test('defaults match Muzei', () {
+    test('defaults leave the artwork untouched, deliberately unlike Muzei', () {
       const effects = WallpaperEffects();
-      expect(effects.blur, WallpaperEffects.defaultBlur);
-      expect(effects.dim, WallpaperEffects.defaultDim);
-      expect(effects.grey, WallpaperEffects.defaultGrey);
-      expect(effects.isIdentity, isFalse);
+      expect(effects.blur, 0);
+      expect(effects.dim, 0);
+      expect(effects.grey, 0);
+      expect(effects.isIdentity, isTrue, reason: 'the photo is shown as it is until the user opts into effects');
+    });
+
+    test('Muzei defaults stay available as a preset', () {
+      expect(WallpaperEffects.muzeiDefaults.blur, 250);
+      expect(WallpaperEffects.muzeiDefaults.dim, 128);
+      expect(WallpaperEffects.muzeiDefaults.grey, 0);
+      expect(WallpaperEffects.muzeiDefaults.isIdentity, isFalse);
     });
 
     test('fromJsonMap clamps out-of-range values', () {
@@ -30,7 +37,7 @@ void main() {
     });
 
     test('sigma follows the screen height and downscale', () {
-      const effects = WallpaperEffects();
+      const effects = WallpaperEffects.muzeiDefaults;
       // 2400 * 250 * 0.0001 = 60px radius, sigma = 30.
       expect(effects.sigmaFor(2400), closeTo(30, 1e-9));
       expect(effects.sigmaFor(2400, downscale: 4), closeTo(7.5, 1e-9));
@@ -92,6 +99,47 @@ void main() {
       final decoded = WallpaperEffectsConfig.fromJsonMap(config.toJsonMap());
       expect(decoded, config);
       expect(WallpaperEffectsConfig.fromJsonMap(const {}), const WallpaperEffectsConfig());
+    });
+
+    test('applyTo writes the edited surface only, unless the link is on', () {
+      const config = WallpaperEffectsConfig(
+        home: WallpaperEffects(blur: 10),
+        lock: WallpaperEffects(blur: 40),
+      );
+      const value = WallpaperEffects(blur: 300);
+
+      final home = config.applyTo(onLock: false, value: value);
+      expect(home.home, value);
+      expect(home.lock, config.lock);
+
+      final lock = config.applyTo(onLock: true, value: value);
+      expect(lock.lock, value);
+      expect(lock.home, config.home);
+
+      final linked = config.withLink(linked: true, fromLock: false).applyTo(onLock: true, value: value);
+      expect(linked.home, value, reason: 'a linked surface is one setting');
+      expect(linked.effectiveLock, value);
+    });
+
+    test('withLink copies the edited surface onto the other', () {
+      const config = WallpaperEffectsConfig(
+        home: WallpaperEffects(blur: 10),
+        lock: WallpaperEffects(blur: 40),
+      );
+
+      final fromHome = config.withLink(linked: true, fromLock: false);
+      expect(fromHome.home.blur, 10);
+      expect(fromHome.lock.blur, 10);
+      expect(fromHome.link, isTrue);
+
+      final fromLock = config.withLink(linked: true, fromLock: true);
+      expect(fromLock.home.blur, 40);
+      expect(fromLock.lock.blur, 40);
+
+      final unlinked = fromHome.withLink(linked: false, fromLock: false);
+      expect(unlinked.link, isFalse);
+      expect(unlinked.home.blur, 10);
+      expect(unlinked.lock.blur, 10);
     });
   });
 }

@@ -76,20 +76,34 @@ The page is reached from the drawer, so it keeps a back arrow at the top and
 drops Muzei's bottom tab bar: sources, effects and gestures live in the one
 overflow menu, which also floats on their own pages so switching never needs a
 trip back to the artwork. The overlay is a single row, Muzei's visual signature:
-the title line, "touch to view", the next button and the overflow. Tapping the
-artwork hides the whole overlay (back arrow included) so the picture can be
-looked at full screen; a long press brings it back. Panning and pinch-zoom stay
-inside the page and are not persisted, because the wallpaper keeps showing the
-whole frame.
+the title line, "touch to view", the next button and the overflow. A tap toggles
+the whole overlay (back arrow included) so the picture can be looked at alone, a
+long press opens the immersive artwork view, and a double tap advances by
+default. The artwork is laid out at its cover size and panned inside an
+`InteractiveViewer`, so 1x can already reach the parts the wallpaper crops away;
+the view recenters when the artwork or the window changes, and nothing is
+persisted, because the wallpaper keeps showing the whole frame.
+
+The effects page is its own preview. Muzei's live feedback comes from the system
+wallpaper preview, where its effects screen floats over the running engine; this
+port bakes ahead of time, so a rebake takes hundreds of milliseconds and can
+never follow a slider. The page therefore applies the same blur, greyscale and
+dim math on the GPU (`ImageFiltered`, `ColorFiltered`, `dimAlpha`) while a
+slider moves, and the debounced bake still updates the real wallpaper. Its two
+presets are "reset to zero" and "Muzei defaults" (250/128/0). Our own defaults
+are 0/0/0, deliberately unlike Muzei and not an oversight: the wallpaper exists
+to show the photo, and every effect is opt-in.
 
 The title line defaults to the artwork's file name rather than Muzei's source
 label, which never explained itself; the source wording is one setting away.
-"Touch to view" opens the Aves viewer, and a long press on that line only hands
-the artwork to another app. When the queue is empty the page shows the most
-recent artwork whose original file still exists, baked in memory; it never
-writes a slot, so history cannot rewind the wallpaper. With no history either,
-the page shows the ordinary "no artwork" hint: the feature ships no bundled
-image, so it adds nothing to the APK or to storage.
+The title and "touch to view" share their actions: a tap opens the Aves viewer,
+a long press hands the artwork to another app. When the queue is empty the page
+shows the most recent artwork whose original file still exists, baked in memory;
+it never writes a slot, so history cannot rewind the wallpaper. With no history
+either, the page shows the ordinary "no artwork" hint: the feature ships no
+bundled image, so it adds nothing to the APK or to storage. The wallpaper only
+ever reads photos; its own writes stay inside the app's private directory
+(`state.json`, `runtime.json`, the slot PNGs).
 
 The about dialog blurs and dims the artwork behind it, and its Muzei section is
 quoted verbatim from Muzei's `about_body`, including its own version. Our app

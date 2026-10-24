@@ -933,7 +933,8 @@
   "muzeiWallpaperEffectsDim": "Dim",
   "muzeiWallpaperEffectsGrey": "Grayscale",
   "muzeiWallpaperEffectsLink": "Link home and lock screen",
-  "muzeiWallpaperEffectsReset": "Reset effects",
+  "muzeiWallpaperEffectsResetZero": "Reset to zero",
+  "muzeiWallpaperEffectsMuzeiDefaults": "Muzei defaults",
 
   "muzeiWallpaperGestures": "Gestures",
   "muzeiWallpaperGesturesDoubleTap": "Double tap",

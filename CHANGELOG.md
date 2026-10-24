@@ -18,6 +18,15 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: falls back to the last artwork that still exists when the queue is empty
 - Muzei wallpaper: pick the wallpaper filters by browsing the collection, then confirm
 - Muzei wallpaper: about dialog showing the ported Muzei about page
+- Muzei wallpaper: effects page previews blur, dim and greyscale live while dragging, with reset-to-zero and Muzei-defaults presets
+- Muzei wallpaper: long press opens an immersive artwork view, and the artwork can be panned to its uncropped edges even at 1x
+- Muzei wallpaper: double tap advances to the next artwork by default
+
+### Changed
+
+- Muzei wallpaper: default effects leave the photo untouched (blur, dim and greyscale all zero, deliberately unlike Muzei)
+- Muzei wallpaper: the about dialog separates the Muzei section with a thin recessed rule
+- Muzei wallpaper: menu checkmarks sit at the trailing edge so every label lines up
 
 ## <a id="v1.15.5"></a>[v1.15.5] - 2026-10-02
 

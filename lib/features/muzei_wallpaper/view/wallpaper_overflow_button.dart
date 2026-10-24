@@ -1,9 +1,9 @@
 import 'dart:async';
 
-import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_display.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_about_dialog.dart';
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_auto_advance_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_effects_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_gestures_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_sources_page.dart';
@@ -103,10 +103,15 @@ class WallpaperOverflowButton extends StatelessWidget {
 
   /// Every entry gets the same row, so labels line up whether or not they are
   /// checked and the mark always sits at the trailing edge.
-  PopupMenuItem<_WallpaperMenuAction> _item(String label, _WallpaperMenuAction action, {bool checked = false}) {
+  PopupMenuItem<_WallpaperMenuAction> _item(
+    String label,
+    _WallpaperMenuAction action, {
+    bool checked = false,
+    IconData? marker,
+  }) {
     return PopupMenuItem(
       value: action,
-      child: _CheckedRow(checked: checked, child: Text(label)),
+      child: _CheckedRow(checked: checked, icon: marker, child: Text(label)),
     );
   }
 
@@ -115,7 +120,8 @@ class WallpaperOverflowButton extends StatelessWidget {
     _WallpaperMenuAction action,
     WallpaperSection target,
   ) {
-    return _item(label, action, checked: section == target);
+    // A radio mark, not a checkmark: this is "where you are", not "done".
+    return _item(label, action, checked: section == target, marker: AIcons.current);
   }
 
   Future<void> _onSelected(BuildContext context, _WallpaperMenuAction action) async {
@@ -127,7 +133,7 @@ class WallpaperOverflowButton extends StatelessWidget {
       case _WallpaperMenuAction.gestures:
         await _openSection(context, WallpaperSection.gestures);
       case _WallpaperMenuAction.autoAdvance:
-        await _showAutoAdvance(context);
+        await _openAutoAdvance(context);
       case _WallpaperMenuAction.titleMode:
         await _showTitleMode(context);
       case _WallpaperMenuAction.setWallpaper:
@@ -189,28 +195,12 @@ class WallpaperOverflowButton extends StatelessWidget {
   }
 
   /// Auto-advance is scheduled by the native worker, so it keeps running when
-  /// the page is closed; this dialog only chooses the interval.
-  Future<void> _showAutoAdvance(BuildContext context) {
-    final selected = controller.prefs.autoAdvance.interval;
-    return showDialog<void>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(context.l10n.muzeiWallpaperAutoAdvance),
-        children: [
-          for (final interval in WallpaperInterval.values)
-            SimpleDialogOption(
-              onPressed: () {
-                Navigator.of(context).pop();
-                unawaited(
-                  controller.setAutoAdvance(controller.prefs.autoAdvance.copyWith(interval: interval)),
-                );
-              },
-              child: _CheckedRow(
-                checked: interval == selected,
-                child: Text(_intervalLabel(context, interval)),
-              ),
-            ),
-        ],
+  /// the page is closed; this page only edits the contract.
+  Future<void> _openAutoAdvance(BuildContext context) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: MuzeiWallpaperAutoAdvancePage.routeName),
+        builder: (_) => MuzeiWallpaperAutoAdvancePage(controller: controller),
       ),
     );
   }
@@ -267,27 +257,18 @@ class WallpaperOverflowButton extends StatelessWidget {
       ),
     );
   }
-
-  static String _intervalLabel(BuildContext context, WallpaperInterval interval) {
-    final l10n = context.l10n;
-    return switch (interval) {
-      WallpaperInterval.m15 => l10n.muzeiWallpaperAutoAdvanceMinutes(15),
-      WallpaperInterval.m30 => l10n.muzeiWallpaperAutoAdvanceMinutes(30),
-      WallpaperInterval.h1 => l10n.muzeiWallpaperAutoAdvanceHours(1),
-      WallpaperInterval.h3 => l10n.muzeiWallpaperAutoAdvanceHours(3),
-      WallpaperInterval.h6 => l10n.muzeiWallpaperAutoAdvanceHours(6),
-      WallpaperInterval.h24 => l10n.muzeiWallpaperAutoAdvanceDays(1),
-      WallpaperInterval.h72 => l10n.muzeiWallpaperAutoAdvanceDays(3),
-      WallpaperInterval.never => l10n.muzeiWallpaperAutoAdvanceOff,
-    };
-  }
 }
 
 class _CheckedRow extends StatelessWidget {
   final bool checked;
+
+  /// The trailing mark: a checkmark by default, or a radio mark for "you are
+  /// here".
+  final IconData? icon;
+
   final Widget child;
 
-  const new({required this.checked, required this.child});
+  const new({required this.checked, this.icon, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -295,9 +276,9 @@ class _CheckedRow extends StatelessWidget {
       children: [
         Expanded(child: child),
         if (checked)
-          const Padding(
-            padding: EdgeInsets.only(left: 12),
-            child: Icon(AIcons.checked, size: 20),
+          Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Icon(icon ?? AIcons.checked, size: 20),
           ),
       ],
     );

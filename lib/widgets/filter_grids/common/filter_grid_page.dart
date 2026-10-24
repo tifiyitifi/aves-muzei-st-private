@@ -567,9 +567,13 @@ class _FilterSectionedContentState<T extends CollectionFilter> extends State<_Fi
       child: scrollView,
     );
 
+    // Wallpaper-source album picking runs in `pickFilterInternal` (no drawer or
+    // bottom navigation) but still needs long-press multi-select, so that mode
+    // is allowed to start a selection too.
+    final appMode = context.select<ValueNotifier<AppMode>, AppMode>((v) => v.value);
     final selector = GridSelectionGestureDetector<FilterGridItem<T>>(
       scrollableKey: scrollableKey,
-      selectable: context.select<ValueNotifier<AppMode>, bool>((v) => v.value.canSelectFilter) && widget.selectable,
+      selectable: (appMode.canSelectFilter || appMode == .pickFilterInternal) && widget.selectable,
       items: visibleSections.values.expand((v) => v).toList(),
       scrollController: scrollController,
       appBarHeightNotifier: appBarHeightNotifier,

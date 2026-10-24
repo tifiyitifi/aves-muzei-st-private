@@ -5,16 +5,20 @@ import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart';
-import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_filter_pick_page.dart';
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_album_pick_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_overflow_button.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
+import 'package:aves/model/grouping/common.dart';
+import 'package:aves/model/highlight.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/collection/filter_bar.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
+import 'package:aves/widgets/dialogs/pick_dialogs/album_pick_page.dart';
 import 'package:aves/widgets/dialogs/pick_dialogs/item_pick_page.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
@@ -46,6 +50,9 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
   AvesEntry? _singleEntry;
   bool _applying = false;
 
+  /// Guards the album picker while its data preloads, before the route exists.
+  bool _pickingSource = false;
+
   WallpaperController get _controller => widget.controller;
 
   @override
@@ -75,25 +82,43 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
     await _apply(_scope.copyWith(kind: kind));
   }
 
-  Future<void> _pickFilters() async {
-    final selection = await Navigator.of(context).push<Set<CollectionFilter>>(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: MuzeiWallpaperFilterPickPage.routeName),
-        fullscreenDialog: true,
-        builder: (_) => MuzeiWallpaperFilterPickPage(initialFilters: _scope.filters),
-      ),
-    );
-    if (selection == null || !mounted) return;
-    // The image restriction is implicit for wallpapers, so it is not a user
-    // filter and must not show up as a removable chip.
-    final filters = selection.where((filter) => filter != MimeFilter.image).toSet();
-    await _apply(
-      _scope.copyWith(
-        kind: WallpaperSourceKind.myPhotos,
-        filters: filters,
-      ),
-    );
+  Future<void> _pickSource() async {
+    if (_pickingSource || _applying || _controller.busy) return;
+    _pickingSource = true;
+    try {
+      final source = context.read<CollectionSource>();
+      // Paged sources need their album summaries before the grid can list albums.
+      await ensureAlbumPickData(source);
+      if (!mounted) return;
+      // Reopening the picker resumes the saved value: the album page scrolls to
+      // and highlights the current album, and opens its group.
+      final current = _scope.filters.length == 1 ? _scope.filters.single : null;
+      if (current is AlbumBaseFilter) context.read<HighlightInfo>().set(current);
+      final selection = await Navigator.of(context).push<Set<CollectionFilter>>(
+        MaterialPageRoute(
+          settings: const RouteSettings(name: MuzeiWallpaperAlbumPickPage.routeName),
+          fullscreenDialog: true,
+          builder: (_) => MuzeiWallpaperAlbumPickPage(
+            source: source,
+            initialGroup: current is AlbumBaseFilter ? albumGrouping.getFilterParent(current) : null,
+          ),
+        ),
+      );
+      if (selection == null || !mounted) return;
+      await _apply(
+        _scope.copyWith(
+          kind: WallpaperSourceKind.myPhotos,
+          filters: selection,
+        ),
+      );
+    } finally {
+      _pickingSource = false;
+    }
   }
+
+  /// Return to "all photos": the same result as removing the source chip, offered
+  /// as an explicit action because the chip is easy to miss.
+  Future<void> _clearSource() => _apply(_scope.copyWith(kind: WallpaperSourceKind.myPhotos, filters: const {}));
 
   Future<void> _pickSingle() async {
     final source = context.read<CollectionSource>();
@@ -141,6 +166,7 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final theme = Theme.of(context);
     return ListenableBuilder(
       listenable: _controller,
       builder: (context, _) {
@@ -162,18 +188,32 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
                         value: WallpaperSourceKind.myPhotos,
                         title: Text(l10n.muzeiWallpaperSourcesMyPhotos),
                         subtitle: _scope.filters.isEmpty ? Text(l10n.muzeiWallpaperSourcesAllPhotos) : null,
-                        secondary: IconButton(
-                          tooltip: l10n.muzeiWallpaperSourcesEditFilters,
-                          icon: const Icon(AIcons.edit),
-                          onPressed: working ? null : _pickFilters,
+                        secondary: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_scope.kind == WallpaperSourceKind.myPhotos && _scope.filters.isNotEmpty)
+                              IconButton(
+                                tooltip: l10n.muzeiWallpaperSourcesUseAllPhotos,
+                                icon: const Icon(AIcons.restore),
+                                onPressed: working ? null : () => unawaited(_clearSource()),
+                              ),
+                            IconButton(
+                              tooltip: l10n.muzeiWallpaperSourcesChooseAlbum,
+                              icon: const Icon(AIcons.edit),
+                              onPressed: working ? null : _pickSource,
+                            ),
+                          ],
                         ),
                       ),
-                      if (_scope.filters.isNotEmpty)
+                      if (_scope.kind == WallpaperSourceKind.myPhotos && _scope.filters.isNotEmpty)
                         Padding(
                           padding: const EdgeInsetsDirectional.only(bottom: 8),
                           child: FilterBar(
                             filters: _scope.filters,
                             interactive: false,
+                            // The chip's own cross is Aves' usual way to drop a
+                            // filter; here it returns the source to all photos.
+                            onRemove: (_) => unawaited(_clearSource()),
                           ),
                         ),
                       RadioListTile<WallpaperSourceKind>(
@@ -184,6 +224,24 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
                           tooltip: l10n.muzeiWallpaperSourcesChooseArtwork,
                           icon: const Icon(AIcons.image),
                           onPressed: working ? null : _pickSingle,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(start: 16, end: 16, bottom: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(AIcons.image, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          l10n.muzeiWallpaperSourcesPhotosOnly,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ],

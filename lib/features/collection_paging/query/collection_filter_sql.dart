@@ -154,7 +154,9 @@ WindowFragment? _container(Set<CollectionFilter> members, {required bool isOr}) 
     return (sql: isOr ? '0 = 1' : '1 = 1', variables: const [], requires: const {});
   }
   return (
-    sql: fragments.map((f) => '(${f.sql})').join(isOr ? ' OR ' : ' AND '),
+    // Parenthesized so the fragment stays self-contained when the caller ANDs
+    // it with other filters; a bare `a OR b` would swallow the next condition.
+    sql: '(${fragments.map((f) => '(${f.sql})').join(isOr ? ' OR ' : ' AND ')})',
     variables: [for (final f in fragments) ...f.variables],
     requires: {for (final f in fragments) ...f.requires},
   );

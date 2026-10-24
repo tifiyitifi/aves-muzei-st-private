@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
+import 'package:aves/model/filters/container/album_group.dart';
+import 'package:aves/model/filters/container/set_or.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:equatable/equatable.dart';
@@ -34,6 +36,21 @@ class WallpaperSourceScope with Equatable {
   }) : filters = Set.unmodifiable(filters);
 
   bool get isConfigured => kind == WallpaperSourceKind.myPhotos || (singleEntryId ?? 0) > 0;
+
+  /// Collection filters representing a picked album set.
+  ///
+  /// Aves' collection filters are ANDed, so two album filters in one set match
+  /// nothing; several albums are therefore wrapped in a [SetOrFilter] (their
+  /// union). The implicit image restriction still applies on top via
+  /// [queryFilters].
+  static Set<CollectionFilter> filtersForAlbums(Iterable<AlbumBaseFilter> albums) {
+    final selected = albums.toSet();
+    return switch (selected.length) {
+      0 => const <CollectionFilter>{},
+      1 => {selected.single},
+      _ => {SetOrFilter(selected)},
+    };
+  }
 
   /// Filters actually sent to the collection predicate.
   ///

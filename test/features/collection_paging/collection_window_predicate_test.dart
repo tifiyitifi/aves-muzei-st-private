@@ -57,6 +57,15 @@ void main() {
       expect(predicate.conjunction.single.sql, contains(' OR '));
     });
 
+    test('a container fragment stays self-contained when ANDed', () {
+      final predicate = predicateForFilters({
+        SetOrFilter({StoredAlbumFilter('/a', null), StoredAlbumFilter('/b', null)}),
+        MimeFilter.image,
+      })!;
+      // A bare `a OR b` would swallow the ANDed MIME condition.
+      expect(predicate.conjunction.first.sql, startsWith('('));
+    });
+
     test('a tag group reads metadata', () {
       final group = TagGroupFilter(
         Uri.parse('/taggroup'),

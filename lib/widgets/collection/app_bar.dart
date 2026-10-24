@@ -204,7 +204,9 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
       child: ListenableBuilder(
         listenable: collection.filterChangeNotifier,
         builder: (context, child) {
-          final canRemoveFilters = appMode != .pickFilteredMediaInternal;
+          // In the wallpaper-source preview the album and the image MIME are
+          // fixed constraints; dropping the image one must not reveal videos.
+          final canRemoveFilters = appMode != .pickFilteredMediaInternal && appMode != .pickFilterInternal;
           return Selector<Query, bool>(
             selector: (context, query) => query.enabled,
             builder: (context, queryEnabled, child) {

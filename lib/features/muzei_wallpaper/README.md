@@ -117,6 +117,17 @@ bundled image, so it adds nothing to the APK or to storage. The wallpaper only
 ever reads photos; its own writes stay inside the app's private directory
 (`state.json`, `runtime.json`, the slot PNGs).
 
+Sources are album-first, matching how Aves and Muzei both present a local
+gallery: the pencil opens Aves' album grid (groups, sorting, hidden albums) and
+reopens on the saved album. A tap opens that album's media set with a confirm
+button; a long press multi-selects albums, whose union is previewed the same way
+(an `OR` filter, as the collection's own filters are ANDed). Confirming is the
+only way back with a value, so browsing cannot change the wallpaper. The preview
+adds the image restriction to its own lens, so videos never appear there and the
+"show videos" setting and every other page are untouched; albums without any
+image are left out of the grid. On the source page the album chip's cross and a
+reset button both return to "all photos".
+
 The about dialog blurs and dims the artwork behind it, and its Muzei section is
 quoted verbatim from Muzei's `about_body`, including its own version. Our app
 version is deliberately not shown there: a release that only touched other

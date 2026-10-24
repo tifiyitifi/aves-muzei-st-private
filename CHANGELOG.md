@@ -16,7 +16,7 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: title line shows the file name by default, or the source name
 - Muzei wallpaper: touch to view opens the Aves viewer, long press opens the artwork in another app
 - Muzei wallpaper: falls back to the last artwork that still exists when the queue is empty
-- Muzei wallpaper: pick the wallpaper filters by browsing the collection, then confirm
+- Muzei wallpaper: pick the wallpaper source by browsing albums, then confirming the album's photos
 - Muzei wallpaper: about dialog showing the ported Muzei about page
 - Muzei wallpaper: effects page previews blur, dim and greyscale live while dragging, with reset-to-zero and Muzei-defaults presets
 - Muzei wallpaper: long press opens an immersive artwork view, and the artwork can be panned to its uncropped edges even at 1x
@@ -30,6 +30,11 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: the overflow menu marks the current page with a radio dot, and the next button uses Muzei's double chevron
 - Muzei wallpaper: the about dialog separates the Muzei section with a thin recessed rule
 - Muzei wallpaper: menu checkmarks sit at the trailing edge so every label lines up
+- Muzei wallpaper: the source picker is album-first; tapping an album previews its photos, long-pressing unions albums, and the preview stays images-only without changing the "show videos" setting
+
+### Fixed
+
+- Collection: an `OR` filter swallowed the filters ANDed after it in paged queries
 
 ## <a id="v1.15.5"></a>[v1.15.5] - 2026-10-02
 

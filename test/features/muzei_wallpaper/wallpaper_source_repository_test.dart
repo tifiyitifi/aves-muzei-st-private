@@ -12,6 +12,7 @@ import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/model/filters/container/set_or.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/query.dart';
@@ -138,6 +139,27 @@ void main() {
       final videoResolution = await repository.resolve(videoScope);
       expect(videoResolution.status, WallpaperSourceStatus.empty);
       expect(await pickId(videoScope), isNull);
+    });
+
+    test('an album union (SetOrFilter) picks from every selected album', () async {
+      await driftDb.insertEntries({
+        entry(id: 1, dir: '/a', dateTaken: 10),
+        entry(id: 2, dir: '/b', dateTaken: 20),
+        entry(id: 3, dir: '/c', dateTaken: 30),
+        entry(id: 4, dir: '/a', mime: 'video/mp4', dateTaken: 40),
+      });
+      final scope = collection(
+        filters: {
+          SetOrFilter({StoredAlbumFilter('/a', null), StoredAlbumFilter('/b', null)}),
+        },
+      );
+
+      final resolution = await repository.resolve(scope);
+      expect(resolution.status, WallpaperSourceStatus.ready);
+      expect(resolution.total, 2);
+      // Newest first within the union, and the album video is still skipped.
+      expect(await pickId(scope, cursor: 0), 2);
+      expect(await pickId(scope, cursor: 1), 1);
     });
 
     test('in-order cursor wraps at both ends and shifts retries', () async {

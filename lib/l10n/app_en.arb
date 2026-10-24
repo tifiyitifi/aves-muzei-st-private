@@ -881,8 +881,6 @@
     }
   },
   "muzeiWallpaperAboutMuzeiBody": "Made by Roman Nurik and Ian Lake, with major contributions from the [open source community](http://code.muzei.co).\n\n*Muzei* is a transliteration of the Russian word [*музей*](http://translate.google.com/#en/ru/museum), which means “museum.”\n\nCopyright 2013–2018 Google Inc. All Rights Reserved.\n\n[Terms of Service](http://m.google.com/utos), [Privacy Policy](http://www.google.com/policies/privacy/)\n\nMany thanks to these open source projects:\n\n- [**OkHttp**](http://square.github.io/okhttp/) and [**Picasso**](http://square.github.io/picasso/) by Square\n- [**GLWallpaperService**](https://github.com/GLWallpaperService/GLWallpaperService) by Robert Green, Mark F. Guerra, and others\n",
-  "muzeiWallpaperFilterPickTitle": "Choose filters",
-  "muzeiWallpaperFilterPickConfirm": "Use these filters",
   "muzeiWallpaperChooserUnavailable": "No live wallpaper picker available",
   "muzeiWallpaperRefreshStatus": "Refresh status",
   "muzeiWallpaperSyncRuntime": "Sync runtime",
@@ -916,7 +914,11 @@
     }
   },
   "muzeiWallpaperSourcesChooseArtwork": "Choose artwork",
-  "muzeiWallpaperSourcesEditFilters": "Choose albums and filters",
+  "muzeiWallpaperSourcesChooseAlbum": "Choose album",
+  "muzeiWallpaperSourcesUseAllPhotos": "Use all photos",
+  "muzeiWallpaperSourcesPhotosOnly": "Wallpaper uses photos only; videos are skipped automatically.",
+  "muzeiWallpaperSourcesUseAlbum": "Use this album",
+  "muzeiWallpaperSourcesUseSelectedAlbums": "Use selected albums",
   "muzeiWallpaperSourcesCount": "{count, plural, =1{1 photo} other{{count} photos}}",
   "@muzeiWallpaperSourcesCount": {
     "placeholders": {

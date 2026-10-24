@@ -481,6 +481,11 @@ class WallpaperController extends ChangeNotifier {
         effectsHome: WallpaperStateStore.relativeSlotFile(slotId, WallpaperSlotFiles.effectsHomeName),
         effectsLock: WallpaperStateStore.relativeSlotFile(slotId, WallpaperSlotFiles.effectsLockName),
       ),
+      // The bake is the only place that knows how the artwork was cropped and
+      // how bright it ended up; the page and the effects preview reuse both.
+      width: bake.size.width.round(),
+      height: bake.size.height.round(),
+      darkness: bake.darkness,
     );
     await store.writeSlotArtwork(slotId, artwork);
     return WallpaperSlot(id: slotId, artwork: artwork);

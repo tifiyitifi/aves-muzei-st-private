@@ -46,3 +46,38 @@ Apache-2.0 headers. See the repository root `LICENSE` for Aves's own license.
   advances" behaviour. While the app process is alive it is also notified over
   the channel (`advanceRequested`) so the refill starts immediately rather than
   on the next page resume.
+- When no app engine is attached, the notification enqueues
+  `WallpaperRefillWorker` instead: it boots a short-lived Flutter engine, runs
+  `entry/refill_entry.dart` (adopt the promoted slot, bake the next one) and
+  destroys the engine. A WorkManager chain, not a long-lived process, so taps
+  keep advancing after the app is closed or killed. The tap run is a plain job,
+  deliberately not expedited: on Android 12+ expedited work becomes a foreground
+  service, which demands `getForegroundInfo()` and a notification for a
+  two-second bake.
+- A tap that finds no prefetched slot also requests the refill (deduplicated
+  with `KEEP`). Otherwise the promotion never happens, so nothing would ever ask
+  for the missing slot and the buffered taps would expire.
+- Android does not run queued work for a force-stopped app, so a tap after an
+  explicit force-stop still uses the one prefetched slot; a normal process death
+  or swiping the app away is covered, and the chain resumes on the next launch.
+- Auto-advance is a chain of one-time WorkManager runs driven by the interval
+  preference (15 minutes to 3 days, or off), because the page may be gone for
+  hours. A run advances the state in Dart, then asks the running app to refresh
+  its preview and schedules the next interval.
+- The foreground page and the background run can overlap, so both mutate the
+  store under a file lock (`WallpaperStateStore.runExclusive`) and re-read
+  `state.json` before choosing a slot. The winner is the last committed state,
+  and the loser adopts it instead of baking the same slot twice.
+
+## Trade-offs
+
+- Effects are blurred at a quarter of the surface (as in Muzei) but stored at
+  full size. Keeping the quarter-size PNG and letting the GPU upscale it would
+  save one encode/decode per effect image, but the sharp PNG dominates the
+  refill, and identity effects are byte-identical to it anyway; equal-sized
+  PNGs also keep the "preview and desktop read the same file" contract simple.
+- Prefetch depth stays at one artwork. A deeper queue would make the first
+  extra tap instant, but it turns `state.json` / `runtime.json` from one `next`
+  slot into a queue, doubles the baked disk footprint and multiplies the
+  cross-process consistency cases. Buffering the taps (plus the background
+  refill) already preserves "every double tap advances"; only the wait remains.

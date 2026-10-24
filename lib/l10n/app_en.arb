@@ -915,6 +915,33 @@
   "muzeiWallpaperTapViewArtwork": "Open Aves",
   "muzeiWallpaperTapNone": "Do nothing",
 
+  "muzeiWallpaperAutoAdvance": "Auto-advance",
+  "muzeiWallpaperAutoAdvanceOff": "Off",
+  "muzeiWallpaperAutoAdvanceMinutes": "{count, plural, =1{Every minute} other{Every {count} minutes}}",
+  "@muzeiWallpaperAutoAdvanceMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "muzeiWallpaperAutoAdvanceHours": "{count, plural, =1{Every hour} other{Every {count} hours}}",
+  "@muzeiWallpaperAutoAdvanceHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "muzeiWallpaperAutoAdvanceDays": "{count, plural, =1{Every day} other{Every {count} days}}",
+  "@muzeiWallpaperAutoAdvanceDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
   "selectStorageVolumeDialogTitle": "Select Storage",
 
   "searchCollectionFieldHint": "Search collection",

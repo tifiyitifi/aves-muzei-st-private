@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_bridge.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart';
@@ -37,6 +38,7 @@ enum _WallpaperMenuAction {
   sources,
   effects,
   gestures,
+  autoAdvance,
   openArtwork,
   setWallpaper,
   refreshStatus,
@@ -128,6 +130,52 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
     );
   }
 
+  /// Auto-advance is scheduled by the native worker, so it keeps running when
+  /// the page is closed; this dialog only chooses the interval.
+  Future<void> _showAutoAdvance(BuildContext context, WallpaperController controller) {
+    final selected = controller.prefs.autoAdvance.interval;
+    return showDialog<void>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(context.l10n.muzeiWallpaperAutoAdvance),
+        children: [
+          for (final interval in WallpaperInterval.values)
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.of(context).pop();
+                unawaited(
+                  controller.setAutoAdvance(controller.prefs.autoAdvance.copyWith(interval: interval)),
+                );
+              },
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 32,
+                    child: interval == selected ? const Icon(AIcons.checked, size: 20) : null,
+                  ),
+                  Expanded(child: Text(_intervalLabel(context, interval))),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static String _intervalLabel(BuildContext context, WallpaperInterval interval) {
+    final l10n = context.l10n;
+    return switch (interval) {
+      WallpaperInterval.m15 => l10n.muzeiWallpaperAutoAdvanceMinutes(15),
+      WallpaperInterval.m30 => l10n.muzeiWallpaperAutoAdvanceMinutes(30),
+      WallpaperInterval.h1 => l10n.muzeiWallpaperAutoAdvanceHours(1),
+      WallpaperInterval.h3 => l10n.muzeiWallpaperAutoAdvanceHours(3),
+      WallpaperInterval.h6 => l10n.muzeiWallpaperAutoAdvanceHours(6),
+      WallpaperInterval.h24 => l10n.muzeiWallpaperAutoAdvanceDays(1),
+      WallpaperInterval.h72 => l10n.muzeiWallpaperAutoAdvanceDays(3),
+      WallpaperInterval.never => l10n.muzeiWallpaperAutoAdvanceOff,
+    };
+  }
+
   Future<void> _openChooser(BuildContext context, WallpaperController controller) async {
     final opened = await controller.openChooser();
     if (!context.mounted || opened) return;
@@ -170,6 +218,8 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
         await _openEffects(context, controller);
       case _WallpaperMenuAction.gestures:
         await _openGestures(context, controller);
+      case _WallpaperMenuAction.autoAdvance:
+        await _showAutoAdvance(context, controller);
       case _WallpaperMenuAction.openArtwork:
         await _openArtwork(context);
       case _WallpaperMenuAction.setWallpaper:
@@ -293,6 +343,10 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
                     PopupMenuItem(
                       value: _WallpaperMenuAction.gestures,
                       child: Text(l10n.muzeiWallpaperGestures),
+                    ),
+                    PopupMenuItem(
+                      value: _WallpaperMenuAction.autoAdvance,
+                      child: Text(l10n.muzeiWallpaperAutoAdvance),
                     ),
                     PopupMenuItem(
                       value: _WallpaperMenuAction.openArtwork,

@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:isolate';
 
 import 'package:aves/app_flavor.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
+import 'package:aves/features/muzei_wallpaper/entry/refill_entry.dart';
 import 'package:aves/features/muzei_wallpaper/log.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/widgets/aves_app.dart';
@@ -46,4 +48,8 @@ void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
     (event) => LeakTracking.dispatchObjectEvent(event.toMap()),
   );
   runApp(AvesApp(flavor: flavor, debugIntentData: debugIntentData));
+  // The callback handle is part of the AOT snapshot, so it changes with every
+  // build: refresh it on each launch, not just when the wallpaper page is
+  // opened, or a background refill after an update would fail.
+  unawaited(registerWallpaperRefillCallback());
 }

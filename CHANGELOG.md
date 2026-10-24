@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Tags: direct renaming of tags and tag groups
 - Map: action to copy center to clipboard from coordinate filter
 - Urdu translation (thanks Bouzid Zeroug, Feliks-WR)
+- Muzei wallpaper: background refill and auto-advance while the app is closed
 
 ## <a id="v1.15.5"></a>[v1.15.5] - 2026-10-02
 

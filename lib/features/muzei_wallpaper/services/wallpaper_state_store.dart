@@ -27,10 +27,79 @@ class WallpaperStateStore {
   static const String runtimeFileName = 'runtime.json';
   static const String slotsDirName = 'slots';
   static const String tmpDirName = 'tmp';
+  static const String lockFileName = 'writer.lock';
 
   final Directory root;
 
+  /// Nesting depth of [runExclusive] in this isolate.
+  ///
+  /// Two isolates never share this counter: each one owns its own OS file lock,
+  /// which is what serializes the foreground page and the background refill.
+  int _lockDepth = 0;
+
   new(this.root);
+
+  File get lockFile => File(p.join(root.path, lockFileName));
+
+  /// Runs [body] while holding the wallpaper writer lock.
+  ///
+  /// The page and the headless refill run in different isolates: opening the app
+  /// during a refill would otherwise bake two artworks into the same free slot
+  /// and let the last writer win. Callers re-read `state.json` inside [body] so
+  /// they act on what the other writer committed.
+  ///
+  /// Re-entrant within one isolate, because an advance may start a prefetch
+  /// while it still holds the lock.
+  Future<T> runExclusive<T>(Future<T> Function() body, {Duration timeout = const Duration(seconds: 45)}) async {
+    if (_lockDepth > 0) {
+      _lockDepth++;
+      try {
+        return await body();
+      } finally {
+        _lockDepth--;
+      }
+    }
+    final handle = await _openLock(timeout);
+    _lockDepth = 1;
+    try {
+      return await body();
+    } finally {
+      _lockDepth = 0;
+      await _closeLock(handle);
+    }
+  }
+
+  Future<RandomAccessFile?> _openLock(Duration timeout) async {
+    await ensureLayout();
+    final deadline = DateTime.now().add(timeout);
+    while (true) {
+      final candidate = await lockFile.open(mode: FileMode.append);
+      try {
+        // `FileLock.exclusive` is the non-blocking mode: poll instead of
+        // blocking forever, so a crashed writer can never wedge the wallpaper.
+        await candidate.lock(FileLock.exclusive);
+        return candidate;
+      } on FileSystemException {
+        await candidate.close();
+        if (DateTime.now().isAfter(deadline)) {
+          wallpaperLog.w('wallpaper writer lock timed out');
+          return null;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
+  }
+
+  Future<void> _closeLock(RandomAccessFile? handle) async {
+    if (handle == null) return;
+    try {
+      await handle.unlock();
+    } on FileSystemException {
+      // The lock disappears with the handle anyway.
+    } finally {
+      await handle.close();
+    }
+  }
 
   /// The production location: `<app files>/muzei_wallpaper`.
   static WallpaperStateStore inAppFiles(Directory filesDir) {

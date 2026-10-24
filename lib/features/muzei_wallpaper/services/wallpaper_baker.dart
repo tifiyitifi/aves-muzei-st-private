@@ -26,6 +26,14 @@ class WallpaperBaker {
   /// Muzei blurs at a quarter of the surface height, then lets the GPU scale
   /// the result back up. Keeping the bake at that size saves most of the blur
   /// cost while looking the same after the final upscale.
+  ///
+  /// The quarter-size blur is upscaled in Dart and stored full size on purpose.
+  /// Writing the small PNG and letting the GL sampler upscale it was considered
+  /// and dropped: it would save one encode/decode per effect image, but the
+  /// sharp PNG (4-6 MB at 1080x2340) dominates the refill and is unaffected,
+  /// and the effect files of an identity configuration are byte-identical to
+  /// the sharp one anyway. Keeping every PNG the same size preserves the
+  /// "preview and desktop show the same file" contract for free.
   static const int effectsDownscale = 4;
 
   /// Decode budget for cover-cropping. Cover scaling already shrinks most

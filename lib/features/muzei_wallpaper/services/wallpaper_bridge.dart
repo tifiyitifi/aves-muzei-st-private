@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/features/muzei_wallpaper/log.dart';
 import 'package:aves/services/common/channel.dart';
 import 'package:flutter/services.dart';
@@ -46,18 +48,35 @@ class WallpaperBridge {
   /// Absolute path the renderer and Dart share for `state.json` and slots.
   Future<String?> stateRoot() => _invoke<String>('stateRoot');
 
+  /// Registers the headless entrypoint the background worker runs.
+  ///
+  /// The handle is a `vm:entry-point` callback, not a closure, because the
+  /// worker starts a fresh Flutter engine in another isolate.
+  Future<void> registerRefillCallback(int callbackHandle) => _invoke<void>('registerCallback', {
+    'callbackHandle': callbackHandle,
+  });
+
+  /// Schedules (or cancels, with `0`) the native auto-advance run.
+  ///
+  /// Native owns the timer because the page and the app process may be gone for
+  /// hours; the interval itself stays a Dart preference.
+  Future<void> scheduleAutoAdvance(int seconds) => _invoke<void>('scheduleAutoAdvance', {'seconds': seconds});
+
   /// Registers native-to-Dart requests.
   ///
   /// A wallpaper tap promotes the prefetched slot natively, so the renderer asks
   /// the running app (`advanceRequested`) to adopt it and bake the freed slot
   /// again; `reloadRequested` refreshes the preview after the service changed
-  /// slots. Without a running app the runtime stays marked for refill and the
-  /// next app start adopts it.
+  /// slots. Without a listener the platform routes the work to the background
+  /// refill instead: the app engine may be alive on another page, which is not
+  /// the same as a served request.
   void setRequestHandler({
     VoidCallback? onAdvanceRequested,
     VoidCallback? onReloadRequested,
   }) {
-    if (onAdvanceRequested == null && onReloadRequested == null) {
+    final attached = onAdvanceRequested != null || onReloadRequested != null;
+    unawaited(_invoke<void>('setRequestHandler', {'attached': attached}));
+    if (!attached) {
       _channel.setMethodCallHandler(null);
       return;
     }

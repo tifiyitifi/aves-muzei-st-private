@@ -53,6 +53,9 @@ class LiveWallpaperHandler(private val context: Context) : MethodCallHandler {
             "openChooser" -> safe(call, result, ::openChooser)
             "wallpaperSize" -> safe(call, result, ::wallpaperSize)
             "stateRoot" -> safe(call, result, ::stateRoot)
+            "registerCallback" -> safe(call, result, ::registerCallback)
+            "scheduleAutoAdvance" -> safe(call, result, ::scheduleAutoAdvance)
+            "setRequestHandler" -> safe(call, result, ::setRequestHandler)
             else -> result.notImplemented()
         }
     }
@@ -132,5 +135,35 @@ class LiveWallpaperHandler(private val context: Context) : MethodCallHandler {
     private fun stateRoot(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
         val directory = WallpaperStateStore.forContext(context).ensureRoot()
         result.success(directory.absolutePath)
+    }
+
+    /**
+     * Stores the callback handle of the headless refill entrypoint.
+     *
+     * Persisted in native preferences because the worker needs it before any
+     * Flutter isolate exists.
+     */
+    private fun registerCallback(call: MethodCall, result: MethodChannel.Result) {
+        val handle = call.argument<Number>("callbackHandle")?.toLong() ?: 0L
+        WallpaperRefillScheduler.registerCallback(context, handle)
+        result.success(handle > 0L)
+    }
+
+    /** Applies the auto-advance interval; `0` cancels the pending run. */
+    private fun scheduleAutoAdvance(call: MethodCall, result: MethodChannel.Result) {
+        val seconds = call.argument<Number>("seconds")?.toInt() ?: 0
+        WallpaperRefillScheduler.scheduleAutoAdvance(context, seconds)
+        result.success(null)
+    }
+
+    /**
+     * Records whether a page currently listens for native requests.
+     *
+     * Without a listener the renderer must route a tap to the background
+     * worker, even though the app engine may still be alive on another page.
+     */
+    private fun setRequestHandler(call: MethodCall, result: MethodChannel.Result) {
+        WallpaperAppBridge.setRequestHandlerAttached(call.argument<Boolean>("attached") == true)
+        result.success(null)
     }
 }

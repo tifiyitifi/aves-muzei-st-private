@@ -343,6 +343,9 @@ class WallpaperRenderer(
                 if (loaded == null) {
                     // Flutter bakes one artwork ahead, so a burst of taps can
                     // outrun the refill; replay this one when the prefetch lands.
+                    // Without a listening page nothing would ever bake again, so
+                    // ask for a refill even though no slot was promoted.
+                    WallpaperAppBridge.requestMissingSlot(context)
                     enqueueAdvance(requestedAt)
                 }
                 publish(loaded)
@@ -683,7 +686,7 @@ class WallpaperRenderer(
             Log.d(TAG, "advance.promote generation=${state.generation} slot=${nextSlot.id}")
             // Ask the running app to adopt this slot and bake the next one; the
             // wallpaper already shows the artwork, so the refill is invisible.
-            WallpaperAppBridge.notifyAdvanced()
+            WallpaperAppBridge.notifyAdvanced(context)
             frame
         } catch (t: Throwable) {
             Log.e(TAG, "failed to advance the wallpaper", t)

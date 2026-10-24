@@ -36,6 +36,15 @@ class WallpaperController extends ChangeNotifier {
   /// Fixed slot ids. Two slots are enough: the renderer shows `current`, the
   /// controller bakes `next`, and an advance promotes `next` without waiting for
   /// a decode.
+  ///
+  /// Unlike Muzei, which blurs at draw time and can advance instantly, this port
+  /// has to bake ahead, so a tap can outrun the refill. Two mitigations keep the
+  /// gesture honest without deepening the queue: the renderer buffers the taps
+  /// (`AdvanceRequestQueue`) and this controller refills the freed slot right
+  /// away, including from a headless background run. Baking two artworks ahead
+  /// was considered and dropped: it would change the `state.json` /
+  /// `runtime.json` contract from one `next` slot to a queue, double the baked
+  /// disk footprint, and only save the wait on the first extra tap.
   static const int firstSlotId = 0;
   static const int secondSlotId = 1;
 
@@ -164,6 +173,10 @@ class WallpaperController extends ChangeNotifier {
       _notify();
     }
 
+    // The persisted schedule is native state; a reinstall or a force-stop can
+    // lose it, so reconcile it whenever the page opens.
+    unawaited(_scheduleAutoAdvance());
+
     if (_state.currentSlot == null) {
       await advance();
     } else {
@@ -202,71 +215,79 @@ class WallpaperController extends ChangeNotifier {
     _busy = true;
     _error = null;
     _notify();
+    // A prefetch started here must run after the lock is released; starting it
+    // inside the body would leave it baking without the lock.
+    var prefetchAfter = false;
     try {
-      final scope = prefs.scope;
-      _resolution = scope.isConfigured ? await repository.resolve(scope) : WallpaperSourceResolution.missing;
+      await store.runExclusive(() async {
+        // A background refill may have advanced while this isolate was idle;
+        // merge its state before choosing a slot.
+        await _refreshFromDisk();
+        final scope = prefs.scope;
+        _resolution = scope.isConfigured ? await repository.resolve(scope) : WallpaperSourceResolution.missing;
 
-      if (!_resolution!.isReady) {
-        await _applyUnavailableSource(scope);
-        return;
-      }
-
-      if (!prefetchOnly) {
-        // A prefetch may be baking the very slot this advance wants to
-        // promote; let it finish instead of decoding the artwork twice.
-        final pendingPrefetch = _prefetchFuture;
-        if (_state.nextSlot == null && pendingPrefetch != null) {
-          await pendingPrefetch;
-        }
-
-        final next = _state.nextSlot;
-        if (next != null && _state.sourceRevision == scope.revision) {
-          await _commit(
-            _state.copyWith(
-              generation: _state.generation + 1,
-              current: next.id,
-              next: -1,
-              slots: [next],
-              sourceRevision: scope.revision,
-              effects: prefs.effects,
-              gestures: prefs.gestures,
-            ),
-          );
-          wallpaperLog.i('advance.promote slot=${next.id} entry=${next.artwork.entryId}');
-          unawaited(prefetch());
+        if (!_resolution!.isReady) {
+          await _applyUnavailableSource(scope);
           return;
         }
-      }
 
-      final slotId = _freeSlotId(requireCurrent: prefetchOnly);
-      if (slotId == null) return;
-      final slot = await _bakeSlot(scope, _resolution!, slotId);
-      if (slot == null) {
-        _error = 'failed to bake a wallpaper from the current source';
-        return;
-      }
+        if (!prefetchOnly) {
+          // A prefetch may be baking the very slot this advance wants to
+          // promote; let it finish instead of decoding the artwork twice.
+          final pendingPrefetch = _prefetchFuture;
+          if (_state.nextSlot == null && pendingPrefetch != null) {
+            await pendingPrefetch;
+          }
 
-      final newState = prefetchOnly
-          ? _state.copyWith(
-              generation: _state.generation + 1,
-              next: slot.id,
-              slots: _withSlot(slot),
-              sourceRevision: scope.revision,
-              effects: prefs.effects,
-              gestures: prefs.gestures,
-            )
-          : _state.copyWith(
-              generation: _state.generation + 1,
-              current: slot.id,
-              next: -1,
-              slots: [slot],
-              sourceRevision: scope.revision,
-              effects: prefs.effects,
-              gestures: prefs.gestures,
+          final next = _state.nextSlot;
+          if (next != null && _state.sourceRevision == scope.revision) {
+            await _commit(
+              _state.copyWith(
+                generation: _state.generation + 1,
+                current: next.id,
+                next: -1,
+                slots: [next],
+                sourceRevision: scope.revision,
+                effects: prefs.effects,
+                gestures: prefs.gestures,
+              ),
             );
-      await _commit(newState);
-      wallpaperLog.i('advance.bake slot=${slot.id} entry=${slot.artwork.entryId}');
-      if (!prefetchOnly) unawaited(prefetch());
+            wallpaperLog.i('advance.promote slot=${next.id} entry=${next.artwork.entryId}');
+            prefetchAfter = true;
+            return;
+          }
+        }
+
+        final slotId = _freeSlotId(requireCurrent: prefetchOnly);
+        if (slotId == null) return;
+        final slot = await _bakeSlot(scope, _resolution!, slotId);
+        if (slot == null) {
+          _error = 'failed to bake a wallpaper from the current source';
+          return;
+        }
+
+        final newState = prefetchOnly
+            ? _state.copyWith(
+                generation: _state.generation + 1,
+                next: slot.id,
+                slots: _withSlot(slot),
+                sourceRevision: scope.revision,
+                effects: prefs.effects,
+                gestures: prefs.gestures,
+              )
+            : _state.copyWith(
+                generation: _state.generation + 1,
+                current: slot.id,
+                next: -1,
+                slots: [slot],
+                sourceRevision: scope.revision,
+                effects: prefs.effects,
+                gestures: prefs.gestures,
+              );
+        await _commit(newState);
+        wallpaperLog.i('advance.bake slot=${slot.id} entry=${slot.artwork.entryId}');
+        if (!prefetchOnly) prefetchAfter = true;
+      });
     } catch (error, stack) {
       _error = error.toString();
       wallpaperLog.e('advance failed', error, stack);
@@ -274,6 +295,7 @@ class WallpaperController extends ChangeNotifier {
       _busy = false;
       _notify();
     }
+    if (prefetchAfter) unawaited(prefetch());
   }
 
   /// Bakes the artwork after the current one into the free slot.
@@ -294,39 +316,46 @@ class WallpaperController extends ChangeNotifier {
   }
 
   Future<void> _doPrefetch() async {
-    final current = _state.currentSlot;
-    if (!_initialized || current == null || _state.nextSlot != null) return;
+    if (!_initialized) return;
     final scope = prefs.scope;
     if (!scope.isConfigured) return;
-    final resolution = _resolution ?? await repository.resolve(scope);
-    if (!resolution.isReady) return;
-    final slotId = _freeSlotId(requireCurrent: true);
-    if (slotId == null) return;
-    final generation = _state.generation;
-    final revision = _state.sourceRevision;
 
     try {
-      final slot = await _bakeSlot(scope, resolution, slotId);
-      // The state may have moved on while decoding (scope change, another
-      // advance). Writing then would resurrect a stale artwork.
-      if (slot == null ||
-          _state.generation != generation ||
-          _state.sourceRevision != revision ||
-          _state.currentSlot?.id != current.id ||
-          _state.nextSlot != null) {
-        return;
-      }
-      await _commit(
-        _state.copyWith(
-          generation: _state.generation + 1,
-          next: slot.id,
-          slots: _withSlot(slot),
-          sourceRevision: scope.revision,
-          effects: prefs.effects,
-          gestures: prefs.gestures,
-        ),
-      );
-      wallpaperLog.i('prefetch.done slot=${slot.id} entry=${slot.artwork.entryId}');
+      await store.runExclusive(() async {
+        // Adopt whatever the background refill committed before deciding that
+        // a slot is still free to bake.
+        await _refreshFromDisk();
+        final current = _state.currentSlot;
+        if (current == null || _state.nextSlot != null) return;
+        final resolution = _resolution ?? await repository.resolve(scope);
+        if (!resolution.isReady) return;
+        final slotId = _freeSlotId(requireCurrent: true);
+        if (slotId == null) return;
+        final generation = _state.generation;
+        final revision = _state.sourceRevision;
+
+        final slot = await _bakeSlot(scope, resolution, slotId);
+        // The state may have moved on while decoding (scope change, another
+        // advance). Writing then would resurrect a stale artwork.
+        if (slot == null ||
+            _state.generation != generation ||
+            _state.sourceRevision != revision ||
+            _state.currentSlot?.id != current.id ||
+            _state.nextSlot != null) {
+          return;
+        }
+        await _commit(
+          _state.copyWith(
+            generation: _state.generation + 1,
+            next: slot.id,
+            slots: _withSlot(slot),
+            sourceRevision: scope.revision,
+            effects: prefs.effects,
+            gestures: prefs.gestures,
+          ),
+        );
+        wallpaperLog.i('prefetch.done slot=${slot.id} entry=${slot.artwork.entryId}');
+      });
     } catch (error, stack) {
       wallpaperLog.w('prefetch failed', error, stack);
     }
@@ -495,11 +524,22 @@ class WallpaperController extends ChangeNotifier {
     await _commit(_state.copyWith(generation: _state.generation + 1, gestures: gestures));
   }
 
-  /// Auto-advance scheduling is native-owned; the controller only persists the
-  /// contract until the worker lands.
+  /// Persists the auto-advance contract and hands the schedule to the native
+  /// worker, which is the only component that survives the page.
   Future<void> setAutoAdvance(WallpaperAutoAdvance value) async {
     await prefs.setAutoAdvance(value);
+    await _scheduleAutoAdvance();
     _notify();
+  }
+
+  Future<void> _scheduleAutoAdvance() async {
+    try {
+      await bridge?.scheduleAutoAdvance(prefs.autoAdvance.interval.seconds);
+    } catch (error, stack) {
+      // Auto-advance is an enhancement; a platform that refuses to schedule
+      // must never break the wallpaper page.
+      wallpaperLog.w('auto-advance scheduling failed', error, stack);
+    }
   }
 
   Future<bool> openChooser() async {
@@ -515,17 +555,44 @@ class WallpaperController extends ChangeNotifier {
     if (active != _serviceActive) {
       _serviceActive = active;
       _notify();
+      // Applying the wallpaper is the moment auto-advance starts mattering; the
+      // native scheduler is idempotent, so re-checking is cheap.
+      if (active) unawaited(_scheduleAutoAdvance());
     }
   }
 
   /// Adopts a slot the renderer advanced to on its own, then refills the slot it
   /// left behind.
+  ///
+  /// Also used after a background run: the state it committed is newer than the
+  /// cached one, and the preview must catch up without waiting for a restart.
   Future<void> syncRuntime() async {
-    await _adoptRuntime(await store.readRuntime());
+    if (!_initialized) await init();
+    var prefetchAfter = false;
+    await store.runExclusive(() async {
+      await _refreshFromDisk();
+      await _adoptRuntime(await store.readRuntime());
+      prefetchAfter = _state.currentSlot != null && _state.nextSlot == null;
+    });
     await refreshServiceActive();
-    if (_state.currentSlot != null && _state.nextSlot == null) {
-      unawaited(prefetch());
-    }
+    if (prefetchAfter) unawaited(prefetch());
+  }
+
+  /// Merges an older in-memory state with a newer `state.json`.
+  ///
+  /// The background refill writes the same file from another isolate; a cached
+  /// state would otherwise bake into the slot that run just filled.
+  Future<void> _refreshFromDisk() async {
+    final stored = await store.readState();
+    if (stored == null || stored.generation <= _state.generation) return;
+    _state = stored;
+    // The in-order cursor lives in SharedPreferences, whose value is cached per
+    // isolate; random ordering (the default) does not read it, so a stale value
+    // is cosmetic here.
+    _cursor = prefs.currentIndex + 1;
+    await _adoptRuntime(await store.readRuntime());
+    wallpaperLog.i('state.reload generation=${_state.generation} current=${_state.current} next=${_state.next}');
+    _notify();
   }
 
   Future<AvesEntry?> loadCurrentEntry() async {

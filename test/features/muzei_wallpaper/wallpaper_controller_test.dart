@@ -240,6 +240,78 @@ void main() {
     expect(controller.next, isNotNull, reason: 'the refill request is served');
   });
 
+  test('syncRuntime adopts a state a background run advanced to', () async {
+    await driftDb.insertEntries({
+      for (var id = 1; id <= 4; id++) entry(id: id, dateTaken: id * 10),
+    });
+    await controller.init();
+    await controller.idle;
+
+    final before = (await store.readState())!;
+    final advanced = controller.next!;
+    // Simulate the headless auto-advance: it promotes `next` from another
+    // isolate, so this controller only sees the newer file.
+    await store.writeState(
+      before.copyWith(
+        generation: before.generation + 1,
+        current: advanced.id,
+        next: -1,
+        slots: [advanced],
+      ),
+    );
+
+    await controller.syncRuntime();
+
+    expect(controller.current?.artwork.entryId, advanced.artwork.entryId, reason: 'the preview catches up without a restart');
+    await controller.idle;
+    expect(controller.next, isNotNull, reason: 'the freed slot is refilled');
+  });
+
+  test('a background fill of the free slot is adopted instead of baking twice', () async {
+    await driftDb.insertEntries({
+      for (var id = 1; id <= 4; id++) entry(id: id, dateTaken: id * 10),
+    });
+    await controller.init();
+    await controller.idle;
+
+    final before = (await store.readState())!;
+    final bakes = baker.bakeCalls;
+    final free = controller.current!.id == 0 ? 1 : 0;
+    final external = WallpaperSlot(
+      id: free,
+      artwork: WallpaperArtwork(
+        entryId: 99,
+        uri: 'content://99',
+        files: WallpaperSlotFiles(
+          sharp: WallpaperStateStore.relativeSlotFile(free, WallpaperSlotFiles.sharpName),
+          effectsHome: WallpaperStateStore.relativeSlotFile(free, WallpaperSlotFiles.effectsHomeName),
+          effectsLock: WallpaperStateStore.relativeSlotFile(free, WallpaperSlotFiles.effectsLockName),
+        ),
+      ),
+    );
+    await store.writeState(
+      before.copyWith(
+        generation: before.generation + 1,
+        next: free,
+        slots: [...before.slots.where((slot) => slot.id != free), external],
+      ),
+    );
+
+    await controller.prefetch();
+
+    expect(baker.bakeCalls, bakes, reason: 'the free slot is already filled');
+    expect(controller.next?.artwork.entryId, 99);
+  });
+
+  test('auto-advance settings reach the native scheduler', () async {
+    await controller.init();
+    await controller.idle;
+
+    await controller.setAutoAdvance(const WallpaperAutoAdvance(interval: WallpaperInterval.h1));
+
+    expect(bridge.autoAdvanceSeconds, WallpaperInterval.h1.seconds);
+  });
+
   test('a restart reuses the baked slots without decoding again', () async {
     await driftDb.insertEntries({
       for (var id = 1; id <= 3; id++) entry(id: id, dateTaken: id * 10),
@@ -377,6 +449,7 @@ class FakeWallpaperBridge extends Fake implements WallpaperBridge {
   bool active = false;
   int reloads = 0;
   int chooserOpens = 0;
+  int? autoAdvanceSeconds;
 
   @override
   Future<bool> isActive() async => active;
@@ -397,4 +470,9 @@ class FakeWallpaperBridge extends Fake implements WallpaperBridge {
 
   @override
   Future<String?> stateRoot() async => null;
+
+  @override
+  Future<void> scheduleAutoAdvance(int seconds) async {
+    autoAdvanceSeconds = seconds;
+  }
 }

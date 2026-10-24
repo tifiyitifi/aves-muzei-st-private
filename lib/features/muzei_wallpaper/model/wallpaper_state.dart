@@ -32,12 +32,13 @@ enum WallpaperTarget {
 class WallpaperState with Equatable {
   static const int currentVersion = 1;
 
-  /// How many recently shown artworks are remembered for the empty-slot
-  /// fallback.
+  /// How many recently shown artworks are remembered.
   ///
-  /// Five is enough to survive a run of deletions without turning `state.json`
-  /// into a history log; the entries carry no files, so this costs no disk.
-  static const int maxRecent = 5;
+  /// Used both for the empty-slot fallback and to keep the random ordering from
+  /// repeating itself too soon. Fifty entries cost no disk (metadata only) and
+  /// give a small library a real "no repeat" window, where Muzei keeps up to a
+  /// hundred; five was too small to be noticeable.
+  static const int maxRecent = 50;
 
   final int version;
   final int generation;
@@ -62,6 +63,14 @@ class WallpaperState with Equatable {
   /// artwork that still exists on disk instead of an empty screen.
   final List<WallpaperArtwork> recent;
 
+  /// Highest entry id the wallpaper has shown.
+  ///
+  /// Muzei's `maxLoadedArtworkId`: anything with a larger id was added after the
+  /// wallpaper last moved, so the "new photos in order" ordering serves it
+  /// first. Ids come from MediaStore and grow with insertion, which is exactly
+  /// the feed order Muzei relies on.
+  final int newestEntryId;
+
   final WallpaperEffectsConfig effects;
   final WallpaperGestures gestures;
   final WallpaperTarget target;
@@ -75,6 +84,7 @@ class WallpaperState with Equatable {
     this.next2 = -1,
     this.slots = const [],
     this.recent = const [],
+    this.newestEntryId = 0,
     this.effects = const WallpaperEffectsConfig(),
     this.gestures = const WallpaperGestures(),
     this.target = WallpaperTarget.homeLock,
@@ -107,6 +117,7 @@ class WallpaperState with Equatable {
     int? next2,
     List<WallpaperSlot>? slots,
     List<WallpaperArtwork>? recent,
+    int? newestEntryId,
     WallpaperEffectsConfig? effects,
     WallpaperGestures? gestures,
     WallpaperTarget? target,
@@ -119,6 +130,7 @@ class WallpaperState with Equatable {
     next2: next2 ?? this.next2,
     slots: slots ?? this.slots,
     recent: recent ?? this.recent,
+    newestEntryId: newestEntryId ?? this.newestEntryId,
     effects: effects ?? this.effects,
     gestures: gestures ?? this.gestures,
     target: target ?? this.target,
@@ -154,6 +166,7 @@ class WallpaperState with Equatable {
     'next2': next2,
     'slots': slots.map((slot) => slot.toJsonMap()).toList(),
     'recent': recent.map((artwork) => artwork.toJsonMap()).toList(),
+    'newestEntryId': newestEntryId,
     'effects': effects.toJsonMap(),
     'gestures': gestures.toJsonMap(),
     'target': target.name,
@@ -180,6 +193,7 @@ class WallpaperState with Equatable {
     final current = _int(json['current']);
     final next = _int(json['next']);
     final next2 = _int(json['next2']);
+    final newestEntryId = _int(json['newestEntryId']);
 
     final recent = <WallpaperArtwork>[];
     final seenRecent = <int>{};
@@ -203,6 +217,7 @@ class WallpaperState with Equatable {
       next2: next2 != null && next2 >= -1 ? next2 : -1,
       slots: List.unmodifiable(slots),
       recent: List.unmodifiable(recent),
+      newestEntryId: newestEntryId != null && newestEntryId > 0 ? newestEntryId : 0,
       effects: WallpaperEffectsConfig.fromJsonMap(_map(json['effects']) ?? const {}),
       gestures: WallpaperGestures.fromJsonMap(_map(json['gestures']) ?? const {}),
       target: WallpaperTarget.tryParse(json['target'] is String ? json['target'] as String : null) ?? WallpaperTarget.homeLock,
@@ -217,7 +232,7 @@ class WallpaperState with Equatable {
   }
 
   @override
-  List<Object?> get props => [version, generation, sourceRevision, current, next, next2, slots, recent, effects, gestures, target];
+  List<Object?> get props => [version, generation, sourceRevision, current, next, next2, slots, recent, newestEntryId, effects, gestures, target];
 }
 
 /// Native-owned `runtime.json`.

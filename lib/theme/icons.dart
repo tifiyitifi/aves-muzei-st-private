@@ -181,6 +181,12 @@ class AIcons {
   static const previous = Symbols.chevron_left;
   static const next = Symbols.chevron_right;
 
+  /// Muzei's "next artwork" glyph: a double chevron (`»`), not a single one.
+  ///
+  /// Kept apart from [next] because that one is the generic "next" of the rest of
+  /// the app (stats, breadcrumbs, metadata cards) and must not change shape.
+  static const nextArtwork = MdiIcons.chevronDoubleRight;
+
   // video actions
   // `play` and `pause` icon should be consistent with `AnimatedIcons.play_pause`
   static const play = Symbols.play_arrow;
@@ -228,6 +234,9 @@ class AIcons {
   static const videoPlay = Symbols.play_circle;
   static const selected = Symbols.check_circle;
   static const unselected = Symbols.radio_button_unchecked;
+
+  /// Marks "the page you are on", like a radio button rather than a to-do check.
+  static const current = Symbols.radio_button_checked;
 
   // Material Icons references to make constant instances of `IconData`
   // as non-constant instances of `IconData` prevent icon font tree shaking

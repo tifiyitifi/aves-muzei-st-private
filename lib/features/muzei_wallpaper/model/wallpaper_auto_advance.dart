@@ -33,8 +33,18 @@ enum WallpaperInterval {
 }
 
 /// How the next artwork is chosen within the source.
+///
+/// Mirrors Muzei's three orderings. Persisted by [Enum.name], so renaming a value
+/// is a data migration; append instead.
 enum WallpaperOrdering {
+  /// Walk the source in collection order and wrap around at the end.
   inOrder,
+
+  /// Show artworks added after the last one shown, in order, then fall back to
+  /// random. Muzei's default, and ours.
+  newThenRandom,
+
+  /// Pick a random artwork, avoiding the current one and recently shown ones.
   random;
 
   static WallpaperOrdering? tryParse(String? value) {
@@ -50,7 +60,7 @@ enum WallpaperOrdering {
 @immutable
 class WallpaperAutoAdvance with Equatable {
   static const WallpaperInterval defaultInterval = WallpaperInterval.never;
-  static const WallpaperOrdering defaultOrdering = WallpaperOrdering.random;
+  static const WallpaperOrdering defaultOrdering = WallpaperOrdering.newThenRandom;
 
   final WallpaperInterval interval;
   final WallpaperOrdering ordering;

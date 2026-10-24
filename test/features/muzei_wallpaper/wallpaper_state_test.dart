@@ -117,12 +117,14 @@ void main() {
     });
 
     test('recent is capped', () {
+      const count = WallpaperState.maxRecent + 5;
       var recent = <WallpaperArtwork>[];
-      for (var id = 1; id <= 8; id++) {
+      for (var id = 1; id <= count; id++) {
         recent = WallpaperState.promoteRecent(recent, artwork.copyWith(entryId: id));
       }
       expect(recent, hasLength(WallpaperState.maxRecent));
-      expect(recent.map((artwork) => artwork.entryId), [8, 7, 6, 5, 4]);
+      expect(recent.first.entryId, count);
+      expect(recent.last.entryId, count - WallpaperState.maxRecent + 1);
     });
 
     test('JSON round-trips recent and tolerates its absence', () {
@@ -137,13 +139,21 @@ void main() {
           'version': 1,
           'recent': [
             {'entryId': 0, 'uri': ''},
-             3,
+            3,
             {'entryId': 4, 'uri': 'content://4'},
             {'entryId': 4, 'uri': 'content://4'},
           ],
         })!.recent.map((artwork) => artwork.entryId),
         [4],
       );
+    });
+
+    test('JSON round-trips the new-photo marker and tolerates its absence', () {
+      const state = WallpaperState(newestEntryId: 42);
+      expect(WallpaperState.fromJsonMap(state.toJsonMap())!.newestEntryId, 42);
+      expect(WallpaperState.fromJsonMap({'version': 1})!.newestEntryId, 0);
+      expect(WallpaperState.fromJsonMap({'version': 1, 'newestEntryId': -3})!.newestEntryId, 0);
+      expect(WallpaperState.fromJsonMap({'version': 1, 'newestEntryId': 'x'})!.newestEntryId, 0);
     });
   });
 

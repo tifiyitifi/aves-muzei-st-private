@@ -25,7 +25,7 @@ void main() {
     expect(prefs.effects, const WallpaperEffectsConfig());
     expect(prefs.gestures, const WallpaperGestures());
     expect(prefs.autoAdvance.interval, WallpaperInterval.never);
-    expect(prefs.autoAdvance.ordering, WallpaperOrdering.random);
+    expect(prefs.autoAdvance.ordering, WallpaperOrdering.newThenRandom);
     expect(prefs.lastAdvancedAt, isNull);
     expect(prefs.currentIndex, 0);
     expect(prefs.viewportZoom, 1);

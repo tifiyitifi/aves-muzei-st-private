@@ -12,6 +12,12 @@ All notable changes to this project will be documented in this file.
 - Urdu translation (thanks Bouzid Zeroug, Feliks-WR)
 - Muzei wallpaper: background refill and auto-advance while the app is closed
 - Muzei wallpaper: option to prepare two artworks ahead, making the first two taps instant
+- Muzei wallpaper: Muzei-style single-row overlay (title line, touch to view, next, overflow) that hides for a full-artwork view
+- Muzei wallpaper: title line shows the file name by default, or the source name
+- Muzei wallpaper: touch to view opens the Aves viewer, long press opens the artwork in another app
+- Muzei wallpaper: falls back to the last artwork that still exists when the queue is empty
+- Muzei wallpaper: pick the wallpaper filters by browsing the collection, then confirm
+- Muzei wallpaper: about dialog showing the ported Muzei about page
 
 ## <a id="v1.15.5"></a>[v1.15.5] - 2026-10-02
 

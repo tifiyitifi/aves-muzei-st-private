@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart';
+import 'package:aves/features/muzei_wallpaper/view/wallpaper_overflow_button.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:material_ui/material_ui.dart';
@@ -63,6 +64,10 @@ class _MuzeiWallpaperGesturesPageState extends State<MuzeiWallpaperGesturesPage>
             ),
           ],
         ),
+      ),
+      floatingActionButton: WallpaperOverflowFab(
+        controller: _controller,
+        section: WallpaperSection.gestures,
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/muzei_wallpaper/log.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_display.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
@@ -39,6 +40,8 @@ abstract final class WallpaperPrefsKeys {
   static const String viewportX = 'muzei_wallpaper.viewport.x';
   static const String viewportY = 'muzei_wallpaper.viewport.y';
   static const String viewportZoom = 'muzei_wallpaper.viewport.zoom';
+
+  static const String titleMode = 'muzei_wallpaper.display.title_mode';
 }
 
 /// Feature settings shared by the UI, the controller and the background worker.
@@ -56,6 +59,7 @@ class WallpaperPrefs extends ChangeNotifier {
   WallpaperEffectsConfig _effects = const WallpaperEffectsConfig();
   WallpaperGestures _gestures = const WallpaperGestures();
   WallpaperAutoAdvance _autoAdvance = const WallpaperAutoAdvance();
+  WallpaperTitleMode _titleMode = WallpaperTitleMode.defaultMode;
   int? _lastAdvancedAt;
   int _currentIndex = 0;
   double _viewportX = 0;
@@ -100,6 +104,8 @@ class WallpaperPrefs extends ChangeNotifier {
 
   double get viewportZoom => _viewportZoom;
 
+  WallpaperTitleMode get titleMode => _titleMode;
+
   bool get isLoaded => _loaded;
 
   Future<void> _doInit() async {
@@ -129,6 +135,7 @@ class WallpaperPrefs extends ChangeNotifier {
       _viewportX = _double(prefs, WallpaperPrefsKeys.viewportX) ?? 0;
       _viewportY = _double(prefs, WallpaperPrefsKeys.viewportY) ?? 0;
       _viewportZoom = _clampZoom(_double(prefs, WallpaperPrefsKeys.viewportZoom) ?? 1);
+      _titleMode = WallpaperTitleMode.tryParse(_string(prefs, WallpaperPrefsKeys.titleMode)) ?? WallpaperTitleMode.defaultMode;
     } catch (error, stack) {
       wallpaperLog.w('failed to load live wallpaper prefs, using defaults', error, stack);
     }
@@ -260,6 +267,17 @@ class WallpaperPrefs extends ChangeNotifier {
       await prefs.setDouble(WallpaperPrefsKeys.viewportZoom, _viewportZoom);
     } catch (error, stack) {
       wallpaperLog.e('failed to persist viewport', error, stack);
+    }
+  }
+
+  Future<void> setTitleMode(WallpaperTitleMode value) async {
+    if (value == _titleMode) return;
+    _titleMode = value;
+    _notify();
+    try {
+      await (await _prefsProvider()).setString(WallpaperPrefsKeys.titleMode, value.name);
+    } catch (error, stack) {
+      wallpaperLog.e('failed to persist the wallpaper title mode', error, stack);
     }
   }
 

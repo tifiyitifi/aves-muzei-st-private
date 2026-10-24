@@ -812,5 +812,18 @@
     "videoThumbnailMethodFirstFrame": "首帧",
     "settingsVideoThumbnailMethods": "首选的缩略图",
     "renameTagDialogLabelAlreadyExistsHelper": "标签已存在",
-    "chipActionCopyCenterCoordinates": "复制中心坐标"
+    "chipActionCopyCenterCoordinates": "复制中心坐标",
+
+    "muzeiWallpaperTouchToView": "触摸查看",
+    "muzeiWallpaperTitleMode": "标题行",
+    "muzeiWallpaperTitleFileName": "文件名",
+    "muzeiWallpaperTitleSourceName": "源名",
+    "muzeiWallpaperAbout": "关于",
+    "muzeiWallpaperAboutPorted": "移植自 Muzei（Apache-2.0，net.nurik.roman.muzei）。",
+    "muzeiWallpaperAboutMuzeiSection": "以下内容原样使用 Muzei 关于页。",
+    "muzeiWallpaperAboutMuzeiVersion": "Muzei v{version}",
+    "muzeiWallpaperAboutMuzeiBody": "由 Roman Nurik 和 Ian Lake 以及来自[开源社区](http://code.muzei.co)的重要贡献制作。\n\n*Muzei* 是俄语词 [*музей*](http://translate.google.com/#en/ru/museum) 的转写，意为“博物馆”。\n\n版权所有 2013–2018 Google Inc。保留所有权利。\n\n[服务条款](http://m.google.com/utos)，[隐私政策](http://www.google.com/policies/privacy/)\n\n非常感谢这些开源项目：\n\n- [**OkHttp**](http://square.github.io/okhttp/) and [**Picasso**](http://square.github.io/picasso/) by Square\n- [**GLWallpaperService**](https://github.com/GLWallpaperService/GLWallpaperService) by Robert Green, Mark F. Guerra, and others\n",
+    "muzeiWallpaperFilterPickTitle": "选择筛选",
+    "muzeiWallpaperFilterPickConfirm": "使用这些筛选",
+    "muzeiWallpaperSourceMoreFilters": "{label} +{count}"
 }

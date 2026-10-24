@@ -1,30 +1,36 @@
 import 'dart:async';
+import 'dart:typed_data';
 
-import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_display.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_bridge.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller_factory.dart';
-import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_effects_page.dart';
-import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_gestures_page.dart';
-import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_sources_page.dart';
+import 'package:aves/features/muzei_wallpaper/services/wallpaper_prefs.dart';
 import 'package:aves/features/muzei_wallpaper/view/slot_artwork_image.dart';
+import 'package:aves/features/muzei_wallpaper/view/wallpaper_overflow_button.dart';
+import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/entry/extensions/props.dart';
+import 'package:aves/services/common/services.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/viewer/entry_viewer_page.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 
 /// Foreground surface of the Muzei-style live wallpaper.
 ///
-/// Artwork-first like Muzei's main screen: the photo fills the window, the
-/// controls float over a bottom scrim, and the source/effect editors are opened
-/// from the overflow instead of competing with the artwork.
+/// Artwork-first like Muzei's main screen: the photo fills the window and one
+/// row floats over it (title line, "touch to view", next, overflow). Everything
+/// Muzei put in its bottom tabs (sources, effects) moved into the overflow,
+/// because this page is reached from the drawer and has a back arrow instead.
 ///
-/// This is milestone 5 of the port, so the source/effect/gesture editors still
-/// live in the controller and arrive as separate pages. The visible attribution
-/// is deliberate: the behaviour and visual language are ported from Muzei.
+/// The overlay can be hidden completely (tap on the artwork) so the user can
+/// look at the picture, and restored with a long press. Panning and pinch-zooming
+/// are local to the page: the wallpaper keeps showing the whole frame.
 class MuzeiWallpaperPage extends StatefulWidget {
   static const routeName = '/muzei_wallpaper';
 
@@ -34,21 +40,29 @@ class MuzeiWallpaperPage extends StatefulWidget {
   State<MuzeiWallpaperPage> createState() => _MuzeiWallpaperPageState();
 }
 
-enum _WallpaperMenuAction {
-  sources,
-  effects,
-  gestures,
-  autoAdvance,
-  openArtwork,
-  setWallpaper,
-  refreshStatus,
-  syncRuntime,
-  debugInfo,
-}
-
 class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBindingObserver {
   late final Future<WallpaperController> _controllerFuture;
   WallpaperController? _controller;
+
+  final TransformationController _viewport = TransformationController();
+
+  bool _panelVisible = true;
+
+  /// Recent-artwork preview, used only while the queue is empty.
+  ///
+  /// The page bakes it in memory instead of writing a slot: showing history must
+  /// never change the wallpaper or the artwork that is queued next.
+  AvesEntry? _fallbackEntry;
+  Uint8List? _fallbackSharp;
+  bool _fallbackLoading = false;
+
+  String? _singleEntryTitle;
+
+  /// Pointers currently down, to recognise a three-finger tap.
+  final Set<int> _pointers = {};
+  int _maxPointers = 0;
+  Offset? _pointerOrigin;
+  bool _pointerMoved = false;
 
   @override
   void initState() {
@@ -68,7 +82,39 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
     WallpaperBridge.instance.setRequestHandler(
       onAdvanceRequested: () => unawaited(controller.syncRuntime()),
     );
+    unawaited(_loadSingleEntryTitle(controller));
+    unawaited(_loadFallback(controller));
     return controller;
+  }
+
+  Future<void> _loadSingleEntryTitle(WallpaperController controller) async {
+    final id = controller.prefs.scope.singleEntryId;
+    if (id == null) return;
+    final entry = await controller.loadEntry(id);
+    if (!mounted || controller.prefs.scope.singleEntryId != id) return;
+    setState(() => _singleEntryTitle = entry?.bestTitle);
+  }
+
+  /// Prepares the "last artwork that still exists" preview.
+  ///
+  /// Runs when the queue is empty, which is the case this page used to answer
+  /// with a black screen.
+  Future<void> _loadFallback(WallpaperController controller) async {
+    // Only an empty queue needs a preview; otherwise the page shows the bake.
+    if (controller.current != null || _fallbackLoading || _fallbackEntry != null) return;
+    _fallbackLoading = true;
+    try {
+      final entry = await controller.loadFallbackEntry();
+      if (!mounted || entry == null) return;
+      final bake = await controller.bakePreview(entry);
+      if (!mounted || bake == null) return;
+      setState(() {
+        _fallbackEntry = entry;
+        _fallbackSharp = bake.sharpPng;
+      });
+    } finally {
+      _fallbackLoading = false;
+    }
   }
 
   @override
@@ -82,13 +128,51 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     WallpaperBridge.instance.setRequestHandler();
+    _viewport.dispose();
     _controller?.dispose();
     super.dispose();
   }
 
-  Future<void> _openArtwork(BuildContext context) async {
-    final entry = await _controller?.loadCurrentEntry();
-    if (!context.mounted) return;
+  /// The artwork the page is showing, or null while there is nothing to show.
+  ///
+  /// The sharp bake is deliberate: Muzei's main screen previews the artwork, and
+  /// the wallpaper effects are what the wallpaper itself applies. Showing the
+  /// effect image here would hide the photo behind the very blur the user is
+  /// trying to look at.
+  Widget? _artwork(WallpaperController controller) {
+    final slot = controller.current;
+    final file = controller.currentFile;
+    if (slot != null && file != null) {
+      return Image(
+        // Slot files are reused for different artworks, so the widget and the
+        // cache key both follow the artwork, not just the path.
+        image: SlotArtworkImage(file: file, contentKey: slot.artwork.entryId),
+        key: ValueKey('${slot.id}-${slot.artwork.entryId}'),
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+      );
+    }
+    final image = _fallbackSharp;
+    if (image != null) {
+      return Image.memory(
+        image,
+        key: ValueKey('fallback-${_fallbackEntry?.id}'),
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+      );
+    }
+    return null;
+  }
+
+  /// The entry behind the current artwork, for the viewer and "open with".
+  Future<AvesEntry?> _currentEntry(WallpaperController controller) async {
+    final entry = await controller.loadCurrentEntry();
+    return entry ?? _fallbackEntry;
+  }
+
+  Future<void> _openArtwork(WallpaperController controller) async {
+    final entry = await _currentEntry(controller);
+    if (!mounted) return;
     if (entry == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.l10n.muzeiWallpaperMissing)),
@@ -103,135 +187,115 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
     );
   }
 
-  Future<void> _openSources(BuildContext context, WallpaperController controller) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: MuzeiWallpaperSourcesPage.routeName),
-        builder: (_) => MuzeiWallpaperSourcesPage(controller: controller),
-      ),
-    );
-  }
-
-  Future<void> _openEffects(BuildContext context, WallpaperController controller) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: MuzeiWallpaperEffectsPage.routeName),
-        builder: (_) => MuzeiWallpaperEffectsPage(controller: controller),
-      ),
-    );
-  }
-
-  Future<void> _openGestures(BuildContext context, WallpaperController controller) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: MuzeiWallpaperGesturesPage.routeName),
-        builder: (_) => MuzeiWallpaperGesturesPage(controller: controller),
-      ),
-    );
-  }
-
-  /// Auto-advance is scheduled by the native worker, so it keeps running when
-  /// the page is closed; this dialog only chooses the interval.
-  Future<void> _showAutoAdvance(BuildContext context, WallpaperController controller) {
-    final selected = controller.prefs.autoAdvance.interval;
-    return showDialog<void>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(context.l10n.muzeiWallpaperAutoAdvance),
-        children: [
-          for (final interval in WallpaperInterval.values)
-            SimpleDialogOption(
-              onPressed: () {
-                Navigator.of(context).pop();
-                unawaited(
-                  controller.setAutoAdvance(controller.prefs.autoAdvance.copyWith(interval: interval)),
-                );
-              },
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 32,
-                    child: interval == selected ? const Icon(AIcons.checked, size: 20) : null,
-                  ),
-                  Expanded(child: Text(_intervalLabel(context, interval))),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static String _intervalLabel(BuildContext context, WallpaperInterval interval) {
-    final l10n = context.l10n;
-    return switch (interval) {
-      WallpaperInterval.m15 => l10n.muzeiWallpaperAutoAdvanceMinutes(15),
-      WallpaperInterval.m30 => l10n.muzeiWallpaperAutoAdvanceMinutes(30),
-      WallpaperInterval.h1 => l10n.muzeiWallpaperAutoAdvanceHours(1),
-      WallpaperInterval.h3 => l10n.muzeiWallpaperAutoAdvanceHours(3),
-      WallpaperInterval.h6 => l10n.muzeiWallpaperAutoAdvanceHours(6),
-      WallpaperInterval.h24 => l10n.muzeiWallpaperAutoAdvanceDays(1),
-      WallpaperInterval.h72 => l10n.muzeiWallpaperAutoAdvanceDays(3),
-      WallpaperInterval.never => l10n.muzeiWallpaperAutoAdvanceOff,
-    };
-  }
-
-  Future<void> _openChooser(BuildContext context, WallpaperController controller) async {
-    final opened = await controller.openChooser();
-    if (!context.mounted || opened) return;
+  /// Long press on "touch to view": hand the artwork to another app.
+  Future<void> _openWith(WallpaperController controller) async {
+    final entry = await _currentEntry(controller);
+    if (!mounted) return;
+    if (entry == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.muzeiWallpaperMissing)),
+      );
+      return;
+    }
+    final opened = await appService.open(entry.uri, entry.mimeTypeAnySubtype, forceChooser: true);
+    if (!mounted || opened) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.l10n.muzeiWallpaperChooserUnavailable)),
+      SnackBar(content: Text(context.l10n.noMatchingAppDialogMessage)),
     );
   }
 
-  Future<void> _showDebugInfo(BuildContext context, WallpaperController controller) {
-    final state = controller.state;
-    final current = controller.current;
-    final next = controller.next;
-    final next2 = controller.next2;
-    return showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.l10n.muzeiWallpaperDebugInfo),
-        content: SelectableText(
-          'generation ${state.generation}\n'
-          'current slot ${state.current} · entry ${current?.artwork.entryId ?? '-'}\n'
-          'next slot ${state.next} · entry ${next?.artwork.entryId ?? '-'}\n'
-          'next2 slot ${state.next2} · entry ${next2?.artwork.entryId ?? '-'}\n'
-          'source ${controller.resolution?.status.name ?? '-'} · total ${controller.resolution?.total ?? 0}\n'
-          'service ${controller.serviceActive ? 'active' : 'inactive'}\n'
-          'state ${state.sourceRevision}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(MaterialLocalizations.of(context).closeButtonLabel),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _onMenu(_WallpaperMenuAction action, WallpaperController controller) async {
+  void _runGesture(WallpaperController controller, WallpaperTapAction action) {
     switch (action) {
-      case _WallpaperMenuAction.sources:
-        await _openSources(context, controller);
-      case _WallpaperMenuAction.effects:
-        await _openEffects(context, controller);
-      case _WallpaperMenuAction.gestures:
-        await _openGestures(context, controller);
-      case _WallpaperMenuAction.autoAdvance:
-        await _showAutoAdvance(context, controller);
-      case _WallpaperMenuAction.openArtwork:
-        await _openArtwork(context);
-      case _WallpaperMenuAction.setWallpaper:
-        await _openChooser(context, controller);
-      case _WallpaperMenuAction.refreshStatus:
-        await controller.refreshServiceActive();
-      case _WallpaperMenuAction.syncRuntime:
-        await controller.syncRuntime();
-      case _WallpaperMenuAction.debugInfo:
-        await _showDebugInfo(context, controller);
+      case WallpaperTapAction.temporaryDisable:
+        // The page already shows the unprocessed artwork, so there is nothing to
+        // reveal here; the binding still applies to the wallpaper itself.
+        break;
+      case WallpaperTapAction.nextArtwork:
+        unawaited(controller.advance());
+      case WallpaperTapAction.viewArtwork:
+        unawaited(_openArtwork(controller));
+      case WallpaperTapAction.none:
+        break;
+    }
+  }
+
+  void _onPointerDown(PointerDownEvent event) {
+    if (_pointers.isEmpty) {
+      _pointerOrigin = event.position;
+      _pointerMoved = false;
+      _maxPointers = 0;
+    }
+    _pointers.add(event.pointer);
+    if (_pointers.length > _maxPointers) _maxPointers = _pointers.length;
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    final origin = _pointerOrigin;
+    if (origin != null && (event.position - origin).distance > kTouchSlop * 2) {
+      _pointerMoved = true;
+    }
+  }
+
+  void _onPointerUp(PointerEvent event, WallpaperController controller) {
+    _pointers.remove(event.pointer);
+    if (_pointers.isNotEmpty) return;
+    final fingers = _maxPointers;
+    final moved = _pointerMoved;
+    _maxPointers = 0;
+    _pointerOrigin = null;
+    _pointerMoved = false;
+    if (fingers >= 3 && !moved) {
+      _runGesture(controller, controller.prefs.gestures.threeFinger);
+    }
+  }
+
+  void _togglePanel() {
+    setState(() => _panelVisible = !_panelVisible);
+  }
+
+  /// Only "touch to view" has a long press of its own; everywhere else a long
+  /// press hides or restores the overlay, which is the whole point of the
+  /// full-artwork mode.
+  void _onArtworkLongPress() => _togglePanel();
+
+  void _onArtworkTap() {
+    if (!_panelVisible) return;
+    setState(() => _panelVisible = false);
+  }
+
+  String? _titleText(BuildContext context, WallpaperController controller) {
+    if (controller.prefs.titleMode == WallpaperTitleMode.fileName) {
+      return controller.current?.artwork.title ?? _fallbackEntry?.bestTitle;
+    }
+    return _sourceName(context, controller);
+  }
+
+  /// The source in the user's words: what Muzei labels the artwork with.
+  String _sourceName(BuildContext context, WallpaperController controller) {
+    final l10n = context.l10n;
+    final scope = controller.prefs.scope;
+    switch (scope.kind) {
+      case WallpaperSourceKind.single:
+        return _singleEntryTitle ?? l10n.muzeiWallpaperSourcesSingle;
+      case WallpaperSourceKind.myPhotos:
+        if (scope.filters.isEmpty) return l10n.muzeiWallpaperSourcesAllPhotos;
+        final labels = scope.filters.map((filter) => filter.getLabel(context)).toList()..sort();
+        return labels.length == 1 ? labels.first : l10n.muzeiWallpaperSourceMoreFilters(labels.first, labels.length - 1);
+    }
+  }
+
+  static String? _statusText(BuildContext context, WallpaperSourceResolution? resolution) {
+    final l10n = context.l10n;
+    switch (resolution?.status) {
+      case WallpaperSourceStatus.empty:
+        return l10n.muzeiWallpaperEmpty;
+      case WallpaperSourceStatus.unsupported:
+        return l10n.muzeiWallpaperUnsupported;
+      case WallpaperSourceStatus.missing:
+        return l10n.muzeiWallpaperMissing;
+      case WallpaperSourceStatus.ready:
+      case null:
+        return null;
     }
   }
 
@@ -249,8 +313,10 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
             return const _LoadingView();
           }
           _controller ??= controller;
+          // The title mode lives in the prefs, not in the controller, and it
+          // changes from the overflow menu, so listen to both.
           return ListenableBuilder(
-            listenable: controller,
+            listenable: Listenable.merge([controller, controller.prefs]),
             builder: (context, _) => _buildContent(context, controller),
           );
         },
@@ -260,31 +326,41 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
 
   Widget _buildContent(BuildContext context, WallpaperController controller) {
     final l10n = context.l10n;
-    final current = controller.current;
-    final file = controller.currentFile;
+    final artwork = _artwork(controller);
     final status = _statusText(context, controller.resolution);
-    final error = controller.error;
+    final title = _titleText(context, controller);
 
     return Stack(
       fit: StackFit.expand,
       children: [
         const ColoredBox(color: Colors.black),
-        if (file != null && current != null)
-          Image(
-            // The preview must decode the artwork currently in the slot, not
-            // the first artwork the slot ever held; see [SlotArtworkImage].
-            image: SlotArtworkImage(file: file, contentKey: current.artwork.entryId),
-            key: ValueKey('${current.id}-${current.artwork.entryId}'),
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            errorBuilder: (context, error, stack) => const SizedBox(),
-          ),
-        if (file == null)
+        if (artwork != null)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _onArtworkTap,
+              onLongPress: _onArtworkLongPress,
+              onDoubleTap: () => _runGesture(controller, controller.prefs.gestures.doubleTap),
+              child: Listener(
+                onPointerDown: _onPointerDown,
+                onPointerMove: _onPointerMove,
+                onPointerUp: (event) => _onPointerUp(event, controller),
+                onPointerCancel: (event) => _onPointerUp(event, controller),
+                child: InteractiveViewer(
+                  transformationController: _viewport,
+                  minScale: WallpaperPrefs.minViewportZoom,
+                  maxScale: WallpaperPrefs.maxViewportZoom,
+                  child: SizedBox.expand(child: artwork),
+                ),
+              ),
+            ),
+          )
+        else
           Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Text(
-                error ?? status ?? l10n.muzeiWallpaperEmpty,
+                controller.error ?? status ?? l10n.muzeiWallpaperEmpty,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70),
               ),
@@ -298,219 +374,167 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
           child: IgnorePointer(child: _TopScrim()),
         ),
         Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: _PanelVisibility(
+            visible: _panelVisible,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4, top: 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Navigator.canPop(context) ? const BackButton(color: Colors.white) : const SizedBox(width: 48, height: 48),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
           left: 0,
           right: 0,
           bottom: 0,
-          child: _BottomInfo(
-            controller: controller,
-            status: status,
-            onOpenArtwork: () => _openArtwork(context),
-            onOpenChooser: () => _openChooser(context, controller),
-          ),
-        ),
-        SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              children: [
-                if (Navigator.canPop(context))
-                  const BackButton(color: Colors.white)
-                else
-                  const SizedBox(width: 48),
-                Expanded(
-                  child: Text(
-                    l10n.muzeiWallpaperPageTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Colors.white,
-                      shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
-                    ),
-                  ),
-                ),
-                PopupMenuButton<_WallpaperMenuAction>(
-                  icon: const Icon(AIcons.more, color: Colors.white),
-                  tooltip: MaterialLocalizations.of(context).showMenuTooltip,
-                  onSelected: (action) => _onMenu(action, controller),
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: _WallpaperMenuAction.sources,
-                      child: Text(l10n.muzeiWallpaperSources),
-                    ),
-                    PopupMenuItem(
-                      value: _WallpaperMenuAction.effects,
-                      child: Text(l10n.muzeiWallpaperEffects),
-                    ),
-                    PopupMenuItem(
-                      value: _WallpaperMenuAction.gestures,
-                      child: Text(l10n.muzeiWallpaperGestures),
-                    ),
-                    PopupMenuItem(
-                      value: _WallpaperMenuAction.autoAdvance,
-                      child: Text(l10n.muzeiWallpaperAutoAdvance),
-                    ),
-                    PopupMenuItem(
-                      value: _WallpaperMenuAction.openArtwork,
-                      child: Text(l10n.muzeiWallpaperOpenArtwork),
-                    ),
-                    PopupMenuItem(
-                      value: _WallpaperMenuAction.setWallpaper,
-                      child: Text(l10n.muzeiWallpaperSetAction),
-                    ),
-                    PopupMenuItem(
-                      value: _WallpaperMenuAction.refreshStatus,
-                      child: Text(l10n.muzeiWallpaperRefreshStatus),
-                    ),
-                    if (kDebugMode) ...[
-                      PopupMenuItem(
-                        value: _WallpaperMenuAction.syncRuntime,
-                        child: Text(l10n.muzeiWallpaperSyncRuntime),
-                      ),
-                      PopupMenuItem(
-                        value: _WallpaperMenuAction.debugInfo,
-                        child: Text(l10n.muzeiWallpaperDebugInfo),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
+          child: _PanelVisibility(
+            visible: _panelVisible,
+            child: _BottomPanel(
+              controller: controller,
+              title: title,
+              status: status,
+              onViewArtwork: () => unawaited(_openArtwork(controller)),
+              onOpenWith: () => unawaited(_openWith(controller)),
+              aboutBackdrop: () => _artwork(controller) ?? const ColoredBox(color: Colors.black),
             ),
           ),
         ),
       ],
     );
   }
+}
 
-  static String? _statusText(BuildContext context, WallpaperSourceResolution? resolution) {
-    final l10n = context.l10n;
-    switch (resolution?.status) {
-      case WallpaperSourceStatus.empty:
-        return l10n.muzeiWallpaperEmpty;
-      case WallpaperSourceStatus.unsupported:
-        return l10n.muzeiWallpaperUnsupported;
-      case WallpaperSourceStatus.missing:
-        return l10n.muzeiWallpaperMissing;
-      case WallpaperSourceStatus.ready:
-      case null:
-        return null;
-    }
+/// Fades the overlay out and stops it from eating taps while hidden.
+class _PanelVisibility extends StatelessWidget {
+  final bool visible;
+  final Widget child;
+
+  const new({required this.visible, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: !visible,
+      child: AnimatedOpacity(
+        opacity: visible ? 1 : 0,
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        child: child,
+      ),
+    );
   }
 }
 
-class _BottomInfo extends StatelessWidget {
+/// The single floating row: title line, "touch to view", next and overflow.
+class _BottomPanel extends StatelessWidget {
   final WallpaperController controller;
+  final String? title;
   final String? status;
-  final VoidCallback onOpenArtwork;
-  final VoidCallback onOpenChooser;
+  final VoidCallback onViewArtwork;
+  final VoidCallback onOpenWith;
+  final Widget Function() aboutBackdrop;
 
   const new({
     required this.controller,
+    required this.title,
     required this.status,
-    required this.onOpenArtwork,
-    required this.onOpenChooser,
+    required this.onViewArtwork,
+    required this.onOpenWith,
+    required this.aboutBackdrop,
   });
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final current = controller.current;
+    final titleText = title;
     final statusText = status;
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Colors.transparent, Colors.black.withValues(alpha: .92)],
+          colors: [Colors.transparent, Colors.black.withValues(alpha: .88)],
         ),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 56, 12, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+          padding: const EdgeInsets.fromLTRB(20, 48, 4, 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              if (current != null)
-                InkWell(
-                  onTap: onOpenArtwork,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          current.artwork.title ?? l10n.muzeiWallpaperPageTitle,
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (titleText != null)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Text(
+                          titleText,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             color: Colors.white,
                             fontWeight: FontWeight.w500,
+                            shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
                           ),
                         ),
-                        if (current.artwork.byline != null)
-                          Text(
-                            current.artwork.byline!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70),
+                      ),
+                    if (statusText != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, right: 16),
+                        child: Text(
+                          statusText,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                        ),
+                      ),
+                    // Long press only fires on this line: the rest of the screen
+                    // toggles the overlay instead.
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onViewArtwork,
+                      onLongPress: onOpenWith,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(2, 10, 24, 10),
+                        child: Text(
+                          l10n.muzeiWallpaperTouchToView,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.white70,
+                            shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
                           ),
-                      ],
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(AIcons.info, size: 14, color: Colors.white54),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      l10n.muzeiWallpaperAttribution,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54),
-                    ),
-                  ),
-                ],
-              ),
-              if (statusText != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    statusText,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
-                  ),
-                ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: controller.busy ? null : onOpenChooser,
-                      icon: const Icon(AIcons.setAs),
-                      label: Text(
-                        controller.serviceActive ? l10n.muzeiWallpaperActive : l10n.muzeiWallpaperSetAction,
-                        overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filledTonal(
-                    tooltip: l10n.muzeiWallpaperNextAction,
-                    onPressed: controller.busy || controller.resolution?.status == WallpaperSourceStatus.empty
-                        ? null
-                        : controller.advance,
-                    icon: controller.busy
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(AIcons.next),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: l10n.muzeiWallpaperNextAction,
+                color: Colors.white,
+                onPressed: controller.busy || controller.resolution?.status == WallpaperSourceStatus.empty
+                    ? null
+                    : controller.advance,
+                icon: controller.busy
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(AIcons.next),
+              ),
+              WallpaperOverflowButton(
+                controller: controller,
+                section: WallpaperSection.artwork,
+                color: Colors.white,
+                aboutBackdrop: aboutBackdrop,
               ),
             ],
           ),
@@ -530,7 +554,7 @@ class _TopScrim extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Colors.black.withValues(alpha: .55), Colors.transparent],
+          colors: [Colors.black.withValues(alpha: .45), Colors.transparent],
         ),
       ),
     );

@@ -5,10 +5,12 @@ import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart';
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_filter_pick_page.dart';
+import 'package:aves/features/muzei_wallpaper/view/wallpaper_overflow_button.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/source/collection_source.dart';
-import 'package:aves/services/intent_service.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/collection/filter_bar.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
@@ -74,7 +76,13 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
   }
 
   Future<void> _pickFilters() async {
-    final selection = await IntentService.pickCollectionFilters(_scope.filters);
+    final selection = await Navigator.of(context).push<Set<CollectionFilter>>(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: MuzeiWallpaperFilterPickPage.routeName),
+        fullscreenDialog: true,
+        builder: (_) => MuzeiWallpaperFilterPickPage(initialFilters: _scope.filters),
+      ),
+    );
     if (selection == null || !mounted) return;
     // The image restriction is implicit for wallpapers, so it is not a user
     // filter and must not show up as a removable chip.
@@ -193,6 +201,10 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
                 ),
               ],
             ),
+          ),
+          floatingActionButton: WallpaperOverflowFab(
+            controller: _controller,
+            section: WallpaperSection.sources,
           ),
         );
       },

@@ -865,7 +865,24 @@
   "muzeiWallpaperActive": "Live wallpaper active",
   "muzeiWallpaperNextAction": "Next artwork",
   "muzeiWallpaperOpenArtwork": "Open artwork",
-  "muzeiWallpaperAttribution": "Ported from Muzei by Ian Lake (Apache-2.0)",
+  "muzeiWallpaperTouchToView": "Touch to view",
+  "muzeiWallpaperTitleMode": "Title line",
+  "muzeiWallpaperTitleFileName": "File name",
+  "muzeiWallpaperTitleSourceName": "Source name",
+  "muzeiWallpaperAbout": "About",
+  "muzeiWallpaperAboutPorted": "Ported from Muzei (Apache-2.0, net.nurik.roman.muzei).",
+  "muzeiWallpaperAboutMuzeiSection": "The following text is the Muzei about page, used verbatim.",
+  "muzeiWallpaperAboutMuzeiVersion": "Muzei v{version}",
+  "@muzeiWallpaperAboutMuzeiVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "muzeiWallpaperAboutMuzeiBody": "Made by Roman Nurik and Ian Lake, with major contributions from the [open source community](http://code.muzei.co).\n\n*Muzei* is a transliteration of the Russian word [*музей*](http://translate.google.com/#en/ru/museum), which means “museum.”\n\nCopyright 2013–2018 Google Inc. All Rights Reserved.\n\n[Terms of Service](http://m.google.com/utos), [Privacy Policy](http://www.google.com/policies/privacy/)\n\nMany thanks to these open source projects:\n\n- [**OkHttp**](http://square.github.io/okhttp/) and [**Picasso**](http://square.github.io/picasso/) by Square\n- [**GLWallpaperService**](https://github.com/GLWallpaperService/GLWallpaperService) by Robert Green, Mark F. Guerra, and others\n",
+  "muzeiWallpaperFilterPickTitle": "Choose filters",
+  "muzeiWallpaperFilterPickConfirm": "Use these filters",
   "muzeiWallpaperChooserUnavailable": "No live wallpaper picker available",
   "muzeiWallpaperRefreshStatus": "Refresh status",
   "muzeiWallpaperSyncRuntime": "Sync runtime",
@@ -887,6 +904,17 @@
   "muzeiWallpaperSourcesMyPhotos": "My photos",
   "muzeiWallpaperSourcesSingle": "Single artwork",
   "muzeiWallpaperSourcesAllPhotos": "All photos",
+  "muzeiWallpaperSourceMoreFilters": "{label} +{count}",
+  "@muzeiWallpaperSourceMoreFilters": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "muzeiWallpaperSourcesChooseArtwork": "Choose artwork",
   "muzeiWallpaperSourcesEditFilters": "Choose albums and filters",
   "muzeiWallpaperSourcesCount": "{count, plural, =1{1 photo} other{{count} photos}}",

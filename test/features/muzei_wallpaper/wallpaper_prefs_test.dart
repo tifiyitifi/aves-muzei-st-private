@@ -1,4 +1,5 @@
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_display.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
@@ -64,6 +65,7 @@ void main() {
     await prefs.setLastAdvancedAt(1700000000000);
     await prefs.setCurrentIndex(5);
     await prefs.setViewport(x: 0.2, y: -0.1, zoom: 2.5);
+    await prefs.setTitleMode(WallpaperTitleMode.sourceName);
     prefs.dispose();
 
     final reloaded = WallpaperPrefs();
@@ -83,6 +85,7 @@ void main() {
     expect(reloaded.viewportX, 0.2);
     expect(reloaded.viewportY, -0.1);
     expect(reloaded.viewportZoom, 2.5);
+    expect(reloaded.titleMode, WallpaperTitleMode.sourceName);
     reloaded.dispose();
   });
 
@@ -104,6 +107,7 @@ void main() {
     expect(prefs.autoAdvance.interval, WallpaperInterval.never);
     expect(prefs.viewportZoom, WallpaperPrefs.maxViewportZoom);
     expect(prefs.currentIndex, 0);
+    expect(prefs.titleMode, WallpaperTitleMode.defaultMode);
     prefs.dispose();
   });
 

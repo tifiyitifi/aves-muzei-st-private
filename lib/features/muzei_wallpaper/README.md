@@ -70,6 +70,32 @@ Apache-2.0 headers. See the repository root `LICENSE` for Aves's own license.
   `state.json` before choosing a slot. The winner is the last committed state,
   and the loser adopts it instead of baking the same slot twice.
 
+## Foreground page
+
+The page is reached from the drawer, so it keeps a back arrow at the top and
+drops Muzei's bottom tab bar: sources, effects and gestures live in the one
+overflow menu, which also floats on their own pages so switching never needs a
+trip back to the artwork. The overlay is a single row, Muzei's visual signature:
+the title line, "touch to view", the next button and the overflow. Tapping the
+artwork hides the whole overlay (back arrow included) so the picture can be
+looked at full screen; a long press brings it back. Panning and pinch-zoom stay
+inside the page and are not persisted, because the wallpaper keeps showing the
+whole frame.
+
+The title line defaults to the artwork's file name rather than Muzei's source
+label, which never explained itself; the source wording is one setting away.
+"Touch to view" opens the Aves viewer, and a long press on that line only hands
+the artwork to another app. When the queue is empty the page shows the most
+recent artwork whose original file still exists, baked in memory; it never
+writes a slot, so history cannot rewind the wallpaper. With no history either,
+the page shows the ordinary "no artwork" hint: the feature ships no bundled
+image, so it adds nothing to the APK or to storage.
+
+The about dialog blurs and dims the artwork behind it, and its Muzei section is
+quoted verbatim from Muzei's `about_body`, including its own version. Our app
+version is deliberately not shown there: a release that only touched other
+features must not read as "the wallpaper changed again".
+
 ## Trade-offs
 
 - Effects are blurred at a quarter of the surface (as in Muzei) but stored at

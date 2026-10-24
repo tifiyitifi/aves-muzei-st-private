@@ -597,7 +597,7 @@ class _BottomPanel extends StatelessWidget {
                     : controller.advance,
                 icon: controller.busy
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(AIcons.next),
+                    : const Icon(AIcons.nextArtwork),
               ),
               WallpaperOverflowButton(
                 controller: controller,

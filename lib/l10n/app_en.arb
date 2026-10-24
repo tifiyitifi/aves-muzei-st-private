@@ -970,6 +970,15 @@
       }
     }
   },
+  "muzeiWallpaperAutoAdvanceDescription": "Control when the wallpaper automatically moves to the next artwork.",
+  "muzeiWallpaperAutoAdvanceOrdering": "Ordering",
+  "muzeiWallpaperAutoAdvanceOrderingInOrder": "Always in order",
+  "muzeiWallpaperAutoAdvanceOrderingInOrderHint": "Walks the collection by date and starts over at the end.",
+  "muzeiWallpaperAutoAdvanceOrderingNewThenRandom": "New photos in order, then random",
+  "muzeiWallpaperAutoAdvanceOrderingNewThenRandomHint": "Shows photos added after the wallpaper was set up first, then picks at random.",
+  "muzeiWallpaperAutoAdvanceOrderingRandom": "Always random",
+  "muzeiWallpaperAutoAdvanceOrderingRandomHint": "Avoids the current artwork and the ones shown recently.",
+  "muzeiWallpaperAutoAdvanceInterval": "Interval",
   "settingsMuzeiWallpaperPrefetchAhead": "Live wallpaper: prepare two artworks ahead",
   "settingsMuzeiWallpaperPrefetchAheadSubtitle": "The first two wallpaper taps switch instantly. Uses about 13 MB more storage and re-bakes the effects for three artworks instead of two.",
 

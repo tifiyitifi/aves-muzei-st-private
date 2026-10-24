@@ -833,5 +833,19 @@
     "muzeiWallpaperEffectsGrey": "灰度",
     "muzeiWallpaperEffectsLink": "主屏幕与锁屏联动",
     "muzeiWallpaperEffectsResetZero": "全部归零",
-    "muzeiWallpaperEffectsMuzeiDefaults": "Muzei 默认值"
+    "muzeiWallpaperEffectsMuzeiDefaults": "Muzei 默认值",
+    "muzeiWallpaperAutoAdvance": "自动前进",
+    "muzeiWallpaperAutoAdvanceDescription": "控制壁纸何时自动切换到下一张。",
+    "muzeiWallpaperAutoAdvanceOrdering": "排序方式",
+    "muzeiWallpaperAutoAdvanceOrderingInOrder": "始终按顺序",
+    "muzeiWallpaperAutoAdvanceOrderingInOrderHint": "按拍摄时间依次轮播，播完从头开始。",
+    "muzeiWallpaperAutoAdvanceOrderingNewThenRandom": "新照片按顺序，然后随机",
+    "muzeiWallpaperAutoAdvanceOrderingNewThenRandomHint": "优先展示设置壁纸之后新增的照片，之后随机挑选。",
+    "muzeiWallpaperAutoAdvanceOrderingRandom": "始终随机",
+    "muzeiWallpaperAutoAdvanceOrderingRandomHint": "避开当前作品和最近展示过的作品。",
+    "muzeiWallpaperAutoAdvanceInterval": "时间间隔",
+    "muzeiWallpaperAutoAdvanceOff": "关闭",
+    "muzeiWallpaperAutoAdvanceMinutes": "{count, plural, =1{每分钟} other{每 {count} 分钟}}",
+    "muzeiWallpaperAutoAdvanceHours": "{count, plural, =1{每小时} other{每 {count} 小时}}",
+    "muzeiWallpaperAutoAdvanceDays": "{count, plural, =1{每天} other{每 {count} 天}}"
 }

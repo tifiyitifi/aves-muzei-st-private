@@ -21,10 +21,13 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: effects page previews blur, dim and greyscale live while dragging, with reset-to-zero and Muzei-defaults presets
 - Muzei wallpaper: long press opens an immersive artwork view, and the artwork can be panned to its uncropped edges even at 1x
 - Muzei wallpaper: double tap advances to the next artwork by default
+- Muzei wallpaper: auto-advance ordering (always in order / new photos then random / always random) on its own page
 
 ### Changed
 
 - Muzei wallpaper: default effects leave the photo untouched (blur, dim and greyscale all zero, deliberately unlike Muzei)
+- Muzei wallpaper: auto-advance is cancelled while the wallpaper is not in use, and resumes when it is set again
+- Muzei wallpaper: the overflow menu marks the current page with a radio dot, and the next button uses Muzei's double chevron
 - Muzei wallpaper: the about dialog separates the Muzei section with a thin recessed rule
 - Muzei wallpaper: menu checkmarks sit at the trailing edge so every label lines up
 

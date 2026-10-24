@@ -64,7 +64,19 @@ Apache-2.0 headers. See the repository root `LICENSE` for Aves's own license.
 - Auto-advance is a chain of one-time WorkManager runs driven by the interval
   preference (15 minutes to 3 days, or off), because the page may be gone for
   hours. A run advances the state in Dart, then asks the running app to refresh
-  its preview and schedules the next interval.
+  its preview and schedules the next interval. The chain is cancelled while the
+  wallpaper is not in use, so replacing it with another app stops the background
+  bakes instead of leaving them running.
+- Ordering mirrors Muzei's Auto Advance screen: always in order, new photos in
+  order then random (the default), and always random. "New" is an entry id above
+  the highest one shown (`newestEntryId` in `state.json`, Muzei's
+  `maxLoadedArtworkId`); when nothing is new the pick falls back to random,
+  which rejects the current artwork and the recently shown ones (up to 50).
+  One deliberate difference: Muzei starts its marker at zero and walks the whole
+  feed first, which for a library of tens of thousands of photos would take
+  years, so the marker is seeded to the newest existing photo when the source is
+  set — "new" means added after the wallpaper was set up. The Wi-Fi-only option
+  is absent because the source is local.
 - The foreground page and the background run can overlap, so both mutate the
   store under a file lock (`WallpaperStateStore.runExclusive`) and re-read
   `state.json` before choosing a slot. The winner is the last committed state,

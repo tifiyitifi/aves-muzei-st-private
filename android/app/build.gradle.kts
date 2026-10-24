@@ -276,10 +276,19 @@ dependencies {
     implementation(project(":exifinterface"))
 
     testImplementation(libs.junit)
+    // Gradle 9 no longer bundles the JUnit Platform launcher, and the Kotlin
+    // tests are written against JUnit Jupiter.
+    testRuntimeOnly(libs.junit.platform.launcher)
 
     ksp(libs.glideKsp)
 
     compileOnly(rootProject.findProject(":streams_channel")!!)
+}
+
+// The Kotlin unit tests use JUnit Jupiter, which Gradle's default JUnit 4
+// runner never discovers.
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
 }
 
 if (rootProject.extra["aves_useCrashlytics"] as Boolean) {

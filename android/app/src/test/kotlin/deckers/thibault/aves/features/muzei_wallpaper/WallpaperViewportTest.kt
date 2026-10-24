@@ -25,8 +25,11 @@ class WallpaperViewportTest {
         val visible = tallViewAspect
         assertEquals((1f - visible) / 2f, squareOnTallScreen[0], 0.0001f, "u0")
         assertEquals(1f - (1f - visible) / 2f, squareOnTallScreen[2], 0.0001f, "u1")
-        assertEquals(0f, squareOnTallScreen[1], 0.0001f, "v1")
-        assertEquals(1f, squareOnTallScreen[5], 0.0001f, "v0")
+        // Texture rows are not flipped here: `v1` is written at the bottom vertex
+        // and `v0` at the top one, so the decoded bitmap row 0 (image top) maps to
+        // the top of the quad.
+        assertEquals(1f, squareOnTallScreen[1], 0.0001f, "v1 at the bottom vertex")
+        assertEquals(0f, squareOnTallScreen[5], 0.0001f, "v0 at the top vertex")
     }
 
     @Test
@@ -55,8 +58,8 @@ class WallpaperViewportTest {
 
         assertEquals(0f, squareOnTallScreen[0], 0.0001f, "u0")
         assertEquals(1f, squareOnTallScreen[2], 0.0001f, "u1")
-        assertEquals(0.25f, squareOnTallScreen[1], 0.0001f, "v1")
-        assertEquals(0.75f, squareOnTallScreen[5], 0.0001f, "v0")
+        assertEquals(0.75f, squareOnTallScreen[1], 0.0001f, "v1 at the bottom vertex")
+        assertEquals(0.25f, squareOnTallScreen[5], 0.0001f, "v0 at the top vertex")
     }
 
     @Test

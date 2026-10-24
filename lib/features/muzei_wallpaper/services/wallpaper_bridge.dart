@@ -48,9 +48,11 @@ class WallpaperBridge {
 
   /// Registers native-to-Dart requests.
   ///
-  /// The foreground app uses `reloadRequested` to refresh its preview after the
-  /// service changed slots; auto-advance uses `advanceRequested` once the
-  /// background worker lands.
+  /// A wallpaper tap promotes the prefetched slot natively, so the renderer asks
+  /// the running app (`advanceRequested`) to adopt it and bake the freed slot
+  /// again; `reloadRequested` refreshes the preview after the service changed
+  /// slots. Without a running app the runtime stays marked for refill and the
+  /// next app start adopts it.
   void setRequestHandler({
     VoidCallback? onAdvanceRequested,
     VoidCallback? onReloadRequested,

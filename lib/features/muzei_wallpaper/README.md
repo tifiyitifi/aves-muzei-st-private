@@ -40,3 +40,9 @@ Apache-2.0 headers. See the repository root `LICENSE` for Aves's own license.
   writes the new slot to `runtime.json`; while the generations match, the
   renderer (and the next Dart adoption) treat the runtime as the current slot,
   so an advance survives without Flutter running.
+- Flutter bakes exactly one artwork ahead, so a tap burst outruns the refill.
+  The renderer buffers those taps (`AdvanceRequestQueue`) and replays them one
+  per prefetch instead of dropping them, keeping Muzei's "every double tap
+  advances" behaviour. While the app process is alive it is also notified over
+  the channel (`advanceRequested`) so the refill starts immediately rather than
+  on the next page resume.

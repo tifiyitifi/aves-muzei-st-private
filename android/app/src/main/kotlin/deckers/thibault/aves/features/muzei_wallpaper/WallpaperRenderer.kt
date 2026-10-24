@@ -25,6 +25,7 @@ import android.opengl.GLSurfaceView
 import android.opengl.GLUtils
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import deckers.thibault.aves.MainActivity
 import deckers.thibault.aves.R
@@ -109,6 +110,14 @@ class WallpaperRenderer(
     private val reloadInFlight = AtomicBoolean(false)
     private val reloadAgain = AtomicBoolean(false)
     private val advanceInFlight = AtomicBoolean(false)
+
+    /**
+     * Taps that arrived while no slot was baked yet.
+     *
+     * Only the loader thread touches the queue, but taps are recorded from the
+     * main thread, so every access is synchronized.
+     */
+    private val advanceRequests = AdvanceRequestQueue()
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -277,10 +286,11 @@ class WallpaperRenderer(
                 reloadInFlight.set(false)
                 if (reloadAgain.compareAndSet(true, false)) {
                     requestReload()
-                } else if (loaded == null) {
+                } else {
                     // Nothing to show yet; keep the surface switch pending so the
                     // next successful load does not fade between home and lock.
-                    immediateNextLoad = immediateNow
+                    if (loaded == null) immediateNextLoad = immediateNow
+                    drainPendingAdvance()
                 }
             }
         } catch (e: RejectedExecutionException) {
@@ -316,7 +326,12 @@ class WallpaperRenderer(
      */
     fun requestAdvance() {
         if (destroyed) return
-        if (!advanceInFlight.compareAndSet(false, true)) return
+        if (!advanceInFlight.compareAndSet(false, true)) {
+            // A promotion is already decoding; keep this tap for right after it.
+            enqueueAdvance(SystemClock.elapsedRealtime())
+            return
+        }
+        val requestedAt = SystemClock.elapsedRealtime()
         try {
             loader.execute {
                 val loaded = loadNextFrame()
@@ -325,6 +340,11 @@ class WallpaperRenderer(
                     advanceInFlight.set(false)
                     return@execute
                 }
+                if (loaded == null) {
+                    // Flutter bakes one artwork ahead, so a burst of taps can
+                    // outrun the refill; replay this one when the prefetch lands.
+                    enqueueAdvance(requestedAt)
+                }
                 publish(loaded)
                 advanceInFlight.set(false)
             }
@@ -332,6 +352,33 @@ class WallpaperRenderer(
             advanceInFlight.set(false)
             Log.d(TAG, "advance ignored after renderer shutdown")
         }
+    }
+
+    private fun enqueueAdvance(requestedAt: Long) {
+        val pending = synchronized(advanceRequests) {
+            advanceRequests.request(requestedAt)
+            advanceRequests.size
+        }
+        Log.d(TAG, "advance queued pending=$pending")
+    }
+
+    /**
+     * Replays one buffered tap once a reload shows a baked next slot.
+     *
+     * Flutter bakes the next artwork only after it adopts an advance, so the
+     * reload that follows a prefetch commit is the moment a buffered tap can be
+     * served. Further buffered taps wait for their own prefetch.
+     */
+    private fun drainPendingAdvance() {
+        if (destroyed) return
+        if (synchronized(advanceRequests) { advanceRequests.isEmpty }) return
+        if (resolveAdvanceTarget() == null) return
+        val fresh = synchronized(advanceRequests) {
+            advanceRequests.consume(SystemClock.elapsedRealtime())
+        }
+        if (!fresh) return
+        Log.d(TAG, "advance.drain")
+        requestAdvance()
     }
 
     /** The action bound to a gesture, from the latest `state.json`. */
@@ -397,6 +444,7 @@ class WallpaperRenderer(
     fun destroy() {
         Log.d(TAG, "renderer.destroy")
         destroyed = true
+        synchronized(advanceRequests) { advanceRequests.clear() }
         WallpaperRenderBus.detach(this)
         handler.removeCallbacks(restoreFocusTask)
         loader.shutdownNow()
@@ -614,20 +662,16 @@ class WallpaperRenderer(
      */
     private fun loadNextFrame(): LoadedFrame? {
         return try {
-            val state = store.readState() ?: return null
-            doubleTapBinding = state.doubleTapAction
-            threeFingerBinding = state.threeFingerAction
-            val runtime = store.readRuntime()
-            val currentSlot = state.displaySlot(runtime)
-            // The runtime is the authority between Dart writes: after an advance
-            // its `next` is -1, so further taps do nothing until Dart refills.
-            val nextId = runtime?.takeIf { it.generation == state.generation }?.next ?: state.next
-            val nextSlot = if (nextId >= 0) state.slots[nextId] else null
-            if (currentSlot == null || nextSlot == null || nextSlot.id == currentSlot.id) {
+            val target = resolveAdvanceTarget()
+            if (target == null) {
                 Log.d(TAG, "advance ignored: no prefetched slot")
                 return null
             }
-            val frame = decodeFrame(state, nextSlot, immediate = false, refillRequested = true) ?: return null
+            val state = target.state
+            doubleTapBinding = state.doubleTapAction
+            threeFingerBinding = state.threeFingerAction
+            val frame = decodeFrame(state, target.next, immediate = false, refillRequested = true) ?: return null
+            val nextSlot = target.next
             store.writeRuntime(
                 WallpaperRuntime(
                     generation = state.generation,
@@ -637,11 +681,30 @@ class WallpaperRenderer(
                 ),
             )
             Log.d(TAG, "advance.promote generation=${state.generation} slot=${nextSlot.id}")
+            // Ask the running app to adopt this slot and bake the next one; the
+            // wallpaper already shows the artwork, so the refill is invisible.
+            WallpaperAppBridge.notifyAdvanced()
             frame
         } catch (t: Throwable) {
             Log.e(TAG, "failed to advance the wallpaper", t)
             null
         }
+    }
+
+    /** A tap's promotion target, resolved from the state and the runtime. */
+    private class AdvanceTarget(val state: WallpaperFileState, val next: WallpaperSlotFiles)
+
+    /** The slot a tap should promote, or null when nothing is baked ahead. */
+    private fun resolveAdvanceTarget(): AdvanceTarget? {
+        val state = store.readState() ?: return null
+        val runtime = store.readRuntime()
+        val currentSlot = state.displaySlot(runtime) ?: return null
+        // The runtime is the authority between Dart writes: after an advance its
+        // `next` is -1, so no tap can be promoted until Dart refills.
+        val nextId = runtime?.takeIf { it.generation == state.generation }?.next ?: state.next
+        val nextSlot = if (nextId >= 0) state.slots[nextId] else null
+        if (nextSlot == null || nextSlot.id == currentSlot.id) return null
+        return AdvanceTarget(state, nextSlot)
     }
 
     private fun decodeFrame(

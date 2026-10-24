@@ -1,13 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
-import 'package:aves/features/muzei_wallpaper/services/wallpaper_baker.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_bridge.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart';
-import 'package:aves/features/muzei_wallpaper/services/wallpaper_prefs.dart';
-import 'package:aves/features/muzei_wallpaper/services/wallpaper_source_repository.dart';
-import 'package:aves/features/muzei_wallpaper/services/wallpaper_state_store.dart';
+import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller_factory.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_effects_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_gestures_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_sources_page.dart';
@@ -60,22 +56,16 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
   }
 
   Future<WallpaperController> _createController() async {
-    final root = await WallpaperBridge.instance.stateRoot();
-    if (root == null) {
-      throw StateError('the live wallpaper platform channel is unavailable');
-    }
-    final controller = WallpaperController(
-      prefs: wallpaperPrefs,
-      repository: WallpaperSourceRepository(),
-      baker: WallpaperBaker(),
-      store: WallpaperStateStore(Directory(root)),
-      bridge: WallpaperBridge.instance,
-    );
-    await controller.init();
+    final controller = await WallpaperControllerFactory.create();
     if (!mounted) {
       controller.dispose();
       throw StateError('the wallpaper page was closed while loading');
     }
+    // A wallpaper tap promotes the prefetched slot natively. Adopt it and refill
+    // the freed slot right away instead of waiting for the app to resume.
+    WallpaperBridge.instance.setRequestHandler(
+      onAdvanceRequested: () => unawaited(controller.syncRuntime()),
+    );
     return controller;
   }
 
@@ -89,6 +79,7 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    WallpaperBridge.instance.setRequestHandler();
     _controller?.dispose();
     super.dispose();
   }

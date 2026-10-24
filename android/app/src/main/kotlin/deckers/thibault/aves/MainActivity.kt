@@ -59,6 +59,7 @@ import deckers.thibault.aves.channel.streams.platformtodart.MessageStreamHandler
 import deckers.thibault.aves.channel.streams.platformtodart.SettingsChangeStreamHandler
 import deckers.thibault.aves.channel.streams.platformtodart.WindowChangeStreamHandler
 import deckers.thibault.aves.features.muzei_wallpaper.LiveWallpaperHandler
+import deckers.thibault.aves.features.muzei_wallpaper.WallpaperAppBridge
 import deckers.thibault.aves.model.FieldMap
 import deckers.thibault.aves.storage.apis.SafPermissions
 import deckers.thibault.aves.utils.LogUtils
@@ -67,6 +68,7 @@ import deckers.thibault.aves.utils.anyCauseIs
 import deckers.thibault.aves.utils.getParcelableExtraCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -89,6 +91,7 @@ open class MainActivity : FlutterFragmentActivity() {
     internal lateinit var intentDataMap: MutableMap<String, Any?>
     private lateinit var analysisHandler: AnalysisHandler<MainActivity>
     private lateinit var mediaSessionHandler: MediaSessionHandler
+    private var liveWallpaperAppMessenger: BinaryMessenger? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.i(LOG_TAG, "onCreate intent=$intent")
@@ -131,6 +134,11 @@ open class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
 
         val messenger = flutterEngine.dartExecutor
+
+        // the live wallpaper renderer notifies this engine when a wallpaper tap
+        // advanced the artwork, so the mounted page can adopt and refill it
+        liveWallpaperAppMessenger = messenger
+        WallpaperAppBridge.attach(messenger)
 
         // notification: platform -> dart
         analysisStreamHandler = AnalysisStreamHandler().apply {
@@ -233,6 +241,8 @@ open class MainActivity : FlutterFragmentActivity() {
 
     override fun onDestroy() {
         Log.i(LOG_TAG, "onDestroy")
+        liveWallpaperAppMessenger?.let(WallpaperAppBridge::detach)
+        liveWallpaperAppMessenger = null
         mediaSessionHandler.dispose()
         mediaStoreChangeStreamHandler.dispose()
         settingsChangeStreamHandler.dispose()

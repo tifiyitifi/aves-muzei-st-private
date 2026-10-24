@@ -508,7 +508,7 @@ WindowFragment? _extensionFragment(String? text) {
   // of exactly `.ext` has no extension in Dart) and that name is not a
   // separator — the same `pContext.separator` `_pathFragment` compares against.
   return (
-    sql: "(LENGTH(e.path) > ${length + 1} AND SUBSTR(LOWER(e.path), -${length + 1}) = ? AND SUBSTR(LOWER(e.path), -${length + 2}, 1) != ?)",
+    sql: '(LENGTH(e.path) > ${length + 1} AND SUBSTR(LOWER(e.path), -${length + 1}) = ? AND SUBSTR(LOWER(e.path), -${length + 2}, 1) != ?)',
     variables: [Variable('.${extension.toLowerCase()}'), Variable(pContext.separator)],
     requires: const {},
   );

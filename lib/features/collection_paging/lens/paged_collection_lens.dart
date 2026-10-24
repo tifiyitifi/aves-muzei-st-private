@@ -315,12 +315,10 @@ class PagedCollectionLens extends CollectionLens {
     super.fixedSort,
     super.fixedSelection,
     PagedCatalogWorker Function({required CollectionSource source})? catalogWorkerFactory,
-    bool stackEntries = true,
-    List<WindowFragment> extraFragments = const [],
+    this._stackEntries = true,
+    this._extraFragments = const [],
     this.inFlightLoadTimeout = defaultInFlightLoadTimeout,
   })  : _catalogWorkerFactory = catalogWorkerFactory ?? PagedCatalogWorker.new,
-        _stackEntries = stackEntries,
-        _extraFragments = extraFragments,
         super(listenToSource: false) {
     _pagedSubs.addAll([
       source.eventBus.on<EntryAddedEvent>().listen((_) => refresh()),

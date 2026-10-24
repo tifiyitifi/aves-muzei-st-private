@@ -75,7 +75,7 @@ void main() {
     });
 
     test('an unknown item type keeps the legacy path', () {
-      expect(filterTestFragment(TypeFilter.fromMap({'itemType': 'bogus'})), isNull);
+      expect(filterTestFragment(TypeFilter.fromMap(const {'itemType': 'bogus'})), isNull);
     });
   });
 

@@ -34,12 +34,12 @@ void main() {
           // A burst group (the samsung pattern keys it by `yyyyMMdd_HHmmss`), a
           // developed-raw pair, and a path-less row.
           raw.execute(
-            "INSERT INTO entry (id, path, directory, sourceMimeType) VALUES "
+            'INSERT INTO entry (id, path, directory, sourceMimeType) VALUES '
             "(1, '/cam/20151021_072800_001.jpg', '/cam', 'image/jpeg'), "
             "(2, '/cam/20151021_072800_002.jpg', '/cam', 'image/jpeg'), "
             "(3, '/cam/IMG_1.jpg', '/cam', 'image/jpeg'), "
             "(4, '/cam/IMG_1.dng', '/cam', '${MimeTypes.dng}'), "
-            "(5, NULL, NULL, NULL)",
+            '(5, NULL, NULL, NULL)',
           );
           raw.execute('PRAGMA user_version = 3');
         },

@@ -357,7 +357,7 @@ void main() {
             CatalogMetadata(id: 2, rating: 2),
             CatalogMetadata(id: 3, rating: 2),
           });
-          final predicate = const CollectionWindowPredicate();
+          const predicate = CollectionWindowPredicate();
           final ordered = await windowIds(predicate: predicate, sort: sort, reverse: reverse);
 
           for (var index = 0; index < ordered.length; index++) {
@@ -554,9 +554,9 @@ void main() {
         CatalogMetadata(id: 4, latitude: 10, longitude: 179),
       });
 
-      final paris = CoordinateFilter(LatLng(48.0, 2.0), LatLng(49.0, 3.0));
+      final paris = CoordinateFilter(const LatLng(48.0, 2.0), const LatLng(49.0, 3.0));
       // The west edge is east of the east edge: the box wraps the antimeridian.
-      final wrapping = CoordinateFilter(LatLng(-90, 170), LatLng(90, -170));
+      final wrapping = CoordinateFilter(const LatLng(-90, 170), const LatLng(90, -170));
       for (final filter in [paris, wrapping, paris.reverse()]) {
         await expectMatchesInMemory({filter}, entries);
       }

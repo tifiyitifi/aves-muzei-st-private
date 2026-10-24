@@ -40,22 +40,25 @@ class _AboutDialog extends StatelessWidget {
 
   const new({required this.artwork});
 
-  /// Our attribution first, then the upstream about page verbatim.
+  /// Our attribution, closing with the note that introduces the upstream text.
   ///
-  /// The Muzei section is its own text, quoted from `about_body` in the Muzei
-  /// sources (Apache-2.0); keeping it verbatim is both honest and the reason it
-  /// reads nothing like the rest of the app.
-  static String _markdown(BuildContext context) {
+  /// The Muzei section is its own block, quoted verbatim from `about_body` in
+  /// the Muzei sources (Apache-2.0); keeping it verbatim is both honest and the
+  /// reason it reads nothing like the rest of the app.
+  static String _ourMarkdown(BuildContext context) {
     final l10n = context.l10n;
     return [
       '**${l10n.muzeiWallpaperAbout}**',
       '',
       l10n.muzeiWallpaperAboutPorted,
       '',
-      '---',
-      '',
       l10n.muzeiWallpaperAboutMuzeiSection,
-      '',
+    ].join('\n');
+  }
+
+  static String _muzeiMarkdown(BuildContext context) {
+    final l10n = context.l10n;
+    return [
       '**${l10n.muzeiWallpaperAboutMuzeiVersion(muzeiPortedVersion)}**',
       '',
       l10n.muzeiWallpaperAboutMuzeiBody,
@@ -97,10 +100,30 @@ class _AboutDialog extends StatelessWidget {
                           // one: the backdrop behind the card is always dark.
                           child: fm.Theme(
                             data: fm.ThemeData.dark(useMaterial3: true),
-                            child: MarkdownBody(
-                              data: _markdown(context),
-                              selectable: true,
-                              onTapLink: (text, href, title) => AvesApp.launchUrl(href),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                MarkdownBody(
+                                  data: _ourMarkdown(context),
+                                  selectable: true,
+                                  onTapLink: (text, href, title) => AvesApp.launchUrl(href),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  // A thin, recessed line: the markdown rule is a
+                                  // full-contrast slab that competes with the text.
+                                  child: Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color: Colors.white.withValues(alpha: .10),
+                                  ),
+                                ),
+                                MarkdownBody(
+                                  data: _muzeiMarkdown(context),
+                                  selectable: true,
+                                  onTapLink: (text, href, title) => AvesApp.launchUrl(href),
+                                ),
+                              ],
                             ),
                           ),
                         ),

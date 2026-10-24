@@ -79,58 +79,43 @@ class WallpaperOverflowButton extends StatelessWidget {
       tooltip: MaterialLocalizations.of(context).showMenuTooltip,
       onSelected: (action) => unawaited(_onSelected(context, action)),
       itemBuilder: (context) => [
-        _sectionItem(context, l10n.muzeiWallpaperSources, _WallpaperMenuAction.sources, WallpaperSection.sources),
-        _sectionItem(context, l10n.muzeiWallpaperEffects, _WallpaperMenuAction.effects, WallpaperSection.effects),
-        _sectionItem(context, l10n.muzeiWallpaperGestures, _WallpaperMenuAction.gestures, WallpaperSection.gestures),
-        PopupMenuItem(
-          value: _WallpaperMenuAction.autoAdvance,
-          child: Text(l10n.muzeiWallpaperAutoAdvance),
-        ),
-        PopupMenuItem(
-          value: _WallpaperMenuAction.titleMode,
-          child: Text(l10n.muzeiWallpaperTitleMode),
-        ),
+        _sectionItem(l10n.muzeiWallpaperSources, _WallpaperMenuAction.sources, WallpaperSection.sources),
+        _sectionItem(l10n.muzeiWallpaperEffects, _WallpaperMenuAction.effects, WallpaperSection.effects),
+        _sectionItem(l10n.muzeiWallpaperGestures, _WallpaperMenuAction.gestures, WallpaperSection.gestures),
+        _item(l10n.muzeiWallpaperAutoAdvance, _WallpaperMenuAction.autoAdvance),
+        _item(l10n.muzeiWallpaperTitleMode, _WallpaperMenuAction.titleMode),
         const PopupMenuDivider(),
-        PopupMenuItem(
-          value: _WallpaperMenuAction.setWallpaper,
-          child: _CheckedRow(
-            checked: active,
-            child: Text(active ? l10n.muzeiWallpaperActive : l10n.muzeiWallpaperSetAction),
-          ),
+        _item(
+          active ? l10n.muzeiWallpaperActive : l10n.muzeiWallpaperSetAction,
+          _WallpaperMenuAction.setWallpaper,
+          checked: active,
         ),
-        PopupMenuItem(
-          value: _WallpaperMenuAction.about,
-          child: Text(l10n.muzeiWallpaperAbout),
-        ),
+        _item(l10n.muzeiWallpaperAbout, _WallpaperMenuAction.about),
         if (kDebugMode) ...[
           const PopupMenuDivider(),
-          PopupMenuItem(
-            value: _WallpaperMenuAction.refreshStatus,
-            child: Text(l10n.muzeiWallpaperRefreshStatus),
-          ),
-          PopupMenuItem(
-            value: _WallpaperMenuAction.syncRuntime,
-            child: Text(l10n.muzeiWallpaperSyncRuntime),
-          ),
-          PopupMenuItem(
-            value: _WallpaperMenuAction.debugInfo,
-            child: Text(l10n.muzeiWallpaperDebugInfo),
-          ),
+          _item(l10n.muzeiWallpaperRefreshStatus, _WallpaperMenuAction.refreshStatus),
+          _item(l10n.muzeiWallpaperSyncRuntime, _WallpaperMenuAction.syncRuntime),
+          _item(l10n.muzeiWallpaperDebugInfo, _WallpaperMenuAction.debugInfo),
         ],
       ],
     );
   }
 
+  /// Every entry gets the same row, so labels line up whether or not they are
+  /// checked and the mark always sits at the trailing edge.
+  PopupMenuItem<_WallpaperMenuAction> _item(String label, _WallpaperMenuAction action, {bool checked = false}) {
+    return PopupMenuItem(
+      value: action,
+      child: _CheckedRow(checked: checked, child: Text(label)),
+    );
+  }
+
   PopupMenuItem<_WallpaperMenuAction> _sectionItem(
-    BuildContext context,
     String label,
     _WallpaperMenuAction action,
     WallpaperSection target,
   ) {
-    return PopupMenuItem(
-      value: action,
-      child: _CheckedRow(checked: section == target, child: Text(label)),
-    );
+    return _item(label, action, checked: section == target);
   }
 
   Future<void> _onSelected(BuildContext context, _WallpaperMenuAction action) async {
@@ -308,11 +293,12 @@ class _CheckedRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        SizedBox(
-          width: 32,
-          child: checked ? const Icon(AIcons.checked, size: 20) : null,
-        ),
         Expanded(child: child),
+        if (checked)
+          const Padding(
+            padding: EdgeInsets.only(left: 12),
+            child: Icon(AIcons.checked, size: 20),
+          ),
       ],
     );
   }

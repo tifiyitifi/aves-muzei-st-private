@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_cover.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_display.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
@@ -9,6 +10,7 @@ import 'package:aves/features/muzei_wallpaper/services/wallpaper_bridge.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller_factory.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_prefs.dart';
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_view_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/slot_artwork_image.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_overflow_button.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -28,9 +30,11 @@ import 'package:material_ui/material_ui.dart';
 /// Muzei put in its bottom tabs (sources, effects) moved into the overflow,
 /// because this page is reached from the drawer and has a back arrow instead.
 ///
-/// The overlay can be hidden completely (tap on the artwork) so the user can
-/// look at the picture, and restored with a long press. Panning and pinch-zooming
-/// are local to the page: the wallpaper keeps showing the whole frame.
+/// A tap toggles the overlay so the user can look at the picture alone, and a
+/// long press opens the immersive artwork view. Panning and pinch-zooming are
+/// local to the page — the wallpaper keeps showing the whole frame — and the
+/// artwork is laid out at its cover size, so panning works even at 1x and can
+/// reach the parts the wallpaper crops away.
 class MuzeiWallpaperPage extends StatefulWidget {
   static const routeName = '/muzei_wallpaper';
 
@@ -54,9 +58,17 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
   /// never change the wallpaper or the artwork that is queued next.
   AvesEntry? _fallbackEntry;
   Uint8List? _fallbackSharp;
+  double? _fallbackAspect;
   bool _fallbackLoading = false;
 
   String? _singleEntryTitle;
+
+  /// Identity of the geometry the viewport was last centered for.
+  ///
+  /// Changing artwork or rotating recenters the view, like Muzei resets its
+  /// viewport on a new artwork; a rebuild for any other reason must not disturb
+  /// the user's pan and zoom.
+  (String, Size, Size)? _viewportGeometry;
 
   /// Pointers currently down, to recognise a three-finger tap.
   final Set<int> _pointers = {};
@@ -111,6 +123,7 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
       setState(() {
         _fallbackEntry = entry;
         _fallbackSharp = bake.sharpPng;
+        _fallbackAspect = bake.size.height > 0 ? bake.size.width / bake.size.height : null;
       });
     } finally {
       _fallbackLoading = false;
@@ -253,14 +266,46 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
     setState(() => _panelVisible = !_panelVisible);
   }
 
-  /// Only "touch to view" has a long press of its own; everywhere else a long
-  /// press hides or restores the overlay, which is the whole point of the
-  /// full-artwork mode.
-  void _onArtworkLongPress() => _togglePanel();
+  /// Opens the immersive artwork view — Muzei's artwork screen without its UI.
+  ///
+  /// A separate route keeps this page's gestures simple: the view page owns its
+  /// pan/zoom bounds and hides the system bars for as long as it is open.
+  Future<void> _openViewPage(WallpaperController controller) async {
+    final artwork = _artwork(controller);
+    if (artwork == null) return;
+    final title = _titleText(context, controller);
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: MuzeiWallpaperViewPage.routeName),
+        builder: (_) => MuzeiWallpaperViewPage(
+          artwork: artwork,
+          aspectRatio: _artworkAspect(controller),
+          title: title,
+        ),
+      ),
+    );
+  }
 
-  void _onArtworkTap() {
-    if (!_panelVisible) return;
-    setState(() => _panelVisible = false);
+  /// Aspect ratio of the artwork on screen, when the bake recorded it.
+  double? _artworkAspect(WallpaperController controller) {
+    return controller.current?.artwork.aspectRatio ?? _fallbackAspect;
+  }
+
+  /// Centers the artwork until the user pans, and recenters whenever the
+  /// artwork or the window changes.
+  ///
+  /// The artwork is laid out at its cover size, so a rebuild for an unrelated
+  /// reason must not throw away the user's pan and zoom; only a new artwork or a
+  /// new window size does, like Muzei resetting its viewport.
+  void _syncViewport(String contentKey, Size childSize, Size viewportSize) {
+    final geometry = (contentKey, childSize, viewportSize);
+    if (_viewportGeometry == geometry) return;
+    _viewportGeometry = geometry;
+    // The controller notifies its viewer, so it must not change during build.
+    final matrix = centeredCoverMatrix(childSize, viewportSize);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _viewport.value = matrix;
+    });
   }
 
   String? _titleText(BuildContext context, WallpaperController controller) {
@@ -329,6 +374,8 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
     final artwork = _artwork(controller);
     final status = _statusText(context, controller.resolution);
     final title = _titleText(context, controller);
+    final slot = controller.current;
+    final contentKey = slot != null ? 'slot-${slot.id}-${slot.artwork.entryId}' : 'fallback-${_fallbackEntry?.id}';
 
     return Stack(
       fit: StackFit.expand,
@@ -336,23 +383,37 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
         const ColoredBox(color: Colors.black),
         if (artwork != null)
           Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _onArtworkTap,
-              onLongPress: _onArtworkLongPress,
-              onDoubleTap: () => _runGesture(controller, controller.prefs.gestures.doubleTap),
-              child: Listener(
-                onPointerDown: _onPointerDown,
-                onPointerMove: _onPointerMove,
-                onPointerUp: (event) => _onPointerUp(event, controller),
-                onPointerCancel: (event) => _onPointerUp(event, controller),
-                child: InteractiveViewer(
-                  transformationController: _viewport,
-                  minScale: WallpaperPrefs.minViewportZoom,
-                  maxScale: WallpaperPrefs.maxViewportZoom,
-                  child: SizedBox.expand(child: artwork),
-                ),
-              ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final viewportSize = constraints.biggest;
+                final childSize = coverSizeFor(viewportSize, _artworkAspect(controller));
+                _syncViewport(contentKey, childSize, viewportSize);
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _togglePanel,
+                  onLongPress: () => unawaited(_openViewPage(controller)),
+                  onDoubleTap: () => _runGesture(controller, controller.prefs.gestures.doubleTap),
+                  child: Listener(
+                    onPointerDown: _onPointerDown,
+                    onPointerMove: _onPointerMove,
+                    onPointerUp: (event) => _onPointerUp(event, controller),
+                    onPointerCancel: (event) => _onPointerUp(event, controller),
+                    child: InteractiveViewer(
+                      transformationController: _viewport,
+                      minScale: WallpaperPrefs.minViewportZoom,
+                      maxScale: WallpaperPrefs.maxViewportZoom,
+                      // The artwork is laid out at its cover size, larger than the
+                      // window, so panning can reach what the wallpaper crops away.
+                      constrained: false,
+                      child: SizedBox(
+                        width: childSize.width,
+                        height: childSize.height,
+                        child: artwork,
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           )
         else
@@ -479,14 +540,22 @@ class _BottomPanel extends StatelessWidget {
                     if (titleText != null)
                       Padding(
                         padding: const EdgeInsets.only(right: 16),
-                        child: Text(
-                          titleText,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                            shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
+                        // The title carries the same actions as "touch to view":
+                        // it is the line users point at when they want to see
+                        // the artwork, so both must behave alike.
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: onViewArtwork,
+                          onLongPress: onOpenWith,
+                          child: Text(
+                            titleText,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                              shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
+                            ),
                           ),
                         ),
                       ),

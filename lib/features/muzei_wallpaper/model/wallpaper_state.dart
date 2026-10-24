@@ -32,6 +32,13 @@ enum WallpaperTarget {
 class WallpaperState with Equatable {
   static const int currentVersion = 1;
 
+  /// How many recently shown artworks are remembered for the empty-slot
+  /// fallback.
+  ///
+  /// Five is enough to survive a run of deletions without turning `state.json`
+  /// into a history log; the entries carry no files, so this costs no disk.
+  static const int maxRecent = 5;
+
   final int version;
   final int generation;
   final String sourceRevision;
@@ -45,6 +52,16 @@ class WallpaperState with Equatable {
   final int next2;
 
   final List<WallpaperSlot> slots;
+
+  /// Artworks the wallpaper has shown, newest first.
+  ///
+  /// Only metadata: the baked paths belong to a slot, and a later bake recycles
+  /// that slot, so a stored path would silently resolve to another artwork.
+  /// When the queue is empty (first run, wallpaper cleared, every slot dropped
+  /// because its photo was deleted), the page uses this to show the last
+  /// artwork that still exists on disk instead of an empty screen.
+  final List<WallpaperArtwork> recent;
+
   final WallpaperEffectsConfig effects;
   final WallpaperGestures gestures;
   final WallpaperTarget target;
@@ -57,6 +74,7 @@ class WallpaperState with Equatable {
     this.next = -1,
     this.next2 = -1,
     this.slots = const [],
+    this.recent = const [],
     this.effects = const WallpaperEffectsConfig(),
     this.gestures = const WallpaperGestures(),
     this.target = WallpaperTarget.homeLock,
@@ -88,6 +106,7 @@ class WallpaperState with Equatable {
     int? next,
     int? next2,
     List<WallpaperSlot>? slots,
+    List<WallpaperArtwork>? recent,
     WallpaperEffectsConfig? effects,
     WallpaperGestures? gestures,
     WallpaperTarget? target,
@@ -99,10 +118,31 @@ class WallpaperState with Equatable {
     next: next ?? this.next,
     next2: next2 ?? this.next2,
     slots: slots ?? this.slots,
+    recent: recent ?? this.recent,
     effects: effects ?? this.effects,
     gestures: gestures ?? this.gestures,
     target: target ?? this.target,
   );
+
+  /// [recent] with [artwork] moved to the front, de-duplicated and capped.
+  ///
+  /// The slot file paths are dropped on purpose: `recent` outlives the slot the
+  /// artwork was baked into.
+  static List<WallpaperArtwork> promoteRecent(List<WallpaperArtwork> recent, WallpaperArtwork? artwork) {
+    if (artwork == null) return recent;
+    final metadata = WallpaperArtwork(
+      entryId: artwork.entryId,
+      uri: artwork.uri,
+      title: artwork.title,
+      byline: artwork.byline,
+      attribution: artwork.attribution,
+      dateMillis: artwork.dateMillis,
+    );
+    return [
+      metadata,
+      ...recent.where((existing) => existing.entryId != metadata.entryId),
+    ].take(maxRecent).toList(growable: false);
+  }
 
   Map<String, Object?> toJsonMap() => {
     'version': version,
@@ -112,6 +152,7 @@ class WallpaperState with Equatable {
     'next': next,
     'next2': next2,
     'slots': slots.map((slot) => slot.toJsonMap()).toList(),
+    'recent': recent.map((artwork) => artwork.toJsonMap()).toList(),
     'effects': effects.toJsonMap(),
     'gestures': gestures.toJsonMap(),
     'target': target.name,
@@ -138,6 +179,20 @@ class WallpaperState with Equatable {
     final current = _int(json['current']);
     final next = _int(json['next']);
     final next2 = _int(json['next2']);
+
+    final recent = <WallpaperArtwork>[];
+    final seenRecent = <int>{};
+    final rawRecent = json['recent'];
+    if (rawRecent is List) {
+      for (final rawArtwork in rawRecent) {
+        if (rawArtwork is! Map || recent.length >= maxRecent) continue;
+        final artwork = WallpaperArtwork.tryFromJsonMap(
+          rawArtwork.map((key, value) => MapEntry(key.toString(), value)),
+        );
+        if (artwork != null && seenRecent.add(artwork.entryId)) recent.add(artwork);
+      }
+    }
+
     return WallpaperState(
       version: version!,
       generation: generation != null && generation >= 0 ? generation : 0,
@@ -146,6 +201,7 @@ class WallpaperState with Equatable {
       next: next != null && next >= -1 ? next : -1,
       next2: next2 != null && next2 >= -1 ? next2 : -1,
       slots: List.unmodifiable(slots),
+      recent: List.unmodifiable(recent),
       effects: WallpaperEffectsConfig.fromJsonMap(_map(json['effects']) ?? const {}),
       gestures: WallpaperGestures.fromJsonMap(_map(json['gestures']) ?? const {}),
       target: WallpaperTarget.tryParse(json['target'] is String ? json['target'] as String : null) ?? WallpaperTarget.homeLock,
@@ -160,7 +216,7 @@ class WallpaperState with Equatable {
   }
 
   @override
-  List<Object?> get props => [version, generation, sourceRevision, current, next, next2, slots, effects, gestures, target];
+  List<Object?> get props => [version, generation, sourceRevision, current, next, next2, slots, recent, effects, gestures, target];
 }
 
 /// Native-owned `runtime.json`.

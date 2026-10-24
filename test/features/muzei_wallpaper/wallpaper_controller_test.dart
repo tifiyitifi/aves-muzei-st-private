@@ -615,6 +615,68 @@ void main() {
       }
     });
   });
+
+  group('recent artworks', () {
+    test('advancing remembers the artwork it promotes, without slot paths', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 4; id++) entry(id: id, dateTaken: id * 10),
+      });
+
+      await controller.init();
+      await controller.idle;
+      final first = controller.current!.artwork.entryId;
+      expect(controller.state.recent.first.entryId, first);
+      expect(controller.state.recent.first.files, WallpaperSlotFiles.empty);
+
+      await controller.advance();
+      await controller.idle;
+      final second = controller.current!.artwork.entryId;
+      expect(second, isNot(first));
+      expect(controller.state.recent.first.entryId, second);
+      expect(controller.state.recent.map((artwork) => artwork.entryId), containsAll([first, second]));
+    });
+
+    test('the fallback skips artworks whose original file is gone', () async {
+      final kept = entry(id: 3, dir: tempDir.path);
+      final deleted = entry(id: 4, dir: tempDir.path);
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 2; id++) entry(id: id, dateTaken: id * 10),
+        kept,
+        deleted,
+      });
+      await File('${tempDir.path}/3.jpg').writeAsBytes([1]);
+
+      await store.writeState(
+        WallpaperState(
+          sourceRevision: prefs.scope.revision,
+          recent: [
+            WallpaperArtwork(entryId: deleted.id, uri: deleted.uri),
+            WallpaperArtwork(entryId: kept.id, uri: kept.uri),
+          ],
+        ),
+      );
+
+      await controller.init();
+      await controller.idle;
+      final fallback = await controller.loadFallbackEntry();
+      expect(fallback?.id, kept.id, reason: 'the newest remembered file that still exists wins');
+    });
+
+    test('the fallback is empty when nothing survived', () async {
+      final deleted = entry(id: 2, dir: tempDir.path);
+      await driftDb.insertEntries({entry(id: 1, dir: tempDir.path), deleted});
+      await store.writeState(
+        WallpaperState(
+          sourceRevision: prefs.scope.revision,
+          recent: [WallpaperArtwork(entryId: deleted.id, uri: deleted.uri)],
+        ),
+      );
+
+      await controller.init();
+      await controller.idle;
+      expect(await controller.loadFallbackEntry(), isNull);
+    });
+  });
 }
 
 class FakeWallpaperBaker extends Fake implements WallpaperBaker {

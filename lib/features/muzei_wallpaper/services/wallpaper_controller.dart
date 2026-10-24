@@ -503,6 +503,9 @@ class WallpaperController extends ChangeNotifier {
     _state = WallpaperState(
       generation: _state.generation + 1,
       sourceRevision: scope.revision,
+      // The history outlives a source change: it is exactly what the page falls
+      // back to when the new source is empty.
+      recent: _state.recent,
       effects: prefs.effects,
       gestures: prefs.gestures,
     );
@@ -665,6 +668,52 @@ class WallpaperController extends ChangeNotifier {
     return repository.entryById(slot.artwork.entryId);
   }
 
+  /// The newest remembered artwork whose original file is still on disk.
+  ///
+  /// Only the page uses it: when the queue is empty (first run, wallpaper
+  /// cleared, every slot dropped because its photo was deleted) Muzei still
+  /// shows the last artwork instead of a black screen. It reads history and
+  /// never writes the wallpaper, so the queue and the native renderer are
+  /// untouched.
+  Future<AvesEntry?> loadFallbackEntry() async {
+    for (final artwork in _state.recent) {
+      final entry = await repository.entryById(artwork.entryId);
+      if (entry == null) continue;
+      if (!await _entryFileExists(entry)) {
+        wallpaperLog.d('fallback skipped, the original file is gone entry=${artwork.entryId}');
+        continue;
+      }
+      return entry;
+    }
+    return null;
+  }
+
+  /// Bakes the sharp and effect images of [entry] in memory, for the fallback
+  /// preview only. Nothing is written to a slot.
+  Future<WallpaperBake?> bakePreview(AvesEntry entry) async {
+    try {
+      return await baker.bake(
+        entry: entry,
+        targetSize: await targetSize(),
+        home: prefs.effects.home,
+        lock: prefs.effects.effectiveLock,
+      );
+    } on WallpaperBakeException catch (error, stack) {
+      wallpaperLog.w('fallback preview bake failed entry=${entry.id}', error, stack);
+      return null;
+    }
+  }
+
+  static Future<bool> _entryFileExists(AvesEntry entry) async {
+    final path = entry.path;
+    if (path == null || path.isEmpty) return false;
+    try {
+      return await File(path).exists();
+    } on FileSystemException {
+      return false;
+    }
+  }
+
   /// Loads one entry by id, so the source editor can label a single choice that
   /// is not the artwork currently on the wallpaper.
   Future<AvesEntry?> loadEntry(int id) => repository.entryById(id);
@@ -685,6 +734,7 @@ class WallpaperController extends ChangeNotifier {
       next: nextId,
       next2: -1,
       slots: [runtimeCurrent, if (runtimeNext != null && nextId >= 0) runtimeNext],
+      recent: WallpaperState.promoteRecent(_state.recent, runtimeCurrent.artwork),
     );
     // Keep the runtime generation: the renderer is already showing this slot,
     // and a prefetch rewrites the state with the next generation.
@@ -730,8 +780,11 @@ class WallpaperController extends ChangeNotifier {
   }
 
   Future<void> _commit(WallpaperState state) async {
-    _state = state;
-    await store.writeState(state);
+    final promoted = state.currentSlot;
+    _state = promoted == null
+        ? state
+        : state.copyWith(recent: WallpaperState.promoteRecent(state.recent, promoted.artwork));
+    await store.writeState(_state);
     // The runtime describes the previous generation; clearing it prevents a
     // stale slot from being adopted before the renderer reloads.
     await store.writeRuntime(WallpaperRuntime.empty);

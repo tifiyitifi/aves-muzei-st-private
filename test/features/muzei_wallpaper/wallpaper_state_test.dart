@@ -99,6 +99,47 @@ void main() {
       expect(decoded.gestures.threeFinger, WallpaperTapAction.nextArtwork);
       expect(decoded.target, WallpaperTarget.homeLock);
     });
+
+    test('recent keeps the newest artworks without their slot paths', () {
+      final first = WallpaperState.promoteRecent(const [], artwork);
+      expect(first.single.entryId, artwork.entryId);
+      expect(first.single.files, WallpaperSlotFiles.empty, reason: 'the slot is recycled by later bakes');
+
+      final second = artwork.copyWith(entryId: 13);
+      var recent = WallpaperState.promoteRecent(first, second);
+      recent = WallpaperState.promoteRecent(recent, artwork);
+      expect(recent.map((artwork) => artwork.entryId), [12, 13], reason: 're-promoting moves to the front');
+    });
+
+    test('recent is capped', () {
+      var recent = <WallpaperArtwork>[];
+      for (var id = 1; id <= 8; id++) {
+        recent = WallpaperState.promoteRecent(recent, artwork.copyWith(entryId: id));
+      }
+      expect(recent, hasLength(WallpaperState.maxRecent));
+      expect(recent.map((artwork) => artwork.entryId), [8, 7, 6, 5, 4]);
+    });
+
+    test('JSON round-trips recent and tolerates its absence', () {
+      const state = WallpaperState(recent: [WallpaperArtwork(entryId: 3, uri: 'content://3')]);
+      final decoded = WallpaperState.fromJsonMap(state.toJsonMap());
+      expect(decoded!.recent.single.entryId, 3);
+
+      expect(WallpaperState.fromJsonMap({'version': 1})!.recent, isEmpty);
+      expect(WallpaperState.fromJsonMap({'version': 1, 'recent': 'bogus'})!.recent, isEmpty);
+      expect(
+        WallpaperState.fromJsonMap({
+          'version': 1,
+          'recent': [
+            {'entryId': 0, 'uri': ''},
+             3,
+            {'entryId': 4, 'uri': 'content://4'},
+            {'entryId': 4, 'uri': 'content://4'},
+          ],
+        })!.recent.map((artwork) => artwork.entryId),
+        [4],
+      );
+    });
   });
 
   group('WallpaperRuntime', () {

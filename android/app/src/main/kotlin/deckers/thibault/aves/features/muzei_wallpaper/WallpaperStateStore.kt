@@ -52,6 +52,7 @@ data class WallpaperFileState(
     val generation: Int,
     val current: Int,
     val next: Int,
+    val next2: Int,
     val slots: Map<Int, WallpaperSlotFiles>,
     val doubleTapAction: String,
     val threeFingerAction: String,
@@ -67,6 +68,20 @@ data class WallpaperFileState(
         val runtimeCurrent = runtime?.takeIf { it.generation == generation }?.current
         if (runtimeCurrent != null) slots[runtimeCurrent]?.let { return it }
         return slots[current]
+    }
+
+    /**
+     * The slot a tap would promote while [slotId] is shown.
+     *
+     * The state is a queue `current -> next -> next2`: a runtime advance only
+     * moves the displayed slot, so the slot after *that* one is the promotable
+     * spare. Deriving it here keeps a reload during a crossfade from dropping
+     * the deeper spare the second tap needs.
+     */
+    fun promotableAfter(slotId: Int): Int = when (slotId) {
+        current -> next
+        next -> next2
+        else -> -1
     }
 }
 
@@ -127,6 +142,8 @@ class WallpaperStateStore(val root: File) {
             generation = json.optInt("generation", 0),
             current = json.optInt("current", -1),
             next = json.optInt("next", -1),
+            // Absent in states written before the two-ahead option existed.
+            next2 = json.optInt("next2", -1),
             slots = slots,
             // Must match `WallpaperGestures`' defaults on the Dart side.
             doubleTapAction = gestures?.optString("doubleTap", "temporaryDisable") ?: "temporaryDisable",

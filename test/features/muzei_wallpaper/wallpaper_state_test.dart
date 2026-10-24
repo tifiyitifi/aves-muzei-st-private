@@ -34,6 +34,7 @@ void main() {
         sourceRevision: 'myPhotos:abc',
         current: 0,
         next: 1,
+        next2: 2,
         slots: [slot],
         effects: WallpaperEffectsConfig(home: WallpaperEffects(blur: 10), link: true),
         gestures: WallpaperGestures(doubleTap: WallpaperTapAction.nextArtwork),
@@ -45,6 +46,27 @@ void main() {
       expect(decoded!.currentSlot?.artwork.entryId, 12);
       expect(decoded.nextSlot, isNull);
       expect(decoded.effects.effectiveLock.blur, 10);
+    });
+
+    test('a state without next2 keeps a single spare', () {
+      final decoded = WallpaperState.fromJsonMap({
+        'version': 1,
+        'generation': 1,
+        'current': 0,
+        'next': 1,
+        'slots': [
+          {'id': 0, 'entryId': 12, 'uri': artwork.uri},
+          {'id': 1, 'entryId': 13, 'uri': artwork.uri},
+        ],
+      });
+      expect(decoded!.next2, -1, reason: 'states written before the option existed still parse');
+      expect(decoded.queue, [0, 1]);
+    });
+
+    test('an invalid next2 is ignored', () {
+      final decoded = WallpaperState.fromJsonMap({'version': 1, 'next2': -4});
+      expect(decoded!.next2, -1);
+      expect(WallpaperState.fromJsonMap({'version': 1, 'next2': 'x'})!.next2, -1);
     });
 
     test('missing/unknown version is rejected', () {

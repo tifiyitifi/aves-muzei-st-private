@@ -109,7 +109,7 @@ Future<void> _refill({required bool advance}) async {
     await controller.idle;
     wallpaperLog.i(
       'refill.entry done advance=$advance generation=${controller.state.generation} '
-      'current=${controller.state.current} next=${controller.state.next}',
+      'current=${controller.state.current} next=${controller.state.next} next2=${controller.state.next2}',
     );
   } catch (error, stack) {
     wallpaperLog.e('refill.entry failed advance=$advance', error, stack);

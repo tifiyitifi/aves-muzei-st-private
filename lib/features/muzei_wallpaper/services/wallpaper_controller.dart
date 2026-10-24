@@ -7,6 +7,7 @@ import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart'
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_bake.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_prefetch_setting.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
@@ -33,20 +34,25 @@ class WallpaperController extends ChangeNotifier {
   /// the wallpaper to itself.
   static const int maxBakeAttempts = 5;
 
-  /// Fixed slot ids. Two slots are enough: the renderer shows `current`, the
-  /// controller bakes `next`, and an advance promotes `next` without waiting for
-  /// a decode.
+  /// Fixed slot ids. The queue is `current` → `next` → `next2`: the renderer
+  /// shows `current`, and a tap promotes the baked slots without waiting for a
+  /// decode.
   ///
   /// Unlike Muzei, which blurs at draw time and can advance instantly, this port
-  /// has to bake ahead, so a tap can outrun the refill. Two mitigations keep the
-  /// gesture honest without deepening the queue: the renderer buffers the taps
-  /// (`AdvanceRequestQueue`) and this controller refills the freed slot right
-  /// away, including from a headless background run. Baking two artworks ahead
-  /// was considered and dropped: it would change the `state.json` /
-  /// `runtime.json` contract from one `next` slot to a queue, double the baked
-  /// disk footprint, and only save the wait on the first extra tap.
+  /// has to bake ahead, so a tap can outrun the refill. One artwork ahead keeps
+  /// every tap honest but the second one waits for a bake; the
+  /// `muzei_wallpaper_prefetch_ahead` setting (Meta Settings, default on) adds
+  /// the [thirdSlotId] slot so the first two taps are instant, at the cost of
+  /// one more baked artwork on disk and in every effect rebake. The renderer
+  /// buffers taps beyond that (`AdvanceRequestQueue`) and this controller
+  /// refills the freed slots right away, including from a headless background
+  /// run.
   static const int firstSlotId = 0;
   static const int secondSlotId = 1;
+  static const int thirdSlotId = 2;
+
+  /// All slot ids, deepest last.
+  static const List<int> slotIds = [firstSlotId, secondSlotId, thirdSlotId];
 
   final WallpaperPrefs prefs;
   final WallpaperSourceRepository repository;
@@ -54,6 +60,10 @@ class WallpaperController extends ChangeNotifier {
   final WallpaperStateStore store;
   final WallpaperBridge? bridge;
   final Future<Size> Function() targetSize;
+
+  /// Reads the two-ahead opt-in. Injected so tests can drive the queue depth
+  /// without touching the app settings store.
+  final bool Function() prefetchAhead;
 
   WallpaperState _state = const WallpaperState();
   WallpaperSourceResolution? _resolution;
@@ -77,13 +87,17 @@ class WallpaperController extends ChangeNotifier {
     required this.store,
     this.bridge,
     Future<Size> Function()? targetSize,
-  }) : targetSize = targetSize ?? _defaultTargetSize;
+    bool Function()? prefetchAhead,
+  }) : prefetchAhead = prefetchAhead ?? _readPrefetchSetting,
+       targetSize = targetSize ?? _defaultTargetSize;
 
   WallpaperState get state => _state;
 
   WallpaperSlot? get current => _state.currentSlot;
 
   WallpaperSlot? get next => _state.nextSlot;
+
+  WallpaperSlot? get next2 => _state.next2Slot;
 
   WallpaperSourceResolution? get resolution => _resolution;
 
@@ -177,6 +191,8 @@ class WallpaperController extends ChangeNotifier {
     // lose it, so reconcile it whenever the page opens.
     unawaited(_scheduleAutoAdvance());
 
+    await _applyPrefetchDepth();
+
     if (_state.currentSlot == null) {
       await advance();
     } else {
@@ -186,7 +202,8 @@ class WallpaperController extends ChangeNotifier {
 
     wallpaperLog.i(
       'controller.init generation=${_state.generation} current=${_state.current} '
-      'next=${_state.next} status=${_resolution?.status.name}',
+      'next=${_state.next} next2=${_state.next2} depth=$_prefetchDepth '
+      'status=${_resolution?.status.name}',
     );
   }
 
@@ -241,18 +258,23 @@ class WallpaperController extends ChangeNotifier {
 
           final next = _state.nextSlot;
           if (next != null && _state.sourceRevision == scope.revision) {
+            // Shift the queue: the deeper spare becomes promotable, and the slot
+            // the old current occupied is freed for the refill.
+            final deeper = _state.next2Slot;
+            final keep = deeper != null && deeper.id != next.id ? deeper : null;
             await _commit(
               _state.copyWith(
                 generation: _state.generation + 1,
                 current: next.id,
-                next: -1,
-                slots: [next],
+                next: keep?.id ?? -1,
+                next2: -1,
+                slots: [next, ?keep],
                 sourceRevision: scope.revision,
                 effects: prefs.effects,
                 gestures: prefs.gestures,
               ),
             );
-            wallpaperLog.i('advance.promote slot=${next.id} entry=${next.artwork.entryId}');
+            wallpaperLog.i('advance.promote slot=${next.id} entry=${next.artwork.entryId} next=${keep?.id ?? -1}');
             prefetchAfter = true;
             return;
           }
@@ -279,6 +301,7 @@ class WallpaperController extends ChangeNotifier {
                 generation: _state.generation + 1,
                 current: slot.id,
                 next: -1,
+                next2: -1,
                 slots: [slot],
                 sourceRevision: scope.revision,
                 effects: prefs.effects,
@@ -325,39 +348,80 @@ class WallpaperController extends ChangeNotifier {
         // Adopt whatever the background refill committed before deciding that
         // a slot is still free to bake.
         await _refreshFromDisk();
-        final current = _state.currentSlot;
-        if (current == null || _state.nextSlot != null) return;
+        if (_state.currentSlot == null) return;
         final resolution = _resolution ?? await repository.resolve(scope);
         if (!resolution.isReady) return;
-        final slotId = _freeSlotId(requireCurrent: true);
-        if (slotId == null) return;
-        final generation = _state.generation;
-        final revision = _state.sourceRevision;
 
-        final slot = await _bakeSlot(scope, resolution, slotId);
-        // The state may have moved on while decoding (scope change, another
-        // advance). Writing then would resurrect a stale artwork.
-        if (slot == null ||
-            _state.generation != generation ||
-            _state.sourceRevision != revision ||
-            _state.currentSlot?.id != current.id ||
-            _state.nextSlot != null) {
-          return;
+        // Fill the queue in promotion order: `next` first, then the deeper
+        // spare, so a half-finished prefetch still leaves the next tap served.
+        //
+        // A tap can land while a spare is encoding: the renderer promotes the
+        // deeper slot and records it in `runtime.json` without touching the
+        // state, so the bake re-reads the runtime before committing and adopts
+        // it. Otherwise the commit would rewind the wallpaper to the artwork the
+        // previous tap promoted.
+        var aborted = 0;
+        while (!_disposed) {
+          final missing = _missingSlotId();
+          if (missing == null) return;
+          final revision = _state.sourceRevision;
+
+          final slot = await _bakeSlot(scope, resolution, missing);
+          if (slot == null) return;
+          if (_state.sourceRevision != revision || _state.currentSlot == null) return;
+          await _adoptRuntime(await store.readRuntime());
+
+          final fillNext = _state.nextSlot == null;
+          if (!fillNext && _state.next2Slot != null) {
+            // The queue filled up while this bake ran; the baked files stay in
+            // the slot and are overwritten by the next bake into it.
+            if (++aborted >= maxBakeAttempts) return;
+            continue;
+          }
+          aborted = 0;
+          await _commit(
+            _state.copyWith(
+              generation: _state.generation + 1,
+              next: fillNext ? slot.id : _state.next,
+              next2: fillNext ? _state.next2 : slot.id,
+              slots: _withSlot(slot),
+              sourceRevision: scope.revision,
+              effects: prefs.effects,
+              gestures: prefs.gestures,
+            ),
+          );
+          wallpaperLog.i('prefetch.done slot=${slot.id} level=${fillNext ? 1 : 2} entry=${slot.artwork.entryId}');
         }
-        await _commit(
-          _state.copyWith(
-            generation: _state.generation + 1,
-            next: slot.id,
-            slots: _withSlot(slot),
-            sourceRevision: scope.revision,
-            effects: prefs.effects,
-            gestures: prefs.gestures,
-          ),
-        );
-        wallpaperLog.i('prefetch.done slot=${slot.id} entry=${slot.artwork.entryId}');
       });
     } catch (error, stack) {
       wallpaperLog.w('prefetch failed', error, stack);
+    }
+  }
+
+  /// Drops the deeper slot when the two-ahead option is off.
+  ///
+  /// The flag is read when the controller starts, so turning it off must not
+  /// leave a `next2` the renderer would still promote from deleted files. It is
+  /// a no-op while the option stays on.
+  Future<void> _applyPrefetchDepth() async {
+    if (_prefetchDepth > 1) return;
+    try {
+      await store.runExclusive(() async {
+        await _refreshFromDisk();
+        final spare = _state.next2Slot;
+        if (spare == null) return;
+        await store.deleteSlot(spare.id);
+        await _commit(
+          _state.copyWith(
+            generation: _state.generation + 1,
+            next2: -1,
+            slots: _state.slots.where((slot) => slot.id != spare.id).toList(),
+          ),
+        );
+        wallpaperLog.i('prefetch.depth spare dropped slot=${spare.id}');
+      });
+    } catch (error, stack) {
+      wallpaperLog.w('failed to drop the spare slot', error, stack);
     }
   }
 
@@ -572,7 +636,7 @@ class WallpaperController extends ChangeNotifier {
     await store.runExclusive(() async {
       await _refreshFromDisk();
       await _adoptRuntime(await store.readRuntime());
-      prefetchAfter = _state.currentSlot != null && _state.nextSlot == null;
+      prefetchAfter = _state.currentSlot != null && _missingSlotId() != null;
     });
     await refreshServiceActive();
     if (prefetchAfter) unawaited(prefetch());
@@ -591,7 +655,7 @@ class WallpaperController extends ChangeNotifier {
     // is cosmetic here.
     _cursor = prefs.currentIndex + 1;
     await _adoptRuntime(await store.readRuntime());
-    wallpaperLog.i('state.reload generation=${_state.generation} current=${_state.current} next=${_state.next}');
+    wallpaperLog.i('state.reload generation=${_state.generation} current=${_state.current} next=${_state.next} next2=${_state.next2}');
     _notify();
   }
 
@@ -610,11 +674,17 @@ class WallpaperController extends ChangeNotifier {
     final runtimeCurrent = _state.slotById(runtime.current);
     if (runtimeCurrent == null) return;
     final runtimeNext = _state.slotById(runtime.next);
-    if (runtimeCurrent.id == _state.current && (runtimeNext?.id ?? -1) == _state.next) return;
+    final nextId = runtimeNext != null && runtimeNext.id != runtimeCurrent.id ? runtimeNext.id : -1;
+    // Nothing advanced: the deeper spare must survive, and the runtime cannot
+    // describe it (it only carries one promotable slot).
+    if (runtimeCurrent.id == _state.current && nextId == _state.next) return;
+    // A runtime promotion consumes the deeper spare it moved past; the refill
+    // rebuilds the queue from here.
     _state = _state.copyWith(
       current: runtimeCurrent.id,
-      next: runtimeNext != null && runtimeNext.id != runtimeCurrent.id ? runtimeNext.id : -1,
-      slots: [runtimeCurrent, if (runtimeNext != null && runtimeNext.id != runtimeCurrent.id) runtimeNext],
+      next: nextId,
+      next2: -1,
+      slots: [runtimeCurrent, if (runtimeNext != null && nextId >= 0) runtimeNext],
     );
     // Keep the runtime generation: the renderer is already showing this slot,
     // and a prefetch rewrites the state with the next generation.
@@ -624,22 +694,17 @@ class WallpaperController extends ChangeNotifier {
   }
 
   Future<void> _validateSlots() async {
-    final current = _state.currentSlot;
-    if (current != null && await repository.entryById(current.artwork.entryId) == null) {
-      wallpaperLog.w('current entry is gone id=${current.artwork.entryId}');
-      await store.deleteSlot(current.id);
+    for (final id in _state.queue.toSet()) {
+      final slot = _state.slotById(id);
+      if (slot == null) continue;
+      if (await repository.entryById(slot.artwork.entryId) != null) continue;
+      wallpaperLog.w('slot entry is gone id=${slot.artwork.entryId} slot=$id');
+      await store.deleteSlot(id);
       _state = _state.copyWith(
-        current: -1,
-        slots: _state.slots.where((slot) => slot.id != current.id).toList(),
-      );
-    }
-    final next = _state.nextSlot;
-    if (next != null && await repository.entryById(next.artwork.entryId) == null) {
-      wallpaperLog.w('next entry is gone id=${next.artwork.entryId}');
-      await store.deleteSlot(next.id);
-      _state = _state.copyWith(
-        next: -1,
-        slots: _state.slots.where((slot) => slot.id != next.id).toList(),
+        current: _state.current == id ? -1 : _state.current,
+        next: _state.next == id ? -1 : _state.next,
+        next2: _state.next2 == id ? -1 : _state.next2,
+        slots: _state.slots.where((existing) => existing.id != id).toList(),
       );
     }
   }
@@ -654,6 +719,7 @@ class WallpaperController extends ChangeNotifier {
         generation: _state.generation + 1,
         current: current?.id ?? -1,
         next: -1,
+        next2: -1,
         slots: current != null ? [current] : <WallpaperSlot>[],
         sourceRevision: scope.revision,
         effects: prefs.effects,
@@ -682,15 +748,37 @@ class WallpaperController extends ChangeNotifier {
   }
 
   Future<void> _discardSlots() async {
-    for (final slot in _state.slots) {
-      await store.deleteSlot(slot.id);
+    // Every fixed id, not just the referenced ones: a slot left behind by a
+    // deeper prefetch would otherwise never be reused after the option is
+    // turned off.
+    for (final id in slotIds) {
+      await store.deleteSlot(id);
     }
   }
 
-  int? _freeSlotId({required bool requireCurrent}) {
-    final current = _state.currentSlot;
-    if (current == null) return requireCurrent ? null : firstSlotId;
-    return current.id == firstSlotId ? secondSlotId : firstSlotId;
+  /// How many artworks to keep baked ahead of [current].
+  int get _prefetchDepth => prefetchAhead() ? 2 : 1;
+
+  /// The free slot to bake for the next queue level, or null when the queue is
+  /// already as deep as the setting allows.
+  int? _missingSlotId() {
+    if (_state.currentSlot == null) return null;
+    if (_state.nextSlot == null) return _freeSlotId();
+    if (_prefetchDepth >= 2 && _state.next2Slot == null) return _freeSlotId();
+    return null;
+  }
+
+  /// The smallest slot id the queue does not reference.
+  ///
+  /// The browsable ids follow the prefetch depth, so turning the deeper queue
+  /// off keeps reusing the original two slots.
+  int? _freeSlotId({bool requireCurrent = false}) {
+    if (requireCurrent && _state.currentSlot == null) return null;
+    final used = {_state.current, _state.next, _state.next2};
+    for (var id = firstSlotId; id <= _prefetchDepth; id++) {
+      if (!used.contains(id)) return id;
+    }
+    return null;
   }
 
   List<WallpaperSlot> _withSlot(WallpaperSlot slot) {
@@ -700,6 +788,9 @@ class WallpaperController extends ChangeNotifier {
   }
 
   static int _normalize(int value, int total) => total <= 0 ? 0 : ((value % total) + total) % total;
+
+  /// The production reader for the two-ahead opt-in; tests inject their own.
+  static bool _readPrefetchSetting() => WallpaperPrefetchSetting.enabled;
 
   static String? _byline(AvesEntry entry) {
     final directory = entry.directory;

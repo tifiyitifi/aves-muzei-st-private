@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Map: action to copy center to clipboard from coordinate filter
 - Urdu translation (thanks Bouzid Zeroug, Feliks-WR)
 - Muzei wallpaper: background refill and auto-advance while the app is closed
+- Muzei wallpaper: option to prepare two artworks ahead, making the first two taps instant
 
 ## <a id="v1.15.5"></a>[v1.15.5] - 2026-10-02
 

@@ -40,12 +40,13 @@ Apache-2.0 headers. See the repository root `LICENSE` for Aves's own license.
   writes the new slot to `runtime.json`; while the generations match, the
   renderer (and the next Dart adoption) treat the runtime as the current slot,
   so an advance survives without Flutter running.
-- Flutter bakes exactly one artwork ahead, so a tap burst outruns the refill.
-  The renderer buffers those taps (`AdvanceRequestQueue`) and replays them one
-  per prefetch instead of dropping them, keeping Muzei's "every double tap
-  advances" behaviour. While the app process is alive it is also notified over
-  the channel (`advanceRequested`) so the refill starts immediately rather than
-  on the next page resume.
+- Flutter normally bakes one artwork ahead, so a tap burst outruns the refill. The
+  two-ahead option (Meta Settings → Advanced, on by default) keeps a second
+  spare so the first two taps are instant; after that the renderer still buffers
+  taps (`AdvanceRequestQueue`) and replays them one per prefetch instead of
+  dropping them, keeping Muzei's "every double tap advances" behaviour. While the
+  app process is alive it is also notified over the channel (`advanceRequested`)
+  so the refill starts immediately rather than on the next page resume.
 - When no app engine is attached, the notification enqueues
   `WallpaperRefillWorker` instead: it boots a short-lived Flutter engine, runs
   `entry/refill_entry.dart` (adopt the promoted slot, bake the next one) and
@@ -76,8 +77,11 @@ Apache-2.0 headers. See the repository root `LICENSE` for Aves's own license.
   save one encode/decode per effect image, but the sharp PNG dominates the
   refill, and identity effects are byte-identical to it anyway; equal-sized
   PNGs also keep the "preview and desktop read the same file" contract simple.
-- Prefetch depth stays at one artwork. A deeper queue would make the first
-  extra tap instant, but it turns `state.json` / `runtime.json` from one `next`
-  slot into a queue, doubles the baked disk footprint and multiplies the
-  cross-process consistency cases. Buffering the taps (plus the background
-  refill) already preserves "every double tap advances"; only the wait remains.
+- Prefetch depth is a user choice. Two baked artworks (the default) keep the
+  first two taps instant and cost one extra slot: roughly 13 MB of PNGs on a
+  1080p phone, plus a third artwork in every effect rebake. Turning the option
+  off drops the spare and its files, restoring the original two-slot contract.
+  Going deeper than two is not offered: each level costs another slot and another
+  +50% on every effect change, while only buying one more instant tap. The
+  background refill still means a tap beyond the queue waits for a bake (~2 s in
+  a profile build) instead of being lost.

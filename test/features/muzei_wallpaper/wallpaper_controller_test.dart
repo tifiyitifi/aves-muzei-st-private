@@ -9,6 +9,7 @@ import 'package:aves/features/muzei_wallpaper/model/wallpaper_artwork.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_bake.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_prefetch_setting.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
@@ -22,6 +23,7 @@ import 'package:aves/features/muzei_wallpaper/services/wallpaper_state_store.dar
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/vaults/vaults.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:drift/native.dart';
@@ -73,6 +75,8 @@ void main() {
     store = WallpaperStateStore(tempDir);
     baker = FakeWallpaperBaker();
     bridge = FakeWallpaperBridge();
+    // The shared tests pin the original single-spare contract; the two-ahead
+    // queue and the setting that enables it have their own tests below.
     controller = WallpaperController(
       prefs: prefs,
       repository: WallpaperSourceRepository(database: driftDb, random: Random(7)),
@@ -80,6 +84,7 @@ void main() {
       store: store,
       bridge: bridge,
       targetSize: () async => const Size(100, 100),
+      prefetchAhead: () => false,
     );
   });
 
@@ -125,6 +130,7 @@ void main() {
     required WallpaperBaker baker,
     required WallpaperBridge bridge,
     required WallpaperStateStore store,
+    bool Function()? prefetchAhead,
   }) => WallpaperController(
     prefs: prefs,
     repository: WallpaperSourceRepository(database: driftDb, random: Random(7)),
@@ -132,6 +138,7 @@ void main() {
     store: store,
     bridge: bridge,
     targetSize: () async => const Size(100, 100),
+    prefetchAhead: prefetchAhead ?? () => false,
   );
 
   test('init bakes the newest entry, writes state and prefetches the next', () async {
@@ -397,6 +404,217 @@ void main() {
     expect(controller.resolution?.status, WallpaperSourceStatus.missing);
     expect(await store.slotFile(0, WallpaperSlotFiles.sharpName).exists(), isFalse);
   });
+
+  group('two-ahead prefetch', () {
+    test('bakes a spare for each of the first two taps', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 6; id++) entry(id: id, dateTaken: id * 10),
+      });
+      final deep = controllerWith(baker: baker, bridge: bridge, store: store, prefetchAhead: () => true);
+      addTearDown(deep.dispose);
+
+      await deep.init();
+      await deep.idle;
+
+      expect(deep.current, isNotNull);
+      expect(deep.next, isNotNull, reason: 'the first spare serves the first tap');
+      expect(deep.next2, isNotNull, reason: 'the second spare serves the second tap');
+      expect({deep.current!.id, deep.next!.id, deep.next2!.id}, hasLength(3));
+
+      final state = (await store.readState())!;
+      expect(state.current, deep.current!.id);
+      expect(state.next, deep.next!.id);
+      expect(state.next2, deep.next2!.id);
+      expect(state.slots, hasLength(3));
+      for (final id in WallpaperController.slotIds) {
+        expect(await store.slotFile(id, WallpaperSlotFiles.sharpName).exists(), isTrue, reason: 'slot $id is baked');
+      }
+    });
+
+    test('keeps a single spare when the option is off', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 6; id++) entry(id: id, dateTaken: id * 10),
+      });
+
+      await controller.init();
+      await controller.idle;
+
+      expect(controller.next, isNotNull);
+      expect(controller.next2, isNull);
+      expect((await store.readState())!.next2, -1);
+      expect(await store.slotDirectory(WallpaperController.thirdSlotId).exists(), isFalse);
+    });
+
+    test('a native promotion keeps the deeper spare promotable', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 6; id++) entry(id: id, dateTaken: id * 10),
+      });
+      final deep = controllerWith(baker: baker, bridge: bridge, store: store, prefetchAhead: () => true);
+      addTearDown(deep.dispose);
+      await deep.init();
+      await deep.idle;
+
+      final before = (await store.readState())!;
+      final promoted = deep.next!;
+      final spare = deep.next2!;
+      // The renderer promotes `next` and keeps the deeper spare promotable.
+      await store.writeRuntime(
+        WallpaperRuntime(
+          generation: before.generation,
+          current: promoted.id,
+          next: spare.id,
+          refillRequested: true,
+        ),
+      );
+
+      await deep.syncRuntime();
+
+      expect(deep.current?.id, promoted.id);
+      expect(deep.next?.id, spare.id, reason: 'the second tap must not wait for a bake');
+
+      await deep.idle;
+      expect(deep.next2, isNotNull, reason: 'the freed slot is baked again');
+      expect({deep.current!.id, deep.next!.id, deep.next2!.id}, hasLength(3));
+    });
+
+    test('consuming the deepest spare refills both levels', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 6; id++) entry(id: id, dateTaken: id * 10),
+      });
+      final deep = controllerWith(baker: baker, bridge: bridge, store: store, prefetchAhead: () => true);
+      addTearDown(deep.dispose);
+      await deep.init();
+      await deep.idle;
+
+      final before = (await store.readState())!;
+      final deepest = deep.next2!;
+      await store.writeRuntime(
+        WallpaperRuntime(generation: before.generation, current: deepest.id, next: -1, refillRequested: true),
+      );
+
+      await deep.syncRuntime();
+
+      expect(deep.current?.id, deepest.id);
+      expect(deep.state.next, -1);
+
+      await deep.idle;
+      expect(deep.next, isNotNull);
+      expect(deep.next2, isNotNull);
+      expect({deep.current!.id, deep.next!.id, deep.next2!.id}, hasLength(3));
+    });
+
+    test('a prefetch that loses a race to an advance still fills the queue', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 8; id++) entry(id: id, dateTaken: id * 10),
+      });
+      final deep = controllerWith(baker: baker, bridge: bridge, store: store, prefetchAhead: () => true);
+      addTearDown(deep.dispose);
+      await deep.init();
+      await deep.idle;
+
+      final before = (await store.readState())!;
+      final firstPromoted = deep.next!;
+      final secondPromoted = deep.next2!;
+      // The renderer promoted the first spare; adopting it leaves the queue one
+      // level short, so the refill is about to bake the freed slot.
+      // An advance landing during that bake must not leave a hole.
+      baker.fireOnBakeCall = baker.bakeCalls + 1;
+      baker.onBake = deep.advance;
+      await store.writeRuntime(
+        WallpaperRuntime(
+          generation: before.generation,
+          current: firstPromoted.id,
+          next: secondPromoted.id,
+          refillRequested: true,
+        ),
+      );
+
+      await deep.syncRuntime();
+      await deep.idle;
+
+      expect(deep.current?.id, secondPromoted.id, reason: 'the racing advance won');
+      expect(deep.next, isNotNull);
+      expect(deep.next2, isNotNull);
+      expect({deep.current!.id, deep.next!.id, deep.next2!.id}, hasLength(3), reason: 'the aborted bake is retried, not dropped');
+    });
+
+    test('a tap promoted during a bake is not rewound by the commit', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 8; id++) entry(id: id, dateTaken: id * 10),
+      });
+      final deep = controllerWith(baker: baker, bridge: bridge, store: store, prefetchAhead: () => true);
+      addTearDown(deep.dispose);
+      await deep.init();
+      await deep.idle;
+
+      final before = (await store.readState())!;
+      final firstPromoted = deep.next!;
+      final secondPromoted = deep.next2!;
+      // Tap 1: the renderer promoted the first spare and notified the page.
+      await store.writeRuntime(
+        WallpaperRuntime(
+          generation: before.generation,
+          current: firstPromoted.id,
+          next: secondPromoted.id,
+          refillRequested: true,
+        ),
+      );
+      // Tap 2 lands while the refill is baking the freed slot.
+      baker.fireOnBakeCall = baker.bakeCalls + 1;
+      baker.onBake = () async {
+        await store.writeRuntime(
+          WallpaperRuntime(
+            generation: before.generation,
+            current: secondPromoted.id,
+            next: -1,
+            refillRequested: true,
+          ),
+        );
+      };
+
+      await deep.syncRuntime();
+      await deep.idle;
+
+      expect(deep.current?.id, secondPromoted.id, reason: 'the bake adopts the newer runtime instead of rewinding to the first promotion');
+      expect(deep.state.next, isNotNull);
+      expect(deep.next2, isNotNull);
+      expect(deep.state.slots.map((slot) => slot.id), contains(secondPromoted.id));
+    });
+
+    test('the app setting decides the depth and defaults to on', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 6; id++) entry(id: id, dateTaken: id * 10),
+      });
+      WallpaperController production() => WallpaperController(
+        prefs: prefs,
+        repository: WallpaperSourceRepository(database: driftDb, random: Random(7)),
+        baker: baker,
+        store: store,
+        bridge: bridge,
+        targetSize: () async => const Size(100, 100),
+      );
+
+      final defaults = production();
+      try {
+        await defaults.init();
+        await defaults.idle;
+        expect(defaults.next2, isNotNull, reason: 'the option is on by default');
+      } finally {
+        defaults.dispose();
+      }
+
+      settings.set(WallpaperPrefetchSetting.key, false);
+      final off = production();
+      try {
+        await off.init();
+        await off.idle;
+        expect(off.state.next2, -1);
+        expect(off.state.slots, hasLength(2), reason: 'the deeper slot is dropped when the option is off');
+      } finally {
+        off.dispose();
+      }
+    });
+  });
 }
 
 class FakeWallpaperBaker extends Fake implements WallpaperBaker {
@@ -405,6 +623,12 @@ class FakeWallpaperBaker extends Fake implements WallpaperBaker {
   final List<int> effectsHomeBlur = [];
   int bakeCalls = 0;
   int effectsCalls = 0;
+
+  /// Fires [onBake] once, on the bake call with this 1-based number.
+  ///
+  /// Lets a test land a state change while a bake is in flight.
+  int? fireOnBakeCall;
+  Future<void> Function()? onBake;
 
   @override
   Future<WallpaperBake> bake({
@@ -415,6 +639,10 @@ class FakeWallpaperBaker extends Fake implements WallpaperBaker {
   }) async {
     bakeCalls++;
     attemptedEntryIds.add(entry.id);
+    if (bakeCalls == fireOnBakeCall) {
+      fireOnBakeCall = null;
+      await onBake?.call();
+    }
     if (failingEntryIds.contains(entry.id)) {
       throw WallpaperBakeException('test bake failure for ${entry.id}');
     }

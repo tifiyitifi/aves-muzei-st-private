@@ -24,6 +24,10 @@ enum WallpaperTarget {
 /// renderer. Only Dart writes it; the native side writes [WallpaperRuntime]
 /// instead. Keep parsing tolerant so a partially written file can never crash
 /// the wallpaper service.
+///
+/// [current] → [next] → [next2] is the promotion queue. The native renderer
+/// promotes [next] on a wallpaper tap and [next2] on the following one, so two
+/// consecutive taps need no bake; Dart refills the freed slots afterwards.
 @immutable
 class WallpaperState with Equatable {
   static const int currentVersion = 1;
@@ -33,6 +37,13 @@ class WallpaperState with Equatable {
   final String sourceRevision;
   final int current;
   final int next;
+
+  /// The second artwork baked ahead, promotable after [next].
+  ///
+  /// `-1` when only one artwork is prefetched (the default before the
+  /// two-ahead option existed) or when the deeper bake has not finished yet.
+  final int next2;
+
   final List<WallpaperSlot> slots;
   final WallpaperEffectsConfig effects;
   final WallpaperGestures gestures;
@@ -44,6 +55,7 @@ class WallpaperState with Equatable {
     this.sourceRevision = '',
     this.current = -1,
     this.next = -1,
+    this.next2 = -1,
     this.slots = const [],
     this.effects = const WallpaperEffectsConfig(),
     this.gestures = const WallpaperGestures(),
@@ -61,6 +73,11 @@ class WallpaperState with Equatable {
 
   WallpaperSlot? get nextSlot => slotById(next);
 
+  WallpaperSlot? get next2Slot => slotById(next2);
+
+  /// The slots baked ahead of [current], in promotion order.
+  List<int> get queue => [current, next, next2].where((id) => id >= 0).toList();
+
   bool get hasCurrent => currentSlot != null;
 
   WallpaperState copyWith({
@@ -69,6 +86,7 @@ class WallpaperState with Equatable {
     String? sourceRevision,
     int? current,
     int? next,
+    int? next2,
     List<WallpaperSlot>? slots,
     WallpaperEffectsConfig? effects,
     WallpaperGestures? gestures,
@@ -79,6 +97,7 @@ class WallpaperState with Equatable {
     sourceRevision: sourceRevision ?? this.sourceRevision,
     current: current ?? this.current,
     next: next ?? this.next,
+    next2: next2 ?? this.next2,
     slots: slots ?? this.slots,
     effects: effects ?? this.effects,
     gestures: gestures ?? this.gestures,
@@ -91,6 +110,7 @@ class WallpaperState with Equatable {
     'sourceRevision': sourceRevision,
     'current': current,
     'next': next,
+    'next2': next2,
     'slots': slots.map((slot) => slot.toJsonMap()).toList(),
     'effects': effects.toJsonMap(),
     'gestures': gestures.toJsonMap(),
@@ -117,12 +137,14 @@ class WallpaperState with Equatable {
     final generation = _int(json['generation']);
     final current = _int(json['current']);
     final next = _int(json['next']);
+    final next2 = _int(json['next2']);
     return WallpaperState(
       version: version!,
       generation: generation != null && generation >= 0 ? generation : 0,
       sourceRevision: json['sourceRevision'] is String ? json['sourceRevision'] as String : '',
       current: current != null && current >= -1 ? current : -1,
       next: next != null && next >= -1 ? next : -1,
+      next2: next2 != null && next2 >= -1 ? next2 : -1,
       slots: List.unmodifiable(slots),
       effects: WallpaperEffectsConfig.fromJsonMap(_map(json['effects']) ?? const {}),
       gestures: WallpaperGestures.fromJsonMap(_map(json['gestures']) ?? const {}),
@@ -138,7 +160,7 @@ class WallpaperState with Equatable {
   }
 
   @override
-  List<Object?> get props => [version, generation, sourceRevision, current, next, slots, effects, gestures, target];
+  List<Object?> get props => [version, generation, sourceRevision, current, next, next2, slots, effects, gestures, target];
 }
 
 /// Native-owned `runtime.json`.

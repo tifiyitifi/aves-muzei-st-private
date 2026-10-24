@@ -674,16 +674,18 @@ class WallpaperRenderer(
             doubleTapBinding = state.doubleTapAction
             threeFingerBinding = state.threeFingerAction
             val frame = decodeFrame(state, target.next, immediate = false, refillRequested = true) ?: return null
-            val nextSlot = target.next
+            // The promotion is persisted before the crossfade so a reload cannot
+            // fall back to the old artwork. `frame.next` carries the deeper spare
+            // so the second tap is served without waiting for Flutter.
             store.writeRuntime(
                 WallpaperRuntime(
                     generation = state.generation,
-                    current = nextSlot.id,
-                    next = -1,
+                    current = frame.current,
+                    next = frame.next,
                     refillRequested = true,
                 ),
             )
-            Log.d(TAG, "advance.promote generation=${state.generation} slot=${nextSlot.id}")
+            Log.d(TAG, "advance.promote generation=${state.generation} slot=${target.next.id} next=${frame.next}")
             // Ask the running app to adopt this slot and bake the next one; the
             // wallpaper already shows the artwork, so the refill is invisible.
             WallpaperAppBridge.notifyAdvanced(context)
@@ -702,9 +704,12 @@ class WallpaperRenderer(
         val state = store.readState() ?: return null
         val runtime = store.readRuntime()
         val currentSlot = state.displaySlot(runtime) ?: return null
-        // The runtime is the authority between Dart writes: after an advance its
-        // `next` is -1, so no tap can be promoted until Dart refills.
-        val nextId = runtime?.takeIf { it.generation == state.generation }?.next ?: state.next
+        // The runtime is the authority between Dart writes: it records which
+        // slot is displayed and which spare is promotable, so a second tap can
+        // use the deeper slot. Without a matching runtime (Dart just committed a
+        // new state) the state queue is authoritative.
+        val runtimeNext = runtime?.takeIf { it.generation == state.generation }?.next
+        val nextId = runtimeNext ?: state.next
         val nextSlot = if (nextId >= 0) state.slots[nextId] else null
         if (nextSlot == null || nextSlot.id == currentSlot.id) return null
         return AdvanceTarget(state, nextSlot)
@@ -736,9 +741,10 @@ class WallpaperRenderer(
         return LoadedFrame(
             generation = state.generation,
             current = slot.id,
-            // A slot promoted by the runtime is the current one even though the
-            // state still lists the old artwork as current.
-            next = if (slot.id == state.current) state.next else -1,
+            // The queue position after this slot: a slot promoted by the runtime
+            // is the current one even though the state still lists the old
+            // artwork as current, and the deeper spare stays promotable.
+            next = state.promotableAfter(slot.id),
             sharp = sharp,
             effect = effect,
             identity = identity,

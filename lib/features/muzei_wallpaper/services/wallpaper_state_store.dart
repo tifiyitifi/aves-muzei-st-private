@@ -154,7 +154,7 @@ class WallpaperStateStore {
 
   Future<void> writeState(WallpaperState state) async {
     await _writeJsonAtomic(stateFile, state.toJsonMap());
-    wallpaperLog.d('state.write generation=${state.generation} current=${state.current} next=${state.next}');
+    wallpaperLog.d('state.write generation=${state.generation} current=${state.current} next=${state.next} next2=${state.next2}');
   }
 
   Future<WallpaperRuntime?> readRuntime() async {

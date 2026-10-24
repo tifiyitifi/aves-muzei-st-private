@@ -1,9 +1,11 @@
 import 'package:aves/features/meta_settings/data/catalog.dart';
+import 'package:aves/features/meta_settings/model/enum/setting_widget_kind.dart';
 import 'package:aves/features/meta_settings/model/enum/settings_category.dart';
 import 'package:aves/features/meta_settings/model/page_keys.dart';
 import 'package:aves/features/meta_settings/model/setting_ids.dart';
 import 'package:aves/features/meta_settings/view/catalog_check.dart';
 import 'package:aves/features/meta_settings/view/category_meta.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_prefetch_setting.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -128,6 +130,18 @@ void main() {
       final orders = metaSettingsDefsFor(SettingsCategory.display).map((def) => def.sortOrder).toList();
       final sorted = [...orders]..sort();
       expect(orders, orderedEquals(sorted));
+    });
+
+    // The deeper pre-bake is a trade-off (disk and effect rebakes), so it must
+    // stay a plain default-on toggle whose subtitle states the cost.
+    test('the wallpaper prefetch option is a default-on toggle', () {
+      final def = metaSettingsCatalog.singleWhere((def) => def.key == WallpaperPrefetchSetting.key);
+      expect(def.category, SettingsCategory.advanced);
+      expect(def.widgetKind, SettingWidgetKind.toggle);
+      expect(def.mutator, isNull);
+      expect(def.reader, isNotNull);
+      expect(def.subtitle, isNotNull, reason: 'the subtitle must state the resource cost');
+      expect(WallpaperPrefetchSetting.defaultValue, isTrue);
     });
   });
 }

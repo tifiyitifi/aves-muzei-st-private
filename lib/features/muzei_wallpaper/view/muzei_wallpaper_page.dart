@@ -188,6 +188,7 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
     final state = controller.state;
     final current = controller.current;
     final next = controller.next;
+    final next2 = controller.next2;
     return showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -196,6 +197,7 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
           'generation ${state.generation}\n'
           'current slot ${state.current} · entry ${current?.artwork.entryId ?? '-'}\n'
           'next slot ${state.next} · entry ${next?.artwork.entryId ?? '-'}\n'
+          'next2 slot ${state.next2} · entry ${next2?.artwork.entryId ?? '-'}\n'
           'source ${controller.resolution?.status.name ?? '-'} · total ${controller.resolution?.total ?? 0}\n'
           'service ${controller.serviceActive ? 'active' : 'inactive'}\n'
           'state ${state.sourceRevision}',

@@ -179,6 +179,9 @@ class SettingKeys {
   static const screenSaverIntervalKey = 'screen_saver_interval';
   static const screenSaverCollectionFiltersKey = 'screen_saver_collection_filters';
 
+  // live wallpaper
+  static const muzeiWallpaperPrefetchAheadKey = 'muzei_wallpaper_prefetch_ahead';
+
   // slideshow
   static const slideshowRepeatKey = 'slideshow_loop';
   static const slideshowShuffleKey = 'slideshow_shuffle';

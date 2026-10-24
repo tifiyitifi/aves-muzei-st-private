@@ -310,13 +310,22 @@ void main() {
     expect(controller.next?.artwork.entryId, 99);
   });
 
-  test('auto-advance settings reach the native scheduler', () async {
+  test('auto-advance is only scheduled while the wallpaper is in use', () async {
     await controller.init();
     await controller.idle;
 
+    // The fake wallpaper service starts inactive: there is nothing to advance.
     await controller.setAutoAdvance(const WallpaperAutoAdvance(interval: WallpaperInterval.h1));
+    expect(bridge.autoAdvanceSeconds, 0);
 
+    bridge.active = true;
+    await controller.refreshServiceActive();
     expect(bridge.autoAdvanceSeconds, WallpaperInterval.h1.seconds);
+
+    // Replacing the wallpaper must cancel the chain instead of baking in the dark.
+    bridge.active = false;
+    await controller.refreshServiceActive();
+    expect(bridge.autoAdvanceSeconds, 0);
   });
 
   test('a restart reuses the baked slots without decoding again', () async {

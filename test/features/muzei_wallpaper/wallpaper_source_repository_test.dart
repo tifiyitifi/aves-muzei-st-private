@@ -102,8 +102,17 @@ void main() {
     WallpaperOrdering ordering = WallpaperOrdering.inOrder,
     int cursor = 0,
     int attempt = 0,
+    int newestEntryId = 0,
+    Set<int> excludeEntryIds = const {},
   }) async {
-    final pick = await repository.pick(scope, ordering: ordering, cursor: cursor, attempt: attempt);
+    final pick = await repository.pick(
+      scope,
+      ordering: ordering,
+      cursor: cursor,
+      attempt: attempt,
+      newestEntryId: newestEntryId,
+      excludeEntryIds: excludeEntryIds,
+    );
     return pick.entry?.id;
   }
 
@@ -164,6 +173,56 @@ void main() {
       final second = await sample(WallpaperSourceRepository(database: driftDb, random: Random(1234)));
       expect(first, second);
       expect(first, everyElement(isIn({1, 2, 3, 4, 5})));
+    });
+
+    test('random ordering avoids the current and recently shown artworks', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 4; id++) entry(id: id, dateTaken: id * 10),
+      });
+      final scope = collection();
+      // Seeded so the rejection sampling is reproducible.
+      final seeded = WallpaperSourceRepository(database: driftDb, random: Random(7));
+
+      for (var i = 0; i < 8; i++) {
+        final pick = await seeded.pick(
+          scope,
+          ordering: WallpaperOrdering.random,
+          cursor: 0,
+          excludeEntryIds: {1, 2, 3},
+        );
+        expect(pick.entry?.id, 4, reason: 'only the non-recent artwork is eligible');
+      }
+
+      // A library barely larger than the exclusion set must repeat rather than
+      // return nothing.
+      final repeat = await seeded.pick(
+        scope,
+        ordering: WallpaperOrdering.random,
+        cursor: 0,
+        excludeEntryIds: {1, 2, 3, 4},
+      );
+      expect(repeat.entry, isNotNull);
+    });
+
+    test('new-then-random serves entries added after the marker, in id order', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 5; id++) entry(id: id, dateTaken: id * 10),
+      });
+      final scope = collection();
+
+      expect(await pickId(scope, ordering: WallpaperOrdering.newThenRandom, newestEntryId: 2), 3);
+      expect(await pickId(scope, ordering: WallpaperOrdering.newThenRandom, newestEntryId: 3), 4);
+      // A bake retry steps to the next new photo instead of repeating.
+      expect(await pickId(scope, ordering: WallpaperOrdering.newThenRandom, newestEntryId: 2, attempt: 1), 4);
+      // Everything is old: fall back to random, like Muzei.
+      expect(await pickId(scope, ordering: WallpaperOrdering.newThenRandom, newestEntryId: 5), isNotNull);
+    });
+
+    test('the new-photo marker seeds from the newest artwork', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 3; id++) entry(id: id, dateTaken: id * 10),
+      });
+      expect(await repository.newestEntryId(collection()), 3);
     });
 
     test('an empty library resolves empty and picks nothing', () async {
@@ -273,6 +332,27 @@ void main() {
       expect(pick.offset, 0);
       // A single source has one position, so any offset wraps back to it.
       expect((await repository.pickAt(scope, total: 1, offset: 1))?.id, 5);
+    });
+
+    test('every ordering returns the chosen artwork, never the library', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 5; id++) entry(id: id, dateTaken: id * 10),
+      });
+      final scope = single(2);
+
+      for (final ordering in WallpaperOrdering.values) {
+        // A high marker and an exclusion that contains the entry must not make
+        // the single scope fall through to another photo.
+        final pick = await repository.pick(
+          scope,
+          ordering: ordering,
+          cursor: 0,
+          newestEntryId: 99,
+          excludeEntryIds: {2},
+        );
+        expect(pick.entry?.id, 2, reason: 'ordering $ordering');
+      }
+      expect(await repository.newestEntryId(scope), 2);
     });
 
     test('a missing entry resolves missing', () async {

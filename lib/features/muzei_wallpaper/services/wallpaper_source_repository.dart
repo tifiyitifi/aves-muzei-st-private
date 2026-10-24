@@ -42,44 +42,175 @@ class WallpaperSourceRepository {
     WallpaperSourceKind.myPhotos => _resolveCollection(scope),
   };
 
+  /// How many random samples to try before accepting a recently shown artwork.
+  ///
+  /// The exclusion set is the current artwork plus the recent list (bounded by
+  /// `WallpaperState.maxRecent`), so a few tries find a fresh one in any library
+  /// larger than that; a tiny library can exhaust it and must repeat.
+  static const int maxRandomAttempts = 12;
+
+  /// How many new entries to scan past an unusable one in a single pick.
+  static const int maxNewScan = 8;
+
   /// Picks the artwork to show next.
   ///
   /// [cursor] is the in-order position remembered by the controller; it wraps
-  /// around the source and is ignored by [WallpaperOrdering.random], which
-  /// draws a new position from the repository's random source. [attempt] is
-  /// used by the bake retry loop: it shifts the position by that many entries,
-  /// so a decode failure never retries the same photo.
+  /// around the source and is ignored by the other orderings. [attempt] is used
+  /// by the bake retry loop: it shifts the position, so a decode failure never
+  /// retries the same photo.
+  ///
+  /// [newestEntryId] is the highest entry id shown so far (Muzei's
+  /// `maxLoadedArtworkId`) and [excludeEntryIds] the current artwork plus the
+  /// recently shown ones, so the random ordering does not repeat itself.
   Future<WallpaperSourcePick> pick(
     WallpaperSourceScope scope, {
     required WallpaperOrdering ordering,
     required int cursor,
     int attempt = 0,
+    int newestEntryId = 0,
+    Set<int> excludeEntryIds = const {},
   }) async {
     final resolution = await resolve(scope);
     if (!resolution.isReady) return WallpaperSourcePick.fromResolution(resolution);
 
     final total = resolution.total;
-    final offset = switch (ordering) {
-      WallpaperOrdering.inOrder => _normalize(cursor + attempt, total),
-      WallpaperOrdering.random => _normalize(_random.nextInt(total) + attempt, total),
-    };
-    final entry = await pickAt(scope, total: total, offset: offset);
-    if (entry == null) {
-      // The count and the window disagree, which can only happen when the
-      // library changed in between. The caller retries on the next advance.
-      wallpaperLog.w('source window is empty scope=${scope.kind.name} total=$total offset=$offset');
+    if (scope.kind == WallpaperSourceKind.single) {
+      // One artwork: ordering and exclusion are meaningless, and the single
+      // scope's predicate covers the whole library, which must never leak in.
+      final entry = await pickAt(scope, total: total, offset: 0);
+      if (entry == null) return _emptyPick(scope, total: total, offset: 0);
       return WallpaperSourcePick(
-        status: scope.kind == WallpaperSourceKind.single ? WallpaperSourceStatus.missing : WallpaperSourceStatus.empty,
+        status: WallpaperSourceStatus.ready,
+        entry: entry,
+        total: total,
+        offset: 0,
+      );
+    }
+
+    if (ordering == WallpaperOrdering.newThenRandom) {
+      final fresh = await _pickNew(
+        scope,
+        newestEntryId: newestEntryId,
+        attempt: attempt,
+        excludeEntryIds: excludeEntryIds,
+      );
+      if (fresh != null) {
+        // The position within the collection is unknown without another query,
+        // and only the in-order cursor consumes it; new picks do not need it.
+        return WallpaperSourcePick(
+          status: WallpaperSourceStatus.ready,
+          entry: fresh,
+          total: total,
+          offset: 0,
+        );
+      }
+      // No new photos left: Muzei falls through to the random strategy.
+    }
+
+    if (ordering == WallpaperOrdering.inOrder) {
+      final offset = _normalize(cursor + attempt, total);
+      final entry = await pickAt(scope, total: total, offset: offset);
+      if (entry == null) return _emptyPick(scope, total: total, offset: offset);
+      return WallpaperSourcePick(
+        status: WallpaperSourceStatus.ready,
+        entry: entry,
         total: total,
         offset: offset,
       );
     }
+
+    final randomPick = await _pickRandom(scope, total: total, attempt: attempt, excludeEntryIds: excludeEntryIds);
+    if (randomPick == null) return _emptyPick(scope, total: total, offset: -1);
     return WallpaperSourcePick(
       status: WallpaperSourceStatus.ready,
-      entry: entry,
+      entry: randomPick.entry,
+      total: total,
+      offset: randomPick.offset,
+    );
+  }
+
+  WallpaperSourcePick _emptyPick(WallpaperSourceScope scope, {required int total, required int offset}) {
+    // The count and the window disagree, which can only happen when the
+    // library changed in between. The caller retries on the next advance.
+    wallpaperLog.w('source window is empty scope=${scope.kind.name} total=$total offset=$offset');
+    return WallpaperSourcePick(
+      status: scope.kind == WallpaperSourceKind.single ? WallpaperSourceStatus.missing : WallpaperSourceStatus.empty,
       total: total,
       offset: offset,
     );
+  }
+
+  /// One artwork added after [newestEntryId], in id order.
+  ///
+  /// Entry ids are MediaStore ids, which grow with insertion, so walking forward
+  /// from the last one shown is Muzei's `_id > maxLoadedArtworkId` step. [attempt]
+  /// steps past retried bakes; [maxNewScan] tolerates a few unusable rows.
+  Future<AvesEntry?> _pickNew(
+    WallpaperSourceScope scope, {
+    required int newestEntryId,
+    required int attempt,
+    required Set<int> excludeEntryIds,
+  }) async {
+    if (newestEntryId <= 0) return null;
+    final predicate = _predicateFor(scope);
+    if (predicate == null) return null;
+    final db = _db;
+    await db.init();
+    final rows = await db.loadWalkWindow(
+      predicate: predicate,
+      afterId: newestEntryId,
+      limit: attempt + 1 + maxNewScan,
+    );
+    var position = 0;
+    for (final entry in rows) {
+      if (!_isUsable(entry) || excludeEntryIds.contains(entry.id)) continue;
+      if (position++ < attempt) continue;
+      return entry;
+    }
+    return null;
+  }
+
+  /// A random artwork, avoiding the current one and the recently shown ones.
+  ///
+  /// Rejection sampling, like Muzei's shuffled sequence: the exclusion set is
+  /// small, so a handful of tries is enough. A library barely larger than the
+  /// set can exhaust the tries, and repeating is better than a blank wallpaper.
+  Future<({AvesEntry entry, int offset})?> _pickRandom(
+    WallpaperSourceScope scope, {
+    required int total,
+    required int attempt,
+    required Set<int> excludeEntryIds,
+  }) async {
+    for (var i = 0; i < maxRandomAttempts; i++) {
+      final offset = _normalize(_random.nextInt(total) + attempt + i, total);
+      final entry = await pickAt(scope, total: total, offset: offset);
+      if (entry == null || excludeEntryIds.contains(entry.id)) continue;
+      return (entry: entry, offset: offset);
+    }
+    final offset = _normalize(_random.nextInt(total) + attempt, total);
+    final entry = await pickAt(scope, total: total, offset: offset);
+    return entry == null ? null : (entry: entry, offset: offset);
+  }
+
+  /// The id of the newest artwork in [scope], used to seed the "new" marker.
+  ///
+  /// Muzei starts at zero and walks its whole feed in order; an Aves library can
+  /// hold tens of thousands of photos, so "new" means "added after the wallpaper
+  /// was set up" instead of "not shown yet", which would take years to exhaust.
+  Future<int> newestEntryId(WallpaperSourceScope scope) async {
+    if (scope.kind == WallpaperSourceKind.single) return scope.singleEntryId ?? 0;
+    final predicate = _predicateFor(scope);
+    if (predicate == null) return 0;
+    final db = _db;
+    await db.init();
+    final rows = await db.loadEntryWindow(
+      predicate: predicate,
+      sort: SortFactor.date,
+      reverse: false,
+      limit: 1,
+      offset: 0,
+    );
+    return rows.isEmpty ? 0 : rows.first.id;
   }
 
   /// Reads the entry at [offset] within a scope whose total is already known.

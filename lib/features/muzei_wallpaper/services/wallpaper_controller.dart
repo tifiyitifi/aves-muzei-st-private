@@ -174,6 +174,13 @@ class WallpaperController extends ChangeNotifier {
         );
       }
 
+      // Muzei starts its "new photos" marker at zero and walks the whole feed;
+      // an Aves library can be huge, so start at the newest existing photo:
+      // "new" means added after the wallpaper was set up.
+      if (_state.newestEntryId <= 0 && _resolution?.isReady == true) {
+        _state = _state.copyWith(newestEntryId: await repository.newestEntryId(scope));
+      }
+
       if (_state.currentSlot != null) {
         // The persisted index is the position of the current artwork; the next
         // in-order pick starts after it.
@@ -188,15 +195,15 @@ class WallpaperController extends ChangeNotifier {
     }
 
     // The persisted schedule is native state; a reinstall or a force-stop can
-    // lose it, so reconcile it whenever the page opens.
-    unawaited(_scheduleAutoAdvance());
+    // lose it, so reconcile it whenever the page opens. Auto-advance only runs
+    // while the wallpaper is in use, so learn that first.
+    await refreshServiceActive();
 
     await _applyPrefetchDepth();
 
     if (_state.currentSlot == null) {
       await advance();
     } else {
-      await refreshServiceActive();
       unawaited(prefetch());
     }
 
@@ -425,27 +432,29 @@ class WallpaperController extends ChangeNotifier {
     }
   }
 
-  /// Picks and bakes into [slotId], retrying other offsets on decode failure.
+  /// Picks and bakes into [slotId], retrying other candidates on decode failure.
   Future<WallpaperSlot?> _bakeSlot(
     WallpaperSourceScope scope,
     WallpaperSourceResolution resolution,
     int slotId,
   ) async {
     if (resolution.total <= 0) return null;
-    final pick = await repository.pick(
-      scope,
-      ordering: prefs.autoAdvance.ordering,
-      cursor: _cursor,
-    );
-    if (!pick.hasEntry) return null;
 
     final size = await targetSize();
-    final total = pick.total;
-    var offset = pick.offset;
+    final excludeEntryIds = _excludedEntryIds();
     for (var attempt = 0; attempt < maxBakeAttempts; attempt++) {
-      final entry = attempt == 0 && pick.entry != null
-          ? pick.entry!
-          : await repository.pickAt(scope, total: total, offset: offset + attempt);
+      // Re-picking per attempt keeps every ordering consistent on a retry: a
+      // failed decode steps to the next new or random candidate instead of
+      // falling back to an in-order offset that may not even be in that set.
+      final pick = await repository.pick(
+        scope,
+        ordering: prefs.autoAdvance.ordering,
+        cursor: _cursor,
+        attempt: attempt,
+        newestEntryId: _state.newestEntryId,
+        excludeEntryIds: excludeEntryIds,
+      );
+      final entry = pick.entry;
       if (entry == null) continue;
       try {
         final bake = await baker.bake(
@@ -455,8 +464,8 @@ class WallpaperController extends ChangeNotifier {
           lock: prefs.effects.effectiveLock,
         );
         final slot = await _writeSlot(slotId, entry, bake);
-        _cursor = offset + attempt + 1;
-        await prefs.setCurrentIndex(_normalize(offset + attempt, total));
+        _cursor = pick.offset + 1;
+        await prefs.setCurrentIndex(_normalize(pick.offset, pick.total));
         return slot;
       } on WallpaperBakeException catch (error, stack) {
         wallpaperLog.w('bake failed entry=${entry.id} slot=$slotId attempt=$attempt', error, stack);
@@ -464,6 +473,18 @@ class WallpaperController extends ChangeNotifier {
     }
     wallpaperLog.w('bake gave up after $maxBakeAttempts attempts slot=$slotId');
     return null;
+  }
+
+  /// The current artwork plus the recently shown ones.
+  ///
+  /// The random ordering rejects these, so the wallpaper does not show the same
+  /// photo twice in a row and cycles through the library before repeating.
+  Set<int> _excludedEntryIds() {
+    final current = _state.currentSlot;
+    return {
+      ..._state.recent.map((artwork) => artwork.entryId),
+      if (current != null) current.artwork.entryId,
+    };
   }
 
   Future<WallpaperSlot> _writeSlot(int slotId, AvesEntry entry, WallpaperBake bake) async {
@@ -518,6 +539,12 @@ class WallpaperController extends ChangeNotifier {
     await store.writeRuntime(WallpaperRuntime.empty);
     await _reloadRenderer();
     _resolution = await repository.resolve(scope);
+    if (_resolution?.isReady == true) {
+      // A new source means a new "new photos" baseline; without it every photo
+      // would count as new and the ordering would walk the whole library first.
+      _state = _state.copyWith(newestEntryId: await repository.newestEntryId(scope));
+      await store.writeState(_state);
+    }
     _notify();
     await advance();
   }
@@ -606,7 +633,11 @@ class WallpaperController extends ChangeNotifier {
 
   Future<void> _scheduleAutoAdvance() async {
     try {
-      await bridge?.scheduleAutoAdvance(prefs.autoAdvance.interval.seconds);
+      // Nothing to advance while the wallpaper is not in use. Scheduling zero
+      // also cancels the WorkManager chain, so replacing the wallpaper with
+      // another app stops the background bakes instead of leaving them running.
+      final seconds = _serviceActive ? prefs.autoAdvance.interval.seconds : 0;
+      await bridge?.scheduleAutoAdvance(seconds);
     } catch (error, stack) {
       // Auto-advance is an enhancement; a platform that refuses to schedule
       // must never break the wallpaper page.
@@ -627,10 +658,11 @@ class WallpaperController extends ChangeNotifier {
     if (active != _serviceActive) {
       _serviceActive = active;
       _notify();
-      // Applying the wallpaper is the moment auto-advance starts mattering; the
-      // native scheduler is idempotent, so re-checking is cheap.
-      if (active) unawaited(_scheduleAutoAdvance());
     }
+    // Reconcile on every check, not only on a transition: this cancels the
+    // chain after the wallpaper is replaced by another app, and restores it when
+    // the user comes back. The native scheduler is idempotent.
+    await _scheduleAutoAdvance();
   }
 
   /// Adopts a slot the renderer advanced to on its own, then refills the slot it
@@ -740,6 +772,7 @@ class WallpaperController extends ChangeNotifier {
       next2: -1,
       slots: [runtimeCurrent, if (runtimeNext != null && nextId >= 0) runtimeNext],
       recent: WallpaperState.promoteRecent(_state.recent, runtimeCurrent.artwork),
+      newestEntryId: _markerFor(_state.newestEntryId, runtimeCurrent.artwork),
     );
     // Keep the runtime generation: the renderer is already showing this slot,
     // and a prefetch rewrites the state with the next generation.
@@ -788,13 +821,25 @@ class WallpaperController extends ChangeNotifier {
     final promoted = state.currentSlot;
     _state = promoted == null
         ? state
-        : state.copyWith(recent: WallpaperState.promoteRecent(state.recent, promoted.artwork));
+        : state.copyWith(
+            recent: WallpaperState.promoteRecent(state.recent, promoted.artwork),
+            newestEntryId: _markerFor(state.newestEntryId, promoted.artwork),
+          );
     await store.writeState(_state);
     // The runtime describes the previous generation; clearing it prevents a
     // stale slot from being adopted before the renderer reloads.
     await store.writeRuntime(WallpaperRuntime.empty);
     _notify();
     await _reloadRenderer();
+  }
+
+  /// The "new photos" marker after showing [artwork].
+  ///
+  /// Entry ids grow with insertion, so the highest one shown is the point the
+  /// new-photos ordering resumes from (Muzei's `maxLoadedArtworkId`).
+  static int _markerFor(int marker, WallpaperArtwork? artwork) {
+    final id = artwork?.entryId ?? 0;
+    return id > marker ? id : marker;
   }
 
   Future<void> _reloadRenderer() async {

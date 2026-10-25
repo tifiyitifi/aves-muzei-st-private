@@ -16,7 +16,8 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: title line shows the file name by default, or the source name
 - Muzei wallpaper: touch to view opens the Aves viewer, long press opens the artwork in another app
 - Muzei wallpaper: falls back to the last artwork that still exists when the queue is empty
-- Muzei wallpaper: pick the wallpaper source by browsing albums, then confirming the album's photos
+- Muzei wallpaper: edit the photo source freely, combining album, date, rating and other filters; the picker is Aves' own album and media-set pages, and the same picker chooses a single artwork
+- Muzei wallpaper: a copied single artwork keeps working after the original photo is deleted
 - Muzei wallpaper: about dialog showing the ported Muzei about page
 - Muzei wallpaper: effects page previews blur, dim and greyscale live while dragging, with reset-to-zero and Muzei-defaults presets
 - Muzei wallpaper: long press opens an immersive artwork view, and the artwork can be panned to its uncropped edges even at 1x
@@ -30,10 +31,15 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: the overflow menu marks the current page with a radio dot, and the next button uses Muzei's double chevron
 - Muzei wallpaper: the about dialog separates the Muzei section with a thin recessed rule
 - Muzei wallpaper: menu checkmarks sit at the trailing edge so every label lines up
-- Muzei wallpaper: the source picker is album-first; tapping an album previews its photos, long-pressing unions albums, and the preview stays images-only without changing the "show videos" setting
+- Muzei wallpaper: the source picker is one freely editable media set opened on Aves' real album and media-set pages; the photos-only restriction stays invisible, and picking albums replaces the album condition without dropping other filters
+- Muzei wallpaper: the picker's confirm button is labelled per question, "Use these filters" or "Use this photo", and a single artwork is picked then confirmed instead of leaving on the first tap
+- Muzei wallpaper: a single artwork is copied into the app when chosen, and the copy is kept across source switches so the same artwork comes back without picking it again
+- Muzei wallpaper: the source picker starts on the album list when there is no filter set yet, and always for a single artwork; a configured set opens on its media set
+- Muzei wallpaper: resetting the photo source asks for confirmation, with a "don't ask again" option and a matching switch in Settings → Advanced
 
 ### Fixed
 
+- Muzei wallpaper: the album page no longer reads "no albums" on a paged library when no media-set view had loaded the album list yet
 - Collection: an `OR` filter swallowed the filters ANDed after it in paged queries
 
 ## <a id="v1.15.5"></a>[v1.15.5] - 2026-10-02

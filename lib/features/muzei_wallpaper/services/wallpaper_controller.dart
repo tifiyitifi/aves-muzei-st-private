@@ -8,6 +8,7 @@ import 'package:aves/features/muzei_wallpaper/model/wallpaper_bake.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_prefetch_setting.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_single_artwork.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
@@ -15,6 +16,7 @@ import 'package:aves/features/muzei_wallpaper/model/wallpaper_state.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_baker.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_bridge.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_prefs.dart';
+import 'package:aves/features/muzei_wallpaper/services/wallpaper_single_artwork_store.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_source_repository.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_state_store.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -58,6 +60,7 @@ class WallpaperController extends ChangeNotifier {
   final WallpaperSourceRepository repository;
   final WallpaperBaker baker;
   final WallpaperStateStore store;
+  final WallpaperSingleArtworkStore singleArtworkStore;
   final WallpaperBridge? bridge;
   final Future<Size> Function() targetSize;
 
@@ -85,10 +88,12 @@ class WallpaperController extends ChangeNotifier {
     required this.repository,
     required this.baker,
     required this.store,
+    WallpaperSingleArtworkStore? singleArtworkStore,
     this.bridge,
     Future<Size> Function()? targetSize,
     bool Function()? prefetchAhead,
-  }) : prefetchAhead = prefetchAhead ?? _readPrefetchSetting,
+  }) : singleArtworkStore = singleArtworkStore ?? WallpaperSingleArtworkStore(store.root),
+       prefetchAhead = prefetchAhead ?? _readPrefetchSetting,
        targetSize = targetSize ?? _defaultTargetSize;
 
   WallpaperState get state => _state;
@@ -523,6 +528,9 @@ class WallpaperController extends ChangeNotifier {
     await idle;
     if (_disposed) return;
     await prefs.setSourceScope(scope);
+    // The single artwork's copy is deliberately kept when the source changes:
+    // the chosen photo may be gone from the library, and it must still be there
+    // when the user switches back. Only choosing another artwork replaces it.
     _cursor = 0;
     await prefs.setCurrentIndex(0);
     await _discardSlots();
@@ -548,6 +556,14 @@ class WallpaperController extends ChangeNotifier {
     _notify();
     await advance();
   }
+
+  /// Copies [entry] next to the wallpaper, so the source survives the original
+  /// being deleted.
+  ///
+  /// The caller applies the returned snapshot in a new scope only after this
+  /// succeeds: a failed or space-constrained copy leaves the previous source
+  /// untouched.
+  Future<WallpaperSingleArtwork> copySingleArtwork(AvesEntry entry) => singleArtworkStore.copy(entry);
 
   Future<void> setSingle(int? entryId) {
     final scope = prefs.scope.copyWith(

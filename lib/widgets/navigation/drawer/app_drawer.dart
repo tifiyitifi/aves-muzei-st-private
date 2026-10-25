@@ -1,4 +1,5 @@
 import 'package:aves/features/browse_only/model/browse_drawer_entry.dart';
+import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/model/filters/container/album_group.dart';
@@ -126,15 +127,21 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
       listenable: libraryPhase,
       builder: (context, child) {
         final browsing = libraryPhase.isBrowsing;
+        // A pick must not leave the library: the bin is a scope of its own, not
+        // a photo set the wallpaper can use.
+        final picking = CollectionViewHooksScope.maybeOf(context)?.isPicking ?? false;
         final drawerItems = <Widget>[
           _buildHeader(context),
-          _buildHomeLink(browsing),
+          _buildHomeLink(browsing, picking),
           ..._buildTypeLinks(browsing),
           _buildAlbumLinks(context, browsing),
           ..._buildPageLinks(context, browsing),
-          if (settings.enableBin) ...[
+          if (settings.enableBin && !picking) ...[
             const Divider(),
-            binTile(context, enabled: browseDrawerEntryEnabled(browsing: browsing, route: CollectionPage.routeName, filters: {TrashFilter.instance})),
+            binTile(
+              context,
+              enabled: browseDrawerEntryEnabled(browsing: browsing, route: CollectionPage.routeName, filters: {TrashFilter.instance}),
+            ),
           ],
           if (!kReleaseMode) ...[
             const Divider(),
@@ -288,7 +295,11 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildHomeLink(bool browsing) {
+  Widget _buildHomeLink(bool browsing, bool picking) {
+    // A borrowed view already has a media-set destination inside its own
+    // sandbox; the drawer's home link would open the library's own collection
+    // and silently replace the set the task is editing.
+    if (picking) return const SizedBox();
     // route name used for display purposes, no actual routing
     const displayRoute = HomePage.routeName;
     const leading = DrawerPageIcon(route: displayRoute);
@@ -379,6 +390,10 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
     final pageBookmarks = settings.drawerPageBookmarks;
     final source = context.read<CollectionSource>();
     final itemCountFormatter = settings.avesLocale.decimalNumberFormat();
+    // The wallpaper page owns the controller that opened the picker; opening it
+    // again from inside the picker would create a second writer for the same
+    // state files.
+    final picking = CollectionViewHooksScope.maybeOf(context)?.isPicking ?? false;
 
     Widget tileFor(String route) {
       Widget? trailing;
@@ -420,12 +435,12 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
     var wallpaperInserted = false;
     for (final route in pageBookmarks) {
       if (!wallpaperInserted && route == ExplorerPage.routeName) {
-        tiles.add(_wallpaperTile(browsing));
+        if (!picking) tiles.add(_wallpaperTile(browsing));
         wallpaperInserted = true;
       }
       tiles.add(tileFor(route));
     }
-    if (!wallpaperInserted) tiles.add(_wallpaperTile(browsing));
+    if (!wallpaperInserted && !picking) tiles.add(_wallpaperTile(browsing));
 
     return [const Divider(), ...tiles];
   }

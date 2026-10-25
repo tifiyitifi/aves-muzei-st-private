@@ -1,7 +1,6 @@
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_single_artwork.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
-import 'package:aves/model/filters/container/set_or.dart';
-import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,8 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../common.dart';
 
 void main() {
-  // `SetOrFilter` sorts its members by label, which resolves the POSIX
-  // `p.Context` registered by the test services.
   setUpAll(() async {
     await setUpAllServices();
   });
@@ -92,40 +89,74 @@ void main() {
       expect(scope.copyWith(clearSingleEntryId: true).singleEntryId, isNull);
     });
 
-    group('filtersForAlbums', () {
-      test('no album means the all-photos scope', () {
-        expect(WallpaperSourceScope.filtersForAlbums(const []), isEmpty);
-      });
+    group('single artwork snapshot', () {
+      const artwork = WallpaperSingleArtwork(
+        relativePath: 'source/single.jpg',
+        entryId: 7,
+        mimeType: 'image/jpeg',
+        title: 'photo',
+        width: 400,
+        height: 300,
+        sizeBytes: 1234,
+      );
 
-      test('a single album stays a plain album filter', () {
-        final album = StoredAlbumFilter('/one', null);
-        expect(WallpaperSourceScope.filtersForAlbums([album]), {album});
-      });
-
-      test('multiple albums are unioned with SetOrFilter', () {
-        final a = StoredAlbumFilter('/a', null);
-        final b = StoredAlbumFilter('/b', null);
-        final filters = WallpaperSourceScope.filtersForAlbums([a, b]);
-
-        expect(filters, hasLength(1));
-        final union = filters.single;
-        expect(union, isA<SetOrFilter>());
-        expect((union as SetOrFilter).innerFilters, {a, b});
-      });
-
-      test('duplicate albums collapse and keep the plain filter', () {
-        final album = StoredAlbumFilter('/one', null);
-        expect(WallpaperSourceScope.filtersForAlbums([album, album]), {album});
-      });
-
-      test('the implicit image restriction still applies to a union', () {
-        final scope = WallpaperSourceScope(
-          filters: WallpaperSourceScope.filtersForAlbums([
-            StoredAlbumFilter('/a', null),
-            StoredAlbumFilter('/b', null),
-          ]),
-        );
+      test('configures a single scope without a library id', () {
+        final scope = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleArtwork: artwork);
+        expect(scope.isConfigured, isTrue);
         expect(scope.queryFilters, contains(MimeFilter.image));
+      });
+
+      test('JSON round-trips the snapshot', () {
+        final scope = WallpaperSourceScope(
+          kind: WallpaperSourceKind.single,
+          singleEntryId: 7,
+          singleArtwork: artwork,
+        );
+        final decoded = WallpaperSourceScope.fromJsonString(scope.toJsonString());
+        expect(decoded, scope);
+        expect(decoded!.singleArtwork, artwork);
+      });
+
+      test('the snapshot survives a kind switch but is only active for single', () {
+        final single = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 7, singleArtwork: artwork);
+        final photos = single.copyWith(kind: WallpaperSourceKind.myPhotos);
+
+        expect(photos.singleArtwork, artwork, reason: 'the copy must be there when the user switches back');
+        expect(photos.activeSingleArtwork, isNull, reason: 'a my-photos view resolves the library entry, not the copy');
+        expect(single.activeSingleArtwork, artwork);
+      });
+
+      test('legacy JSON without a snapshot still parses', () {
+        final decoded = WallpaperSourceScope.fromJsonMap({
+          'kind': 'single',
+          'filters': <String>[],
+          'singleEntryId': 7,
+        });
+        expect(decoded.singleEntryId, 7);
+        expect(decoded.singleArtwork, isNull);
+        expect(decoded.isConfigured, isTrue);
+      });
+
+      test('a malformed snapshot is dropped instead of failing the scope', () {
+        final decoded = WallpaperSourceScope.fromJsonMap({
+          'kind': 'single',
+          'singleEntryId': 7,
+          'singleArtwork': {'relativePath': '../escape.jpg'},
+        });
+        expect(decoded.singleArtwork, isNull);
+        expect(decoded.singleEntryId, 7);
+      });
+
+      test('copyWith can replace or clear the snapshot', () {
+        final scope = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleArtwork: artwork);
+        expect(scope.copyWith(singleArtwork: artwork).singleArtwork, artwork);
+        expect(scope.copyWith(clearSingleArtwork: true).singleArtwork, isNull);
+      });
+
+      test('the snapshot is part of the revision', () {
+        final without = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 7);
+        final withCopy = without.copyWith(singleArtwork: artwork);
+        expect(withCopy.revision, isNot(without.revision));
       });
     });
   });

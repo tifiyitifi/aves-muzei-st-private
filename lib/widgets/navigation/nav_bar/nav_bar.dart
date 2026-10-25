@@ -1,8 +1,11 @@
 import 'dart:math';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
+import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
+import 'package:aves/ref/mime_types.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/common/bars/floating_bar.dart';
 import 'package:aves/widgets/common/basic/draggable_scrollbar/notifications.dart';
@@ -64,7 +67,7 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
 
   @override
   Widget build(BuildContext context) {
-    final items = context.select<Settings, List<AvesNavItem>>((v) => v.bottomNavigationActions);
+    final items = _visibleItems(context, context.select<Settings, List<AvesNavItem>>((v) => v.bottomNavigationActions));
     if (items.length < 2) return const SizedBox();
 
     final safeBottomPadding = context.select<MediaQueryData, double>((mq) => mq.safeBottomPadding);
@@ -121,6 +124,20 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
   }
 
   void _onCollectionFilterChanged() => setState(() {});
+
+  /// Drops destinations a borrowed photo view cannot serve.
+  ///
+  /// The picker is always a photo library, so its video destination would open
+  /// an empty set (or, once its filter is normalized away, the photo set). The
+  /// drawer hides the bin for the same reason.
+  List<AvesNavItem> _visibleItems(BuildContext context, List<AvesNavItem> items) {
+    if (!(CollectionViewHooksScope.maybeOf(context)?.isPicking ?? false)) return items;
+    return items.where((item) => !_isVideoItem(item)).toList();
+  }
+
+  static bool _isVideoItem(AvesNavItem item) {
+    return item.filters?.any((filter) => filter is MimeFilter && (filter.mime == MimeTypes.anyVideo || filter.mime.startsWith('video/'))) ?? false;
+  }
 
   int _getCurrentIndex(BuildContext context, List<AvesNavItem> items) {
     // current route may be null during navigation

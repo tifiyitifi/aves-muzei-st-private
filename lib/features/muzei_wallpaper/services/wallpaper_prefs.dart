@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:aves/features/muzei_wallpaper/log.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_display.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_single_artwork.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -20,6 +22,7 @@ abstract final class WallpaperPrefsKeys {
   static const String sourceKind = 'muzei_wallpaper.source.kind';
   static const String sourceFilters = 'muzei_wallpaper.source.filters';
   static const String sourceSingleId = 'muzei_wallpaper.source.single_id';
+  static const String sourceSingleArtwork = 'muzei_wallpaper.source.single_artwork';
 
   static const String effectsHomeBlur = 'muzei_wallpaper.effects.home_blur';
   static const String effectsHomeDim = 'muzei_wallpaper.effects.home_dim';
@@ -115,6 +118,7 @@ class WallpaperPrefs extends ChangeNotifier {
         kind: WallpaperSourceKind.tryParse(_string(prefs, WallpaperPrefsKeys.sourceKind)) ?? WallpaperSourceKind.myPhotos,
         filters: _readFilters(prefs),
         singleEntryId: _positiveInt(prefs.getInt(WallpaperPrefsKeys.sourceSingleId)),
+        singleArtwork: _readSingleArtwork(prefs),
       );
       _effects = WallpaperEffectsConfig(
         home: _readEffects(prefs, 'home'),
@@ -154,6 +158,12 @@ class WallpaperPrefs extends ChangeNotifier {
         await prefs.setInt(WallpaperPrefsKeys.sourceSingleId, value.singleEntryId!);
       } else {
         await prefs.remove(WallpaperPrefsKeys.sourceSingleId);
+      }
+      final artwork = value.singleArtwork;
+      if (artwork != null) {
+        await prefs.setString(WallpaperPrefsKeys.sourceSingleArtwork, jsonEncode(artwork.toJsonMap()));
+      } else {
+        await prefs.remove(WallpaperPrefsKeys.sourceSingleArtwork);
       }
     } catch (error, stack) {
       wallpaperLog.e('failed to persist live wallpaper source scope', error, stack);
@@ -311,6 +321,20 @@ class WallpaperPrefs extends ChangeNotifier {
       if (filter != null) filters.add(filter);
     }
     return filters;
+  }
+
+  static WallpaperSingleArtwork? _readSingleArtwork(SharedPreferences prefs) {
+    final raw = _string(prefs, WallpaperPrefsKeys.sourceSingleArtwork);
+    if (raw == null) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return WallpaperSingleArtwork.tryFromJsonMap(decoded.map((key, value) => MapEntry(key.toString(), value)));
+      }
+    } catch (error, stack) {
+      wallpaperLog.w('failed to read the single artwork snapshot', error, stack);
+    }
+    return null;
   }
 }
 

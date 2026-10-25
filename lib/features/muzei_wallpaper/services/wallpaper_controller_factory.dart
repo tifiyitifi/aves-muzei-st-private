@@ -19,11 +19,18 @@ abstract final class WallpaperControllerFactory {
     if (root == null) {
       throw StateError('the live wallpaper platform channel is unavailable');
     }
+    final stateDirectory = Directory(root);
     final controller = WallpaperController(
       prefs: wallpaperPrefs,
-      repository: WallpaperSourceRepository(),
+      repository: WallpaperSourceRepository(
+        stateRoot: stateDirectory,
+        // The copy belongs to the single source only: while the source is
+        // something else, a leftover snapshot must not make an entry with the
+        // same id resolve to the private copy.
+        singleArtwork: () => wallpaperPrefs.scope.activeSingleArtwork,
+      ),
       baker: WallpaperBaker(),
-      store: WallpaperStateStore(Directory(root)),
+      store: WallpaperStateStore(stateDirectory),
       bridge: platform,
     );
     await controller.init();

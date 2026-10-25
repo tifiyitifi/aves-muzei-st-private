@@ -1,18 +1,23 @@
+import 'dart:io';
 import 'dart:math';
 
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/muzei_wallpaper/log.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_single_artwork.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/props.dart';
+import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/metadata/catalog.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/vaults/vaults.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
+import 'package:path/path.dart' as p;
 
 /// Resolves a [WallpaperSourceScope] to concrete entries in the Drift database.
 ///
@@ -28,7 +33,22 @@ class WallpaperSourceRepository {
   /// Seeded in tests so random ordering stays reproducible.
   final Random _random;
 
-  new({this.database, Random? random}) : _random = random ?? Random();
+  /// The wallpaper root, needed to resolve a single artwork's copy.
+  final Directory? stateRoot;
+
+  /// The copy the current scope points at, if any.
+  ///
+  /// A slot stores only the entry id, so validating a single-artwork slot after
+  /// a restart has to translate that id back to the copy. No other scope can
+  /// produce that id, and the snapshot is tiny.
+  final WallpaperSingleArtwork? Function()? singleArtwork;
+
+  new({
+    this.database,
+    Random? random,
+    this.stateRoot,
+    this.singleArtwork,
+  }) : _random = random ?? Random();
 
   LocalMediaDb get _db => database ?? localMediaDb;
 
@@ -198,7 +218,7 @@ class WallpaperSourceRepository {
   /// hold tens of thousands of photos, so "new" means "added after the wallpaper
   /// was set up" instead of "not shown yet", which would take years to exhaust.
   Future<int> newestEntryId(WallpaperSourceScope scope) async {
-    if (scope.kind == WallpaperSourceKind.single) return scope.singleEntryId ?? 0;
+    if (scope.kind == WallpaperSourceKind.single) return scope.singleArtwork?.entryId ?? scope.singleEntryId ?? 0;
     final predicate = _predicateFor(scope);
     if (predicate == null) return 0;
     final db = _db;
@@ -263,7 +283,18 @@ class WallpaperSourceRepository {
     return _isUsable(entry) ? entry : null;
   }
 
-  Future<AvesEntry?> _loadSingle(WallpaperSourceScope scope) => entryById(scope.singleEntryId ?? 0);
+  /// A single scope resolves to the copy the app made, when there is one.
+  ///
+  /// Scopes saved before copies existed (or whose copy is gone) fall back to the
+  /// original entry through the media library.
+  Future<AvesEntry?> _loadSingle(WallpaperSourceScope scope) async {
+    final artwork = scope.singleArtwork;
+    if (artwork != null) {
+      final copy = await singleArtworkEntry(artwork);
+      if (copy != null) return copy;
+    }
+    return entryById(scope.singleEntryId ?? 0);
+  }
 
   /// Loads one current artwork by id, applying the same usability test as a
   /// pick.
@@ -274,11 +305,64 @@ class WallpaperSourceRepository {
   /// restart and to reopen the displayed artwork in the viewer.
   Future<AvesEntry?> entryById(int id) async {
     if (id <= 0) return null;
+    // A copied single artwork has no media row left to read once the original is
+    // deleted, and its slot must stay valid: the copy is the artwork now.
+    final artwork = singleArtwork?.call();
+    if (artwork != null && artwork.entryId == id) {
+      final copy = await singleArtworkEntry(artwork);
+      if (copy != null) return copy;
+    }
     final db = _db;
     await db.init();
     final entries = await db.loadEntriesById({id});
     if (entries.isEmpty) return null;
     final entry = entries.first;
+    return _isUsable(entry) ? entry : null;
+  }
+
+  /// Builds an entry for the bytes the app copied, or null when no longer usable.
+  ///
+  /// The copy is a plain file under the wallpaper root. Its metadata comes from
+  /// the snapshot instead of the library: the original may be gone, and EXIF
+  /// alone cannot restore the user's rotation and flip.
+  Future<AvesEntry?> singleArtworkEntry(WallpaperSingleArtwork artwork) async {
+    final root = stateRoot;
+    if (root == null) return null;
+    final file = File(p.join(root.path, artwork.relativePath));
+    try {
+      if (!await file.exists()) return null;
+    } on FileSystemException {
+      return null;
+    }
+    final entry = AvesEntry(
+      id: artwork.entryId,
+      uri: file.uri.toString(),
+      path: file.path,
+      contentId: null,
+      pageId: null,
+      sourceMimeType: artwork.mimeType,
+      width: artwork.width,
+      height: artwork.height,
+      sourceRotationDegrees: artwork.rotationDegrees,
+      sizeBytes: artwork.sizeBytes,
+      sourceTitle: artwork.title,
+      dateAddedSecs: null,
+      dateModifiedMillis: null,
+      sourceDateTakenMillis: null,
+      durationMillis: null,
+      trashed: false,
+      origin: EntryOrigins.file,
+    );
+    entry.catalogMetadata = CatalogMetadata(
+      id: artwork.entryId,
+      mimeType: artwork.mimeType,
+      isAnimated: artwork.isAnimated,
+      isFlipped: artwork.isFlipped,
+      rotationDegrees: artwork.rotationDegrees,
+      // The file is always named `single.*`, so the copy path cannot supply the
+      // display title the original had; the snapshot keeps it.
+      xmpTitle: artwork.title,
+    );
     return _isUsable(entry) ? entry : null;
   }
 

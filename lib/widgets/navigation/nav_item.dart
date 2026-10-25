@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:aves/features/collection_paging/lens/scope_registry.dart';
+import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -72,7 +73,10 @@ class AvesNavItem extends Equatable {
 
   Future<void> goTo(BuildContext context, {bool? topLevel}) async {
     topLevel ??= _defaultTopLevel;
-    final targetFilters = effectiveFilters;
+    // A borrowed view (the wallpaper picker) owns its media set: following the
+    // app-wide slot would leave the task it was opened for.
+    final hookFilters = this.route == CollectionPage.routeName ? CollectionViewHooksScope.read(context)?.mediaSetFilters : null;
+    final targetFilters = hookFilters ?? effectiveFilters;
     if (this.route == CollectionPage.routeName) {
       // A tap on a collection item is the decision to show it: resolve it while
       // the route transition runs, so its page opens on a published window.

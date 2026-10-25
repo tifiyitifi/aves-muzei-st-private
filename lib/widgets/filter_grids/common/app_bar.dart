@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/grouping/common.dart';
 import 'package:aves/model/query.dart';
@@ -87,6 +88,25 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
   final ValueNotifier<bool> _isSelectingNotifier = ValueNotifier(false);
   final FocusNode _queryBarFocusNode = FocusNode();
   late final Listenable _queryFocusRequestNotifier;
+
+  /// Actions that change the library, as opposed to navigating it.
+  ///
+  /// A view opened to return a choice keeps the navigation actions and drops
+  /// these: a pick must not delete, rename or hide the albums it browses.
+  static const Set<ChipSetAction> _libraryMutatingActions = {
+    .createGroup,
+    .createAlbum,
+    .createVault,
+    .delete,
+    .remove,
+    .rename,
+    .hide,
+    .pin,
+    .unpin,
+    .group,
+    .setCover,
+    .configureVault,
+  };
 
   CollectionSource get source => widget.source;
 
@@ -320,14 +340,22 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
     final itemCount = actionDelegate.allItems.length;
     final isSelecting = selection.isSelecting;
     final selectedFilters = selection.selectedItems.map((v) => v.filter).toSet();
+    // A borrowed view (the wallpaper source picker) only returns a choice: the
+    // actions that would change the library stay out of its app bar, while
+    // browsing and the union it builds remain available.
+    final allowMutation = CollectionViewHooksScope.maybeOf(context)?.allowFilterMutation ?? true;
 
-    bool isVisible(ChipSetAction action) => actionDelegate.isVisible(
-      action,
-      appMode: appMode,
-      isSelecting: isSelecting,
-      itemCount: itemCount,
-      selectedFilters: selectedFilters,
-    );
+    bool isVisible(ChipSetAction action) {
+      if (!allowMutation && _libraryMutatingActions.contains(action)) return false;
+      return actionDelegate.isVisible(
+        action,
+        appMode: appMode,
+        isSelecting: isSelecting,
+        itemCount: itemCount,
+        selectedFilters: selectedFilters,
+      );
+    }
+
     bool canApply(ChipSetAction action) => actionDelegate.canApply(
       action,
       isSelecting: isSelecting,

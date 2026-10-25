@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/view/filter_policy_scope.dart';
 import 'package:aves/model/filters/trash.dart';
 import 'package:aves/model/query.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -12,6 +13,10 @@ import 'package:provider/provider.dart';
 /// the flow and alignment they had, and the action sits where the filters are
 /// read. The live query is not a chip, so clearing the query bar's text is what
 /// drops it — that bar's own listener removes the filter.
+///
+/// Filters the view marks as locked ([FilterPolicyScope]) are not user choices:
+/// clearing drops everything else and keeps them, so the view still means what
+/// it says.
 class ClearFilterButton extends StatelessWidget {
   final CollectionLens collection;
 
@@ -22,6 +27,7 @@ class ClearFilterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final policy = FilterPolicyScope.maybeOf(context);
     return IconButton(
       // key is expected by test driver
       key: const Key('clear-filter-button'),
@@ -30,8 +36,10 @@ class ClearFilterButton extends StatelessWidget {
       onPressed: () {
         context.read<Query?>()?.queryNotifier.value = '';
         // The bin is a scope of its own, not a filter to clear: only the trash
-        // marker survives.
-        collection.setFilters(collection.filters.whereType<TrashFilter>().toSet());
+        // marker survives. Locked filters are the view's own constraints.
+        collection.setFilters(
+          collection.filters.where((filter) => filter is TrashFilter || (policy?.isLocked(filter) ?? false)).toSet(),
+        );
       },
     );
   }

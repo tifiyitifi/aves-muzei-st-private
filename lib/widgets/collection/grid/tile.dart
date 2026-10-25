@@ -1,11 +1,14 @@
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/selection.dart';
 import 'package:aves/model/source/collection_lens.dart';
 import 'package:aves/services/intent_service.dart';
+import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/collection/grid/list_details.dart';
 import 'package:aves/widgets/collection/grid/list_details_theme.dart';
 import 'package:aves/widgets/common/grid/scaling.dart';
+import 'package:aves/widgets/common/identity/aves_icons.dart';
 import 'package:aves/widgets/common/providers/viewer_entry_provider.dart';
 import 'package:aves/widgets/common/thumbnail/decorated.dart';
 import 'package:aves/widgets/common/thumbnail/notifications.dart';
@@ -24,8 +27,42 @@ class const InteractiveTile({
 }) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    Widget child = MetaData(
+      metaData: ScalerMetadata(entry),
+      child: Tile(
+        entry: entry,
+        thumbnailExtent: thumbnailExtent,
+        tileLayout: tileLayout,
+        selectable: true,
+        highlightable: true,
+        isScrollingNotifier: isScrollingNotifier,
+        heroTagger: () => EntryHeroInfo(collection, entry).tag,
+      ),
+    );
+    // A task that picks one entry marks it on the grid. The app's own selection
+    // overlay cannot carry this: it switches the whole surface to selection
+    // mode, with actions that pick does not offer.
+    final pickedEntryId = CollectionViewHooksScope.maybeOf(context)?.pickedEntryId;
+    if (pickedEntryId != null) {
+      child = ValueListenableBuilder<int?>(
+        valueListenable: pickedEntryId,
+        builder: (context, pickedId, child) {
+          if (pickedId != entry.id) return child!;
+          return Stack(
+            fit: StackFit.passthrough,
+            children: [
+              child!,
+              const Positioned.fill(child: _PickedEntryOverlay()),
+            ],
+          );
+        },
+        child: child,
+      );
+    }
     return InkWell(
       onTap: () {
+        final hooks = CollectionViewHooksScope.read(context);
+        if (hooks != null && hooks.onEntryTap(context, collection, entry)) return;
         final appMode = context.read<ValueNotifier<AppMode>>().value;
         switch (appMode) {
           case .main:
@@ -47,17 +84,37 @@ class const InteractiveTile({
             break;
         }
       },
-      child: MetaData(
-        metaData: ScalerMetadata(entry),
-        child: Tile(
-          entry: entry,
-          thumbnailExtent: thumbnailExtent,
-          tileLayout: tileLayout,
-          selectable: true,
-          highlightable: true,
-          isScrollingNotifier: isScrollingNotifier,
-          heroTagger: () => EntryHeroInfo(collection, entry).tag,
-        ),
+      child: child,
+    );
+  }
+}
+
+/// The "this is the photo" mark for a task that picks one entry.
+class _PickedEntryOverlay extends StatelessWidget {
+  const new();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: color, width: 3),
+              ),
+            ),
+          ),
+          const Positioned(
+            top: 4,
+            right: 4,
+            child: OverlayIcon(
+              icon: AIcons.selected,
+              margin: EdgeInsets.zero,
+            ),
+          ),
+        ],
       ),
     );
   }

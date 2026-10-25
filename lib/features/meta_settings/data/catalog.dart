@@ -8,6 +8,7 @@ import 'package:aves/features/meta_settings/model/setting_def.dart';
 import 'package:aves/features/meta_settings/model/setting_ids.dart';
 import 'package:aves/features/meta_settings/store/settings_engine_gate.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_prefetch_setting.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_reset_setting.dart';
 import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/model/settings/enums/coordinate_format.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -34,9 +35,7 @@ final List<SettingDef> metaSettingsCatalog = [
 ];
 
 /// Defs of [category], ordered by `sortOrder`.
-List<SettingDef> metaSettingsDefsFor(SettingsCategory category) =>
-    metaSettingsCatalog.where((def) => def.category == category).toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+List<SettingDef> metaSettingsDefsFor(SettingsCategory category) => metaSettingsCatalog.where((def) => def.category == category).toList()..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
 // Display
 
@@ -541,5 +540,14 @@ final List<SettingDef> _advancedDefs = [
     subtitle: (context) => context.l10n.settingsMuzeiWallpaperPrefetchAheadSubtitle,
     reader: WallpaperPrefetchSetting.read,
     sortOrder: 80,
+  ),
+  SettingDef(
+    key: WallpaperSourceResetSetting.key,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.toggle,
+    title: (context) => context.l10n.settingsMuzeiWallpaperSourceResetConfirm,
+    subtitle: (context) => context.l10n.settingsMuzeiWallpaperSourceResetConfirmSubtitle,
+    reader: WallpaperSourceResetSetting.read,
+    sortOrder: 85,
   ),
 ];

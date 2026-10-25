@@ -150,6 +150,7 @@ class AIcons {
   static const reverse = Symbols.invert_colors;
   static const reset = Symbols.restart_alt;
   static const restore = Symbols.restore;
+  static const filterOff = Symbols.filter_alt_off;
   static const rotateLeft = Symbols.rotate_left;
   static const rotateRight = Symbols.rotate_right;
   static const rotateScreen = Symbols.screen_rotation;

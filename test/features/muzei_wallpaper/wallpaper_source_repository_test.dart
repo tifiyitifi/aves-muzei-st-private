@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'dart:math';
 
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_single_artwork.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
@@ -24,6 +26,7 @@ import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
 import '../../common.dart';
 import '../../helpers/sqlite3_loader.dart';
@@ -93,8 +96,7 @@ void main() {
     );
   }
 
-  WallpaperSourceScope collection({Set<CollectionFilter> filters = const {}}) =>
-      WallpaperSourceScope(kind: WallpaperSourceKind.myPhotos, filters: filters);
+  WallpaperSourceScope collection({Set<CollectionFilter> filters = const {}}) => WallpaperSourceScope(kind: WallpaperSourceKind.myPhotos, filters: filters);
 
   WallpaperSourceScope single(int entryId) => WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: entryId);
 
@@ -423,6 +425,92 @@ void main() {
       } finally {
         settings.hiddenFilters = old;
       }
+    });
+  });
+
+  group('single artwork copy', () {
+    late Directory root;
+
+    setUp(() async {
+      root = await Directory.systemTemp.createTemp('aves_muzei_repo_');
+    });
+
+    tearDown(() async {
+      try {
+        await root.delete(recursive: true);
+      } catch (_) {
+        // Best-effort cleanup; the assertion result is more useful.
+      }
+    });
+
+    WallpaperSourceRepository copyRepository(WallpaperSingleArtwork artwork) => WallpaperSourceRepository(
+      database: driftDb,
+      random: Random(7),
+      stateRoot: root,
+      singleArtwork: () => artwork,
+    );
+
+    Future<WallpaperSingleArtwork> writeCopy(int entryId) async {
+      const relative = 'source/single.jpg';
+      final file = File(p.join(root.path, relative));
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(const [1, 2, 3]);
+      return WallpaperSingleArtwork(
+        relativePath: relative,
+        entryId: entryId,
+        mimeType: 'image/jpeg',
+        title: 'copy',
+        width: 10,
+        height: 20,
+        sizeBytes: 3,
+      );
+    }
+
+    WallpaperSourceScope copyScope(WallpaperSingleArtwork artwork) => WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: artwork.entryId, singleArtwork: artwork);
+
+    test('the copy is the artwork even after the library row is gone', () async {
+      final artwork = await writeCopy(42);
+      final repositoryUnderTest = copyRepository(artwork);
+      final scope = copyScope(artwork);
+
+      final resolution = await repositoryUnderTest.resolve(scope);
+      expect(resolution.status, WallpaperSourceStatus.ready);
+      expect(resolution.total, 1);
+
+      final pick = await repositoryUnderTest.pick(scope, ordering: WallpaperOrdering.inOrder, cursor: 0);
+      final file = File(p.join(root.path, artwork.relativePath));
+      expect(pick.entry, isNotNull);
+      expect(pick.entry!.uri, file.uri.toString());
+      expect(pick.entry!.path, file.path);
+      expect(pick.entry!.mimeType, 'image/jpeg');
+      expect(pick.entry!.sourceTitle, 'copy');
+      expect(pick.entry!.bestTitle, 'copy', reason: 'the copy file name must not replace the original title');
+      expect(pick.entry!.width, 10);
+      expect(pick.entry!.height, 20);
+      // A slot only stores the entry id, so validation must find the copy too.
+      expect(await repositoryUnderTest.entryById(42), isNotNull);
+    });
+
+    test('a missing copy falls back to the library entry', () async {
+      final artwork = await writeCopy(5);
+      await File(p.join(root.path, artwork.relativePath)).delete();
+      await driftDb.insertEntries({entry(id: 5)});
+      final repositoryUnderTest = copyRepository(artwork);
+      final scope = copyScope(artwork);
+
+      expect((await repositoryUnderTest.resolve(scope)).status, WallpaperSourceStatus.ready);
+      final pick = await repositoryUnderTest.pick(scope, ordering: WallpaperOrdering.inOrder, cursor: 0);
+      expect(pick.entry?.uri, 'content://5');
+    });
+
+    test('a copy and a library entry that are both gone report missing', () async {
+      final artwork = await writeCopy(6);
+      await File(p.join(root.path, artwork.relativePath)).delete();
+      final repositoryUnderTest = copyRepository(artwork);
+      final scope = copyScope(artwork);
+
+      expect((await repositoryUnderTest.resolve(scope)).status, WallpaperSourceStatus.missing);
+      expect((await repositoryUnderTest.pick(scope, ordering: WallpaperOrdering.inOrder, cursor: 0)).entry, isNull);
     });
   });
 

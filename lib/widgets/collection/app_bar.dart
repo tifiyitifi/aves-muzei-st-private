@@ -8,7 +8,9 @@ import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/features/collection_paging/view/clear_filter_button.dart';
 import 'package:aves/features/collection_paging/view/collection_select_all.dart';
+import 'package:aves/features/collection_paging/view/filter_policy_scope.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/container/set_and.dart';
 import 'package:aves/model/filters/trash.dart';
@@ -101,7 +103,19 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
 
   CollectionSource get source => collection.source;
 
-  bool get showFilterBar => collection.visibleFilters.isNotEmpty;
+  bool get showFilterBar => _visibleFilters(context).isNotEmpty;
+
+  /// The filters the bar draws: everything the view carries except the ones its
+  /// [FilterPolicyScope] keeps out of the user's sight.
+  ///
+  /// Read without registering a dependency: the policy is fixed for the life of
+  /// a view, and this is also called from height updates outside `build`.
+  Set<CollectionFilter> _visibleFilters(BuildContext context) {
+    final policy = context.getInheritedWidgetOfExactType<FilterPolicyScope>();
+    final filters = collection.visibleFilters;
+    if (policy == null) return filters;
+    return filters.where((filter) => !policy.isHidden(filter)).toSet();
+  }
 
   /// Whether the browse-only strip is part of the app bar right now.
   /// The strip is shown while the first import runs (when the notice setting is
@@ -204,9 +218,19 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
       child: ListenableBuilder(
         listenable: collection.filterChangeNotifier,
         builder: (context, child) {
-          // In the wallpaper-source preview the album and the image MIME are
-          // fixed constraints; dropping the image one must not reveal videos.
+          // A borrowed view can own a constraint it keeps out of sight (the
+          // wallpaper picker's photo restriction). Hidden filters are not drawn,
+          // and a locked one is never dropped, while every chip the user can see
+          // stays removable.
+          final policy = context.getInheritedWidgetOfExactType<FilterPolicyScope>();
+          final visibleFilters = _visibleFilters(context);
           final canRemoveFilters = appMode != .pickFilteredMediaInternal && appMode != .pickFilterInternal;
+          final void Function(CollectionFilter)? onFilterTap = canRemoveFilters
+              ? (filter) {
+                  if (policy?.isLocked(filter) ?? false) return;
+                  collection.removeFilter(filter);
+                }
+              : null;
           return Selector<Query, bool>(
             selector: (context, query) => query.enabled,
             builder: (context, queryEnabled, child) {
@@ -217,7 +241,6 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
                     selector: (context, s) => s.collectionBrowsingQuickActions,
                     builder: (context, _, child) {
                       final useTvLayout = settings.useTvLayout;
-                      final onFilterTap = canRemoveFilters ? collection.removeFilter : null;
                       // The mode can start or end while this bar is on screen
                       // (the first import runs behind it), so the bar rebuilds on
                       // both the import status and the setting that shows it.
@@ -244,7 +267,7 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
                                     children: _buildActions(context, selection, double.infinity),
                                   ),
                                 ),
-                              if (showFilterBar)
+                              if (visibleFilters.isNotEmpty)
                                 NotificationListener(
                                   onNotification: (notification) {
                                     if (notification is SelectFilterNotification) {
@@ -266,7 +289,7 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
                                     children: [
                                       Expanded(
                                         child: FilterBar(
-                                          filters: collection.visibleFilters,
+                                          filters: visibleFilters,
                                           interactive: true,
                                           onTap: onFilterTap,
                                           onRemove: onFilterTap,

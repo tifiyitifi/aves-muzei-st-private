@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/theme/durations.dart';
@@ -20,6 +21,9 @@ class DoubleBackPopHandler extends PopHandler {
 
   @override
   bool canPop(BuildContext context) {
+    // A borrowed view is not the app's root: backing out of it returns to the
+    // page that opened it instead of exiting the app.
+    if (CollectionViewHooksScope.maybeOf(context)?.suppressDoubleBack ?? false) return true;
     if (context.select<Settings, bool>((v) => !v.mustBackTwiceToExit)) return true;
     if (Navigator.canPop(context)) return true;
     return false;

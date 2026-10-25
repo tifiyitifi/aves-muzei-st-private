@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:aves/features/browse_only/view/browse_albums_view.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
+import 'package:aves/features/collection_paging/summary/ensure_album_list.dart';
 import 'package:aves/model/app_inventory.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/dynamic_albums.dart';
@@ -26,7 +29,7 @@ import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
-class AlbumListPage extends StatelessWidget {
+class AlbumListPage extends StatefulWidget {
   static const routeName = '/albums';
 
   final Uri? initialGroup;
@@ -35,6 +38,43 @@ class AlbumListPage extends StatelessWidget {
     super.key,
     required this.initialGroup,
   });
+
+  @override
+  State<AlbumListPage> createState() => _AlbumListPageState();
+
+  /// The album grid's items, shared with the pick dialogs.
+  static List<FilterGridItem<AlbumBaseFilter>> getGridItems(
+    BuildContext context,
+    CollectionSource source,
+    Set<AlbumChipType> albumChipTypes,
+    Uri? groupUri,
+  ) => _AlbumListPageState.getGridItems(context, source, albumChipTypes, groupUri);
+
+  /// The album grid's sections, shared with the pick dialogs.
+  static Map<ChipSectionKey, List<FilterGridItem<AlbumBaseFilter>>> groupToSections(
+    BuildContext context,
+    CollectionSource source,
+    Iterable<FilterGridItem<AlbumBaseFilter>> sortedMapEntries,
+  ) => _AlbumListPageState.groupToSections(context, source, sortedMapEntries);
+}
+
+class _AlbumListPageState extends State<AlbumListPage> {
+  /// The source whose album data was requested, so a dependency change does not
+  /// start the same load twice.
+  CollectionSource? _ensuredSource;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The album list has to work when no collection lens ran in this process:
+    // this page is a top-level destination of its own, and the wallpaper picker
+    // can open it first. An entry-free source answers from the database, which
+    // only this call makes sure is loaded.
+    final source = context.read<CollectionSource>();
+    if (identical(source, _ensuredSource)) return;
+    _ensuredSource = source;
+    unawaited(ensureAlbumListData(source));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +94,7 @@ class AlbumListPage extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<FilterGrouping>.value(value: albumGrouping),
-        FilterGroupProvider(initialValue: initialGroup),
+        FilterGroupProvider(initialValue: widget.initialGroup),
       ],
       child: Builder(
         // to access filter group provider from subtree context

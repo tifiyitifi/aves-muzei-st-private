@@ -117,16 +117,41 @@ bundled image, so it adds nothing to the APK or to storage. The wallpaper only
 ever reads photos; its own writes stay inside the app's private directory
 (`state.json`, `runtime.json`, the slot PNGs).
 
-Sources are album-first, matching how Aves and Muzei both present a local
-gallery: the pencil opens Aves' album grid (groups, sorting, hidden albums) and
-reopens on the saved album. A tap opens that album's media set with a confirm
-button; a long press multi-selects albums, whose union is previewed the same way
-(an `OR` filter, as the collection's own filters are ANDed). Confirming is the
-only way back with a value, so browsing cannot change the wallpaper. The preview
-adds the image restriction to its own lens, so videos never appear there and the
-"show videos" setting and every other page are untouched; albums without any
-image are left out of the grid. On the source page the album chip's cross and a
-reset button both return to "all photos".
+Sources open Aves' own album and collection pages inside a picker sandbox. The
+pencil opens the source on the album list when it has no filter set yet (and
+always in "Single artwork" mode, where finding a photo by album is faster); a
+configured set opens on its media set. The picker is a route that hosts its own
+navigator, so tapping an album opens that album's normal media set, the drawer
+and bottom bar navigate as usual (minus the live-wallpaper page, the bin, the
+home link and the video destination, which a photo pick cannot use), and none of
+that navigation can drop the source page (or the wallpaper controller)
+underneath. The bottom bar's photo destination stays inside the pick: it reopens
+the picker's own set instead of the library's. A source can be any filter set,
+not just an album: filters are added through the search sheet or the album grid,
+and chips are removed one by one or with the bar's clear button. Picking an album
+replaces the album condition and keeps every other one, and a long press still
+unions albums with an `OR` filter, as the collection's own filters are ANDed.
+Actions that would delete, rename or hide library items are hidden while picking.
+The reset action confirms first (with "don't ask again", re-enabled from
+Settings → Advanced), because it drops the whole set.
+
+The photo restriction is invisible: the lens carries the image MIME filter, the
+filter bar hides it, and both the chip gestures and "clear filters" preserve it,
+so the picker only ever lists photos while the pages it opens behave normally and
+the "show videos" setting is untouched. Video filters the search sheet adds are
+dropped silently.
+
+The picker's button says which question it answers. In "My photos" mode it is
+"Use these filters" and confirms the set (disabled while the set is empty); a tap
+on a photo opens the normal viewer. In "Single artwork" mode a tap picks the
+photo (marked on the grid) and the button becomes "Use this photo". The app then
+copies the bytes under `<root>/source/single.*` (one copy at a time, with 64 MiB
+of headroom so a copy cannot starve the bake) and stores the copy's metadata in
+the scope, so deleting the original photo leaves the wallpaper working. A read or
+write failure, or a full volume, cancels the change and keeps the previous
+source. The copy and its snapshot outlive source changes: switching to "My
+photos" and back returns the same artwork without picking it again, even when
+its original photo was deleted; choosing another artwork is what replaces it.
 
 The about dialog blurs and dims the artwork behind it, and its Muzei section is
 quoted verbatim from Muzei's `about_body`, including its own version. Our app

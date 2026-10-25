@@ -10,6 +10,7 @@ import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart'
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_bake.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_prefetch_setting.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_single_artwork.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
@@ -18,6 +19,7 @@ import 'package:aves/features/muzei_wallpaper/services/wallpaper_baker.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_bridge.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_prefs.dart';
+import 'package:aves/features/muzei_wallpaper/services/wallpaper_single_artwork_store.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_source_repository.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_state_store.dart';
 import 'package:aves/model/db/db.dart';
@@ -28,6 +30,7 @@ import 'package:aves/model/vaults/vaults.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../common.dart';
@@ -140,6 +143,70 @@ void main() {
     targetSize: () async => const Size(100, 100),
     prefetchAhead: prefetchAhead ?? () => false,
   );
+
+  group('single artwork copy', () {
+    const artwork = WallpaperSingleArtwork(
+      relativePath: 'source/single.jpg',
+      entryId: 99,
+      mimeType: 'image/jpeg',
+      width: 100,
+      height: 100,
+      sizeBytes: 3,
+    );
+
+    Future<File> seedCopy() async {
+      final file = File(p.join(tempDir.path, WallpaperSingleArtworkStore.sourceDirName, 'single.jpg'));
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(const [1, 2, 3]);
+      return file;
+    }
+
+    test('a single scope keeps the copy', () async {
+      await controller.init();
+      await controller.idle;
+      final file = await seedCopy();
+
+      await controller.setScope(WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 99, singleArtwork: artwork));
+      await controller.idle;
+
+      expect(await file.exists(), isTrue);
+      expect(prefs.scope.singleArtwork, artwork);
+    });
+
+    test('switching away keeps the copy and the snapshot', () async {
+      await controller.init();
+      await controller.idle;
+      final file = await seedCopy();
+
+      final single = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 99, singleArtwork: artwork);
+      await controller.setScope(single);
+      await controller.idle;
+      await controller.setScope(single.copyWith(kind: WallpaperSourceKind.myPhotos));
+      await controller.idle;
+
+      expect(await file.exists(), isTrue, reason: 'the chosen photo may be gone from the library');
+      expect(prefs.scope.singleArtwork, artwork, reason: 'switching back must not need a new pick');
+      expect(prefs.scope.activeSingleArtwork, isNull, reason: 'the copy is not the library while the source is my photos');
+    });
+
+    test('switching back to single keeps using the same copy', () async {
+      await controller.init();
+      await controller.idle;
+      final file = await seedCopy();
+
+      final single = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 99, singleArtwork: artwork);
+      await controller.setScope(single);
+      await controller.idle;
+      await controller.setScope(single.copyWith(kind: WallpaperSourceKind.myPhotos));
+      await controller.idle;
+      await controller.setScope(prefs.scope.copyWith(kind: WallpaperSourceKind.single));
+      await controller.idle;
+
+      expect(prefs.scope.kind, WallpaperSourceKind.single);
+      expect(prefs.scope.activeSingleArtwork, artwork);
+      expect(await file.exists(), isTrue);
+    });
+  });
 
   test('init bakes the newest entry, writes state and prefetches the next', () async {
     await driftDb.insertEntries({

@@ -2,6 +2,7 @@ import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart'
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_display.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_single_artwork.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_prefs.dart';
@@ -108,6 +109,36 @@ void main() {
     expect(prefs.viewportZoom, WallpaperPrefs.maxViewportZoom);
     expect(prefs.currentIndex, 0);
     expect(prefs.titleMode, WallpaperTitleMode.defaultMode);
+    prefs.dispose();
+  });
+
+  test('persists and clears the single artwork snapshot', () async {
+    const artwork = WallpaperSingleArtwork(
+      relativePath: 'source/single.jpg',
+      entryId: 9,
+      mimeType: 'image/jpeg',
+      title: 'photo',
+      width: 400,
+      height: 300,
+      sizeBytes: 1234,
+    );
+
+    final prefs = WallpaperPrefs();
+    await prefs.init();
+    await prefs.setSourceScope(WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 9, singleArtwork: artwork));
+
+    final reloaded = WallpaperPrefs();
+    await reloaded.init();
+    expect(reloaded.scope.singleArtwork, artwork);
+    expect(reloaded.scope.singleEntryId, 9);
+    reloaded.dispose();
+
+    await prefs.setSourceScope(WallpaperSourceScope());
+    final cleared = WallpaperPrefs();
+    await cleared.init();
+    expect(cleared.scope.singleArtwork, isNull);
+    expect(cleared.scope.singleEntryId, isNull);
+    cleared.dispose();
     prefs.dispose();
   });
 

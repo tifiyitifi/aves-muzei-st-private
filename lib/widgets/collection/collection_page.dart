@@ -12,6 +12,7 @@ import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/features/collection_paging/lens/scope_registry.dart';
 import 'package:aves/features/collection_paging/view/catalog_prompt_dialog.dart';
 import 'package:aves/features/collection_paging/view/collection_import_intro.dart';
+import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -59,6 +60,13 @@ class const CollectionPage({
 class _CollectionPageState extends State<CollectionPage> {
   final Set<StreamSubscription> _subscriptions = {};
   late PagedCollectionLens _collection;
+
+  /// The task this view serves, when it is not the library's own view.
+  ///
+  /// Read once: a page belongs to the task that opened it for its whole life,
+  /// so the hooks never change under it.
+  CollectionViewHooks? _hooks;
+
   final StreamController<DraggableScrollbarEvent> _draggableScrollBarEventStreamController = StreamController.broadcast();
   bool _importing = false;
   int _lastRetryToken = 0;
@@ -72,10 +80,19 @@ class _CollectionPageState extends State<CollectionPage> {
     // The lens comes from the scope registry: a view that was shown before is
     // already resolved, so returning to it paints its window instead of
     // resolving the same rows again behind a loading body.
+    final hooks = CollectionViewHooksScope.read(context);
+    _hooks = hooks;
     _collection = scopeRegistry.acquire(
       source: widget.source,
-      filters: widget.filters,
+      // A borrowed view may carry a constraint its opener owns (the wallpaper
+      // picker is always photos). Adding it here keeps it out of every page
+      // that registered the same filters.
+      filters: hooks?.augmentFilters(widget.filters) ?? widget.filters,
     );
+    if (hooks != null) {
+      hooks.onViewOpened(_collection);
+      _collection.filterChangeNotifier.addListener(_onFilterChangedForHooks);
+    }
     // The media-set slot remembers the view it shows, so the bottom bar's
     // collection item returns to it instead of resetting to the whole library.
     // A view a bottom-bar item declares itself (video, favourites, an album
@@ -123,6 +140,9 @@ class _CollectionPageState extends State<CollectionPage> {
     catalogPrompt.pending.removeListener(_onCatalogPromptChanged);
     pagedImportStatus.removeListener(_onImportStatusChanged);
     libraryPhase.removeListener(_onLibraryPhaseChanged);
+    if (_hooks != null) {
+      _collection.filterChangeNotifier.removeListener(_onFilterChangedForHooks);
+    }
     _subscriptions
       ..forEach((sub) => sub.cancel())
       ..clear();
@@ -130,6 +150,22 @@ class _CollectionPageState extends State<CollectionPage> {
     // to this view is a repaint rather than a fresh resolve.
     scopeRegistry.release(_collection);
     super.dispose();
+  }
+
+  /// Lets the task that opened this view keep its filters valid.
+  ///
+  /// The search sheet applies whatever the user picks, including constraints a
+  /// borrowed view cannot honour. The rewrite runs after the current
+  /// notification so a filter change never re-enters the refresh still
+  /// notifying.
+  void _onFilterChangedForHooks() {
+    final hooks = _hooks;
+    if (hooks == null) return;
+    if (const SetEquality().equals(hooks.normalizeFilters(_collection.filters), _collection.filters)) return;
+    scheduleMicrotask(() {
+      if (!mounted) return;
+      _collection.setFilters(hooks.normalizeFilters(_collection.filters));
+    });
   }
 
   /// The browser and the collection choose their surface from one place now, so
@@ -267,6 +303,10 @@ class _CollectionPageState extends State<CollectionPage> {
     // Nothing on the browser is selectable: a floating action over it would be
     // a button with no valid target.
     if (browseOnly) return null;
+    // A borrowed view answers a question instead of acting on the library, so
+    // its opener supplies the button.
+    final hookedFab = _hooks?.buildFab(context, _collection);
+    if (hookedFab != null) return hookedFab;
     final actionDelegate = EntrySetActionDelegate();
     final action = EntrySetActions.fab.firstWhereOrNull((action) {
       return actionDelegate.isVisible(

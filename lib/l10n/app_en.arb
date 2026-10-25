@@ -914,11 +914,17 @@
     }
   },
   "muzeiWallpaperSourcesChooseArtwork": "Choose artwork",
-  "muzeiWallpaperSourcesChooseAlbum": "Choose album",
+  "muzeiWallpaperSourcesEditPhotos": "Edit photos",
   "muzeiWallpaperSourcesUseAllPhotos": "Use all photos",
   "muzeiWallpaperSourcesPhotosOnly": "Wallpaper uses photos only; videos are skipped automatically.",
-  "muzeiWallpaperSourcesUseAlbum": "Use this album",
-  "muzeiWallpaperSourcesUseSelectedAlbums": "Use selected albums",
+  "muzeiWallpaperSourceUseFilters": "Use these filters",
+  "muzeiWallpaperSourceUsePickedPhoto": "Use this photo",
+  "muzeiWallpaperSourceCopying": "Copying image",
+  "muzeiWallpaperSourceCopyErrorTitle": "Could not use this artwork",
+  "muzeiWallpaperSourceCopyNoSpace": "Not enough free space to copy this artwork. Free up some space and try again; the previous source is unchanged.",
+  "muzeiWallpaperSourceCopyFailed": "The artwork could not be copied, so the previous source is unchanged.",
+  "muzeiWallpaperSourceResetTitle": "Use all photos?",
+  "muzeiWallpaperSourceResetMessage": "The wallpaper source goes back to all photos, and the filters set here are removed. No photo is deleted.",
   "muzeiWallpaperSourcesCount": "{count, plural, =1{1 photo} other{{count} photos}}",
   "@muzeiWallpaperSourcesCount": {
     "placeholders": {
@@ -983,6 +989,8 @@
   "muzeiWallpaperAutoAdvanceInterval": "Interval",
   "settingsMuzeiWallpaperPrefetchAhead": "Live wallpaper: prepare two artworks ahead",
   "settingsMuzeiWallpaperPrefetchAheadSubtitle": "The first two wallpaper taps switch instantly. Uses about 13 MB more storage and re-bakes the effects for three artworks instead of two.",
+  "settingsMuzeiWallpaperSourceResetConfirm": "Live wallpaper: confirm before resetting the source",
+  "settingsMuzeiWallpaperSourceResetConfirmSubtitle": "Ask before the photo source goes back to all photos and its filters are removed.",
 
   "selectStorageVolumeDialogTitle": "Select Storage",
 

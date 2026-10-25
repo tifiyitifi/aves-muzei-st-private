@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:aves/features/muzei_wallpaper/log.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_cover.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_display.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
@@ -63,6 +64,10 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
 
   String? _singleEntryTitle;
 
+  /// The entry [\_singleEntryTitle] belongs to, so a source change cannot show
+  /// the previous artwork's name.
+  int? _singleEntryTitleId;
+
   /// Identity of the geometry the viewport was last centered for.
   ///
   /// Changing artwork or rotating recenters the view, like Muzei resets its
@@ -100,11 +105,23 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
   }
 
   Future<void> _loadSingleEntryTitle(WallpaperController controller) async {
-    final id = controller.prefs.scope.singleEntryId;
+    final scope = controller.prefs.scope;
+    final artworkTitle = scope.singleArtwork?.title;
+    if (artworkTitle != null) {
+      setState(() {
+        _singleEntryTitle = artworkTitle;
+        _singleEntryTitleId = scope.singleEntryId;
+      });
+      return;
+    }
+    final id = scope.singleEntryId;
     if (id == null) return;
     final entry = await controller.loadEntry(id);
     if (!mounted || controller.prefs.scope.singleEntryId != id) return;
-    setState(() => _singleEntryTitle = entry?.bestTitle);
+    setState(() {
+      _singleEntryTitle = entry?.bestTitle;
+      _singleEntryTitleId = id;
+    });
   }
 
   /// Prepares the "last artwork that still exists" preview.
@@ -217,7 +234,22 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
     );
   }
 
+  /// Whether this page is the topmost route.
+  ///
+  /// Gestures belong to the visible surface. A page pushed above this one (the
+  /// sources page, a wallpaper pick here) must not let a stray tap drive the
+  /// wallpaper and switch the artwork behind it — which is exactly what the
+  /// desktop's double-tap-to-next is for, not a list or a picker.
+  bool get _isRouteCurrent => ModalRoute.of(context)?.isCurrent ?? true;
+
   void _runGesture(WallpaperController controller, WallpaperTapAction action) {
+    if (!_isRouteCurrent) {
+      // Reaching here means a tap landed on this page while another route was
+      // on screen; dropping it is the fix, logging it is how that leak gets
+      // diagnosed if it ever comes back.
+      wallpaperLog.d('ignored wallpaper gesture ${action.name} while another page is on top');
+      return;
+    }
     switch (action) {
       case WallpaperTapAction.temporaryDisable:
         // The page already shows the unprocessed artwork, so there is nothing to
@@ -257,12 +289,13 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
     _maxPointers = 0;
     _pointerOrigin = null;
     _pointerMoved = false;
-    if (fingers >= 3 && !moved) {
+    if (fingers >= 3 && !moved && _isRouteCurrent) {
       _runGesture(controller, controller.prefs.gestures.threeFinger);
     }
   }
 
   void _togglePanel() {
+    if (!_isRouteCurrent) return;
     setState(() => _panelVisible = !_panelVisible);
   }
 
@@ -271,6 +304,7 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
   /// A separate route keeps this page's gestures simple: the view page owns its
   /// pan/zoom bounds and hides the system bars for as long as it is open.
   Future<void> _openViewPage(WallpaperController controller) async {
+    if (!_isRouteCurrent) return;
     final artwork = _artwork(controller);
     if (artwork == null) return;
     final title = _titleText(context, controller);
@@ -321,7 +355,12 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
     final scope = controller.prefs.scope;
     switch (scope.kind) {
       case WallpaperSourceKind.single:
-        return _singleEntryTitle ?? l10n.muzeiWallpaperSourcesSingle;
+        // The snapshot follows the current scope, so a newly picked artwork is
+        // named correctly without waiting for the page to reload it.
+        final snapshotTitle = scope.singleArtwork?.title;
+        if (snapshotTitle != null) return snapshotTitle;
+        if (_singleEntryTitleId == scope.singleEntryId) return _singleEntryTitle ?? l10n.muzeiWallpaperSourcesSingle;
+        return l10n.muzeiWallpaperSourcesSingle;
       case WallpaperSourceKind.myPhotos:
         if (scope.filters.isEmpty) return l10n.muzeiWallpaperSourcesAllPhotos;
         final labels = scope.filters.map((filter) => filter.getLabel(context)).toList()..sort();
@@ -592,12 +631,8 @@ class _BottomPanel extends StatelessWidget {
               IconButton(
                 tooltip: l10n.muzeiWallpaperNextAction,
                 color: Colors.white,
-                onPressed: controller.busy || controller.resolution?.status == WallpaperSourceStatus.empty
-                    ? null
-                    : controller.advance,
-                icon: controller.busy
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(AIcons.nextArtwork),
+                onPressed: controller.busy || controller.resolution?.status == WallpaperSourceStatus.empty ? null : controller.advance,
+                icon: controller.busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(AIcons.nextArtwork),
               ),
               WallpaperOverflowButton(
                 controller: controller,

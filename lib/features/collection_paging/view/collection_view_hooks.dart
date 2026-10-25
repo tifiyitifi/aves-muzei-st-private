@@ -1,3 +1,4 @@
+import 'package:aves/app_mode.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -33,6 +34,24 @@ abstract interface class CollectionViewHooks {
 
   /// Handles a tile tap; true when the task consumed it.
   bool onEntryTap(BuildContext context, CollectionLens collection, AvesEntry entry);
+
+  /// Handles a tile long press; true when the task consumed it.
+  ///
+  /// A task that picks one entry uses the long press for the pick, leaving the
+  /// tap for the viewer.
+  bool onEntryLongPress(BuildContext context, CollectionLens collection, AvesEntry entry);
+
+  /// An extra action to draw inside the viewer, or null for none.
+  ///
+  /// It follows the entry currently on screen, so the task can offer the same
+  /// confirmation without leaving the viewer.
+  Widget? buildViewerAction(BuildContext context, AvesEntry entry);
+
+  /// The app mode the viewer opened from this view should use.
+  ///
+  /// Null keeps the inherited mode. A task that hands the viewer to the user
+  /// asks for `.view` so editing and deleting stay available.
+  AppMode? get viewerAppMode;
 
   /// The entry the task currently has picked, when it picks one entry.
   ///

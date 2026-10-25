@@ -89,12 +89,14 @@ drops Muzei's bottom tab bar: sources, effects and gestures live in the one
 overflow menu, which also floats on their own pages so switching never needs a
 trip back to the artwork. The overlay is a single row, Muzei's visual signature:
 the title line, "touch to view", the next button and the overflow. A tap toggles
-the whole overlay (back arrow included) so the picture can be looked at alone, a
-long press opens the immersive artwork view, and a double tap advances by
-default. The artwork is laid out at its cover size and panned inside an
-`InteractiveViewer`, so 1x can already reach the parts the wallpaper crops away;
-the view recenters when the artwork or the window changes, and nothing is
-persisted, because the wallpaper keeps showing the whole frame.
+the whole overlay (back arrow included) so the picture can be looked at alone
+and a long press opens the immersive artwork view. The double-tap and
+three-finger bindings belong to the desktop wallpaper only: this page is a
+viewer, and a stray in-app tap must not change the wallpaper behind it. The
+artwork is laid out at its cover size and panned inside an `InteractiveViewer`,
+so 1x can already reach the parts the wallpaper crops away; the view recenters
+when the artwork or the window changes, and nothing is persisted, because the
+wallpaper keeps showing the whole frame.
 
 The effects page is its own preview. Muzei's live feedback comes from the system
 wallpaper preview, where its effects screen floats over the running engine; this
@@ -109,17 +111,24 @@ to show the photo, and every effect is opt-in.
 The title line defaults to the artwork's file name rather than Muzei's source
 label, which never explained itself; the source wording is one setting away.
 The title and "touch to view" share their actions: a tap opens the Aves viewer,
-a long press hands the artwork to another app. When the queue is empty the page
-shows the most recent artwork whose original file still exists, baked in memory;
-it never writes a slot, so history cannot rewind the wallpaper. With no history
-either, the page shows the ordinary "no artwork" hint: the feature ships no
-bundled image, so it adds nothing to the APK or to storage. The wallpaper only
-ever reads photos; its own writes stay inside the app's private directory
-(`state.json`, `runtime.json`, the slot PNGs).
+a long press hands the artwork to another app. That viewer sits behind a
+wallpaper-specific delete policy: in "My photos" mode a successful delete
+advances the queue; in "Single picture" mode the original and the private copy
+are distinguished, so deleting the original says the copy keeps the wallpaper
+working, while deleting the copy warns that the wallpaper stops. Only that
+viewer confirms; a delete from the normal gallery is unchanged. When the queue
+is empty the page shows the most recent artwork whose original file still
+exists, baked in memory; it never writes a slot, so history cannot rewind the
+wallpaper. With no history either, the page shows the ordinary "no artwork"
+hint: the feature ships no bundled image, so it adds nothing to the APK or to
+storage, and an empty source renders the renderer's neutral clear color instead
+of a development placeholder. The wallpaper only ever reads photos; its own
+writes stay inside the app's private directory (`state.json`, `runtime.json`,
+the slot PNGs).
 
 Sources open Aves' own album and collection pages inside a picker sandbox. The
 pencil opens the source on the album list when it has no filter set yet (and
-always in "Single artwork" mode, where finding a photo by album is faster); a
+always in "Single picture" mode, where finding a photo by album is faster); a
 configured set opens on its media set. The picker is a route that hosts its own
 navigator, so tapping an album opens that album's normal media set, the drawer
 and bottom bar navigate as usual (minus the live-wallpaper page, the bin, the
@@ -131,9 +140,18 @@ not just an album: filters are added through the search sheet or the album grid,
 and chips are removed one by one or with the bar's clear button. Picking an album
 replaces the album condition and keeps every other one, and a long press still
 unions albums with an `OR` filter, as the collection's own filters are ANDed.
-Actions that would delete, rename or hide library items are hidden while picking.
-The reset action confirms first (with "don't ask again", re-enabled from
-Settings → Advanced), because it drops the whole set.
+The picker can also rename, delete, hide, pin or set the cover of its albums,
+because it is the app's real page and the user may need to organize the library
+while browsing. The My photos chips are always shown on the Sources page,
+whatever source is active, and can be collapsed; the reset action only clears
+those filters and never switches the active source. It confirms first (with
+"don't ask again", re-enabled from Settings → Advanced), because it drops the
+whole set.
+
+The two sources are independent. A single picture never inherits the My photos
+filters, and editing either source only persists its own data: editing the
+inactive one does not rebake, advance or touch the baked slots. The revision
+that decides a rebake therefore covers the active kind only.
 
 The photo restriction is invisible: the lens carries the image MIME filter, the
 filter bar hides it, and both the chip gestures and "clear filters" preserve it,
@@ -141,17 +159,37 @@ so the picker only ever lists photos while the pages it opens behave normally an
 the "show videos" setting is untouched. Video filters the search sheet adds are
 dropped silently.
 
-The picker's button says which question it answers. In "My photos" mode it is
-"Use these filters" and confirms the set (disabled while the set is empty); a tap
-on a photo opens the normal viewer. In "Single artwork" mode a tap picks the
-photo (marked on the grid) and the button becomes "Use this photo". The app then
-copies the bytes under `<root>/source/single.*` (one copy at a time, with 64 MiB
-of headroom so a copy cannot starve the bake) and stores the copy's metadata in
-the scope, so deleting the original photo leaves the wallpaper working. A read or
-write failure, or a full volume, cancels the change and keeps the previous
-source. The copy and its snapshot outlive source changes: switching to "My
-photos" and back returns the same artwork without picking it again, even when
-its original photo was deleted; choosing another artwork is what replaces it.
+A tap on a photo always opens the normal viewer, in both modes. In "My photos"
+mode the picker's button says "Use these filters" and confirms the set (disabled
+while the set is empty). In "Single picture" mode a long press marks a photo on
+the grid and the button becomes "Use this photo"; the same button also floats in
+the viewer, where it confirms the photo on screen and returns to Sources at once.
+The viewer opened from the picker keeps editing and deleting, so the choice can
+be inspected and cleaned up without leaving the pick. The app then copies the
+bytes under `<root>/source/single.*` (one copy at a time, with 64 MiB of headroom
+so a copy cannot starve the bake) and stores the copy's metadata in the scope, so
+deleting the original photo leaves the wallpaper working. A read or write
+failure, or a full volume, cancels the change and keeps the previous source. The
+copy and its snapshot outlive source changes: switching to "My photos" and back
+returns the same artwork without picking it again, even when its original photo
+was deleted; choosing another artwork is what replaces it.
+
+The copy can also be deleted explicitly from the Sources page, with a warning
+that says whether the original still exists. Deleting it never discards the baked
+slots: the home screen keeps showing the artwork it already shows, while the
+source stops producing new ones. Its entry id is kept, so if the original is
+still in the library the wallpaper keeps baking from it; if it is gone too, the
+source reports unavailable.
+
+## Session restore
+
+When Android kills a paused process, the next plain launch reopens the top-level
+page the user was on: a collection with its filters, the album list, the tag
+list, the map or the wallpaper page. A viewer restores to the media set under it
+rather than reopening the photo. A task swiped away from recents, or an app left
+with the back button, clears the snapshot, and any real intent (a share, a pick,
+a shortcut) wins over it. Picker pages are never restored: their navigator is
+nested and their task no longer exists.
 
 The about dialog blurs and dims the artwork behind it, and its Muzei section is
 quoted verbatim from Muzei's `about_body`, including its own version. Our app

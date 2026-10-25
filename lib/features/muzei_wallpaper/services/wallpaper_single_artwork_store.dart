@@ -38,7 +38,7 @@ class WallpaperSingleCopyException implements Exception {
 /// metadata. Only one copy exists at a time (`source/single.*`), and it is kept
 /// across source changes: the chosen photo may no longer exist in the library,
 /// so switching back to it must not require picking it again. Choosing another
-/// artwork is what replaces it.
+/// artwork or deleting the copy explicitly is what replaces or removes it.
 class WallpaperSingleArtworkStore {
   static const String sourceDirName = 'source';
 
@@ -167,6 +167,25 @@ class WallpaperSingleArtworkStore {
       } catch (error, stack) {
         wallpaperLog.w('failed to delete an old single artwork copy path=${entity.path}', error, stack);
       }
+    }
+  }
+
+  /// Deletes the private copy, leaving every other wallpaper file alone.
+  ///
+  /// Baked slots and `state.json` are deliberately untouched: the copy only
+  /// feeds the next bake, while the wallpaper currently on the home screen is a
+  /// slot. Returns false when the directory could not be removed, so the caller
+  /// can keep the scope consistent with what is still on disk.
+  Future<bool> removeCopy() async {
+    final dir = sourceDir;
+    try {
+      if (!await dir.exists()) return true;
+      await dir.delete(recursive: true);
+      wallpaperLog.i('single artwork copy removed');
+      return true;
+    } catch (error, stack) {
+      wallpaperLog.w('failed to remove the single artwork copy', error, stack);
+      return false;
     }
   }
 

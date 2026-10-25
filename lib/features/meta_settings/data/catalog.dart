@@ -7,6 +7,7 @@ import 'package:aves/features/meta_settings/model/page_keys.dart';
 import 'package:aves/features/meta_settings/model/setting_def.dart';
 import 'package:aves/features/meta_settings/model/setting_ids.dart';
 import 'package:aves/features/meta_settings/store/settings_engine_gate.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_delete_settings.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_prefetch_setting.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_reset_setting.dart';
 import 'package:aves/locale/aves_locale.dart';
@@ -549,5 +550,23 @@ final List<SettingDef> _advancedDefs = [
     subtitle: (context) => context.l10n.settingsMuzeiWallpaperSourceResetConfirmSubtitle,
     reader: WallpaperSourceResetSetting.read,
     sortOrder: 85,
+  ),
+  SettingDef(
+    key: WallpaperSourceDeleteSetting.key,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.toggle,
+    title: (context) => context.l10n.settingsMuzeiWallpaperSourceDeleteConfirm,
+    subtitle: (context) => context.l10n.settingsMuzeiWallpaperSourceDeleteConfirmSubtitle,
+    reader: WallpaperSourceDeleteSetting.read,
+    sortOrder: 86,
+  ),
+  SettingDef(
+    key: WallpaperViewerDeleteSetting.key,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.toggle,
+    title: (context) => context.l10n.settingsMuzeiWallpaperViewerDeleteConfirm,
+    subtitle: (context) => context.l10n.settingsMuzeiWallpaperViewerDeleteConfirmSubtitle,
+    reader: WallpaperViewerDeleteSetting.read,
+    sortOrder: 87,
   ),
 ];

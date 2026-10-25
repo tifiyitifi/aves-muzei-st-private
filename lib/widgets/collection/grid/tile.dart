@@ -59,9 +59,9 @@ class const InteractiveTile({
         child: child,
       );
     }
+    final hooks = CollectionViewHooksScope.maybeOf(context);
     return InkWell(
       onTap: () {
-        final hooks = CollectionViewHooksScope.read(context);
         if (hooks != null && hooks.onEntryTap(context, collection, entry)) return;
         final appMode = context.read<ValueNotifier<AppMode>>().value;
         switch (appMode) {
@@ -84,6 +84,11 @@ class const InteractiveTile({
             break;
         }
       },
+      onLongPress: hooks == null
+          ? null
+          : () {
+              hooks.onEntryLongPress(context, collection, entry);
+            },
       child: child,
     );
   }

@@ -518,16 +518,35 @@ class WallpaperController extends ChangeNotifier {
   }
 
   /// Applies a source change: old slots are unusable and are dropped first.
+  ///
+  /// Only a change of the active kind reloads the wallpaper. The scope keeps
+  /// the other kind for switching back, so editing that data must persist but
+  /// must not rebake, advance or touch the current slots.
   Future<void> setScope(WallpaperSourceScope scope) async {
     if (!scope.isConfigured) {
-      _error = 'the source is not configured';
+      // A source can become unconfigured when its picture and private copy are
+      // both gone. Keep the wallpaper already on screen and only record the
+      // scope: there is nothing to bake, and the page must still be able to
+      // persist edits to the other source without switching to it.
+      if (!_initialized) await init();
+      await idle;
+      if (_disposed) return;
+      await prefs.setSourceScope(scope);
+      _state = _state.copyWith(sourceRevision: scope.revision);
+      await store.writeState(_state);
+      _resolution = WallpaperSourceResolution.missing;
       _notify();
       return;
     }
     if (!_initialized) await init();
     await idle;
     if (_disposed) return;
+    final revisionChanged = _state.sourceRevision != scope.revision;
     await prefs.setSourceScope(scope);
+    if (!revisionChanged) {
+      _notify();
+      return;
+    }
     // The single artwork's copy is deliberately kept when the source changes:
     // the chosen photo may be gone from the library, and it must still be there
     // when the user switches back. Only choosing another artwork replaces it.
@@ -555,6 +574,26 @@ class WallpaperController extends ChangeNotifier {
     }
     _notify();
     await advance();
+  }
+
+  /// Removes the private copy of the single artwork while keeping its source.
+  ///
+  /// Unlike [setScope], the baked slots are deliberately kept: the home screen
+  /// shows `slots/*.png`, not `source/single.*`, so deleting the copy must not
+  /// replace the wallpaper already on screen. The revision is synced so a later
+  /// cold start does not mistake the state for a source change.
+  Future<bool> removeSingleCopy({required WallpaperSourceScope scope}) async {
+    if (!_initialized) await init();
+    await idle;
+    if (_disposed) return false;
+    final removed = await singleArtworkStore.removeCopy();
+    if (!removed) return false;
+    await prefs.setSourceScope(scope);
+    _state = _state.copyWith(sourceRevision: scope.revision);
+    await store.writeState(_state);
+    _resolution = scope.isConfigured ? await repository.resolve(scope) : WallpaperSourceResolution.missing;
+    _notify();
+    return true;
   }
 
   /// Copies [entry] next to the wallpaper, so the source survives the original
@@ -721,6 +760,23 @@ class WallpaperController extends ChangeNotifier {
     return repository.entryById(slot.artwork.entryId);
   }
 
+  /// The entry the viewer should open.
+  ///
+  /// A single source prefers the library original over the private copy, so the
+  /// viewer can still edit or delete it. Only when the original is gone does the
+  /// copy stand in, and the viewer's delete policy then knows it is the copy.
+  Future<AvesEntry?> loadViewerEntry() async {
+    final scope = prefs.scope;
+    if (scope.kind == WallpaperSourceKind.single) {
+      final id = scope.singleEntryId;
+      if (id != null) {
+        final library = await repository.libraryEntryById(id);
+        if (library != null) return library;
+      }
+    }
+    return loadCurrentEntry();
+  }
+
   /// The newest remembered artwork whose original file is still on disk.
   ///
   /// Only the page uses it: when the queue is empty (first run, wallpaper
@@ -771,6 +827,12 @@ class WallpaperController extends ChangeNotifier {
   /// is not the artwork currently on the wallpaper.
   Future<AvesEntry?> loadEntry(int id) => repository.entryById(id);
 
+  /// Loads the library original by id, never the private copy.
+  ///
+  /// Used where the difference matters, such as deciding whether deleting the
+  /// copy is the last thing keeping the source alive.
+  Future<AvesEntry?> loadOriginalEntry(int id) => repository.libraryEntryById(id);
+
   Future<void> _adoptRuntime(WallpaperRuntime? runtime) async {
     if (runtime == null || !runtime.matches(_state)) return;
     final runtimeCurrent = _state.slotById(runtime.current);
@@ -802,6 +864,14 @@ class WallpaperController extends ChangeNotifier {
       final slot = _state.slotById(id);
       if (slot == null) continue;
       if (await repository.entryById(slot.artwork.entryId) != null) continue;
+      // The single source is deliberately allowed to outlive its picture: the
+      // user may have deleted the private copy to stop the feature while
+      // keeping the wallpaper already on screen. Dropping the current slot here
+      // would replace that wallpaper on the next launch.
+      if (id == _state.current && prefs.scope.kind == WallpaperSourceKind.single) {
+        wallpaperLog.i('slot.keep the current single artwork after its source was removed slot=$id');
+        continue;
+      }
       wallpaperLog.w('slot entry is gone id=${slot.artwork.entryId} slot=$id');
       await store.deleteSlot(id);
       _state = _state.copyWith(

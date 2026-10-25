@@ -491,6 +491,28 @@ void main() {
       expect(await repositoryUnderTest.entryById(42), isNotNull);
     });
 
+    test('the viewer entry prefers the library original over the copy', () async {
+      final artwork = await writeCopy(42);
+      await driftDb.insertEntries({entry(id: 42)});
+      final repositoryUnderTest = copyRepository(artwork);
+
+      final copy = await repositoryUnderTest.entryById(42);
+      expect(copy?.path, File(p.join(root.path, artwork.relativePath)).path);
+
+      final library = await repositoryUnderTest.libraryEntryById(42);
+      expect(library, isNotNull);
+      expect(library!.uri, 'content://42');
+      expect(library.path, '/album/42.jpg');
+    });
+
+    test('libraryEntryById reports the original when only the copy is left', () async {
+      final artwork = await writeCopy(43);
+      final repositoryUnderTest = copyRepository(artwork);
+
+      expect(await repositoryUnderTest.libraryEntryById(43), isNull);
+      expect(await repositoryUnderTest.entryById(43), isNotNull, reason: 'the slot still resolves through the copy');
+    });
+
     test('a missing copy falls back to the library entry', () async {
       final artwork = await writeCopy(5);
       await File(p.join(root.path, artwork.relativePath)).delete();

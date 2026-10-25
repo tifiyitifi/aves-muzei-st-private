@@ -84,6 +84,27 @@ void main() {
       expect(a.revision, b.revision);
     });
 
+    test('the revision ignores the inactive kind', () {
+      final photos = WallpaperSourceScope(filters: {FavouriteFilter.instance});
+      final single = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 7);
+
+      final photosWithOtherSingle = photos.copyWith(singleEntryId: 9);
+      expect(photosWithOtherSingle.revision, photos.revision, reason: 'single data must not invalidate a My photos source');
+
+      final singleWithOtherFilters = single.copyWith(filters: {FavouriteFilter.instance});
+      expect(singleWithOtherFilters.revision, single.revision, reason: 'My photos filters must not invalidate a single source');
+    });
+
+    test('the revision follows the active kind', () {
+      final a = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 7);
+      final b = a.copyWith(singleEntryId: 8);
+      expect(b.revision, isNot(a.revision));
+
+      final photos = WallpaperSourceScope(filters: {FavouriteFilter.instance});
+      final otherPhotos = photos.copyWith(filters: {MimeFilter.image, FavouriteFilter.instance});
+      expect(otherPhotos.revision, isNot(photos.revision));
+    });
+
     test('copyWith can clear the single id', () {
       final scope = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 4);
       expect(scope.copyWith(clearSingleEntryId: true).singleEntryId, isNull);

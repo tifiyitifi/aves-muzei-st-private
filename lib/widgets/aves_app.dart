@@ -6,11 +6,16 @@ import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
+import 'package:aves/features/session_restore/session_restore_collection_state.dart';
+import 'package:aves/features/session_restore/session_restore_route_observer.dart';
+import 'package:aves/features/session_restore/session_restore_snapshot.dart';
+import 'package:aves/features/session_restore/session_restore_store.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/l10n/l10n.dart';
 import 'package:aves/model/app/intent.dart';
 import 'package:aves/model/app_inventory.dart';
 import 'package:aves/model/device.dart';
+import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/recent.dart';
 import 'package:aves/model/settings/defaults.dart';
 import 'package:aves/model/settings/enums/display_refresh_rate_mode.dart';
@@ -184,7 +189,7 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
 
   // observers are not registered when using the same list object with different items
   // the list itself needs to be reassigned
-  List<NavigatorObserver> _navigatorObservers = [AvesApp.pageRouteObserver];
+  List<NavigatorObserver> _navigatorObservers = [AvesApp.pageRouteObserver, sessionRestoreRouteObserver];
   final EventChannel _mediaStoreChangeChannel = const OptionalEventChannel('deckers.thibault/aves/media_store_change');
   final EventChannel _newIntentChannel = const OptionalEventChannel('deckers.thibault/aves/new_intent_stream');
   final EventChannel _analysisCompletionChannel = const OptionalEventChannel('deckers.thibault/aves/analysis_events');
@@ -247,6 +252,9 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
         onNotification: (notification) {
           if (_appModeNotifier.value == .main) {
             _exitedMainByPop = true;
+            // Backing out exits the app: the next launch is a fresh start, not
+            // a return to the page the user just left.
+            unawaited(sessionRestoreStore.clear());
           }
           return true;
         },
@@ -381,6 +389,14 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
           default:
             break;
         }
+        _saveSessionRestore();
+      case .paused:
+        // Android may kill a paused process without another callback, so the
+        // snapshot has to be on disk by now.
+        _saveSessionRestore();
+      case .detached:
+        // The task was swiped away: the user does not expect it to come back.
+        unawaited(sessionRestoreStore.clear());
       case .resumed:
         availability.onResume();
         RecentlyAddedFilter.updateNow();
@@ -388,6 +404,26 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
       default:
         break;
     }
+  }
+
+  /// Remembers the top-level page for the next cold start.
+  ///
+  /// Only the main mode is restored: a pick, a viewer opened by another app or a
+  /// screen saver belongs to an intent that will not be there next time.
+  void _saveSessionRestore() {
+    if (!settings.initialized) return;
+    if (_appModeNotifier.value != .main) return;
+    final route = sessionRestoreRouteObserver.currentRestorableRoute;
+    if (route == null) return;
+    final filters = route == CollectionPage.routeName ? sessionRestoreCollectionState.filters : null;
+    unawaited(
+      sessionRestoreStore.save(
+        SessionRestoreSnapshot(
+          routeName: route,
+          filtersJson: [for (final filter in filters ?? const <CollectionFilter>{}) filter.toJsonString()],
+        ),
+      ),
+    );
   }
 
   @override
@@ -587,6 +623,7 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
       () => _navigatorObservers = [
         AvesApp.pageRouteObserver,
         ReportingRouteTracker(),
+        sessionRestoreRouteObserver,
       ],
     );
   }

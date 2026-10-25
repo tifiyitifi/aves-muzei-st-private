@@ -12,7 +12,7 @@ enum WallpaperTapAction {
   /// Advance to the next artwork.
   nextArtwork,
 
-  /// Open Aves on the wallpaper page / artwork.
+  /// Open the in-app artwork view (the "touch to view" page).
   viewArtwork,
 
   /// Do nothing.

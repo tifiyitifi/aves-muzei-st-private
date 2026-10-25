@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
+import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/multipage.dart';
 import 'package:aves/model/entry/extensions/props.dart';
@@ -532,6 +533,7 @@ class _EntryViewerStackState extends State<EntryViewerStack> with EntryViewContr
           ),
           child: Column(
             children: [
+              ?CollectionViewHooksScope.read(context)?.buildViewerAction(context, mainEntry),
               ?extraBottomOverlay,
               ViewerBottomOverlay(
                 entries: entries,

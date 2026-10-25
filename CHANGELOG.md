@@ -16,13 +16,15 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: title line shows the file name by default, or the source name
 - Muzei wallpaper: touch to view opens the Aves viewer, long press opens the artwork in another app
 - Muzei wallpaper: falls back to the last artwork that still exists when the queue is empty
-- Muzei wallpaper: edit the photo source freely, combining album, date, rating and other filters; the picker is Aves' own album and media-set pages, and the same picker chooses a single artwork
-- Muzei wallpaper: a copied single artwork keeps working after the original photo is deleted
+- Muzei wallpaper: edit the photo source freely, combining album, date, rating and other filters; the picker is Aves' own album and media-set pages, and the same picker chooses a single picture
+- Muzei wallpaper: a copied single picture keeps working after the original photo is deleted
+- Muzei wallpaper: the copied single picture can be deleted explicitly from Sources, with a warning that says whether the original is still there
+- Muzei wallpaper: a single picture is picked by long press on the grid or from the viewer, which also offers "Use this photo" on the current page
 - Muzei wallpaper: about dialog showing the ported Muzei about page
 - Muzei wallpaper: effects page previews blur, dim and greyscale live while dragging, with reset-to-zero and Muzei-defaults presets
 - Muzei wallpaper: long press opens an immersive artwork view, and the artwork can be panned to its uncropped edges even at 1x
-- Muzei wallpaper: double tap advances to the next artwork by default
 - Muzei wallpaper: auto-advance ordering (always in order / new photos then random / always random) on its own page
+- Session restore: a plain launch reopens the last top-level page and its media-set filters after the process was killed in the background
 
 ### Changed
 
@@ -32,13 +34,19 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: the about dialog separates the Muzei section with a thin recessed rule
 - Muzei wallpaper: menu checkmarks sit at the trailing edge so every label lines up
 - Muzei wallpaper: the source picker is one freely editable media set opened on Aves' real album and media-set pages; the photos-only restriction stays invisible, and picking albums replaces the album condition without dropping other filters
-- Muzei wallpaper: the picker's confirm button is labelled per question, "Use these filters" or "Use this photo", and a single artwork is picked then confirmed instead of leaving on the first tap
-- Muzei wallpaper: a single artwork is copied into the app when chosen, and the copy is kept across source switches so the same artwork comes back without picking it again
-- Muzei wallpaper: the source picker starts on the album list when there is no filter set yet, and always for a single artwork; a configured set opens on its media set
-- Muzei wallpaper: resetting the photo source asks for confirmation, with a "don't ask again" option and a matching switch in Settings → Advanced
+- Muzei wallpaper: the picker's confirm button is labelled per question, "Use these filters" or "Use this photo"; a tap always opens the viewer, and a single picture is marked by long press or confirmed from the viewer
+- Muzei wallpaper: the picker also allows renaming, deleting, hiding, pinning and setting covers of albums, because it is the app's real page
+- Muzei wallpaper: a single picture is copied into the app when chosen, and the copy is kept across source switches so the same picture comes back without picking it again
+- Muzei wallpaper: the source picker starts on the album list when there is no filter set yet, and always for a single picture; a configured set opens on its media set
+- Muzei wallpaper: the My photos filters are always shown on Sources, can be collapsed, and resetting them never switches the active source
+- Muzei wallpaper: resetting the My photos filters asks for confirmation, with a "don't ask again" option and matching switches in Settings → Advanced
+- Muzei wallpaper: deleting a photo from the viewer opened by "touch to view" advances in My photos mode, and asks only for a single picture (original or copy, with different wording); the normal gallery viewer is unchanged
+- Muzei wallpaper: double tap and three-finger actions belong to the desktop wallpaper only, and the gesture label now reads "Open to view"
 
 ### Fixed
 
+- Muzei wallpaper: an unconfigured or empty source shows the neutral background instead of the bundled "live wallpaper spike" development image
+- Muzei wallpaper: editing the inactive source no longer rebakes or advances the wallpaper, and a single picture no longer inherits the My photos filters
 - Muzei wallpaper: the album page no longer reads "no albums" on a paged library when no media-set view had loaded the album list yet
 - Collection: an `OR` filter swallowed the filters ANDed after it in paged queries
 

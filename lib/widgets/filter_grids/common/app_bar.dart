@@ -91,8 +91,9 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
 
   /// Actions that change the library, as opposed to navigating it.
   ///
-  /// A view opened to return a choice keeps the navigation actions and drops
-  /// these: a pick must not delete, rename or hide the albums it browses.
+  /// The opener decides through `CollectionViewHooks.allowFilterMutation`
+  /// whether they are available: the wallpaper picker allows them because it is
+  /// the real album page, while a task that only wants a choice can hide them.
   static const Set<ChipSetAction> _libraryMutatingActions = {
     .createGroup,
     .createAlbum,

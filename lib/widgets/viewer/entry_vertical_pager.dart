@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:ui';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/view/viewer_delete_policy.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/catalog.dart';
 import 'package:aves/model/entry/extensions/location.dart';
@@ -322,7 +323,12 @@ class _ViewerVerticalPageViewState extends State<ViewerVerticalPageView> {
         pageEntry = multiPageController.info?.getPageEntryByIndex(multiPageController.page);
       }
       final appMode = context.read<ValueNotifier<AppMode>>().value;
-      final actionDelegate = EntryActionDelegate(mainEntry, pageEntry ?? mainEntry, collection);
+      final actionDelegate = EntryActionDelegate(
+        mainEntry,
+        pageEntry ?? mainEntry,
+        collection,
+        viewerDeletePolicy: ViewerDeletePolicyScope.read(context),
+      );
       if (actionDelegate.isVisible(appMode: appMode, action: action) && actionDelegate.canApply(action)) {
         actionDelegate.onActionSelected(context, action);
       }

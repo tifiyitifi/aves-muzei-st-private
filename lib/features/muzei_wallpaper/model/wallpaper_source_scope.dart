@@ -62,12 +62,30 @@ class WallpaperSourceScope with Equatable {
     MimeFilter.image,
   };
 
-  /// Stable fingerprint of the scope.
+  /// The parts of the scope that are actually driving the wallpaper.
+  ///
+  /// Both kinds are stored side by side so switching back needs no new pick, but
+  /// only one kind is in use at a time. Editing the other kind must not reload
+  /// the renderer or advance the queue, so it is left out here.
+  Map<String, Object?> get activeJsonMap => switch (kind) {
+    WallpaperSourceKind.myPhotos => {
+      'kind': kind.name,
+      'filters': sortedFilterJson,
+    },
+    WallpaperSourceKind.single => {
+      'kind': kind.name,
+      if (singleEntryId != null) 'singleEntryId': singleEntryId,
+      if (singleArtwork != null) 'singleArtwork': singleArtwork!.toJsonMap(),
+    },
+  };
+
+  /// Stable fingerprint of the active source.
   ///
   /// This is not `Object.hashCode`: the value is persisted in `state.json` and
   /// compared after a process restart, so it must only depend on the scope's
-  /// content.
-  String get revision => '${kind.name}:${_stableHash(jsonEncode(toJsonMap()))}';
+  /// content. It deliberately follows [activeJsonMap], not [toJsonMap]: data kept
+  /// for the inactive kind cannot invalidate the baked slots.
+  String get revision => '${kind.name}:${_stableHash(jsonEncode(activeJsonMap))}';
 
   WallpaperSourceScope copyWith({
     WallpaperSourceKind? kind,

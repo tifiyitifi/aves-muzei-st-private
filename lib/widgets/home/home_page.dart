@@ -10,6 +10,7 @@ import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
+import 'package:aves/features/session_restore/session_restore_store.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/locale/intl.dart';
 import 'package:aves/model/app/intent.dart';
@@ -122,6 +123,27 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
       _initialFilters = null;
       _initialExplorerPath = null;
       _secureUris = null;
+
+      // A plain launch has no intent asking for a specific page: reopen the one
+      // the user was on when Android killed the process. An intent always wins,
+      // and a task swiped from recents has already cleared the snapshot.
+      // `ACTION_MAIN` itself is not exposed as `IntentDataKeys.action`, only the
+      // extras it carries, so their absence is what identifies a plain launch.
+      final isPlainLaunch = intentAction == null &&
+          intentData[IntentDataKeys.debug] != true &&
+          intentData[IntentDataKeys.page] == null &&
+          intentData[IntentDataKeys.filters] == null &&
+          intentData[IntentDataKeys.uri] == null &&
+          intentData[IntentDataKeys.explorerPath] == null;
+      if (isPlainLaunch) {
+        final snapshot = await sessionRestoreStore.load();
+        if (snapshot != null) {
+          _initialRouteName = snapshot.routeName;
+          if (snapshot.routeName == CollectionPage.routeName) {
+            _initialFilters = snapshot.filters;
+          }
+        }
+      }
 
       if (debug) {
         await localMediaDb.init();

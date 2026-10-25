@@ -303,15 +303,25 @@ class WallpaperSourceRepository {
   /// overrides them, while trash and locked vaults still make an entry
   /// unusable. The controller uses it to validate the persisted slot after a
   /// restart and to reopen the displayed artwork in the viewer.
+  ///
+  /// The private copy wins when it carries [id]: the wallpaper keeps using the
+  /// bytes it copied even after the original is gone.
   Future<AvesEntry?> entryById(int id) async {
     if (id <= 0) return null;
-    // A copied single artwork has no media row left to read once the original is
-    // deleted, and its slot must stay valid: the copy is the artwork now.
     final artwork = singleArtwork?.call();
     if (artwork != null && artwork.entryId == id) {
       final copy = await singleArtworkEntry(artwork);
       if (copy != null) return copy;
     }
+    return libraryEntryById(id);
+  }
+
+  /// Loads the library entry [id], never the private copy.
+  ///
+  /// The viewer is a place to edit and delete: handing it the read-only copy
+  /// would hide those actions even while the original is still in the library.
+  Future<AvesEntry?> libraryEntryById(int id) async {
+    if (id <= 0) return null;
     final db = _db;
     await db.init();
     final entries = await db.loadEntriesById({id});

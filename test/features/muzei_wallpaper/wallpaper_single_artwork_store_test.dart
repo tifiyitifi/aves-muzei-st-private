@@ -165,5 +165,24 @@ void main() {
       );
       expect(await sourceFiles(), isEmpty);
     });
+
+    test('removeCopy deletes the source directory only', () async {
+      final artwork = await store().copy(entry());
+      final rootFile = File(p.join(root.path, 'state.json'));
+      final slotFile = File(p.join(root.path, 'slots', '0', 'sharp.png'));
+      await rootFile.writeAsString('{}');
+      await slotFile.parent.create(recursive: true);
+      await slotFile.writeAsBytes(const [4, 5, 6]);
+
+      expect(await store().removeCopy(), isTrue);
+      expect(await File(p.join(root.path, artwork.relativePath)).exists(), isFalse);
+      expect(await sourceFiles(), isEmpty);
+      expect(await rootFile.exists(), isTrue, reason: 'the state and the baked wallpaper are not the copy');
+      expect(await slotFile.exists(), isTrue);
+    });
+
+    test('removeCopy is a no-op when there is no copy', () async {
+      expect(await store().removeCopy(), isTrue);
+    });
   });
 }

@@ -28,7 +28,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import deckers.thibault.aves.MainActivity
-import deckers.thibault.aves.R
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -161,7 +160,7 @@ class WallpaperRenderer(
     @Volatile
     private var focused = false
 
-    /** The frame fully drawn on screen (or the placeholder spike). */
+    /** The frame fully drawn on screen, or null before the first one loads. */
     private var current: UploadedFrame? = null
 
     /** The frame being faded in. */
@@ -221,8 +220,8 @@ class WallpaperRenderer(
             GLES20.glEnable(GLES20.GL_BLEND)
             GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
             GLES20.glClearColor(0.05f, 0.06f, 0.08f, 1f)
-            // The spike keeps the surface busy until the first state loads.
-            loadSpikeTexture()
+            // No bundled placeholder: until the first state loads, the clear
+            // color above is the whole surface.
             WallpaperRenderBus.attach(this)
             requestReload()
         } catch (t: Throwable) {
@@ -780,28 +779,6 @@ class WallpaperRenderer(
         } catch (t: Throwable) {
             Log.w(TAG, "failed to write runtime", t)
         }
-    }
-
-    private fun loadSpikeTexture() {
-        val bitmap = BitmapFactory.decodeResource(context.resources, R.drawable.live_wallpaper_spike)
-        if (bitmap == null) {
-            Log.e(TAG, "spike bitmap could not be decoded")
-            return
-        }
-        val texture = createTexture(bitmap)
-        val aspect = bitmap.width.toFloat() / bitmap.height.toFloat()
-        bitmap.recycle()
-        current = UploadedFrame(
-            generation = -1,
-            current = -1,
-            next = -1,
-            identity = "spike",
-            sharpTexture = texture,
-            effectTexture = 0,
-            aspect = aspect,
-            refillRequested = false,
-        )
-        Log.d(TAG, "texture.spike w=$viewWidth h=$viewHeight")
     }
 
     private fun createTexture(bitmap: Bitmap): Int {

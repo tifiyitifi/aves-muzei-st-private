@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:aves/features/muzei_wallpaper/log.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_delete_settings.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_scope.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_single_artwork_store.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_source_reset_dialog.dart';
+import 'package:aves/features/muzei_wallpaper/view/wallpaper_confirm_dialog.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_source_pick_host_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_source_pick_session.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_overflow_button.dart';
@@ -52,6 +54,13 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
   /// True while the chosen artwork is being copied next to the wallpaper.
   bool _copying = false;
 
+  /// Whether the My photos filter chips are shown.
+  ///
+  /// The chips are always available, whatever source is active: they describe
+  /// the My photos source, and editing them must not hide them behind the
+  /// selection.
+  bool _filtersExpanded = true;
+
   WallpaperController get _controller => widget.controller;
 
   @override
@@ -61,12 +70,14 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
     unawaited(_loadSingleEntry());
   }
 
-  Future<void> _loadSingleEntry() async {
+  Future<AvesEntry?> _loadSingleEntry() async {
     final id = _scope.singleEntryId;
-    if (id == null) return;
+    if (id == null) return null;
+    if (_singleEntry?.id == id) return _singleEntry;
     final entry = await _controller.loadEntry(id);
-    if (!mounted || _scope.singleEntryId != id) return;
+    if (!mounted || _scope.singleEntryId != id) return _singleEntry;
     setState(() => _singleEntry = entry);
+    return entry;
   }
 
   Future<void> _selectKind(WallpaperSourceKind? kind) async {
@@ -102,33 +113,28 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
           builder: (_) => WallpaperSourcePickHostPage(
             source: source,
             mode: WallpaperSourcePickMode.filters,
-            initialFilters: _scope.kind == WallpaperSourceKind.myPhotos ? _scope.filters : const {},
+            // Editing the My photos source opens on its own filters, whichever
+            // kind is active: the two sources are edited independently.
+            initialFilters: _scope.filters,
           ),
         ),
       );
       if (result is! WallpaperSourcePickFiltersResult || !mounted) return;
-      await _apply(
-        _scope.copyWith(
-          kind: WallpaperSourceKind.myPhotos,
-          filters: result.filters,
-        ),
-      );
+      // Only the filters change: applying this while a single picture is active
+      // must not switch the source or rebake the wallpaper.
+      await _apply(_scope.copyWith(filters: result.filters));
     } finally {
       _pickingSource = false;
     }
   }
 
-  /// Return to "all photos": the same result as removing the source chip, offered
-  /// as an explicit action because the chip is easy to miss.
+  /// Return to "all photos" for the My photos source, offered as an explicit
+  /// action because the chip is easy to miss.
   ///
-  /// The single artwork's copy is not touched: switching back to it later must
-  /// still work even if its original photo is gone.
-  Future<void> _clearSource() => _apply(
-    _scope.copyWith(
-      kind: WallpaperSourceKind.myPhotos,
-      filters: const {},
-    ),
-  );
+  /// The active kind is kept: clearing the filters of a source that is not in
+  /// use must not switch to it. The single artwork's copy is not touched either,
+  /// so switching back to it later still works even if its original is gone.
+  Future<void> _clearSource() => _apply(_scope.copyWith(filters: const {}));
 
   /// Resets the photo source, asking first unless the user opted out.
   Future<void> _confirmClearSource() async {
@@ -136,6 +142,45 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
     final confirmed = await confirmWallpaperSourceReset(context);
     if (!confirmed || !mounted) return;
     await _clearSource();
+  }
+
+  /// Deletes the private copy of the chosen picture, keeping the source.
+  ///
+  /// The baked wallpaper is untouched, so the home screen keeps showing what it
+  /// shows now. The warning is stronger when the original is already gone: then
+  /// this copy is the only thing keeping the source alive.
+  Future<void> _confirmDeleteCopy() async {
+    if (_applying || _controller.busy) return;
+    final originalId = _scope.singleEntryId ?? _scope.singleArtwork?.entryId;
+    final original = originalId == null ? null : await _controller.loadOriginalEntry(originalId);
+    if (!mounted) return;
+    final l10n = context.l10n;
+    final confirmed = await confirmWallpaperAction(
+      context,
+      title: l10n.muzeiWallpaperSourcesDeleteCopyTitle,
+      message: original == null ? l10n.muzeiWallpaperSourcesDeleteCopyMissingOriginal : l10n.muzeiWallpaperSourcesDeleteCopyMessage,
+      confirmLabel: l10n.deleteButtonLabel,
+      enabled: () => WallpaperSourceDeleteSetting.enabled,
+      setEnabled: WallpaperSourceDeleteSetting.setEnabled,
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _applying = true);
+    try {
+      final removed = await _controller.removeSingleCopy(scope: _scope.copyWith(clearSingleArtwork: true));
+      if (!removed) {
+        if (mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(content: Text(l10n.genericFailureFeedback)),
+          );
+        }
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _scope = _controller.prefs.scope);
+    } finally {
+      if (mounted) setState(() => _applying = false);
+    }
   }
 
   /// Opens the shared media-set picker and copies the picked artwork.
@@ -150,7 +195,9 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
           builder: (_) => WallpaperSourcePickHostPage(
             source: source,
             mode: WallpaperSourcePickMode.single,
-            initialFilters: _scope.kind == WallpaperSourceKind.myPhotos ? _scope.filters : const {},
+            // A single picture is its own source: it must not inherit the My
+            // photos filters. Only the implicit image restriction applies.
+            initialFilters: const {},
           ),
         ),
       );
@@ -206,7 +253,6 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
   }
 
   Future<void> _apply(WallpaperSourceScope scope) async {
-    if (!scope.isConfigured) return;
     setState(() {
       _scope = scope;
       _applying = true;
@@ -255,7 +301,13 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
                             secondary: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                if (_scope.kind == WallpaperSourceKind.myPhotos && _scope.filters.isNotEmpty)
+                                if (_scope.filters.isNotEmpty)
+                                  IconButton(
+                                    tooltip: _filtersExpanded ? l10n.hideButtonLabel : l10n.showButtonLabel,
+                                    icon: Icon(_filtersExpanded ? AIcons.collapse : AIcons.expand),
+                                    onPressed: () => setState(() => _filtersExpanded = !_filtersExpanded),
+                                  ),
+                                if (_scope.filters.isNotEmpty)
                                   IconButton(
                                     tooltip: l10n.muzeiWallpaperSourcesUseAllPhotos,
                                     icon: const Icon(AIcons.filterOff),
@@ -269,25 +321,40 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
                               ],
                             ),
                           ),
-                          if (_scope.kind == WallpaperSourceKind.myPhotos && _scope.filters.isNotEmpty)
+                          if (_filtersExpanded && _scope.filters.isNotEmpty)
                             Padding(
                               padding: const EdgeInsetsDirectional.only(bottom: 8),
                               child: FilterBar(
                                 filters: _scope.filters,
                                 interactive: false,
-                                // The chip's own cross is Aves' usual way to drop a
-                                // filter; here it returns the source to all photos.
-                                onRemove: (_) => unawaited(_clearSource()),
+                                // The chip's own cross drops that filter from the My
+                                // photos source; it must not switch the active kind.
+                                onRemove: (filter) => unawaited(
+                                  _apply(
+                                    _scope.copyWith(filters: {..._scope.filters}..remove(filter)),
+                                  ),
+                                ),
                               ),
                             ),
                           RadioListTile<WallpaperSourceKind>(
                             value: WallpaperSourceKind.single,
                             title: Text(l10n.muzeiWallpaperSourcesSingle),
                             subtitle: Text(_singleTitle ?? l10n.muzeiWallpaperSourcesChooseArtwork),
-                            secondary: IconButton(
-                              tooltip: l10n.muzeiWallpaperSourcesChooseArtwork,
-                              icon: const Icon(AIcons.image),
-                              onPressed: working ? null : _pickSingle,
+                            secondary: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_scope.singleArtwork != null)
+                                  IconButton(
+                                    tooltip: l10n.muzeiWallpaperSourcesDeleteCopy,
+                                    icon: const Icon(AIcons.delete),
+                                    onPressed: working ? null : () => unawaited(_confirmDeleteCopy()),
+                                  ),
+                                IconButton(
+                                  tooltip: l10n.muzeiWallpaperSourcesChooseArtwork,
+                                  icon: const Icon(AIcons.image),
+                                  onPressed: working ? null : _pickSingle,
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -301,11 +368,30 @@ class _MuzeiWallpaperSourcesPageState extends State<MuzeiWallpaperSourcesPage> {
                           Icon(AIcons.image, size: 16, color: theme.colorScheme.onSurfaceVariant),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              l10n.muzeiWallpaperSourcesPhotosOnly,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  l10n.muzeiWallpaperSourcesPhotosOnly,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  l10n.muzeiWallpaperSourcesSingleCopyHint,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  l10n.muzeiWallpaperSourcesSingleDeleteHint,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],

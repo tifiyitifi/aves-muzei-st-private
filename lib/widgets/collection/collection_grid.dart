@@ -5,6 +5,7 @@ import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart'
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/collection_paging/selection/selection_mark.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
+import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/view/skeleton_tile.dart';
 import 'package:aves/locale/calendar/calendar_utils.dart';
 import 'package:aves/model/app/permissions.dart';
@@ -153,6 +154,12 @@ class _CollectionGridContentState extends State<_CollectionGridContent> {
   final ValueNotifier<bool> _isScrollingNotifier = ValueNotifier(false);
   final ValueNotifier<AppMode> _selectingAppModeNotifier = ValueNotifier(.pickFilteredMediaInternal);
 
+  /// The mode the viewer opened from here uses, when the task overrides it.
+  ///
+  /// The picker asks for `.view` so the viewer keeps editing and deleting; the
+  /// provider only wraps that route and leaves the picker's own mode intact.
+  final ValueNotifier<AppMode> _viewerAppModeNotifier = ValueNotifier(.view);
+
   @override
   void initState() {
     super.initState();
@@ -164,6 +171,7 @@ class _CollectionGridContentState extends State<_CollectionGridContent> {
     _focusedItemNotifier.dispose();
     _isScrollingNotifier.dispose();
     _selectingAppModeNotifier.dispose();
+    _viewerAppModeNotifier.dispose();
     super.dispose();
   }
 
@@ -317,6 +325,14 @@ class _CollectionGridContentState extends State<_CollectionGridContent> {
               ],
               child: child,
             );
+          }
+          // Outermost on purpose: a task-owned viewer replaces the pick mode
+          // inherited by the page with the one it asks for, which is what makes
+          // delete and edit visible in the picker.
+          final viewerMode = CollectionViewHooksScope.read(context)?.viewerAppMode;
+          if (viewerMode != null) {
+            _viewerAppModeNotifier.value = viewerMode;
+            child = ListenableProvider<ValueNotifier<AppMode>>.value(value: _viewerAppModeNotifier, child: child);
           }
 
           return child;

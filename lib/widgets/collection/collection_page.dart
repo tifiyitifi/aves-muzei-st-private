@@ -14,6 +14,7 @@ import 'package:aves/features/collection_paging/view/catalog_prompt_dialog.dart'
 import 'package:aves/features/collection_paging/view/collection_import_intro.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
+import 'package:aves/features/session_restore/session_restore_collection_state.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/query.dart';
@@ -40,6 +41,7 @@ import 'package:aves/widgets/common/providers/selection_provider.dart';
 import 'package:aves/widgets/navigation/drawer/app_drawer.dart';
 import 'package:aves/widgets/navigation/nav_bar/nav_bar.dart';
 import 'package:aves/widgets/navigation/tv_rail.dart';
+import 'package:aves/widgets/aves_app.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
@@ -57,7 +59,7 @@ class const CollectionPage({
   State<CollectionPage> createState() => _CollectionPageState();
 }
 
-class _CollectionPageState extends State<CollectionPage> {
+class _CollectionPageState extends State<CollectionPage> with RouteAware {
   final Set<StreamSubscription> _subscriptions = {};
   late PagedCollectionLens _collection;
 
@@ -66,6 +68,8 @@ class _CollectionPageState extends State<CollectionPage> {
   /// Read once: a page belongs to the task that opened it for its whole life,
   /// so the hooks never change under it.
   CollectionViewHooks? _hooks;
+
+  bool _sessionRouteSubscribed = false;
 
   final StreamController<DraggableScrollbarEvent> _draggableScrollBarEventStreamController = StreamController.broadcast();
   bool _importing = false;
@@ -92,6 +96,9 @@ class _CollectionPageState extends State<CollectionPage> {
     if (hooks != null) {
       hooks.onViewOpened(_collection);
       _collection.filterChangeNotifier.addListener(_onFilterChangedForHooks);
+    } else {
+      _collection.filterChangeNotifier.addListener(_noteSessionFilters);
+      _noteSessionFilters();
     }
     // The media-set slot remembers the view it shows, so the bottom bar's
     // collection item returns to it instead of resetting to the whole library.
@@ -136,12 +143,50 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Only the library's own collection feeds the session snapshot; a picker's
+    // media set belongs to a task that is not restored.
+    if (_hooks != null || _sessionRouteSubscribed) return;
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      AvesApp.pageRouteObserver.subscribe(this, route);
+      _sessionRouteSubscribed = true;
+    }
+  }
+
+  @override
+  void didPopNext() {
+    // Returning from the viewer: the set may have changed while it was open
+    // (deletion, an edit that moved the photo).
+    _noteSessionFilters();
+  }
+
+  /// Remembers the filters the user is browsing for the next cold start.
+  ///
+  /// The snapshot is only meaningful in the main mode: an external pick or a
+  /// viewer launched by another app must not become the restored page.
+  void _noteSessionFilters() {
+    if (_hooks != null) return;
+    if (context.read<ValueNotifier<AppMode>>().value != .main) return;
+    sessionRestoreCollectionState.note(
+      _collection.filters.where((filter) => !(filter is QueryFilter && filter.live)),
+    );
+  }
+
+  @override
   void dispose() {
     catalogPrompt.pending.removeListener(_onCatalogPromptChanged);
     pagedImportStatus.removeListener(_onImportStatusChanged);
     libraryPhase.removeListener(_onLibraryPhaseChanged);
     if (_hooks != null) {
       _collection.filterChangeNotifier.removeListener(_onFilterChangedForHooks);
+    } else {
+      _collection.filterChangeNotifier.removeListener(_noteSessionFilters);
+      if (_sessionRouteSubscribed) {
+        AvesApp.pageRouteObserver.unsubscribe(this);
+        _sessionRouteSubscribed = false;
+      }
     }
     _subscriptions
       ..forEach((sub) => sub.cancel())

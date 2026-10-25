@@ -25,6 +25,7 @@ import 'package:aves/features/muzei_wallpaper/services/wallpaper_state_store.dar
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/vaults/vaults.dart';
 import 'package:aves/services/common/services.dart';
@@ -205,6 +206,99 @@ void main() {
       expect(prefs.scope.kind, WallpaperSourceKind.single);
       expect(prefs.scope.activeSingleArtwork, artwork);
       expect(await file.exists(), isTrue);
+    });
+
+    test('editing the inactive My photos filters leaves the wallpaper alone', () async {
+      await driftDb.insertEntries({entry(id: 1), entry(id: 2)});
+      final single = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 1);
+      await controller.setScope(single);
+      await controller.idle;
+
+      final current = controller.current!;
+      final generation = controller.state.generation;
+      final bakes = baker.bakeCalls;
+
+      await controller.setScope(single.copyWith(filters: {FavouriteFilter.instance}));
+      await controller.idle;
+
+      expect(controller.current?.id, current.id);
+      expect(controller.current?.artwork.entryId, current.artwork.entryId);
+      expect(controller.state.generation, generation, reason: 'the wallpaper must not rebake');
+      expect(baker.bakeCalls, bakes, reason: 'the wallpaper must not decode again');
+      expect(prefs.scope.filters, contains(FavouriteFilter.instance), reason: 'the edit is still persisted');
+      expect(prefs.scope.kind, WallpaperSourceKind.single);
+    });
+
+    test('an unconfigured source stops the feature but keeps the baked wallpaper', () async {
+      await driftDb.insertEntries({entry(id: 1), entry(id: 2)});
+      await controller.init();
+      await controller.idle;
+      final current = controller.current!;
+
+      final unconfigured = WallpaperSourceScope(kind: WallpaperSourceKind.single, filters: {FavouriteFilter.instance});
+      await controller.setScope(unconfigured);
+      await controller.idle;
+
+      expect(controller.current?.id, current.id, reason: 'the desktop keeps the artwork already shown');
+      expect(controller.resolution?.status, WallpaperSourceStatus.missing);
+      expect(prefs.scope.kind, WallpaperSourceKind.single);
+      expect(prefs.scope.filters, contains(FavouriteFilter.instance), reason: 'the other source is still editable');
+    });
+
+    test('a restart keeps the last single artwork after its copy was deleted', () async {
+      await driftDb.insertEntries({entry(id: 1)});
+      final single = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 1, singleArtwork: artwork);
+      await controller.setScope(single);
+      await controller.idle;
+      final file = await seedCopy();
+      final current = controller.current!;
+
+      expect(await controller.removeSingleCopy(scope: single.copyWith(clearSingleArtwork: true)), isTrue);
+      expect(await file.exists(), isFalse);
+
+      // Both the original and the copy are gone now, so the source cannot bake
+      // again; the baked wallpaper must still be the one on screen.
+      await driftDb.clearEntries();
+      final restarted = controllerWith(baker: baker, bridge: bridge, store: store);
+      try {
+        await restarted.init();
+        await restarted.idle;
+
+        expect(restarted.current?.id, current.id);
+        expect(restarted.current?.artwork.entryId, current.artwork.entryId);
+        expect(restarted.resolution?.status, WallpaperSourceStatus.missing);
+      } finally {
+        restarted.dispose();
+      }
+    });
+
+    test('removeSingleCopy deletes the copy but keeps the baked wallpaper and the id', () async {      await driftDb.insertEntries({entry(id: 1), entry(id: 2)});
+      final copy = WallpaperSingleArtwork(
+        relativePath: artwork.relativePath,
+        entryId: 1,
+        mimeType: artwork.mimeType,
+        width: artwork.width,
+        height: artwork.height,
+        sizeBytes: artwork.sizeBytes,
+      );
+      final single = WallpaperSourceScope(kind: WallpaperSourceKind.single, singleEntryId: 1, singleArtwork: copy);
+      await controller.setScope(single);
+      await controller.idle;
+      final file = await seedCopy();
+
+      final current = controller.current!;
+      final generation = controller.state.generation;
+      final removed = await controller.removeSingleCopy(scope: single.copyWith(clearSingleArtwork: true));
+
+      expect(removed, isTrue);
+      expect(await file.exists(), isFalse);
+      expect(prefs.scope.singleEntryId, 1, reason: 'the original may still exist and keeps driving the source');
+      expect(prefs.scope.singleArtwork, isNull);
+      expect(controller.current?.id, current.id, reason: 'the baked wallpaper is not the copy');
+      expect(controller.current?.artwork.entryId, current.artwork.entryId);
+      expect(controller.state.generation, generation);
+      expect(controller.state.sourceRevision, prefs.scope.revision);
+      expect(controller.resolution?.isReady, isTrue, reason: 'the original is still in the library');
     });
   });
 

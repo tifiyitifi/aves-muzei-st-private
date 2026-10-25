@@ -17,10 +17,12 @@ import 'package:aves/model/vaults/vaults.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/services/media/media_edit_service.dart';
 import 'package:aves/theme/durations.dart';
+import 'package:aves/utils/android_file_utils.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/common/action_mixins/entry_editor.dart';
 import 'package:aves/widgets/common/action_mixins/entry_storage.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
+import 'package:aves/features/collection_paging/view/viewer_delete_policy.dart';
 import 'package:aves/widgets/common/action_mixins/feedback.dart';
 import 'package:aves/widgets/common/action_mixins/permission_aware.dart';
 import 'package:aves/widgets/common/action_mixins/size_aware.dart';
@@ -50,9 +52,10 @@ import 'package:provider/provider.dart';
 class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, EntryEditorMixin, EntryStorageMixin, SingleEntryEditorMixin, VaultAwareMixin {
   final AvesEntry mainEntry, pageEntry;
   final CollectionLens? collection;
+  final ViewerDeletePolicy? viewerDeletePolicy;
   final EntryInfoActionDelegate _metadataActionDelegate = EntryInfoActionDelegate();
 
-  new(this.mainEntry, this.pageEntry, this.collection);
+  new(this.mainEntry, this.pageEntry, this.collection, {this.viewerDeletePolicy});
 
   bool isVisible({
     required AppMode appMode,
@@ -80,6 +83,9 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
         case .delete:
         case .rename:
         case .move:
+          // A private copy is not editable, but the policy that owns it can
+          // still delete it explicitly.
+          if (action == .delete && (viewerDeletePolicy?.isPrivateCopy(targetEntry) ?? false)) return true;
           return canWrite && targetEntry.canEdit;
         case .copy:
           return canWrite;
@@ -429,21 +435,40 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
   }
 
   Future<void> _delete(BuildContext context, AvesEntry targetEntry) async {
+    final policy = viewerDeletePolicy;
+    final skipStandardConfirmation = policy?.replacesStandardConfirmation ?? false;
+    if (policy != null) {
+      if (!await policy.confirmDelete(context, targetEntry)) return;
+      if (await policy.deletePrivateCopy(context, targetEntry)) return;
+    }
+
     final vault = vaults.getVault(targetEntry.directory);
     final enableBin = vault?.useBin ?? settings.enableBin;
 
     if (enableBin && !targetEntry.trashed) {
-      await _move(context, targetEntry, moveType: MoveType.toBin);
+      // The policy already asked, so move straight to the bin instead of
+      // showing a second, generic question the user cannot opt out of.
+      final moved = skipStandardConfirmation
+          ? await doQuickMove(
+              context,
+              moveType: MoveType.toBin,
+              entriesByDestination: {
+                AndroidFileUtils.trashDirPath: {targetEntry},
+              },
+            )
+          : await _move(context, targetEntry, moveType: MoveType.toBin);
+      if (moved) policy?.onDeleted(targetEntry);
       return;
     }
 
     final l10n = context.l10n;
-    if (!await showSkippableConfirmationDialog(
-      context: context,
-      type: ConfirmationDialog.deleteForever,
-      message: l10n.deleteEntriesConfirmationDialogMessage(1),
-      confirmationButtonLabel: l10n.deleteButtonLabel,
-    )) {
+    if (!skipStandardConfirmation &&
+        !await showSkippableConfirmationDialog(
+          context: context,
+          type: ConfirmationDialog.deleteForever,
+          message: l10n.deleteEntriesConfirmationDialogMessage(1),
+          confirmationButtonLabel: l10n.deleteButtonLabel,
+        )) {
       return;
     }
 
@@ -455,10 +480,11 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
       final source = context.read<CollectionSource>();
       await source.removeEntries({targetEntry.uri}, includeTrash: true);
       EntryDeletedNotification({targetEntry}).dispatch(context);
+      policy?.onDeleted(targetEntry);
     }
   }
 
-  Future<void> _move(BuildContext context, AvesEntry targetEntry, {required MoveType moveType}) => doMove(
+  Future<bool> _move(BuildContext context, AvesEntry targetEntry, {required MoveType moveType}) => doMove(
     context,
     moveType: moveType,
     entries: {targetEntry},

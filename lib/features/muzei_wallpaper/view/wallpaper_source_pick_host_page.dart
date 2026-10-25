@@ -4,6 +4,7 @@ import 'package:aves/features/collection_paging/view/filter_policy_scope.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_filters.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_source_pick_fab.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_source_pick_session.dart';
+import 'package:aves/features/muzei_wallpaper/view/wallpaper_source_pick_viewer_action.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -60,7 +61,9 @@ class _WallpaperSourcePickHostPageState extends State<WallpaperSourcePickHostPag
     super.initState();
     // The picker is the app's own pages, so it uses the app's own pick modes:
     // they navigate, they never take the browse-only surface, and they do not
-    // let a long press select media. Only the picker's subtree sees this value.
+    // let the app's selection handle a long press. Only the picker's subtree
+    // sees this value; the viewer it opens switches to `.view` through the
+    // hooks so editing and deleting stay available there.
     _appMode = ValueNotifier(
       widget.mode == WallpaperSourcePickMode.filters ? .pickCollectionFiltersExternal : .pickSingleMediaExternal,
     );
@@ -177,15 +180,30 @@ class _PickHooks implements CollectionViewHooks {
 
   @override
   bool onEntryTap(BuildContext context, CollectionLens collection, AvesEntry entry) {
-    if (session.isSingle) {
-      session.pick(entry);
-    } else {
-      // The filter set is the answer, so a tap is just a look: open the normal
-      // viewer, inside the sandbox.
-      OpenViewerNotification(entry).dispatch(context);
-    }
+    // A tap is always a look: the pick is confirmed from the grid footer or
+    // from the viewer's own button, so browsing never has a side effect.
+    OpenViewerNotification(entry).dispatch(context);
     return true;
   }
+
+  @override
+  bool onEntryLongPress(BuildContext context, CollectionLens collection, AvesEntry entry) {
+    if (!session.isSingle) return false;
+    session.pick(entry);
+    return true;
+  }
+
+  @override
+  Widget? buildViewerAction(BuildContext context, AvesEntry entry) {
+    if (!session.isSingle) return null;
+    return WallpaperSourcePickViewerAction(
+      session: session,
+      entry: entry,
+    );
+  }
+
+  @override
+  AppMode? get viewerAppMode => .view;
 
   @override
   ValueListenable<int?>? get pickedEntryId => session.isSingle ? session.pickedEntryNotifier : null;
@@ -200,5 +218,5 @@ class _PickHooks implements CollectionViewHooks {
   bool get isPicking => true;
 
   @override
-  bool get allowFilterMutation => false;
+  bool get allowFilterMutation => true;
 }

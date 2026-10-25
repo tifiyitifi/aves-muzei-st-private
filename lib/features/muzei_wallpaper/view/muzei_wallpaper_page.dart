@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:aves/features/muzei_wallpaper/log.dart';
+import 'package:aves/features/collection_paging/view/viewer_delete_policy.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_cover.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_display.dart';
-import 'package:aves/features/muzei_wallpaper/model/wallpaper_gestures.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_bridge.dart';
@@ -14,6 +13,7 @@ import 'package:aves/features/muzei_wallpaper/services/wallpaper_prefs.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_view_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/slot_artwork_image.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_overflow_button.dart';
+import 'package:aves/features/muzei_wallpaper/view/wallpaper_viewer_delete_policy.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/props.dart';
 import 'package:aves/services/common/services.dart';
@@ -21,7 +21,6 @@ import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/viewer/entry_viewer_page.dart';
-import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 
 /// Foreground surface of the Muzei-style live wallpaper.
@@ -74,12 +73,6 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
   /// viewport on a new artwork; a rebuild for any other reason must not disturb
   /// the user's pan and zoom.
   (String, Size, Size)? _viewportGeometry;
-
-  /// Pointers currently down, to recognise a three-finger tap.
-  final Set<int> _pointers = {};
-  int _maxPointers = 0;
-  Offset? _pointerOrigin;
-  bool _pointerMoved = false;
 
   @override
   void initState() {
@@ -195,8 +188,11 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
   }
 
   /// The entry behind the current artwork, for the viewer and "open with".
+  ///
+  /// A single source prefers the library original so the viewer can edit it;
+  /// only when that is gone does the private copy stand in.
   Future<AvesEntry?> _currentEntry(WallpaperController controller) async {
-    final entry = await controller.loadCurrentEntry();
+    final entry = await controller.loadViewerEntry();
     return entry ?? _fallbackEntry;
   }
 
@@ -212,9 +208,23 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
     await Navigator.of(context).push(
       MaterialPageRoute(
         settings: const RouteSettings(name: EntryViewerPage.routeName),
-        builder: (_) => EntryViewerPage(initialEntry: entry),
+        builder: (_) => ViewerDeletePolicyScope(
+          policy: WallpaperViewerDeletePolicy(controller),
+          child: EntryViewerPage(initialEntry: entry),
+        ),
       ),
     );
+    if (!mounted) return;
+    // Deleting or editing from the viewer can change what the page names, and
+    // deleting the only artwork leaves the fallback stale.
+    await _loadSingleEntryTitle(controller);
+    if (!mounted) return;
+    setState(() {
+      _fallbackEntry = null;
+      _fallbackSharp = null;
+      _fallbackAspect = null;
+    });
+    await _loadFallback(controller);
   }
 
   /// Long press on "touch to view": hand the artwork to another app.
@@ -236,63 +246,10 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
 
   /// Whether this page is the topmost route.
   ///
-  /// Gestures belong to the visible surface. A page pushed above this one (the
-  /// sources page, a wallpaper pick here) must not let a stray tap drive the
-  /// wallpaper and switch the artwork behind it — which is exactly what the
-  /// desktop's double-tap-to-next is for, not a list or a picker.
+  /// Taps belong to the visible surface. A page pushed above this one (the
+  /// sources page, a wallpaper pick here) must not let a stray tap toggle this
+  /// page's panel or open the artwork behind it.
   bool get _isRouteCurrent => ModalRoute.of(context)?.isCurrent ?? true;
-
-  void _runGesture(WallpaperController controller, WallpaperTapAction action) {
-    if (!_isRouteCurrent) {
-      // Reaching here means a tap landed on this page while another route was
-      // on screen; dropping it is the fix, logging it is how that leak gets
-      // diagnosed if it ever comes back.
-      wallpaperLog.d('ignored wallpaper gesture ${action.name} while another page is on top');
-      return;
-    }
-    switch (action) {
-      case WallpaperTapAction.temporaryDisable:
-        // The page already shows the unprocessed artwork, so there is nothing to
-        // reveal here; the binding still applies to the wallpaper itself.
-        break;
-      case WallpaperTapAction.nextArtwork:
-        unawaited(controller.advance());
-      case WallpaperTapAction.viewArtwork:
-        unawaited(_openArtwork(controller));
-      case WallpaperTapAction.none:
-        break;
-    }
-  }
-
-  void _onPointerDown(PointerDownEvent event) {
-    if (_pointers.isEmpty) {
-      _pointerOrigin = event.position;
-      _pointerMoved = false;
-      _maxPointers = 0;
-    }
-    _pointers.add(event.pointer);
-    if (_pointers.length > _maxPointers) _maxPointers = _pointers.length;
-  }
-
-  void _onPointerMove(PointerMoveEvent event) {
-    final origin = _pointerOrigin;
-    if (origin != null && (event.position - origin).distance > kTouchSlop * 2) {
-      _pointerMoved = true;
-    }
-  }
-
-  void _onPointerUp(PointerEvent event, WallpaperController controller) {
-    _pointers.remove(event.pointer);
-    if (_pointers.isNotEmpty) return;
-    final fingers = _maxPointers;
-    final moved = _pointerMoved;
-    _maxPointers = 0;
-    _pointerOrigin = null;
-    _pointerMoved = false;
-    if (fingers >= 3 && !moved && _isRouteCurrent) {
-      _runGesture(controller, controller.prefs.gestures.threeFinger);
-    }
-  }
 
   void _togglePanel() {
     if (!_isRouteCurrent) return;
@@ -431,24 +388,17 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
                   behavior: HitTestBehavior.opaque,
                   onTap: _togglePanel,
                   onLongPress: () => unawaited(_openViewPage(controller)),
-                  onDoubleTap: () => _runGesture(controller, controller.prefs.gestures.doubleTap),
-                  child: Listener(
-                    onPointerDown: _onPointerDown,
-                    onPointerMove: _onPointerMove,
-                    onPointerUp: (event) => _onPointerUp(event, controller),
-                    onPointerCancel: (event) => _onPointerUp(event, controller),
-                    child: InteractiveViewer(
-                      transformationController: _viewport,
-                      minScale: WallpaperPrefs.minViewportZoom,
-                      maxScale: WallpaperPrefs.maxViewportZoom,
-                      // The artwork is laid out at its cover size, larger than the
-                      // window, so panning can reach what the wallpaper crops away.
-                      constrained: false,
-                      child: SizedBox(
-                        width: childSize.width,
-                        height: childSize.height,
-                        child: artwork,
-                      ),
+                  child: InteractiveViewer(
+                    transformationController: _viewport,
+                    minScale: WallpaperPrefs.minViewportZoom,
+                    maxScale: WallpaperPrefs.maxViewportZoom,
+                    // The artwork is laid out at its cover size, larger than the
+                    // window, so panning can reach what the wallpaper crops away.
+                    constrained: false,
+                    child: SizedBox(
+                      width: childSize.width,
+                      height: childSize.height,
+                      child: artwork,
                     ),
                   ),
                 );

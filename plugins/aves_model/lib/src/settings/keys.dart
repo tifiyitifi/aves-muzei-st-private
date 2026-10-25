@@ -182,6 +182,8 @@ class SettingKeys {
   // live wallpaper
   static const muzeiWallpaperPrefetchAheadKey = 'muzei_wallpaper_prefetch_ahead';
   static const muzeiWallpaperSourceResetConfirmKey = 'muzei_wallpaper_source_reset_confirm';
+  static const muzeiWallpaperSourceDeleteConfirmKey = 'muzei_wallpaper_source_delete_confirm';
+  static const muzeiWallpaperViewerDeleteConfirmKey = 'muzei_wallpaper_viewer_delete_confirm';
 
   // slideshow
   static const slideshowRepeatKey = 'slideshow_loop';

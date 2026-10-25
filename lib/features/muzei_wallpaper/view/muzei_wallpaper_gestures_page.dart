@@ -51,6 +51,15 @@ class _MuzeiWallpaperGesturesPageState extends State<MuzeiWallpaperGesturesPage>
       body: SafeArea(
         child: ListView(
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Text(
+                l10n.muzeiWallpaperGesturesDesktopOnly,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
             _GestureSection(
               title: l10n.muzeiWallpaperGesturesDoubleTap,
               value: _gestures.doubleTap,

@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/view/viewer_delete_policy.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/multipage.dart';
 import 'package:aves/model/settings/enums/accessibility_animations.dart';
@@ -59,7 +60,12 @@ class ViewerButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final actionDelegate = EntryActionDelegate(mainEntry, pageEntry, collection);
+    final actionDelegate = EntryActionDelegate(
+      mainEntry,
+      pageEntry,
+      collection,
+      viewerDeletePolicy: ViewerDeletePolicyScope.read(context),
+    );
 
     if (settings.useTvLayout) {
       return _TvButtonRowContent(

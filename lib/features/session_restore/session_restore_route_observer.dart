@@ -10,11 +10,29 @@ class SessionRestoreRouteObserver extends NavigatorObserver {
 
   /// The topmost page that [restorableSessionRoutes] accepts, if any.
   String? get currentRestorableRoute {
-    for (final route in _stack.reversed) {
-      final name = route.settings.name;
+    final index = _topRestorableIndex;
+    return index < 0 ? null : _stack[index].settings.name;
+  }
+
+  /// The page the current restorable route was pushed over, when that route is
+  /// one of [pushedRestorableSessionRoutes] (the wallpaper preview).
+  String? get currentRestorableBaseRoute {
+    final index = _topRestorableIndex;
+    if (index < 0) return null;
+    if (!pushedRestorableSessionRoutes.contains(_stack[index].settings.name)) return null;
+    for (var i = index - 1; i >= 0; i--) {
+      final name = _stack[i].settings.name;
       if (name != null && restorableSessionRoutes.contains(name)) return name;
     }
     return null;
+  }
+
+  int get _topRestorableIndex {
+    for (var i = _stack.length - 1; i >= 0; i--) {
+      final name = _stack[i].settings.name;
+      if (name != null && restorableSessionRoutes.contains(name)) return i;
+    }
+    return -1;
   }
 
   @override

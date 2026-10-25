@@ -814,7 +814,7 @@
     "renameTagDialogLabelAlreadyExistsHelper": "标签已存在",
     "chipActionCopyCenterCoordinates": "复制中心坐标",
 
-    "muzeiWallpaperTouchToView": "触摸查看",
+    "muzeiWallpaperTouchToView": "触摸查看（长按其它方式打开）",
     "muzeiWallpaperSourcesMyPhotos": "图片集",
     "muzeiWallpaperSourcesSingle": "单张图片",
     "muzeiWallpaperSourcesAllPhotos": "全部图片",

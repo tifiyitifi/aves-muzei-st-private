@@ -1,3 +1,4 @@
+import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/session_restore/session_restore_snapshot.dart';
 import 'package:aves/features/session_restore/session_restore_store.dart';
 import 'package:aves/model/filters/favourite.dart';
@@ -60,6 +61,54 @@ void main() {
       final decoded = SessionRestoreSnapshot.tryFromJsonString(snapshot.toJsonString());
       expect(decoded?.routeName, MapPage.routeName);
       expect(decoded?.filters, isEmpty);
+    });
+
+    test('round-trips the page a pushed page was opened from', () {
+      final snapshot = SessionRestoreSnapshot(
+        routeName: MuzeiWallpaperPage.routeName,
+        baseRouteName: CollectionPage.routeName,
+        baseFiltersJson: [FavouriteFilter.instance.toJsonString()],
+      );
+
+      final decoded = SessionRestoreSnapshot.tryFromJsonString(snapshot.toJsonString());
+      expect(decoded, isNotNull);
+      expect(decoded!.routeName, MuzeiWallpaperPage.routeName);
+      expect(decoded.baseRouteName, CollectionPage.routeName);
+      expect(decoded.baseFilters, {FavouriteFilter.instance});
+      expect(decoded.routeStack, [CollectionPage.routeName, MuzeiWallpaperPage.routeName]);
+      expect(decoded.isValid, isTrue);
+    });
+
+    test('reads a snapshot saved before the base page existed', () {
+      // This is what an upgraded install still has on disk.
+      final decoded = SessionRestoreSnapshot.tryFromJsonString('{"route":"${MuzeiWallpaperPage.routeName}"}');
+
+      expect(decoded, isNotNull);
+      expect(decoded!.routeName, MuzeiWallpaperPage.routeName);
+      expect(decoded.baseRouteName, isNull);
+      expect(decoded.routeStack, [MuzeiWallpaperPage.routeName]);
+      expect(decoded.isValid, isTrue);
+    });
+
+    test('drops an unusable base but keeps the page', () {
+      final decoded = SessionRestoreSnapshot.tryFromJsonString(
+        '{"route":"${MuzeiWallpaperPage.routeName}","baseRoute":"/not-restorable","baseFilters":["bad"]}',
+      );
+
+      expect(decoded, isNotNull);
+      expect(decoded!.routeName, MuzeiWallpaperPage.routeName);
+      expect(decoded.baseRouteName, isNull);
+      expect(decoded.baseFilters, isEmpty);
+      expect(decoded.isValid, isTrue);
+    });
+
+    test('drops a base pointing at the page itself', () {
+      final decoded = SessionRestoreSnapshot.tryFromJsonString(
+        '{"route":"${MuzeiWallpaperPage.routeName}","baseRoute":"${MuzeiWallpaperPage.routeName}"}',
+      );
+
+      expect(decoded?.baseRouteName, isNull);
+      expect(decoded?.isValid, isTrue);
     });
   });
 

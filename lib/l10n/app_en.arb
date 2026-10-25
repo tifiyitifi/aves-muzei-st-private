@@ -865,7 +865,7 @@
   "muzeiWallpaperActive": "Live wallpaper active",
   "muzeiWallpaperNextAction": "Next artwork",
   "muzeiWallpaperOpenArtwork": "Open artwork",
-  "muzeiWallpaperTouchToView": "Touch to view",
+  "muzeiWallpaperTouchToView": "Touch to view (long press to open with another app)",
   "muzeiWallpaperTitleMode": "Title line",
   "muzeiWallpaperTitleFileName": "File name",
   "muzeiWallpaperTitleSourceName": "Source name",

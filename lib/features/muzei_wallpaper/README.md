@@ -185,11 +185,16 @@ source reports unavailable.
 
 When Android kills a paused process, the next plain launch reopens the top-level
 page the user was on: a collection with its filters, the album list, the tag
-list, the map or the wallpaper page. A viewer restores to the media set under it
-rather than reopening the photo. A task swiped away from recents, or an app left
-with the back button, clears the snapshot, and any real intent (a share, a pick,
-a shortcut) wins over it. Picker pages are never restored: their navigator is
-nested and their task no longer exists.
+list, the map or the wallpaper page. The wallpaper page is pushed over another
+page, so it is restored over the page it was opened from (with that collection's
+filters) and backing out returns there instead of leaving the app; when that page
+cannot be reopened (the explorer needs a path), the configured home page stands
+in. A viewer restores to the media set under it rather than reopening the photo.
+Only the page and its collection filters come back, not a scroll position or a
+map camera. A task swiped away from recents, or an app left with the back button,
+clears the snapshot, and any real intent (a share, a pick, a shortcut) wins over
+it. Picker pages are never restored: their navigator is nested and their task no
+longer exists.
 
 The about dialog blurs and dims the artwork behind it, and its Muzei section is
 quoted verbatim from Muzei's `about_body`, including its own version. Our app

@@ -415,12 +415,18 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
     if (_appModeNotifier.value != .main) return;
     final route = sessionRestoreRouteObserver.currentRestorableRoute;
     if (route == null) return;
+    final baseRoute = sessionRestoreRouteObserver.currentRestorableBaseRoute;
     final filters = route == CollectionPage.routeName ? sessionRestoreCollectionState.filters : null;
+    // The media set below a pushed page is still mounted, so its filters are
+    // already recorded; restoring them brings back the exact previous view.
+    final baseFilters = baseRoute == CollectionPage.routeName ? sessionRestoreCollectionState.filters : null;
     unawaited(
       sessionRestoreStore.save(
         SessionRestoreSnapshot(
           routeName: route,
           filtersJson: [for (final filter in filters ?? const <CollectionFilter>{}) filter.toJsonString()],
+          baseRouteName: baseRoute,
+          baseFiltersJson: [for (final filter in baseFilters ?? const <CollectionFilter>{}) filter.toJsonString()],
         ),
       ),
     );

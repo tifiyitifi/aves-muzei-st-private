@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:aves/features/collection_paging/view/viewer_delete_policy.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_cover.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_display.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_share_uri.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_kind.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_resolution.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_bridge.dart';
@@ -237,7 +238,7 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
       );
       return;
     }
-    final opened = await appService.open(entry.uri, entry.mimeTypeAnySubtype, forceChooser: true);
+    final opened = await appService.open(wallpaperShareUri(entry), entry.mimeTypeAnySubtype, forceChooser: true);
     if (!mounted || opened) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(context.l10n.noMatchingAppDialogMessage)),

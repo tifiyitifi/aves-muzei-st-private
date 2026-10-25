@@ -17,3 +17,11 @@ const Set<String> restorableSessionRoutes = {
   MapPage.routeName,
   MuzeiWallpaperPage.routeName,
 };
+
+/// Restorable pages that are normally pushed over another page.
+///
+/// Restoring one of these on its own leaves the navigator with nothing to go
+/// back to, so the snapshot also records the page it was opened from.
+const Set<String> pushedRestorableSessionRoutes = {
+  MuzeiWallpaperPage.routeName,
+};

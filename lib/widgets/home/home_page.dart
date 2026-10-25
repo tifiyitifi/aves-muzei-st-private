@@ -10,6 +10,7 @@ import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
+import 'package:aves/features/session_restore/session_restore_routes.dart';
 import 'package:aves/features/session_restore/session_restore_store.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/locale/intl.dart';
@@ -73,6 +74,8 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
   int? _widgetId;
   String? _initialRouteName, _initialSearchQuery;
   Set<CollectionFilter>? _initialFilters;
+  String? _restoredBaseRouteName;
+  Set<CollectionFilter>? _restoredBaseFilters;
   String? _initialExplorerPath;
   (LatLng, double?)? _initialLocationZoom;
   List<String>? _secureUris;
@@ -141,6 +144,15 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           _initialRouteName = snapshot.routeName;
           if (snapshot.routeName == CollectionPage.routeName) {
             _initialFilters = snapshot.filters;
+          }
+          _restoredBaseRouteName = snapshot.baseRouteName;
+          if (snapshot.baseRouteName == null && pushedRestorableSessionRoutes.contains(snapshot.routeName)) {
+            // A snapshot saved before the base page was recorded still needs a
+            // page to go back to: the configured home page stands in.
+            final homeRoute = settings.homeNavItem.route;
+            _restoredBaseRouteName = homeRoute == snapshot.routeName ? CollectionPage.routeName : homeRoute;
+          } else if (snapshot.baseRouteName == CollectionPage.routeName) {
+            _restoredBaseFilters = snapshot.baseFilters;
           }
         }
       }
@@ -352,12 +364,30 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
 
       // `pushReplacement` is not enough in some edge cases
       // e.g. when opening the viewer in `view` mode should replace a viewer in `main` mode
-      unawaited(
-        Navigator.maybeOf(context)?.pushAndRemoveUntil(
-          await _getRedirectRoute(appMode),
-          (route) => false,
-        ),
-      );
+      final navigator = Navigator.maybeOf(context);
+      if (navigator != null) {
+        final baseRouteName = _restoredBaseRouteName;
+        if (baseRouteName != null) {
+          // A page pushed over another one (the wallpaper preview) is restored
+          // over the page it was opened from, so backing out returns there
+          // instead of leaving the app.
+          final topRoute = await _getRedirectRoute(appMode);
+          final baseRoute = await _getRedirectRoute(
+            appMode,
+            overrideRouteName: baseRouteName,
+            overrideFilters: _restoredBaseFilters,
+          );
+          unawaited(navigator.pushAndRemoveUntil(baseRoute, (route) => false));
+          unawaited(navigator.push(topRoute));
+        } else {
+          unawaited(
+            navigator.pushAndRemoveUntil(
+              await _getRedirectRoute(appMode),
+              (route) => false,
+            ),
+          );
+        }
+      }
     } catch (error, stack) {
       debugPrint('failed to setup app with error=$error\n$stack');
       setState(() => _setupError = (error, stack));
@@ -425,7 +455,11 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
     return entry;
   }
 
-  Future<Route> _getRedirectRoute(AppMode appMode) async {
+  Future<Route> _getRedirectRoute(
+    AppMode appMode, {
+    String? overrideRouteName,
+    Set<CollectionFilter>? overrideFilters,
+  }) async {
     String routeName;
     Set<CollectionFilter?>? filters;
     switch (appMode) {
@@ -530,8 +564,8 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
       case .previewMap:
       case .screenSaver:
       case .slideshow:
-        routeName = _initialRouteName ?? settings.homeNavItem.route;
-        filters = _initialFilters ?? (settings.homeNavItem.route == CollectionPage.routeName ? settings.homeCustomCollection : {});
+        routeName = overrideRouteName ?? _initialRouteName ?? settings.homeNavItem.route;
+        filters = overrideFilters ?? _initialFilters ?? (routeName == CollectionPage.routeName ? settings.homeCustomCollection : {});
     }
     Route buildRoute(WidgetBuilder builder) => DirectMaterialPageRoute(
       settings: RouteSettings(name: routeName),

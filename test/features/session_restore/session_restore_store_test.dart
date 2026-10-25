@@ -75,7 +75,6 @@ void main() {
       expect(decoded!.routeName, MuzeiWallpaperPage.routeName);
       expect(decoded.baseRouteName, CollectionPage.routeName);
       expect(decoded.baseFilters, {FavouriteFilter.instance});
-      expect(decoded.routeStack, [CollectionPage.routeName, MuzeiWallpaperPage.routeName]);
       expect(decoded.isValid, isTrue);
     });
 
@@ -86,7 +85,6 @@ void main() {
       expect(decoded, isNotNull);
       expect(decoded!.routeName, MuzeiWallpaperPage.routeName);
       expect(decoded.baseRouteName, isNull);
-      expect(decoded.routeStack, [MuzeiWallpaperPage.routeName]);
       expect(decoded.isValid, isTrue);
     });
 
@@ -109,6 +107,23 @@ void main() {
 
       expect(decoded?.baseRouteName, isNull);
       expect(decoded?.isValid, isTrue);
+    });
+
+    test('drops a base saved under a page that is not pushed', () {
+      final decoded = SessionRestoreSnapshot.tryFromJsonString(
+        '{"route":"${CollectionPage.routeName}","baseRoute":"${MapPage.routeName}"}',
+      );
+
+      expect(decoded, isNotNull);
+      expect(decoded!.routeName, CollectionPage.routeName);
+      expect(decoded.baseRouteName, isNull);
+      expect(decoded.isValid, isTrue);
+    });
+
+    test('considers a base saved under a page that is not pushed invalid', () {
+      const snapshot = SessionRestoreSnapshot(routeName: CollectionPage.routeName, baseRouteName: MapPage.routeName);
+
+      expect(snapshot.isValid, isFalse);
     });
   });
 
@@ -136,6 +151,11 @@ void main() {
 
     test('does not persist an invalid route', () async {
       await store.save(const SessionRestoreSnapshot(routeName: '/not-restorable'));
+      expect(await store.load(), isNull);
+    });
+
+    test('does not persist a base saved under a page that is not pushed', () async {
+      await store.save(const SessionRestoreSnapshot(routeName: CollectionPage.routeName, baseRouteName: MapPage.routeName));
       expect(await store.load(), isNull);
     });
   });

@@ -31,10 +31,9 @@ class SessionRestoreSnapshot {
 
   Set<CollectionFilter> get baseFilters => baseFiltersJson.map(CollectionFilter.fromJson).nonNulls.toSet();
 
-  /// The pages to rebuild, bottom first.
-  List<String> get routeStack => [?baseRouteName, routeName];
-
-  bool get isValid => restorableSessionRoutes.contains(routeName) && (baseRouteName == null || (baseRouteName != routeName && restorableSessionRoutes.contains(baseRouteName)));
+  /// Only a page that is normally pushed over another one may carry a base: any
+  /// other pair would restore a stack the user never had.
+  bool get isValid => restorableSessionRoutes.contains(routeName) && (baseRouteName == null || (pushedRestorableSessionRoutes.contains(routeName) && baseRouteName != routeName && restorableSessionRoutes.contains(baseRouteName)));
 
   Map<String, Object?> toJsonMap() => {
     'route': routeName,
@@ -54,9 +53,10 @@ class SessionRestoreSnapshot {
       if (route is! String || !restorableSessionRoutes.contains(route)) return null;
       final rawFilters = decoded['filters'];
       final filters = rawFilters is List ? rawFilters.whereType<String>().toList() : <String>[];
-      // An unusable base only costs the back target, not the whole snapshot.
+      // An unusable base only costs the back target, not the whole snapshot. A
+      // base is meaningful under a pushed page only.
       final rawBaseRoute = decoded['baseRoute'];
-      final baseRoute = rawBaseRoute is String && rawBaseRoute != route && restorableSessionRoutes.contains(rawBaseRoute) ? rawBaseRoute : null;
+      final baseRoute = rawBaseRoute is String && pushedRestorableSessionRoutes.contains(route) && rawBaseRoute != route && restorableSessionRoutes.contains(rawBaseRoute) ? rawBaseRoute : null;
       final rawBaseFilters = decoded['baseFilters'];
       final baseFilters = baseRoute != null && rawBaseFilters is List ? rawBaseFilters.whereType<String>().toList() : <String>[];
       return SessionRestoreSnapshot(

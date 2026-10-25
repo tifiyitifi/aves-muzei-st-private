@@ -10,7 +10,7 @@ import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
-import 'package:aves/features/session_restore/session_restore_routes.dart';
+import 'package:aves/features/session_restore/session_restore_plan.dart';
 import 'package:aves/features/session_restore/session_restore_store.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/locale/intl.dart';
@@ -141,19 +141,13 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
       if (isPlainLaunch) {
         final snapshot = await sessionRestoreStore.load();
         if (snapshot != null) {
-          _initialRouteName = snapshot.routeName;
-          if (snapshot.routeName == CollectionPage.routeName) {
-            _initialFilters = snapshot.filters;
-          }
-          _restoredBaseRouteName = snapshot.baseRouteName;
-          if (snapshot.baseRouteName == null && pushedRestorableSessionRoutes.contains(snapshot.routeName)) {
-            // A snapshot saved before the base page was recorded still needs a
-            // page to go back to: the configured home page stands in.
-            final homeRoute = settings.homeNavItem.route;
-            _restoredBaseRouteName = homeRoute == snapshot.routeName ? CollectionPage.routeName : homeRoute;
-          } else if (snapshot.baseRouteName == CollectionPage.routeName) {
-            _restoredBaseFilters = snapshot.baseFilters;
-          }
+          // The plan also covers a snapshot saved before the base page was
+          // recorded, which needs a page to go back to.
+          final plan = planSessionRestore(snapshot, homeRouteName: settings.homeNavItem.route);
+          _initialRouteName = plan.routeName;
+          _initialFilters = plan.filters;
+          _restoredBaseRouteName = plan.baseRouteName;
+          _restoredBaseFilters = plan.baseFilters;
         }
       }
 
@@ -377,6 +371,10 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
             overrideRouteName: baseRouteName,
             overrideFilters: _restoredBaseFilters,
           );
+          // Both calls apply synchronously, so the base is already on the stack
+          // when the top page follows. Their futures are `route.popped` and
+          // complete only on a pop, so they must stay unawaited: awaiting the
+          // first would hold the restore until the base page is left.
           unawaited(navigator.pushAndRemoveUntil(baseRoute, (route) => false));
           unawaited(navigator.push(topRoute));
         } else {

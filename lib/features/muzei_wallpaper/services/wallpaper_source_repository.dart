@@ -64,7 +64,7 @@ class WallpaperSourceRepository {
 
   /// How many random samples to try before accepting a recently shown artwork.
   ///
-  /// The exclusion set is the current artwork plus the recent list (bounded by
+  /// The exclusion set is the queued artworks plus the recent list (bounded by
   /// `WallpaperState.maxRecent`), so a few tries find a fresh one in any library
   /// larger than that; a tiny library can exhaust it and must repeat.
   static const int maxRandomAttempts = 12;
@@ -80,7 +80,7 @@ class WallpaperSourceRepository {
   /// retries the same photo.
   ///
   /// [newestEntryId] is the highest entry id shown so far (Muzei's
-  /// `maxLoadedArtworkId`) and [excludeEntryIds] the current artwork plus the
+  /// `maxLoadedArtworkId`) and [excludeEntryIds] the queued artworks plus the
   /// recently shown ones, so the random ordering does not repeat itself.
   Future<WallpaperSourcePick> pick(
     WallpaperSourceScope scope, {

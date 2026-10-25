@@ -480,16 +480,22 @@ class WallpaperController extends ChangeNotifier {
     return null;
   }
 
-  /// The current artwork plus the recently shown ones.
+  /// The queued artworks plus the recently shown ones.
   ///
   /// The random ordering rejects these, so the wallpaper does not show the same
-  /// photo twice in a row and cycles through the library before repeating.
+  /// photo twice in a row and cycles through the library before repeating. The
+  /// baked `next`/`next2` slots count too: the deeper spare is picked while the
+  /// slot ahead of it is already filled, and leaving it out let the same artwork
+  /// be baked twice and then promoted twice.
   Set<int> _excludedEntryIds() {
-    final current = _state.currentSlot;
-    return {
+    final entryIds = {
       ..._state.recent.map((artwork) => artwork.entryId),
-      if (current != null) current.artwork.entryId,
     };
+    for (final id in _state.queue) {
+      final slot = _state.slotById(id);
+      if (slot != null) entryIds.add(slot.artwork.entryId);
+    }
+    return entryIds;
   }
 
   Future<WallpaperSlot> _writeSlot(int slotId, AvesEntry entry, WallpaperBake bake) async {
@@ -880,6 +886,27 @@ class WallpaperController extends ChangeNotifier {
         next2: _state.next2 == id ? -1 : _state.next2,
         slots: _state.slots.where((existing) => existing.id != id).toList(),
       );
+    }
+
+    // An older build could bake the same artwork into two queue slots: the
+    // deeper spare was picked while `next` was already filled but the pick did
+    // not exclude it, and a tap then promoted the duplicate. Drop the repeated
+    // spare and let the prefetch after init refill it; a source with a single
+    // artwork has nothing else to show, so its repeat stays.
+    if ((_resolution?.total ?? 0) > 1) {
+      final queuedEntryIds = <int>{};
+      for (final id in _state.queue) {
+        final slot = _state.slotById(id);
+        if (slot == null) continue;
+        if (queuedEntryIds.add(slot.artwork.entryId)) continue;
+        wallpaperLog.w('slot duplicate entry id=${slot.artwork.entryId} slot=$id');
+        await store.deleteSlot(id);
+        _state = _state.copyWith(
+          next: _state.next == id ? -1 : _state.next,
+          next2: _state.next2 == id ? -1 : _state.next2,
+          slots: _state.slots.where((existing) => existing.id != id).toList(),
+        );
+      }
     }
   }
 

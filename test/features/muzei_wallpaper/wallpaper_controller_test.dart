@@ -590,6 +590,11 @@ void main() {
       expect(deep.next, isNotNull, reason: 'the first spare serves the first tap');
       expect(deep.next2, isNotNull, reason: 'the second spare serves the second tap');
       expect({deep.current!.id, deep.next!.id, deep.next2!.id}, hasLength(3));
+      expect(
+        {deep.current!.artwork.entryId, deep.next!.artwork.entryId, deep.next2!.artwork.entryId},
+        hasLength(3),
+        reason: 'the three queued slots hold three different artworks',
+      );
 
       final state = (await store.readState())!;
       expect(state.current, deep.current!.id);
@@ -784,6 +789,113 @@ void main() {
         off.dispose();
       }
     });
+
+    test('the spare pick excludes the artwork already queued', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 6; id++) entry(id: id, dateTaken: id * 10),
+      });
+      final repository = RecordingWallpaperRepository(database: driftDb, random: Random(7));
+      final deep = WallpaperController(
+        prefs: prefs,
+        repository: repository,
+        baker: baker,
+        store: store,
+        bridge: bridge,
+        targetSize: () async => const Size(100, 100),
+        prefetchAhead: () => true,
+      );
+      addTearDown(deep.dispose);
+
+      await deep.init();
+      await deep.idle;
+
+      expect(deep.next2, isNotNull);
+      // The deep spare is picked while `current` and `next` are already baked;
+      // leaving `next` out of the exclusions is what baked the duplicate that a
+      // later tap promoted.
+      expect(
+        repository.exclusions.last,
+        containsAll({deep.current!.artwork.entryId, deep.next!.artwork.entryId}),
+        reason: 'the deeper spare must not repeat an artwork that is already queued',
+      );
+    });
+
+    test('a duplicate spare left by an older build is repaired on startup', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 6; id++) entry(id: id, dateTaken: id * 10),
+      });
+      final before = controllerWith(baker: baker, bridge: bridge, store: store, prefetchAhead: () => true);
+      await before.init();
+      await before.idle;
+      before.dispose();
+
+      // Simulate the state the buggy picker used to leave behind: the deep spare
+      // holds the same artwork as `next`.
+      final baked = (await store.readState())!;
+      final repeated = baked.nextSlot!.artwork;
+      await store.writeState(
+        baked.copyWith(
+          slots: [
+            for (final slot in baked.slots) slot.id == baked.next2 ? WallpaperSlot(id: slot.id, artwork: repeated) : slot,
+          ],
+        ),
+      );
+
+      final restarted = controllerWith(baker: baker, bridge: bridge, store: store, prefetchAhead: () => true);
+      addTearDown(restarted.dispose);
+      await restarted.init();
+      await restarted.idle;
+
+      final queued = [
+        restarted.current!.artwork.entryId,
+        restarted.next!.artwork.entryId,
+        restarted.next2!.artwork.entryId,
+      ];
+      expect(queued.toSet(), hasLength(3), reason: 'the repeated spare is dropped and refilled with another artwork');
+      expect(queued[1], repeated.entryId, reason: 'the promoted queue position is untouched');
+    });
+
+    test('a single-artwork source keeps its repeated spare', () async {
+      await driftDb.insertEntries({entry(id: 1)});
+      final before = controllerWith(baker: baker, bridge: bridge, store: store, prefetchAhead: () => true);
+      await before.init();
+      await before.idle;
+      before.dispose();
+
+      final restarted = controllerWith(baker: baker, bridge: bridge, store: store, prefetchAhead: () => true);
+      addTearDown(restarted.dispose);
+      await restarted.init();
+      await restarted.idle;
+
+      expect(restarted.state.slots, hasLength(3), reason: 'nothing else to show, so the repeat must survive');
+      expect(restarted.next2?.artwork.entryId, restarted.current?.artwork.entryId);
+    });
+
+    test('advancing with a random ordering never repeats a queued artwork', () async {
+      await driftDb.insertEntries({
+        for (var id = 1; id <= 60; id++) entry(id: id, dateTaken: id * 10),
+      });
+      await prefs.setAutoAdvance(const WallpaperAutoAdvance(ordering: WallpaperOrdering.random));
+      final deep = controllerWith(baker: baker, bridge: bridge, store: store, prefetchAhead: () => true);
+      addTearDown(deep.dispose);
+      await deep.init();
+      await deep.idle;
+
+      var previous = deep.current!.artwork.entryId;
+      for (var i = 0; i < 10; i++) {
+        await deep.advance();
+        await deep.idle;
+        final currentEntry = deep.current!.artwork.entryId;
+        expect(currentEntry, isNot(previous), reason: 'advance ${i + 1} repeated the artwork on screen');
+        final queued = [
+          currentEntry,
+          ?deep.next?.artwork.entryId,
+          ?deep.next2?.artwork.entryId,
+        ];
+        expect(queued.toSet(), hasLength(queued.length), reason: 'the queue repeats an artwork: $queued');
+        previous = currentEntry;
+      }
+    });
   });
 
   group('recent artworks', () {
@@ -934,5 +1046,36 @@ class FakeWallpaperBridge extends Fake implements WallpaperBridge {
   @override
   Future<void> scheduleAutoAdvance(int seconds) async {
     autoAdvanceSeconds = seconds;
+  }
+}
+
+/// Records the exclusions the controller hands to the picker.
+///
+/// The exclusion set is the only lever that stops the deeper spare from baking
+/// an artwork that already sits in the queue, so a test asserts on it directly
+/// instead of relying on a seeded random sequence.
+class RecordingWallpaperRepository extends WallpaperSourceRepository {
+  final List<Set<int>> exclusions = [];
+
+  new({super.database, super.random});
+
+  @override
+  Future<WallpaperSourcePick> pick(
+    WallpaperSourceScope scope, {
+    required WallpaperOrdering ordering,
+    required int cursor,
+    int attempt = 0,
+    int newestEntryId = 0,
+    Set<int> excludeEntryIds = const {},
+  }) {
+    exclusions.add(excludeEntryIds);
+    return super.pick(
+      scope,
+      ordering: ordering,
+      cursor: cursor,
+      attempt: attempt,
+      newestEntryId: newestEntryId,
+      excludeEntryIds: excludeEntryIds,
+    );
   }
 }

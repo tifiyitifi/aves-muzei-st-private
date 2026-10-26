@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "presets": [
+    {
+      "id": "builtin.image",
+      "nameKey": "visibleRangePresetImage",
+      "filters": [{ "type": "mime", "mime": "image/*" }]
+    },
+    {
+      "id": "builtin.video",
+      "nameKey": "visibleRangePresetVideo",
+      "filters": [{ "type": "mime", "mime": "video/*" }]
+    },
+    {
+      "id": "builtin.notVideo",
+      "nameKey": "visibleRangePresetNotVideo",
+      "filters": [{ "type": "mime", "mime": "video/*", "reversed": true }]
+    },
+    {
+      "id": "builtin.favourite",
+      "nameKey": "visibleRangePresetFavourite",
+      "filters": [{ "type": "favourite" }]
+    },
+    {
+      "id": "builtin.rating5",
+      "nameKey": "visibleRangePresetRating5",
+      "filters": [{ "type": "rating", "rating": 5, "op": ">=" }]
+    },
+    {
+      "id": "builtin.rating4",
+      "nameKey": "visibleRangePresetRating4",
+      "filters": [{ "type": "rating", "rating": 4, "op": ">=" }]
+    },
+    {
+      "id": "builtin.rating3",
+      "nameKey": "visibleRangePresetRating3",
+      "filters": [{ "type": "rating", "rating": 3, "op": ">=" }]
+    },
+    {
+      "id": "builtin.portrait",
+      "nameKey": "visibleRangePresetPortrait",
+      "filters": [{ "type": "aspect_ratio", "threshold": 1.0, "op": "<" }]
+    },
+    {
+      "id": "builtin.landscape",
+      "nameKey": "visibleRangePresetLandscape",
+      "filters": [{ "type": "aspect_ratio", "threshold": 1.0, "op": ">" }]
+    },
+    {
+      "id": "builtin.panorama",
+      "nameKey": "visibleRangePresetPanorama",
+      "filters": [{ "type": "type", "itemType": "panorama" }]
+    },
+    {
+      "id": "builtin.raw",
+      "nameKey": "visibleRangePresetRaw",
+      "filters": [{ "type": "type", "itemType": "raw" }]
+    },
+    {
+      "id": "builtin.motionPhoto",
+      "nameKey": "visibleRangePresetMotionPhoto",
+      "filters": [{ "type": "type", "itemType": "motion_photo" }]
+    }
+  ]
+}

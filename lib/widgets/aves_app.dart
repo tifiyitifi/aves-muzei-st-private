@@ -10,6 +10,7 @@ import 'package:aves/features/session_restore/session_restore_collection_state.d
 import 'package:aves/features/session_restore/session_restore_route_observer.dart';
 import 'package:aves/features/session_restore/session_restore_snapshot.dart';
 import 'package:aves/features/session_restore/session_restore_store.dart';
+import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/l10n/l10n.dart';
 import 'package:aves/model/app/intent.dart';
@@ -505,6 +506,9 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
       // behind an async gap let a page built before it resolved treat a
       // complete library as unimported.
       _timed('library phase', libraryPhase.init),
+      // The gallery must be range-aware before the first collection loads, so a
+      // saved range never flashes the unfiltered library.
+      _timed('visible range', visibleRangeController.init),
     ]);
     _monitorSettings();
     videoControllerFactory.init();

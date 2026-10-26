@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/drift_db/filter_summary/summary_rows.dart';
 import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/geo/states.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/db/db.dart';
@@ -124,7 +125,7 @@ class PagedFilterSummaries implements FilterSummaryProvider {
     if (_loaded.contains(domain) || _loading.contains(domain)) return;
     _loading.add(domain);
     try {
-      final exclusion = buildSummaryExclusion(hidden: hiddenFilters(), lockedVaultDirs: lockedVaultDirs());
+      final exclusion = buildSummaryExclusion(hidden: VisibleRangeGate.augmentHidden(hiddenFilters()), lockedVaultDirs: lockedVaultDirs());
       switch (domain) {
         case SummaryDomain.albums:
           await _loadAlbums(exclusion);
@@ -223,6 +224,7 @@ class PagedFilterSummaries implements FilterSummaryProvider {
     for (final slice in keysById.keys.slices(500)) {
       final entries = await database.loadEntriesById(slice.toSet());
       for (final entry in entries) {
+        if (!VisibleRangeGate.accepts(entry)) continue;
         entry.catalogDateMillis = dates[entry.id];
         for (final key in keysById[entry.id] ?? const <String>[]) {
           final current = _recentByFilterKey[key];
@@ -391,7 +393,7 @@ class PagedFilterSummaries implements FilterSummaryProvider {
     final cached = _containers[key];
     if (cached != null) return cached;
     if (_containerLoading.add(key)) {
-      final predicate = predicateForFilters({filter});
+      final predicate = predicateForFilters(VisibleRangeGate.apply({filter}));
       if (predicate == null) {
         _containerLoading.remove(key);
         return null;

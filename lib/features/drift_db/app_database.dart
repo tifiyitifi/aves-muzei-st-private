@@ -9,10 +9,12 @@ import 'package:aves/features/drift_db/favourites/favourite_table.dart';
 import 'package:aves/features/drift_db/migration/migration_v2.dart';
 import 'package:aves/features/drift_db/migration/migration_v3.dart';
 import 'package:aves/features/drift_db/migration/migration_v4.dart';
+import 'package:aves/features/drift_db/migration/migration_v5.dart';
 import 'package:aves/features/drift_db/trash/trash_table.dart';
 import 'package:aves/features/drift_db/vaults/vault_table.dart';
 import 'package:aves/features/drift_db/video_playback/video_playback_table.dart';
 import 'package:aves/features/meta_settings/db/settings_values_table.dart';
+import 'package:aves/features/visible_range/db/visible_range_tables.dart';
 import 'package:drift/drift.dart';
 
 part 'app_database.g.dart';
@@ -43,6 +45,11 @@ part 'app_database.g.dart';
     DebugTable,
     AppMetaTable,
     SettingsValuesTable,
+    VisibleRangePresetRows,
+    VisibleRangeRows,
+    VisibleRangeRuleRows,
+    VisibleRangeSessionRows,
+    VisibleRangeKeyValues,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -53,7 +60,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -66,6 +73,7 @@ class AppDatabase extends _$AppDatabase {
           if (from < 2) await MigrationV2(this).run(m);
           if (from < 3) await MigrationV3(this).run(m);
           if (from < 4) await MigrationV4(this).run(m);
+          if (from < 5) await MigrationV5(this).run(m);
         },
         beforeOpen: (details) async {
           // The main isolate and the analysis background isolate each open
@@ -84,5 +92,6 @@ class AppDatabase extends _$AppDatabase {
   Future<void> _createIndexes() async {
     await MigrationV3.createNewIndexes(this);
     await MigrationV4.createNewIndexes(this);
+    await MigrationV5.createNewIndexes(this);
   }
 }

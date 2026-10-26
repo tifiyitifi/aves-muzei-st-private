@@ -1,4 +1,5 @@
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
@@ -54,6 +55,8 @@ class NavigationDisplay {
         return l10n.explorerPageTitle;
       case MuzeiWallpaperPage.routeName:
         return l10n.muzeiWallpaperPageTitle;
+      case VisibleRangePage.routeName:
+        return l10n.visibleRangePageTitle;
       case SearchPage.routeName:
         return MaterialLocalizations.of(context).searchFieldLabel;
       case SettingsPage.routeName:
@@ -83,6 +86,8 @@ class NavigationDisplay {
         return AIcons.explorer;
       case MuzeiWallpaperPage.routeName:
         return AIcons.wallpaper;
+      case VisibleRangePage.routeName:
+        return AIcons.show;
       case SearchPage.routeName:
         return AIcons.search;
       case SettingsPage.routeName:

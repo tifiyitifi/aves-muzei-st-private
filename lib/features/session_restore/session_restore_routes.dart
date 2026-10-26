@@ -1,4 +1,5 @@
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/filter_grids/albums_page.dart';
 import 'package:aves/widgets/filter_grids/tags_page.dart';
@@ -16,6 +17,7 @@ const Set<String> restorableSessionRoutes = {
   TagListPage.routeName,
   MapPage.routeName,
   MuzeiWallpaperPage.routeName,
+  VisibleRangePage.routeName,
 };
 
 /// Restorable pages that are normally pushed over another page.

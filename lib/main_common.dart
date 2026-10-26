@@ -7,6 +7,7 @@ import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/features/muzei_wallpaper/entry/refill_entry.dart';
 import 'package:aves/features/muzei_wallpaper/log.dart';
+import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/widgets/aves_app.dart';
 import 'package:flutter/foundation.dart';
@@ -17,7 +18,7 @@ import 'package:material_ui/material_ui.dart';
 void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
   debugProfilePlatformChannels = false;
 
-  Log.init(debugChannels: [...collectionPagingDebugLogKeys, ...muzeiWallpaperDebugLogKeys]);
+  Log.init(debugChannels: [...collectionPagingDebugLogKeys, ...muzeiWallpaperDebugLogKeys, ...visibleRangeDebugLogKeys]);
   const appLog = AreaKeyLog(LogKeys.app);
   appLog.i('app start flavor=${flavor.name}');
 

@@ -2,6 +2,7 @@ import 'package:aves/features/collection_paging/engine/collection_engine.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -86,7 +87,7 @@ class CollectionEngineRouter {
     }
 
     final predicate = predicateForFilters(
-      filters,
+      VisibleRangeGate.apply(filters),
       hidden: settings.hiddenFilters,
       // A locked vault hides its directory, and everything under it, through the
       // same predicate as any other scope: the vault's rows stay in the database

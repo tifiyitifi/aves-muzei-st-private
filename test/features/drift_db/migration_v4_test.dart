@@ -51,7 +51,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     final version = (await db.customSelect('PRAGMA user_version').get()).single.data['user_version'];
-    expect(version, 4);
+    expect(version, db.schemaVersion);
 
     final rows = await db.customSelect('SELECT id, baseName, stackKey, stackTileId FROM entry ORDER BY id').get();
     final byId = {for (final row in rows) row.data['id'] as int: row.data};

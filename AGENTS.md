@@ -6,7 +6,7 @@ Read the critical rules first, then the toolchain and workflow sections.
 
 ## Critical rules
 
-- Never push to `upstream`. Never commit on `main`. Do development on `muzei-dev`.
+- Never push to `upstream`. Never commit on `main`. Do development on `avest-dev` (the visible-range/wallpaper line), branching from `muzei-dev` when it needs the latest Muzei work.
 - New features go in `lib/features/<feature>/`, not scattered into upstream-owned trees.
 - New code logs through the fork logger in `lib/features/logging/`, not raw `debugPrint`.
 - Never hardcode user-facing strings: every new string ships its `app_en.arb` key (other locales are translated later).
@@ -20,7 +20,7 @@ Read the critical rules first, then the toolchain and workflow sections.
 
 - `upstream` = `deckerst/aves` (**public, third-party**). It is used **only to pull/fetch code**. **Never push to it** — its push URL is intentionally set to `DISABLE`, so a push attempt fails.
 - `origin` = `tifiyitifi/aves-muzei-st-private` (**private**). All work is pushed here.
-- Keep `main` an unmodified mirror of `upstream/main`; do development on the `muzei-dev` branch instead of committing on `main`.
+- Keep `main` an unmodified mirror of `upstream/main`; do development on `avest-dev` instead of committing on `main`. `muzei-dev` stays the integration branch for the Muzei wallpaper work that `avest-dev` is built on.
 
 ## Fork discipline & feature layout
 

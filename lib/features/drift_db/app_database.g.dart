@@ -4585,6 +4585,2233 @@ class SettingsValuesTableCompanion
   }
 }
 
+class $VisibleRangePresetRowsTable extends VisibleRangePresetRows
+    with TableInfo<$VisibleRangePresetRowsTable, VisibleRangePresetRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VisibleRangePresetRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _filtersMeta = const VerificationMeta(
+    'filters',
+  );
+  @override
+  late final GeneratedColumn<String> filters = GeneratedColumn<String>(
+    'filters',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _builtinMeta = const VerificationMeta(
+    'builtin',
+  );
+  @override
+  late final GeneratedColumn<bool> builtin = GeneratedColumn<bool>(
+    'builtin',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("builtin" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, filters, builtin, position];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'visible_range_presets';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VisibleRangePresetRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('filters')) {
+      context.handle(
+        _filtersMeta,
+        filters.isAcceptableOrUnknown(data['filters']!, _filtersMeta),
+      );
+    }
+    if (data.containsKey('builtin')) {
+      context.handle(
+        _builtinMeta,
+        builtin.isAcceptableOrUnknown(data['builtin']!, _builtinMeta),
+      );
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VisibleRangePresetRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VisibleRangePresetRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      filters: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}filters'],
+      )!,
+      builtin: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}builtin'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+    );
+  }
+
+  @override
+  $VisibleRangePresetRowsTable createAlias(String alias) {
+    return $VisibleRangePresetRowsTable(attachedDatabase, alias);
+  }
+}
+
+class VisibleRangePresetRow extends DataClass
+    implements Insertable<VisibleRangePresetRow> {
+  final String id;
+  final String name;
+
+  /// JSON array of `CollectionFilter.toJsonMap()` bodies, AND-ed together.
+  final String filters;
+
+  /// Built-in presets are read-only and re-addable through the "re-add default
+  /// restrictions" action.
+  final bool builtin;
+  final int position;
+  const VisibleRangePresetRow({
+    required this.id,
+    required this.name,
+    required this.filters,
+    required this.builtin,
+    required this.position,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['filters'] = Variable<String>(filters);
+    map['builtin'] = Variable<bool>(builtin);
+    map['position'] = Variable<int>(position);
+    return map;
+  }
+
+  VisibleRangePresetRowsCompanion toCompanion(bool nullToAbsent) {
+    return VisibleRangePresetRowsCompanion(
+      id: Value(id),
+      name: Value(name),
+      filters: Value(filters),
+      builtin: Value(builtin),
+      position: Value(position),
+    );
+  }
+
+  factory VisibleRangePresetRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VisibleRangePresetRow(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      filters: serializer.fromJson<String>(json['filters']),
+      builtin: serializer.fromJson<bool>(json['builtin']),
+      position: serializer.fromJson<int>(json['position']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'filters': serializer.toJson<String>(filters),
+      'builtin': serializer.toJson<bool>(builtin),
+      'position': serializer.toJson<int>(position),
+    };
+  }
+
+  VisibleRangePresetRow copyWith({
+    String? id,
+    String? name,
+    String? filters,
+    bool? builtin,
+    int? position,
+  }) => VisibleRangePresetRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    filters: filters ?? this.filters,
+    builtin: builtin ?? this.builtin,
+    position: position ?? this.position,
+  );
+  VisibleRangePresetRow copyWithCompanion(
+    VisibleRangePresetRowsCompanion data,
+  ) {
+    return VisibleRangePresetRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      filters: data.filters.present ? data.filters.value : this.filters,
+      builtin: data.builtin.present ? data.builtin.value : this.builtin,
+      position: data.position.present ? data.position.value : this.position,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisibleRangePresetRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('filters: $filters, ')
+          ..write('builtin: $builtin, ')
+          ..write('position: $position')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, filters, builtin, position);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VisibleRangePresetRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.filters == this.filters &&
+          other.builtin == this.builtin &&
+          other.position == this.position);
+}
+
+class VisibleRangePresetRowsCompanion
+    extends UpdateCompanion<VisibleRangePresetRow> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<String> filters;
+  final Value<bool> builtin;
+  final Value<int> position;
+  final Value<int> rowid;
+  const VisibleRangePresetRowsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.filters = const Value.absent(),
+    this.builtin = const Value.absent(),
+    this.position = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  VisibleRangePresetRowsCompanion.insert({
+    required String id,
+    required String name,
+    this.filters = const Value.absent(),
+    this.builtin = const Value.absent(),
+    this.position = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name);
+  static Insertable<VisibleRangePresetRow> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? filters,
+    Expression<bool>? builtin,
+    Expression<int>? position,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (filters != null) 'filters': filters,
+      if (builtin != null) 'builtin': builtin,
+      if (position != null) 'position': position,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  VisibleRangePresetRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String>? filters,
+    Value<bool>? builtin,
+    Value<int>? position,
+    Value<int>? rowid,
+  }) {
+    return VisibleRangePresetRowsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      filters: filters ?? this.filters,
+      builtin: builtin ?? this.builtin,
+      position: position ?? this.position,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (filters.present) {
+      map['filters'] = Variable<String>(filters.value);
+    }
+    if (builtin.present) {
+      map['builtin'] = Variable<bool>(builtin.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisibleRangePresetRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('filters: $filters, ')
+          ..write('builtin: $builtin, ')
+          ..write('position: $position, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $VisibleRangeRowsTable extends VisibleRangeRows
+    with TableInfo<$VisibleRangeRowsTable, VisibleRangeRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VisibleRangeRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _scopeMeta = const VerificationMeta('scope');
+  @override
+  late final GeneratedColumn<String> scope = GeneratedColumn<String>(
+    'scope',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'ownerId',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _baseNameMeta = const VerificationMeta(
+    'baseName',
+  );
+  @override
+  late final GeneratedColumn<String> baseName = GeneratedColumn<String>(
+    'baseName',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _basePresetIdMeta = const VerificationMeta(
+    'basePresetId',
+  );
+  @override
+  late final GeneratedColumn<String> basePresetId = GeneratedColumn<String>(
+    'basePresetId',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _baseFiltersMeta = const VerificationMeta(
+    'baseFilters',
+  );
+  @override
+  late final GeneratedColumn<String> baseFilters = GeneratedColumn<String>(
+    'baseFilters',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _orderModeMeta = const VerificationMeta(
+    'orderMode',
+  );
+  @override
+  late final GeneratedColumn<String> orderMode = GeneratedColumn<String>(
+    'orderMode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('intersectFirst'),
+  );
+  static const VerificationMeta _lockedMeta = const VerificationMeta('locked');
+  @override
+  late final GeneratedColumn<bool> locked = GeneratedColumn<bool>(
+    'locked',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("locked" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _permissionsMeta = const VerificationMeta(
+    'permissions',
+  );
+  @override
+  late final GeneratedColumn<String> permissions = GeneratedColumn<String>(
+    'permissions',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'createdAt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updatedAt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    scope,
+    ownerId,
+    baseName,
+    basePresetId,
+    baseFilters,
+    orderMode,
+    locked,
+    permissions,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'visible_ranges';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VisibleRangeRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('scope')) {
+      context.handle(
+        _scopeMeta,
+        scope.isAcceptableOrUnknown(data['scope']!, _scopeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_scopeMeta);
+    }
+    if (data.containsKey('ownerId')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['ownerId']!, _ownerIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerIdMeta);
+    }
+    if (data.containsKey('baseName')) {
+      context.handle(
+        _baseNameMeta,
+        baseName.isAcceptableOrUnknown(data['baseName']!, _baseNameMeta),
+      );
+    }
+    if (data.containsKey('basePresetId')) {
+      context.handle(
+        _basePresetIdMeta,
+        basePresetId.isAcceptableOrUnknown(
+          data['basePresetId']!,
+          _basePresetIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('baseFilters')) {
+      context.handle(
+        _baseFiltersMeta,
+        baseFilters.isAcceptableOrUnknown(
+          data['baseFilters']!,
+          _baseFiltersMeta,
+        ),
+      );
+    }
+    if (data.containsKey('orderMode')) {
+      context.handle(
+        _orderModeMeta,
+        orderMode.isAcceptableOrUnknown(data['orderMode']!, _orderModeMeta),
+      );
+    }
+    if (data.containsKey('locked')) {
+      context.handle(
+        _lockedMeta,
+        locked.isAcceptableOrUnknown(data['locked']!, _lockedMeta),
+      );
+    }
+    if (data.containsKey('permissions')) {
+      context.handle(
+        _permissionsMeta,
+        permissions.isAcceptableOrUnknown(
+          data['permissions']!,
+          _permissionsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('createdAt')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['createdAt']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updatedAt')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updatedAt']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VisibleRangeRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VisibleRangeRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      scope: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}scope'],
+      )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ownerId'],
+      )!,
+      baseName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}baseName'],
+      )!,
+      basePresetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}basePresetId'],
+      )!,
+      baseFilters: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}baseFilters'],
+      )!,
+      orderMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}orderMode'],
+      )!,
+      locked: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}locked'],
+      )!,
+      permissions: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}permissions'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}createdAt'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updatedAt'],
+      )!,
+    );
+  }
+
+  @override
+  $VisibleRangeRowsTable createAlias(String alias) {
+    return $VisibleRangeRowsTable(attachedDatabase, alias);
+  }
+}
+
+class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
+  final String id;
+  final String scope;
+
+  /// Owner of the range: `gallery` for the single gallery range, otherwise the
+  /// wallpaper group id.
+  final String ownerId;
+
+  /// Display name of the selected base (empty when [baseFilters] is empty).
+  final String baseName;
+
+  /// Preset this base was last copied from, or empty for unrestricted/custom.
+  final String basePresetId;
+
+  /// JSON array, AND-ed together. Empty means unrestricted.
+  final String baseFilters;
+
+  /// `intersectFirst` (restrictions before supplements) or `unionFirst`
+  /// (supplements before restrictions).
+  final String orderMode;
+  final bool locked;
+
+  /// JSON of `VisibleRangePermissions`; null means the default (read-only with
+  /// sharing allowed).
+  final String? permissions;
+  final int createdAt;
+  final int updatedAt;
+  const VisibleRangeRow({
+    required this.id,
+    required this.scope,
+    required this.ownerId,
+    required this.baseName,
+    required this.basePresetId,
+    required this.baseFilters,
+    required this.orderMode,
+    required this.locked,
+    this.permissions,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['scope'] = Variable<String>(scope);
+    map['ownerId'] = Variable<String>(ownerId);
+    map['baseName'] = Variable<String>(baseName);
+    map['basePresetId'] = Variable<String>(basePresetId);
+    map['baseFilters'] = Variable<String>(baseFilters);
+    map['orderMode'] = Variable<String>(orderMode);
+    map['locked'] = Variable<bool>(locked);
+    if (!nullToAbsent || permissions != null) {
+      map['permissions'] = Variable<String>(permissions);
+    }
+    map['createdAt'] = Variable<int>(createdAt);
+    map['updatedAt'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  VisibleRangeRowsCompanion toCompanion(bool nullToAbsent) {
+    return VisibleRangeRowsCompanion(
+      id: Value(id),
+      scope: Value(scope),
+      ownerId: Value(ownerId),
+      baseName: Value(baseName),
+      basePresetId: Value(basePresetId),
+      baseFilters: Value(baseFilters),
+      orderMode: Value(orderMode),
+      locked: Value(locked),
+      permissions: permissions == null && nullToAbsent
+          ? const Value.absent()
+          : Value(permissions),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory VisibleRangeRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VisibleRangeRow(
+      id: serializer.fromJson<String>(json['id']),
+      scope: serializer.fromJson<String>(json['scope']),
+      ownerId: serializer.fromJson<String>(json['ownerId']),
+      baseName: serializer.fromJson<String>(json['baseName']),
+      basePresetId: serializer.fromJson<String>(json['basePresetId']),
+      baseFilters: serializer.fromJson<String>(json['baseFilters']),
+      orderMode: serializer.fromJson<String>(json['orderMode']),
+      locked: serializer.fromJson<bool>(json['locked']),
+      permissions: serializer.fromJson<String?>(json['permissions']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'scope': serializer.toJson<String>(scope),
+      'ownerId': serializer.toJson<String>(ownerId),
+      'baseName': serializer.toJson<String>(baseName),
+      'basePresetId': serializer.toJson<String>(basePresetId),
+      'baseFilters': serializer.toJson<String>(baseFilters),
+      'orderMode': serializer.toJson<String>(orderMode),
+      'locked': serializer.toJson<bool>(locked),
+      'permissions': serializer.toJson<String?>(permissions),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  VisibleRangeRow copyWith({
+    String? id,
+    String? scope,
+    String? ownerId,
+    String? baseName,
+    String? basePresetId,
+    String? baseFilters,
+    String? orderMode,
+    bool? locked,
+    Value<String?> permissions = const Value.absent(),
+    int? createdAt,
+    int? updatedAt,
+  }) => VisibleRangeRow(
+    id: id ?? this.id,
+    scope: scope ?? this.scope,
+    ownerId: ownerId ?? this.ownerId,
+    baseName: baseName ?? this.baseName,
+    basePresetId: basePresetId ?? this.basePresetId,
+    baseFilters: baseFilters ?? this.baseFilters,
+    orderMode: orderMode ?? this.orderMode,
+    locked: locked ?? this.locked,
+    permissions: permissions.present ? permissions.value : this.permissions,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  VisibleRangeRow copyWithCompanion(VisibleRangeRowsCompanion data) {
+    return VisibleRangeRow(
+      id: data.id.present ? data.id.value : this.id,
+      scope: data.scope.present ? data.scope.value : this.scope,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
+      baseName: data.baseName.present ? data.baseName.value : this.baseName,
+      basePresetId: data.basePresetId.present
+          ? data.basePresetId.value
+          : this.basePresetId,
+      baseFilters: data.baseFilters.present
+          ? data.baseFilters.value
+          : this.baseFilters,
+      orderMode: data.orderMode.present ? data.orderMode.value : this.orderMode,
+      locked: data.locked.present ? data.locked.value : this.locked,
+      permissions: data.permissions.present
+          ? data.permissions.value
+          : this.permissions,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisibleRangeRow(')
+          ..write('id: $id, ')
+          ..write('scope: $scope, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('baseName: $baseName, ')
+          ..write('basePresetId: $basePresetId, ')
+          ..write('baseFilters: $baseFilters, ')
+          ..write('orderMode: $orderMode, ')
+          ..write('locked: $locked, ')
+          ..write('permissions: $permissions, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    scope,
+    ownerId,
+    baseName,
+    basePresetId,
+    baseFilters,
+    orderMode,
+    locked,
+    permissions,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VisibleRangeRow &&
+          other.id == this.id &&
+          other.scope == this.scope &&
+          other.ownerId == this.ownerId &&
+          other.baseName == this.baseName &&
+          other.basePresetId == this.basePresetId &&
+          other.baseFilters == this.baseFilters &&
+          other.orderMode == this.orderMode &&
+          other.locked == this.locked &&
+          other.permissions == this.permissions &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
+  final Value<String> id;
+  final Value<String> scope;
+  final Value<String> ownerId;
+  final Value<String> baseName;
+  final Value<String> basePresetId;
+  final Value<String> baseFilters;
+  final Value<String> orderMode;
+  final Value<bool> locked;
+  final Value<String?> permissions;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const VisibleRangeRowsCompanion({
+    this.id = const Value.absent(),
+    this.scope = const Value.absent(),
+    this.ownerId = const Value.absent(),
+    this.baseName = const Value.absent(),
+    this.basePresetId = const Value.absent(),
+    this.baseFilters = const Value.absent(),
+    this.orderMode = const Value.absent(),
+    this.locked = const Value.absent(),
+    this.permissions = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  VisibleRangeRowsCompanion.insert({
+    required String id,
+    required String scope,
+    required String ownerId,
+    this.baseName = const Value.absent(),
+    this.basePresetId = const Value.absent(),
+    this.baseFilters = const Value.absent(),
+    this.orderMode = const Value.absent(),
+    this.locked = const Value.absent(),
+    this.permissions = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       scope = Value(scope),
+       ownerId = Value(ownerId),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<VisibleRangeRow> custom({
+    Expression<String>? id,
+    Expression<String>? scope,
+    Expression<String>? ownerId,
+    Expression<String>? baseName,
+    Expression<String>? basePresetId,
+    Expression<String>? baseFilters,
+    Expression<String>? orderMode,
+    Expression<bool>? locked,
+    Expression<String>? permissions,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (scope != null) 'scope': scope,
+      if (ownerId != null) 'ownerId': ownerId,
+      if (baseName != null) 'baseName': baseName,
+      if (basePresetId != null) 'basePresetId': basePresetId,
+      if (baseFilters != null) 'baseFilters': baseFilters,
+      if (orderMode != null) 'orderMode': orderMode,
+      if (locked != null) 'locked': locked,
+      if (permissions != null) 'permissions': permissions,
+      if (createdAt != null) 'createdAt': createdAt,
+      if (updatedAt != null) 'updatedAt': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  VisibleRangeRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? scope,
+    Value<String>? ownerId,
+    Value<String>? baseName,
+    Value<String>? basePresetId,
+    Value<String>? baseFilters,
+    Value<String>? orderMode,
+    Value<bool>? locked,
+    Value<String?>? permissions,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return VisibleRangeRowsCompanion(
+      id: id ?? this.id,
+      scope: scope ?? this.scope,
+      ownerId: ownerId ?? this.ownerId,
+      baseName: baseName ?? this.baseName,
+      basePresetId: basePresetId ?? this.basePresetId,
+      baseFilters: baseFilters ?? this.baseFilters,
+      orderMode: orderMode ?? this.orderMode,
+      locked: locked ?? this.locked,
+      permissions: permissions ?? this.permissions,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (scope.present) {
+      map['scope'] = Variable<String>(scope.value);
+    }
+    if (ownerId.present) {
+      map['ownerId'] = Variable<String>(ownerId.value);
+    }
+    if (baseName.present) {
+      map['baseName'] = Variable<String>(baseName.value);
+    }
+    if (basePresetId.present) {
+      map['basePresetId'] = Variable<String>(basePresetId.value);
+    }
+    if (baseFilters.present) {
+      map['baseFilters'] = Variable<String>(baseFilters.value);
+    }
+    if (orderMode.present) {
+      map['orderMode'] = Variable<String>(orderMode.value);
+    }
+    if (locked.present) {
+      map['locked'] = Variable<bool>(locked.value);
+    }
+    if (permissions.present) {
+      map['permissions'] = Variable<String>(permissions.value);
+    }
+    if (createdAt.present) {
+      map['createdAt'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updatedAt'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisibleRangeRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('scope: $scope, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('baseName: $baseName, ')
+          ..write('basePresetId: $basePresetId, ')
+          ..write('baseFilters: $baseFilters, ')
+          ..write('orderMode: $orderMode, ')
+          ..write('locked: $locked, ')
+          ..write('permissions: $permissions, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $VisibleRangeRuleRowsTable extends VisibleRangeRuleRows
+    with TableInfo<$VisibleRangeRuleRowsTable, VisibleRangeRuleRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VisibleRangeRuleRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _rangeIdMeta = const VerificationMeta(
+    'rangeId',
+  );
+  @override
+  late final GeneratedColumn<String> rangeId = GeneratedColumn<String>(
+    'rangeId',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _filtersMeta = const VerificationMeta(
+    'filters',
+  );
+  @override
+  late final GeneratedColumn<String> filters = GeneratedColumn<String>(
+    'filters',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _activeMeta = const VerificationMeta('active');
+  @override
+  late final GeneratedColumn<bool> active = GeneratedColumn<bool>(
+    'active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("active" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    rangeId,
+    kind,
+    position,
+    label,
+    filters,
+    active,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'visible_range_rules';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VisibleRangeRuleRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('rangeId')) {
+      context.handle(
+        _rangeIdMeta,
+        rangeId.isAcceptableOrUnknown(data['rangeId']!, _rangeIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rangeIdMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    }
+    if (data.containsKey('filters')) {
+      context.handle(
+        _filtersMeta,
+        filters.isAcceptableOrUnknown(data['filters']!, _filtersMeta),
+      );
+    }
+    if (data.containsKey('active')) {
+      context.handle(
+        _activeMeta,
+        active.isAcceptableOrUnknown(data['active']!, _activeMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VisibleRangeRuleRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VisibleRangeRuleRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      rangeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}rangeId'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      )!,
+      filters: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}filters'],
+      )!,
+      active: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}active'],
+      )!,
+    );
+  }
+
+  @override
+  $VisibleRangeRuleRowsTable createAlias(String alias) {
+    return $VisibleRangeRuleRowsTable(attachedDatabase, alias);
+  }
+}
+
+class VisibleRangeRuleRow extends DataClass
+    implements Insertable<VisibleRangeRuleRow> {
+  final String id;
+  final String rangeId;
+  final String kind;
+  final int position;
+  final String label;
+
+  /// JSON array of filter bodies.
+  final String filters;
+  final bool active;
+  const VisibleRangeRuleRow({
+    required this.id,
+    required this.rangeId,
+    required this.kind,
+    required this.position,
+    required this.label,
+    required this.filters,
+    required this.active,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['rangeId'] = Variable<String>(rangeId);
+    map['kind'] = Variable<String>(kind);
+    map['position'] = Variable<int>(position);
+    map['label'] = Variable<String>(label);
+    map['filters'] = Variable<String>(filters);
+    map['active'] = Variable<bool>(active);
+    return map;
+  }
+
+  VisibleRangeRuleRowsCompanion toCompanion(bool nullToAbsent) {
+    return VisibleRangeRuleRowsCompanion(
+      id: Value(id),
+      rangeId: Value(rangeId),
+      kind: Value(kind),
+      position: Value(position),
+      label: Value(label),
+      filters: Value(filters),
+      active: Value(active),
+    );
+  }
+
+  factory VisibleRangeRuleRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VisibleRangeRuleRow(
+      id: serializer.fromJson<String>(json['id']),
+      rangeId: serializer.fromJson<String>(json['rangeId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      position: serializer.fromJson<int>(json['position']),
+      label: serializer.fromJson<String>(json['label']),
+      filters: serializer.fromJson<String>(json['filters']),
+      active: serializer.fromJson<bool>(json['active']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'rangeId': serializer.toJson<String>(rangeId),
+      'kind': serializer.toJson<String>(kind),
+      'position': serializer.toJson<int>(position),
+      'label': serializer.toJson<String>(label),
+      'filters': serializer.toJson<String>(filters),
+      'active': serializer.toJson<bool>(active),
+    };
+  }
+
+  VisibleRangeRuleRow copyWith({
+    String? id,
+    String? rangeId,
+    String? kind,
+    int? position,
+    String? label,
+    String? filters,
+    bool? active,
+  }) => VisibleRangeRuleRow(
+    id: id ?? this.id,
+    rangeId: rangeId ?? this.rangeId,
+    kind: kind ?? this.kind,
+    position: position ?? this.position,
+    label: label ?? this.label,
+    filters: filters ?? this.filters,
+    active: active ?? this.active,
+  );
+  VisibleRangeRuleRow copyWithCompanion(VisibleRangeRuleRowsCompanion data) {
+    return VisibleRangeRuleRow(
+      id: data.id.present ? data.id.value : this.id,
+      rangeId: data.rangeId.present ? data.rangeId.value : this.rangeId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      position: data.position.present ? data.position.value : this.position,
+      label: data.label.present ? data.label.value : this.label,
+      filters: data.filters.present ? data.filters.value : this.filters,
+      active: data.active.present ? data.active.value : this.active,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisibleRangeRuleRow(')
+          ..write('id: $id, ')
+          ..write('rangeId: $rangeId, ')
+          ..write('kind: $kind, ')
+          ..write('position: $position, ')
+          ..write('label: $label, ')
+          ..write('filters: $filters, ')
+          ..write('active: $active')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, rangeId, kind, position, label, filters, active);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VisibleRangeRuleRow &&
+          other.id == this.id &&
+          other.rangeId == this.rangeId &&
+          other.kind == this.kind &&
+          other.position == this.position &&
+          other.label == this.label &&
+          other.filters == this.filters &&
+          other.active == this.active);
+}
+
+class VisibleRangeRuleRowsCompanion
+    extends UpdateCompanion<VisibleRangeRuleRow> {
+  final Value<String> id;
+  final Value<String> rangeId;
+  final Value<String> kind;
+  final Value<int> position;
+  final Value<String> label;
+  final Value<String> filters;
+  final Value<bool> active;
+  final Value<int> rowid;
+  const VisibleRangeRuleRowsCompanion({
+    this.id = const Value.absent(),
+    this.rangeId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.position = const Value.absent(),
+    this.label = const Value.absent(),
+    this.filters = const Value.absent(),
+    this.active = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  VisibleRangeRuleRowsCompanion.insert({
+    required String id,
+    required String rangeId,
+    required String kind,
+    this.position = const Value.absent(),
+    this.label = const Value.absent(),
+    this.filters = const Value.absent(),
+    this.active = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       rangeId = Value(rangeId),
+       kind = Value(kind);
+  static Insertable<VisibleRangeRuleRow> custom({
+    Expression<String>? id,
+    Expression<String>? rangeId,
+    Expression<String>? kind,
+    Expression<int>? position,
+    Expression<String>? label,
+    Expression<String>? filters,
+    Expression<bool>? active,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (rangeId != null) 'rangeId': rangeId,
+      if (kind != null) 'kind': kind,
+      if (position != null) 'position': position,
+      if (label != null) 'label': label,
+      if (filters != null) 'filters': filters,
+      if (active != null) 'active': active,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  VisibleRangeRuleRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? rangeId,
+    Value<String>? kind,
+    Value<int>? position,
+    Value<String>? label,
+    Value<String>? filters,
+    Value<bool>? active,
+    Value<int>? rowid,
+  }) {
+    return VisibleRangeRuleRowsCompanion(
+      id: id ?? this.id,
+      rangeId: rangeId ?? this.rangeId,
+      kind: kind ?? this.kind,
+      position: position ?? this.position,
+      label: label ?? this.label,
+      filters: filters ?? this.filters,
+      active: active ?? this.active,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (rangeId.present) {
+      map['rangeId'] = Variable<String>(rangeId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    if (filters.present) {
+      map['filters'] = Variable<String>(filters.value);
+    }
+    if (active.present) {
+      map['active'] = Variable<bool>(active.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisibleRangeRuleRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('rangeId: $rangeId, ')
+          ..write('kind: $kind, ')
+          ..write('position: $position, ')
+          ..write('label: $label, ')
+          ..write('filters: $filters, ')
+          ..write('active: $active, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $VisibleRangeSessionRowsTable extends VisibleRangeSessionRows
+    with TableInfo<$VisibleRangeSessionRowsTable, VisibleRangeSessionRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VisibleRangeSessionRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _rangeIdMeta = const VerificationMeta(
+    'rangeId',
+  );
+  @override
+  late final GeneratedColumn<String> rangeId = GeneratedColumn<String>(
+    'rangeId',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ruleIdMeta = const VerificationMeta('ruleId');
+  @override
+  late final GeneratedColumn<String> ruleId = GeneratedColumn<String>(
+    'ruleId',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _modeMeta = const VerificationMeta('mode');
+  @override
+  late final GeneratedColumn<String> mode = GeneratedColumn<String>(
+    'mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _initialFiltersMeta = const VerificationMeta(
+    'initialFilters',
+  );
+  @override
+  late final GeneratedColumn<String> initialFilters = GeneratedColumn<String>(
+    'initialFilters',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _finalFiltersMeta = const VerificationMeta(
+    'finalFilters',
+  );
+  @override
+  late final GeneratedColumn<String> finalFilters = GeneratedColumn<String>(
+    'finalFilters',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'createdAt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    rangeId,
+    ruleId,
+    kind,
+    mode,
+    initialFilters,
+    finalFilters,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'visible_range_sessions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VisibleRangeSessionRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('rangeId')) {
+      context.handle(
+        _rangeIdMeta,
+        rangeId.isAcceptableOrUnknown(data['rangeId']!, _rangeIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rangeIdMeta);
+    }
+    if (data.containsKey('ruleId')) {
+      context.handle(
+        _ruleIdMeta,
+        ruleId.isAcceptableOrUnknown(data['ruleId']!, _ruleIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ruleIdMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('mode')) {
+      context.handle(
+        _modeMeta,
+        mode.isAcceptableOrUnknown(data['mode']!, _modeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modeMeta);
+    }
+    if (data.containsKey('initialFilters')) {
+      context.handle(
+        _initialFiltersMeta,
+        initialFilters.isAcceptableOrUnknown(
+          data['initialFilters']!,
+          _initialFiltersMeta,
+        ),
+      );
+    }
+    if (data.containsKey('finalFilters')) {
+      context.handle(
+        _finalFiltersMeta,
+        finalFilters.isAcceptableOrUnknown(
+          data['finalFilters']!,
+          _finalFiltersMeta,
+        ),
+      );
+    }
+    if (data.containsKey('createdAt')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['createdAt']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VisibleRangeSessionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VisibleRangeSessionRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      rangeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}rangeId'],
+      )!,
+      ruleId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ruleId'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      mode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mode'],
+      )!,
+      initialFilters: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}initialFilters'],
+      )!,
+      finalFilters: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}finalFilters'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}createdAt'],
+      )!,
+    );
+  }
+
+  @override
+  $VisibleRangeSessionRowsTable createAlias(String alias) {
+    return $VisibleRangeSessionRowsTable(attachedDatabase, alias);
+  }
+}
+
+class VisibleRangeSessionRow extends DataClass
+    implements Insertable<VisibleRangeSessionRow> {
+  final String id;
+  final String rangeId;
+  final String ruleId;
+  final String kind;
+
+  /// `override` or `append`.
+  final String mode;
+
+  /// JSON array of the media-set filters right after activation.
+  final String initialFilters;
+
+  /// JSON array of the media-set filters when the session ended.
+  final String finalFilters;
+  final int createdAt;
+  const VisibleRangeSessionRow({
+    required this.id,
+    required this.rangeId,
+    required this.ruleId,
+    required this.kind,
+    required this.mode,
+    required this.initialFilters,
+    required this.finalFilters,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['rangeId'] = Variable<String>(rangeId);
+    map['ruleId'] = Variable<String>(ruleId);
+    map['kind'] = Variable<String>(kind);
+    map['mode'] = Variable<String>(mode);
+    map['initialFilters'] = Variable<String>(initialFilters);
+    map['finalFilters'] = Variable<String>(finalFilters);
+    map['createdAt'] = Variable<int>(createdAt);
+    return map;
+  }
+
+  VisibleRangeSessionRowsCompanion toCompanion(bool nullToAbsent) {
+    return VisibleRangeSessionRowsCompanion(
+      id: Value(id),
+      rangeId: Value(rangeId),
+      ruleId: Value(ruleId),
+      kind: Value(kind),
+      mode: Value(mode),
+      initialFilters: Value(initialFilters),
+      finalFilters: Value(finalFilters),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory VisibleRangeSessionRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VisibleRangeSessionRow(
+      id: serializer.fromJson<String>(json['id']),
+      rangeId: serializer.fromJson<String>(json['rangeId']),
+      ruleId: serializer.fromJson<String>(json['ruleId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      mode: serializer.fromJson<String>(json['mode']),
+      initialFilters: serializer.fromJson<String>(json['initialFilters']),
+      finalFilters: serializer.fromJson<String>(json['finalFilters']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'rangeId': serializer.toJson<String>(rangeId),
+      'ruleId': serializer.toJson<String>(ruleId),
+      'kind': serializer.toJson<String>(kind),
+      'mode': serializer.toJson<String>(mode),
+      'initialFilters': serializer.toJson<String>(initialFilters),
+      'finalFilters': serializer.toJson<String>(finalFilters),
+      'createdAt': serializer.toJson<int>(createdAt),
+    };
+  }
+
+  VisibleRangeSessionRow copyWith({
+    String? id,
+    String? rangeId,
+    String? ruleId,
+    String? kind,
+    String? mode,
+    String? initialFilters,
+    String? finalFilters,
+    int? createdAt,
+  }) => VisibleRangeSessionRow(
+    id: id ?? this.id,
+    rangeId: rangeId ?? this.rangeId,
+    ruleId: ruleId ?? this.ruleId,
+    kind: kind ?? this.kind,
+    mode: mode ?? this.mode,
+    initialFilters: initialFilters ?? this.initialFilters,
+    finalFilters: finalFilters ?? this.finalFilters,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  VisibleRangeSessionRow copyWithCompanion(
+    VisibleRangeSessionRowsCompanion data,
+  ) {
+    return VisibleRangeSessionRow(
+      id: data.id.present ? data.id.value : this.id,
+      rangeId: data.rangeId.present ? data.rangeId.value : this.rangeId,
+      ruleId: data.ruleId.present ? data.ruleId.value : this.ruleId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      mode: data.mode.present ? data.mode.value : this.mode,
+      initialFilters: data.initialFilters.present
+          ? data.initialFilters.value
+          : this.initialFilters,
+      finalFilters: data.finalFilters.present
+          ? data.finalFilters.value
+          : this.finalFilters,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisibleRangeSessionRow(')
+          ..write('id: $id, ')
+          ..write('rangeId: $rangeId, ')
+          ..write('ruleId: $ruleId, ')
+          ..write('kind: $kind, ')
+          ..write('mode: $mode, ')
+          ..write('initialFilters: $initialFilters, ')
+          ..write('finalFilters: $finalFilters, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    rangeId,
+    ruleId,
+    kind,
+    mode,
+    initialFilters,
+    finalFilters,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VisibleRangeSessionRow &&
+          other.id == this.id &&
+          other.rangeId == this.rangeId &&
+          other.ruleId == this.ruleId &&
+          other.kind == this.kind &&
+          other.mode == this.mode &&
+          other.initialFilters == this.initialFilters &&
+          other.finalFilters == this.finalFilters &&
+          other.createdAt == this.createdAt);
+}
+
+class VisibleRangeSessionRowsCompanion
+    extends UpdateCompanion<VisibleRangeSessionRow> {
+  final Value<String> id;
+  final Value<String> rangeId;
+  final Value<String> ruleId;
+  final Value<String> kind;
+  final Value<String> mode;
+  final Value<String> initialFilters;
+  final Value<String> finalFilters;
+  final Value<int> createdAt;
+  final Value<int> rowid;
+  const VisibleRangeSessionRowsCompanion({
+    this.id = const Value.absent(),
+    this.rangeId = const Value.absent(),
+    this.ruleId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.mode = const Value.absent(),
+    this.initialFilters = const Value.absent(),
+    this.finalFilters = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  VisibleRangeSessionRowsCompanion.insert({
+    required String id,
+    required String rangeId,
+    required String ruleId,
+    required String kind,
+    required String mode,
+    this.initialFilters = const Value.absent(),
+    this.finalFilters = const Value.absent(),
+    required int createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       rangeId = Value(rangeId),
+       ruleId = Value(ruleId),
+       kind = Value(kind),
+       mode = Value(mode),
+       createdAt = Value(createdAt);
+  static Insertable<VisibleRangeSessionRow> custom({
+    Expression<String>? id,
+    Expression<String>? rangeId,
+    Expression<String>? ruleId,
+    Expression<String>? kind,
+    Expression<String>? mode,
+    Expression<String>? initialFilters,
+    Expression<String>? finalFilters,
+    Expression<int>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (rangeId != null) 'rangeId': rangeId,
+      if (ruleId != null) 'ruleId': ruleId,
+      if (kind != null) 'kind': kind,
+      if (mode != null) 'mode': mode,
+      if (initialFilters != null) 'initialFilters': initialFilters,
+      if (finalFilters != null) 'finalFilters': finalFilters,
+      if (createdAt != null) 'createdAt': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  VisibleRangeSessionRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? rangeId,
+    Value<String>? ruleId,
+    Value<String>? kind,
+    Value<String>? mode,
+    Value<String>? initialFilters,
+    Value<String>? finalFilters,
+    Value<int>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return VisibleRangeSessionRowsCompanion(
+      id: id ?? this.id,
+      rangeId: rangeId ?? this.rangeId,
+      ruleId: ruleId ?? this.ruleId,
+      kind: kind ?? this.kind,
+      mode: mode ?? this.mode,
+      initialFilters: initialFilters ?? this.initialFilters,
+      finalFilters: finalFilters ?? this.finalFilters,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (rangeId.present) {
+      map['rangeId'] = Variable<String>(rangeId.value);
+    }
+    if (ruleId.present) {
+      map['ruleId'] = Variable<String>(ruleId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (mode.present) {
+      map['mode'] = Variable<String>(mode.value);
+    }
+    if (initialFilters.present) {
+      map['initialFilters'] = Variable<String>(initialFilters.value);
+    }
+    if (finalFilters.present) {
+      map['finalFilters'] = Variable<String>(finalFilters.value);
+    }
+    if (createdAt.present) {
+      map['createdAt'] = Variable<int>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisibleRangeSessionRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('rangeId: $rangeId, ')
+          ..write('ruleId: $ruleId, ')
+          ..write('kind: $kind, ')
+          ..write('mode: $mode, ')
+          ..write('initialFilters: $initialFilters, ')
+          ..write('finalFilters: $finalFilters, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $VisibleRangeKeyValuesTable extends VisibleRangeKeyValues
+    with TableInfo<$VisibleRangeKeyValuesTable, VisibleRangeKeyValue> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VisibleRangeKeyValuesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+    'value',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [key, value];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'visible_range_state';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VisibleRangeKeyValue> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+        _valueMeta,
+        value.isAcceptableOrUnknown(data['value']!, _valueMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  VisibleRangeKeyValue map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VisibleRangeKeyValue(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      value: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value'],
+      ),
+    );
+  }
+
+  @override
+  $VisibleRangeKeyValuesTable createAlias(String alias) {
+    return $VisibleRangeKeyValuesTable(attachedDatabase, alias);
+  }
+}
+
+class VisibleRangeKeyValue extends DataClass
+    implements Insertable<VisibleRangeKeyValue> {
+  final String key;
+  final String? value;
+  const VisibleRangeKeyValue({required this.key, this.value});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    if (!nullToAbsent || value != null) {
+      map['value'] = Variable<String>(value);
+    }
+    return map;
+  }
+
+  VisibleRangeKeyValuesCompanion toCompanion(bool nullToAbsent) {
+    return VisibleRangeKeyValuesCompanion(
+      key: Value(key),
+      value: value == null && nullToAbsent
+          ? const Value.absent()
+          : Value(value),
+    );
+  }
+
+  factory VisibleRangeKeyValue.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VisibleRangeKeyValue(
+      key: serializer.fromJson<String>(json['key']),
+      value: serializer.fromJson<String?>(json['value']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'value': serializer.toJson<String?>(value),
+    };
+  }
+
+  VisibleRangeKeyValue copyWith({
+    String? key,
+    Value<String?> value = const Value.absent(),
+  }) => VisibleRangeKeyValue(
+    key: key ?? this.key,
+    value: value.present ? value.value : this.value,
+  );
+  VisibleRangeKeyValue copyWithCompanion(VisibleRangeKeyValuesCompanion data) {
+    return VisibleRangeKeyValue(
+      key: data.key.present ? data.key.value : this.key,
+      value: data.value.present ? data.value.value : this.value,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisibleRangeKeyValue(')
+          ..write('key: $key, ')
+          ..write('value: $value')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, value);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VisibleRangeKeyValue &&
+          other.key == this.key &&
+          other.value == this.value);
+}
+
+class VisibleRangeKeyValuesCompanion
+    extends UpdateCompanion<VisibleRangeKeyValue> {
+  final Value<String> key;
+  final Value<String?> value;
+  final Value<int> rowid;
+  const VisibleRangeKeyValuesCompanion({
+    this.key = const Value.absent(),
+    this.value = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  VisibleRangeKeyValuesCompanion.insert({
+    required String key,
+    this.value = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : key = Value(key);
+  static Insertable<VisibleRangeKeyValue> custom({
+    Expression<String>? key,
+    Expression<String>? value,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (value != null) 'value': value,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  VisibleRangeKeyValuesCompanion copyWith({
+    Value<String>? key,
+    Value<String?>? value,
+    Value<int>? rowid,
+  }) {
+    return VisibleRangeKeyValuesCompanion(
+      key: key ?? this.key,
+      value: value ?? this.value,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisibleRangeKeyValuesCompanion(')
+          ..write('key: $key, ')
+          ..write('value: $value, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4606,6 +6833,17 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $AppMetaTableTable appMetaTable = $AppMetaTableTable(this);
   late final $SettingsValuesTableTable settingsValuesTable =
       $SettingsValuesTableTable(this);
+  late final $VisibleRangePresetRowsTable visibleRangePresetRows =
+      $VisibleRangePresetRowsTable(this);
+  late final $VisibleRangeRowsTable visibleRangeRows = $VisibleRangeRowsTable(
+    this,
+  );
+  late final $VisibleRangeRuleRowsTable visibleRangeRuleRows =
+      $VisibleRangeRuleRowsTable(this);
+  late final $VisibleRangeSessionRowsTable visibleRangeSessionRows =
+      $VisibleRangeSessionRowsTable(this);
+  late final $VisibleRangeKeyValuesTable visibleRangeKeyValues =
+      $VisibleRangeKeyValuesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4624,6 +6862,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     debugTable,
     appMetaTable,
     settingsValuesTable,
+    visibleRangePresetRows,
+    visibleRangeRows,
+    visibleRangeRuleRows,
+    visibleRangeSessionRows,
+    visibleRangeKeyValues,
   ];
 }
 
@@ -7187,6 +9430,1247 @@ typedef $$SettingsValuesTableTableProcessedTableManager =
       SettingsValuesTableData,
       PrefetchHooks Function()
     >;
+typedef $$VisibleRangePresetRowsTableCreateCompanionBuilder =
+    VisibleRangePresetRowsCompanion Function({
+      required String id,
+      required String name,
+      Value<String> filters,
+      Value<bool> builtin,
+      Value<int> position,
+      Value<int> rowid,
+    });
+typedef $$VisibleRangePresetRowsTableUpdateCompanionBuilder =
+    VisibleRangePresetRowsCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<String> filters,
+      Value<bool> builtin,
+      Value<int> position,
+      Value<int> rowid,
+    });
+
+class $$VisibleRangePresetRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $VisibleRangePresetRowsTable> {
+  $$VisibleRangePresetRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get filters => $composableBuilder(
+    column: $table.filters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get builtin => $composableBuilder(
+    column: $table.builtin,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$VisibleRangePresetRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $VisibleRangePresetRowsTable> {
+  $$VisibleRangePresetRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get filters => $composableBuilder(
+    column: $table.filters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get builtin => $composableBuilder(
+    column: $table.builtin,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$VisibleRangePresetRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $VisibleRangePresetRowsTable> {
+  $$VisibleRangePresetRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get filters =>
+      $composableBuilder(column: $table.filters, builder: (column) => column);
+
+  GeneratedColumn<bool> get builtin =>
+      $composableBuilder(column: $table.builtin, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+}
+
+class $$VisibleRangePresetRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $VisibleRangePresetRowsTable,
+          VisibleRangePresetRow,
+          $$VisibleRangePresetRowsTableFilterComposer,
+          $$VisibleRangePresetRowsTableOrderingComposer,
+          $$VisibleRangePresetRowsTableAnnotationComposer,
+          $$VisibleRangePresetRowsTableCreateCompanionBuilder,
+          $$VisibleRangePresetRowsTableUpdateCompanionBuilder,
+          (
+            VisibleRangePresetRow,
+            BaseReferences<
+              _$AppDatabase,
+              $VisibleRangePresetRowsTable,
+              VisibleRangePresetRow
+            >,
+          ),
+          VisibleRangePresetRow,
+          PrefetchHooks Function()
+        > {
+  $$VisibleRangePresetRowsTableTableManager(
+    _$AppDatabase db,
+    $VisibleRangePresetRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VisibleRangePresetRowsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$VisibleRangePresetRowsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$VisibleRangePresetRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> filters = const Value.absent(),
+                Value<bool> builtin = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VisibleRangePresetRowsCompanion(
+                id: id,
+                name: name,
+                filters: filters,
+                builtin: builtin,
+                position: position,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                Value<String> filters = const Value.absent(),
+                Value<bool> builtin = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VisibleRangePresetRowsCompanion.insert(
+                id: id,
+                name: name,
+                filters: filters,
+                builtin: builtin,
+                position: position,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$VisibleRangePresetRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $VisibleRangePresetRowsTable,
+      VisibleRangePresetRow,
+      $$VisibleRangePresetRowsTableFilterComposer,
+      $$VisibleRangePresetRowsTableOrderingComposer,
+      $$VisibleRangePresetRowsTableAnnotationComposer,
+      $$VisibleRangePresetRowsTableCreateCompanionBuilder,
+      $$VisibleRangePresetRowsTableUpdateCompanionBuilder,
+      (
+        VisibleRangePresetRow,
+        BaseReferences<
+          _$AppDatabase,
+          $VisibleRangePresetRowsTable,
+          VisibleRangePresetRow
+        >,
+      ),
+      VisibleRangePresetRow,
+      PrefetchHooks Function()
+    >;
+typedef $$VisibleRangeRowsTableCreateCompanionBuilder =
+    VisibleRangeRowsCompanion Function({
+      required String id,
+      required String scope,
+      required String ownerId,
+      Value<String> baseName,
+      Value<String> basePresetId,
+      Value<String> baseFilters,
+      Value<String> orderMode,
+      Value<bool> locked,
+      Value<String?> permissions,
+      required int createdAt,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$VisibleRangeRowsTableUpdateCompanionBuilder =
+    VisibleRangeRowsCompanion Function({
+      Value<String> id,
+      Value<String> scope,
+      Value<String> ownerId,
+      Value<String> baseName,
+      Value<String> basePresetId,
+      Value<String> baseFilters,
+      Value<String> orderMode,
+      Value<bool> locked,
+      Value<String?> permissions,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$VisibleRangeRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $VisibleRangeRowsTable> {
+  $$VisibleRangeRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get scope => $composableBuilder(
+    column: $table.scope,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get baseName => $composableBuilder(
+    column: $table.baseName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get basePresetId => $composableBuilder(
+    column: $table.basePresetId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get baseFilters => $composableBuilder(
+    column: $table.baseFilters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orderMode => $composableBuilder(
+    column: $table.orderMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get locked => $composableBuilder(
+    column: $table.locked,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get permissions => $composableBuilder(
+    column: $table.permissions,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$VisibleRangeRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $VisibleRangeRowsTable> {
+  $$VisibleRangeRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get scope => $composableBuilder(
+    column: $table.scope,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get baseName => $composableBuilder(
+    column: $table.baseName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get basePresetId => $composableBuilder(
+    column: $table.basePresetId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get baseFilters => $composableBuilder(
+    column: $table.baseFilters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orderMode => $composableBuilder(
+    column: $table.orderMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get locked => $composableBuilder(
+    column: $table.locked,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get permissions => $composableBuilder(
+    column: $table.permissions,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$VisibleRangeRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $VisibleRangeRowsTable> {
+  $$VisibleRangeRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get scope =>
+      $composableBuilder(column: $table.scope, builder: (column) => column);
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
+
+  GeneratedColumn<String> get baseName =>
+      $composableBuilder(column: $table.baseName, builder: (column) => column);
+
+  GeneratedColumn<String> get basePresetId => $composableBuilder(
+    column: $table.basePresetId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get baseFilters => $composableBuilder(
+    column: $table.baseFilters,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get orderMode =>
+      $composableBuilder(column: $table.orderMode, builder: (column) => column);
+
+  GeneratedColumn<bool> get locked =>
+      $composableBuilder(column: $table.locked, builder: (column) => column);
+
+  GeneratedColumn<String> get permissions => $composableBuilder(
+    column: $table.permissions,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$VisibleRangeRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $VisibleRangeRowsTable,
+          VisibleRangeRow,
+          $$VisibleRangeRowsTableFilterComposer,
+          $$VisibleRangeRowsTableOrderingComposer,
+          $$VisibleRangeRowsTableAnnotationComposer,
+          $$VisibleRangeRowsTableCreateCompanionBuilder,
+          $$VisibleRangeRowsTableUpdateCompanionBuilder,
+          (
+            VisibleRangeRow,
+            BaseReferences<
+              _$AppDatabase,
+              $VisibleRangeRowsTable,
+              VisibleRangeRow
+            >,
+          ),
+          VisibleRangeRow,
+          PrefetchHooks Function()
+        > {
+  $$VisibleRangeRowsTableTableManager(
+    _$AppDatabase db,
+    $VisibleRangeRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VisibleRangeRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$VisibleRangeRowsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$VisibleRangeRowsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> scope = const Value.absent(),
+                Value<String> ownerId = const Value.absent(),
+                Value<String> baseName = const Value.absent(),
+                Value<String> basePresetId = const Value.absent(),
+                Value<String> baseFilters = const Value.absent(),
+                Value<String> orderMode = const Value.absent(),
+                Value<bool> locked = const Value.absent(),
+                Value<String?> permissions = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VisibleRangeRowsCompanion(
+                id: id,
+                scope: scope,
+                ownerId: ownerId,
+                baseName: baseName,
+                basePresetId: basePresetId,
+                baseFilters: baseFilters,
+                orderMode: orderMode,
+                locked: locked,
+                permissions: permissions,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String scope,
+                required String ownerId,
+                Value<String> baseName = const Value.absent(),
+                Value<String> basePresetId = const Value.absent(),
+                Value<String> baseFilters = const Value.absent(),
+                Value<String> orderMode = const Value.absent(),
+                Value<bool> locked = const Value.absent(),
+                Value<String?> permissions = const Value.absent(),
+                required int createdAt,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => VisibleRangeRowsCompanion.insert(
+                id: id,
+                scope: scope,
+                ownerId: ownerId,
+                baseName: baseName,
+                basePresetId: basePresetId,
+                baseFilters: baseFilters,
+                orderMode: orderMode,
+                locked: locked,
+                permissions: permissions,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$VisibleRangeRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $VisibleRangeRowsTable,
+      VisibleRangeRow,
+      $$VisibleRangeRowsTableFilterComposer,
+      $$VisibleRangeRowsTableOrderingComposer,
+      $$VisibleRangeRowsTableAnnotationComposer,
+      $$VisibleRangeRowsTableCreateCompanionBuilder,
+      $$VisibleRangeRowsTableUpdateCompanionBuilder,
+      (
+        VisibleRangeRow,
+        BaseReferences<_$AppDatabase, $VisibleRangeRowsTable, VisibleRangeRow>,
+      ),
+      VisibleRangeRow,
+      PrefetchHooks Function()
+    >;
+typedef $$VisibleRangeRuleRowsTableCreateCompanionBuilder =
+    VisibleRangeRuleRowsCompanion Function({
+      required String id,
+      required String rangeId,
+      required String kind,
+      Value<int> position,
+      Value<String> label,
+      Value<String> filters,
+      Value<bool> active,
+      Value<int> rowid,
+    });
+typedef $$VisibleRangeRuleRowsTableUpdateCompanionBuilder =
+    VisibleRangeRuleRowsCompanion Function({
+      Value<String> id,
+      Value<String> rangeId,
+      Value<String> kind,
+      Value<int> position,
+      Value<String> label,
+      Value<String> filters,
+      Value<bool> active,
+      Value<int> rowid,
+    });
+
+class $$VisibleRangeRuleRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $VisibleRangeRuleRowsTable> {
+  $$VisibleRangeRuleRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rangeId => $composableBuilder(
+    column: $table.rangeId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get filters => $composableBuilder(
+    column: $table.filters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$VisibleRangeRuleRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $VisibleRangeRuleRowsTable> {
+  $$VisibleRangeRuleRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rangeId => $composableBuilder(
+    column: $table.rangeId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get filters => $composableBuilder(
+    column: $table.filters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$VisibleRangeRuleRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $VisibleRangeRuleRowsTable> {
+  $$VisibleRangeRuleRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get rangeId =>
+      $composableBuilder(column: $table.rangeId, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<String> get filters =>
+      $composableBuilder(column: $table.filters, builder: (column) => column);
+
+  GeneratedColumn<bool> get active =>
+      $composableBuilder(column: $table.active, builder: (column) => column);
+}
+
+class $$VisibleRangeRuleRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $VisibleRangeRuleRowsTable,
+          VisibleRangeRuleRow,
+          $$VisibleRangeRuleRowsTableFilterComposer,
+          $$VisibleRangeRuleRowsTableOrderingComposer,
+          $$VisibleRangeRuleRowsTableAnnotationComposer,
+          $$VisibleRangeRuleRowsTableCreateCompanionBuilder,
+          $$VisibleRangeRuleRowsTableUpdateCompanionBuilder,
+          (
+            VisibleRangeRuleRow,
+            BaseReferences<
+              _$AppDatabase,
+              $VisibleRangeRuleRowsTable,
+              VisibleRangeRuleRow
+            >,
+          ),
+          VisibleRangeRuleRow,
+          PrefetchHooks Function()
+        > {
+  $$VisibleRangeRuleRowsTableTableManager(
+    _$AppDatabase db,
+    $VisibleRangeRuleRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VisibleRangeRuleRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$VisibleRangeRuleRowsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$VisibleRangeRuleRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> rangeId = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<String> label = const Value.absent(),
+                Value<String> filters = const Value.absent(),
+                Value<bool> active = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VisibleRangeRuleRowsCompanion(
+                id: id,
+                rangeId: rangeId,
+                kind: kind,
+                position: position,
+                label: label,
+                filters: filters,
+                active: active,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String rangeId,
+                required String kind,
+                Value<int> position = const Value.absent(),
+                Value<String> label = const Value.absent(),
+                Value<String> filters = const Value.absent(),
+                Value<bool> active = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VisibleRangeRuleRowsCompanion.insert(
+                id: id,
+                rangeId: rangeId,
+                kind: kind,
+                position: position,
+                label: label,
+                filters: filters,
+                active: active,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$VisibleRangeRuleRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $VisibleRangeRuleRowsTable,
+      VisibleRangeRuleRow,
+      $$VisibleRangeRuleRowsTableFilterComposer,
+      $$VisibleRangeRuleRowsTableOrderingComposer,
+      $$VisibleRangeRuleRowsTableAnnotationComposer,
+      $$VisibleRangeRuleRowsTableCreateCompanionBuilder,
+      $$VisibleRangeRuleRowsTableUpdateCompanionBuilder,
+      (
+        VisibleRangeRuleRow,
+        BaseReferences<
+          _$AppDatabase,
+          $VisibleRangeRuleRowsTable,
+          VisibleRangeRuleRow
+        >,
+      ),
+      VisibleRangeRuleRow,
+      PrefetchHooks Function()
+    >;
+typedef $$VisibleRangeSessionRowsTableCreateCompanionBuilder =
+    VisibleRangeSessionRowsCompanion Function({
+      required String id,
+      required String rangeId,
+      required String ruleId,
+      required String kind,
+      required String mode,
+      Value<String> initialFilters,
+      Value<String> finalFilters,
+      required int createdAt,
+      Value<int> rowid,
+    });
+typedef $$VisibleRangeSessionRowsTableUpdateCompanionBuilder =
+    VisibleRangeSessionRowsCompanion Function({
+      Value<String> id,
+      Value<String> rangeId,
+      Value<String> ruleId,
+      Value<String> kind,
+      Value<String> mode,
+      Value<String> initialFilters,
+      Value<String> finalFilters,
+      Value<int> createdAt,
+      Value<int> rowid,
+    });
+
+class $$VisibleRangeSessionRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $VisibleRangeSessionRowsTable> {
+  $$VisibleRangeSessionRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rangeId => $composableBuilder(
+    column: $table.rangeId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ruleId => $composableBuilder(
+    column: $table.ruleId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mode => $composableBuilder(
+    column: $table.mode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get initialFilters => $composableBuilder(
+    column: $table.initialFilters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get finalFilters => $composableBuilder(
+    column: $table.finalFilters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$VisibleRangeSessionRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $VisibleRangeSessionRowsTable> {
+  $$VisibleRangeSessionRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rangeId => $composableBuilder(
+    column: $table.rangeId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ruleId => $composableBuilder(
+    column: $table.ruleId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mode => $composableBuilder(
+    column: $table.mode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get initialFilters => $composableBuilder(
+    column: $table.initialFilters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get finalFilters => $composableBuilder(
+    column: $table.finalFilters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$VisibleRangeSessionRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $VisibleRangeSessionRowsTable> {
+  $$VisibleRangeSessionRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get rangeId =>
+      $composableBuilder(column: $table.rangeId, builder: (column) => column);
+
+  GeneratedColumn<String> get ruleId =>
+      $composableBuilder(column: $table.ruleId, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get mode =>
+      $composableBuilder(column: $table.mode, builder: (column) => column);
+
+  GeneratedColumn<String> get initialFilters => $composableBuilder(
+    column: $table.initialFilters,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get finalFilters => $composableBuilder(
+    column: $table.finalFilters,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$VisibleRangeSessionRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $VisibleRangeSessionRowsTable,
+          VisibleRangeSessionRow,
+          $$VisibleRangeSessionRowsTableFilterComposer,
+          $$VisibleRangeSessionRowsTableOrderingComposer,
+          $$VisibleRangeSessionRowsTableAnnotationComposer,
+          $$VisibleRangeSessionRowsTableCreateCompanionBuilder,
+          $$VisibleRangeSessionRowsTableUpdateCompanionBuilder,
+          (
+            VisibleRangeSessionRow,
+            BaseReferences<
+              _$AppDatabase,
+              $VisibleRangeSessionRowsTable,
+              VisibleRangeSessionRow
+            >,
+          ),
+          VisibleRangeSessionRow,
+          PrefetchHooks Function()
+        > {
+  $$VisibleRangeSessionRowsTableTableManager(
+    _$AppDatabase db,
+    $VisibleRangeSessionRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VisibleRangeSessionRowsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$VisibleRangeSessionRowsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$VisibleRangeSessionRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> rangeId = const Value.absent(),
+                Value<String> ruleId = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> mode = const Value.absent(),
+                Value<String> initialFilters = const Value.absent(),
+                Value<String> finalFilters = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VisibleRangeSessionRowsCompanion(
+                id: id,
+                rangeId: rangeId,
+                ruleId: ruleId,
+                kind: kind,
+                mode: mode,
+                initialFilters: initialFilters,
+                finalFilters: finalFilters,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String rangeId,
+                required String ruleId,
+                required String kind,
+                required String mode,
+                Value<String> initialFilters = const Value.absent(),
+                Value<String> finalFilters = const Value.absent(),
+                required int createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => VisibleRangeSessionRowsCompanion.insert(
+                id: id,
+                rangeId: rangeId,
+                ruleId: ruleId,
+                kind: kind,
+                mode: mode,
+                initialFilters: initialFilters,
+                finalFilters: finalFilters,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$VisibleRangeSessionRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $VisibleRangeSessionRowsTable,
+      VisibleRangeSessionRow,
+      $$VisibleRangeSessionRowsTableFilterComposer,
+      $$VisibleRangeSessionRowsTableOrderingComposer,
+      $$VisibleRangeSessionRowsTableAnnotationComposer,
+      $$VisibleRangeSessionRowsTableCreateCompanionBuilder,
+      $$VisibleRangeSessionRowsTableUpdateCompanionBuilder,
+      (
+        VisibleRangeSessionRow,
+        BaseReferences<
+          _$AppDatabase,
+          $VisibleRangeSessionRowsTable,
+          VisibleRangeSessionRow
+        >,
+      ),
+      VisibleRangeSessionRow,
+      PrefetchHooks Function()
+    >;
+typedef $$VisibleRangeKeyValuesTableCreateCompanionBuilder =
+    VisibleRangeKeyValuesCompanion Function({
+      required String key,
+      Value<String?> value,
+      Value<int> rowid,
+    });
+typedef $$VisibleRangeKeyValuesTableUpdateCompanionBuilder =
+    VisibleRangeKeyValuesCompanion Function({
+      Value<String> key,
+      Value<String?> value,
+      Value<int> rowid,
+    });
+
+class $$VisibleRangeKeyValuesTableFilterComposer
+    extends Composer<_$AppDatabase, $VisibleRangeKeyValuesTable> {
+  $$VisibleRangeKeyValuesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$VisibleRangeKeyValuesTableOrderingComposer
+    extends Composer<_$AppDatabase, $VisibleRangeKeyValuesTable> {
+  $$VisibleRangeKeyValuesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$VisibleRangeKeyValuesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $VisibleRangeKeyValuesTable> {
+  $$VisibleRangeKeyValuesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+}
+
+class $$VisibleRangeKeyValuesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $VisibleRangeKeyValuesTable,
+          VisibleRangeKeyValue,
+          $$VisibleRangeKeyValuesTableFilterComposer,
+          $$VisibleRangeKeyValuesTableOrderingComposer,
+          $$VisibleRangeKeyValuesTableAnnotationComposer,
+          $$VisibleRangeKeyValuesTableCreateCompanionBuilder,
+          $$VisibleRangeKeyValuesTableUpdateCompanionBuilder,
+          (
+            VisibleRangeKeyValue,
+            BaseReferences<
+              _$AppDatabase,
+              $VisibleRangeKeyValuesTable,
+              VisibleRangeKeyValue
+            >,
+          ),
+          VisibleRangeKeyValue,
+          PrefetchHooks Function()
+        > {
+  $$VisibleRangeKeyValuesTableTableManager(
+    _$AppDatabase db,
+    $VisibleRangeKeyValuesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VisibleRangeKeyValuesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$VisibleRangeKeyValuesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$VisibleRangeKeyValuesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String?> value = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VisibleRangeKeyValuesCompanion(
+                key: key,
+                value: value,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                Value<String?> value = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VisibleRangeKeyValuesCompanion.insert(
+                key: key,
+                value: value,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$VisibleRangeKeyValuesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $VisibleRangeKeyValuesTable,
+      VisibleRangeKeyValue,
+      $$VisibleRangeKeyValuesTableFilterComposer,
+      $$VisibleRangeKeyValuesTableOrderingComposer,
+      $$VisibleRangeKeyValuesTableAnnotationComposer,
+      $$VisibleRangeKeyValuesTableCreateCompanionBuilder,
+      $$VisibleRangeKeyValuesTableUpdateCompanionBuilder,
+      (
+        VisibleRangeKeyValue,
+        BaseReferences<
+          _$AppDatabase,
+          $VisibleRangeKeyValuesTable,
+          VisibleRangeKeyValue
+        >,
+      ),
+      VisibleRangeKeyValue,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -7217,4 +10701,20 @@ class $AppDatabaseManager {
       $$AppMetaTableTableTableManager(_db, _db.appMetaTable);
   $$SettingsValuesTableTableTableManager get settingsValuesTable =>
       $$SettingsValuesTableTableTableManager(_db, _db.settingsValuesTable);
+  $$VisibleRangePresetRowsTableTableManager get visibleRangePresetRows =>
+      $$VisibleRangePresetRowsTableTableManager(
+        _db,
+        _db.visibleRangePresetRows,
+      );
+  $$VisibleRangeRowsTableTableManager get visibleRangeRows =>
+      $$VisibleRangeRowsTableTableManager(_db, _db.visibleRangeRows);
+  $$VisibleRangeRuleRowsTableTableManager get visibleRangeRuleRows =>
+      $$VisibleRangeRuleRowsTableTableManager(_db, _db.visibleRangeRuleRows);
+  $$VisibleRangeSessionRowsTableTableManager get visibleRangeSessionRows =>
+      $$VisibleRangeSessionRowsTableTableManager(
+        _db,
+        _db.visibleRangeSessionRows,
+      );
+  $$VisibleRangeKeyValuesTableTableManager get visibleRangeKeyValues =>
+      $$VisibleRangeKeyValuesTableTableManager(_db, _db.visibleRangeKeyValues);
 }

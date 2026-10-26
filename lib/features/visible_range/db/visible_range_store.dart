@@ -1,0 +1,228 @@
+import 'dart:convert';
+
+import 'package:aves/features/drift_db/app_database.dart';import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:drift/drift.dart';
+
+/// Persistence for visible ranges. Every read is scope+owner qualified, so the
+/// gallery and the wallpaper groups can never leak into each other.
+class VisibleRangeStore {
+  /// Key of the persisted gallery range id (the gallery keeps one range).
+  static const keyGalleryRangeId = 'gallery.rangeId';
+
+  /// Key of the last permissions preset, reused by the quick lock.
+  static const keyLastLockPreset = 'lock.preset';
+
+  /// One-time seeding marker for the built-in presets.
+  static const keySeeded = 'seeded';
+
+  final AppDatabase db;
+
+  new(this.db);
+
+  // ranges
+
+  Future<VisibleRange?> loadRange({required VisibleRangeScope scope, required String ownerId}) async {
+    final query = db.select(db.visibleRangeRows)..where((t) => t.scope.equals(scope.name) & t.ownerId.equals(ownerId));
+    final row = await query.getSingleOrNull();
+    if (row == null) return null;
+    final rules = await loadRules(row.id);
+    return _toRange(row, rules);
+  }
+
+  Future<void> saveRange(VisibleRange range) async {
+    await db.visibleRangeRows.insertOnConflictUpdate(
+      VisibleRangeRowsCompanion.insert(
+        id: range.id,
+        scope: range.scope.name,
+        ownerId: range.ownerId,
+        createdAt: range.createdAt,
+        updatedAt: range.updatedAt,
+        baseName: Value(range.baseName),
+        basePresetId: Value(range.basePresetId),
+        baseFilters: Value(VisibleRangeFilterCodec.encode(range.baseFilters)),
+        orderMode: Value(range.order.name),
+        locked: Value(range.locked),
+        permissions: Value(range.locked ? _encodePermissions(range.permissions) : null),
+      ),
+    );
+  }
+
+  Future<void> replaceRules(String rangeId, List<VisibleRangeRule> rules) async {
+    await db.transaction(() async {
+      await (db.delete(db.visibleRangeRuleRows)..where((t) => t.rangeId.equals(rangeId))).go();
+      for (final rule in rules) {
+        await saveRule(rule);
+      }
+    });
+  }
+
+  Future<void> deleteRange(String id) async {
+    await db.transaction(() async {
+      await (db.delete(db.visibleRangeRuleRows)..where((t) => t.rangeId.equals(id))).go();
+      await (db.delete(db.visibleRangeSessionRows)..where((t) => t.rangeId.equals(id))).go();
+      await (db.delete(db.visibleRangeRows)..where((t) => t.id.equals(id))).go();
+    });
+  }
+
+  // rules
+
+  Future<List<VisibleRangeRule>> loadRules(String rangeId) async {
+    final query = db.select(db.visibleRangeRuleRows)
+      ..where((t) => t.rangeId.equals(rangeId))
+      ..orderBy([(t) => OrderingTerm.asc(t.position)]);
+    final rows = await query.get();
+    return [for (final row in rows) _toRule(row)];
+  }
+
+  Future<void> saveRule(VisibleRangeRule rule) async {
+    await db.visibleRangeRuleRows.insertOnConflictUpdate(
+      VisibleRangeRuleRowsCompanion.insert(
+        id: rule.id,
+        rangeId: rule.rangeId,
+        kind: rule.kind.name,
+        position: Value(rule.position),
+        label: Value(rule.label),
+        filters: Value(VisibleRangeFilterCodec.encode(rule.filters)),
+        active: Value(rule.active),
+      ),
+    );
+  }
+
+  Future<void> deleteRules(Set<String> ids) async {
+    if (ids.isEmpty) return;
+    await (db.delete(db.visibleRangeRuleRows)..where((t) => t.id.isIn(ids))).go();
+  }
+
+  // presets
+
+  Future<List<VisibleRangePreset>> loadPresets() async {
+    final query = db.select(db.visibleRangePresetRows)..orderBy([(t) => OrderingTerm.asc(t.position)]);
+    final rows = await query.get();
+    return [for (final row in rows) _toPreset(row)];
+  }
+
+  Future<void> savePreset(VisibleRangePreset preset) async {
+    await db.visibleRangePresetRows.insertOnConflictUpdate(
+      VisibleRangePresetRowsCompanion.insert(
+        id: preset.id,
+        name: preset.name,
+        filters: Value(VisibleRangeFilterCodec.encode(preset.filters)),
+        builtin: Value(preset.builtin),
+        position: Value(preset.position),
+      ),
+    );
+  }
+
+  Future<void> deletePreset(String id) async {
+    await (db.delete(db.visibleRangePresetRows)..where((t) => t.id.equals(id))).go();
+  }
+
+  // state
+
+  Future<String?> readState(String key) async {
+    final query = db.select(db.visibleRangeKeyValues)..where((t) => t.key.equals(key));
+    return (await query.getSingleOrNull())?.value;
+  }
+
+  Future<void> writeState(String key, String? value) async {
+    await db.visibleRangeKeyValues.insertOnConflictUpdate(
+      VisibleRangeKeyValuesCompanion.insert(key: key, value: Value(value)),
+    );
+  }
+
+  // sessions
+
+  Future<List<VisibleRangeSession>> loadSessions({String? rangeId}) async {
+    final query = db.select(db.visibleRangeSessionRows);
+    if (rangeId != null) {
+      query.where((t) => t.rangeId.equals(rangeId));
+    }
+    query.orderBy([(t) => OrderingTerm.asc(t.createdAt)]);
+    final rows = await query.get();
+    return [for (final row in rows) _toSession(row)];
+  }
+
+  Future<void> saveSession(VisibleRangeSession session) async {
+    await db.visibleRangeSessionRows.insertOnConflictUpdate(
+      VisibleRangeSessionRowsCompanion.insert(
+        id: session.id,
+        rangeId: session.rangeId,
+        ruleId: session.ruleId,
+        kind: session.kind.name,
+        mode: session.mode.name,
+        createdAt: session.createdAt,
+        initialFilters: Value(VisibleRangeFilterCodec.encode(session.initialFilters)),
+        finalFilters: Value(VisibleRangeFilterCodec.encode(session.finalFilters)),
+      ),
+    );
+  }
+
+  Future<void> deleteSessions(Iterable<String> ids) async {
+    final list = ids.toList();
+    if (list.isEmpty) return;
+    await (db.delete(db.visibleRangeSessionRows)..where((t) => t.id.isIn(list))).go();
+  }
+
+  Future<void> clearSessions() async {
+    await db.delete(db.visibleRangeSessionRows).go();
+  }
+
+  // mapping
+
+  static VisibleRange _toRange(VisibleRangeRow row, List<VisibleRangeRule> rules) {
+    return VisibleRange(
+      id: row.id,
+      scope: VisibleRangeScope.parse(row.scope),
+      ownerId: row.ownerId,
+      baseName: row.baseName,
+      basePresetId: row.basePresetId,
+      baseFilters: VisibleRangeFilterCodec.decode(row.baseFilters),
+      rules: rules,
+      order: VisibleRangeOrder.parse(row.orderMode),
+      locked: row.locked,
+      permissions: _decodePermissions(row.permissions),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    );
+  }
+
+  static VisibleRangeRule _toRule(VisibleRangeRuleRow row) => VisibleRangeRule(
+        id: row.id,
+        rangeId: row.rangeId,
+        kind: VisibleRangeRuleKind.parse(row.kind),
+        position: row.position,
+        label: row.label,
+        filters: VisibleRangeFilterCodec.decode(row.filters),
+        active: row.active,
+      );
+
+  static VisibleRangePreset _toPreset(VisibleRangePresetRow row) => VisibleRangePreset(
+        id: row.id,
+        name: row.name,
+        filters: VisibleRangeFilterCodec.decode(row.filters),
+        builtin: row.builtin,
+        position: row.position,
+      );
+
+  static VisibleRangeSession _toSession(VisibleRangeSessionRow row) => VisibleRangeSession(
+        id: row.id,
+        rangeId: row.rangeId,
+        ruleId: row.ruleId,
+        kind: VisibleRangeRuleKind.parse(row.kind),
+        mode: VisibleRangeActivationMode.parse(row.mode),
+        initialFilters: VisibleRangeFilterCodec.decode(row.initialFilters),
+        finalFilters: VisibleRangeFilterCodec.decode(row.finalFilters),
+        createdAt: row.createdAt,
+      );
+
+  static String _encodePermissions(VisibleRangePermissions permissions) => jsonEncode(permissions.toMap());
+
+  static VisibleRangePermissions _decodePermissions(String? raw) {
+    if (raw == null || raw.isEmpty) return VisibleRangePermissions.readOnly;
+    try {
+      return VisibleRangePermissions.fromMap(jsonDecode(raw)) ?? VisibleRangePermissions.readOnly;
+    } catch (_) {
+      return VisibleRangePermissions.readOnly;
+    }
+  }
+}

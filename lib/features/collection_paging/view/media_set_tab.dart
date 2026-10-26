@@ -53,6 +53,13 @@ class MediaSetTab {
     return routeFilters;
   }
 
+  /// The filters the view holds now, even when the user emptied it.
+  ///
+  /// [filters] is the scope identity a destination reopens; this is the live
+  /// set a caller that wants to snapshot the user's edits after they leave the
+  /// view must read.
+  Set<CollectionFilter>? get currentFilters => _currentFilters?.call() ?? _routeFilters;
+
   /// Remembers the collection view that just mounted under the media-set slot.
   void note({
     required Set<CollectionFilter> routeFilters,

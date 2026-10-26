@@ -1,4 +1,5 @@
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/widgets/about/about_page.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
@@ -33,6 +34,7 @@ bool browseDrawerEntryEnabled({
     case AlbumListPage.routeName:
     case ExplorerPage.routeName:
     case MuzeiWallpaperPage.routeName:
+    case VisibleRangePage.routeName:
     case SettingsPage.routeName:
     case AboutPage.routeName:
     case AppDebugPage.routeName:

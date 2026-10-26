@@ -2,6 +2,7 @@ import 'package:aves/features/browse_only/model/browse_drawer_entry.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/trash.dart';
@@ -429,21 +430,32 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
       );
     }
 
-    // The live-wallpaper page is a fixed entry, independent of the editable page
-    // bookmarks, and sits before Explorer as the fork's own destination.
+    // The live-wallpaper and visible-range pages are fixed entries, independent
+    // of the editable page bookmarks, and sit before Explorer as the fork's own
+    // destinations.
     final tiles = <Widget>[];
     var wallpaperInserted = false;
     for (final route in pageBookmarks) {
       if (!wallpaperInserted && route == ExplorerPage.routeName) {
+        if (!picking) tiles.add(_visibleRangeTile(browsing));
         if (!picking) tiles.add(_wallpaperTile(browsing));
         wallpaperInserted = true;
       }
       tiles.add(tileFor(route));
     }
-    if (!wallpaperInserted && !picking) tiles.add(_wallpaperTile(browsing));
+    if (!wallpaperInserted && !picking) {
+      tiles.add(_visibleRangeTile(browsing));
+      tiles.add(_wallpaperTile(browsing));
+    }
 
     return [const Divider(), ...tiles];
   }
+
+  Widget _visibleRangeTile(bool browsing) => PageNavTile(
+    key: const Key('drawer-page-/visible_range'),
+    navItem: const AvesNavItem(route: VisibleRangePage.routeName),
+    enabled: browseDrawerEntryEnabled(browsing: browsing, route: VisibleRangePage.routeName),
+  );
 
   Widget _wallpaperTile(bool browsing) => PageNavTile(
     // key is expected by test driver

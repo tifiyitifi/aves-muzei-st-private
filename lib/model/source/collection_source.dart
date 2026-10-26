@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
+import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/catalog.dart';
@@ -107,6 +108,7 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
       }
     });
     vaults.lockStateChangeNotifier.addListener(_onVaultsChanged);
+    visibleRangeController.addListener(_onVisibleRangeChanged);
   }
 
   @mustCallSuper
@@ -117,6 +119,7 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
     stateNotifier.dispose();
     progressNotifier.dispose();
     vaults.lockStateChangeNotifier.removeListener(_onVaultsChanged);
+    visibleRangeController.removeListener(_onVisibleRangeChanged);
     _disposeAllEntries();
   }
 
@@ -184,7 +187,16 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
       TrashFilter.instance,
       ..._getAppHiddenFilters(),
     };
-    return entries.where((entry) => !hiddenFilters.any((filter) => filter.test(entry)));
+    // The visible range is a browsing constraint, not a hidden filter: an entry
+    // outside it is kept in the database and must reappear as soon as the range
+    // widens, without any source reload.
+    final visibleRange = visibleRangeController.galleryFilter;
+    return entries.where((entry) => !hiddenFilters.any((filter) => filter.test(entry)) && (visibleRange == null || visibleRange.test(entry)));
+  }
+
+  void _onVisibleRangeChanged() {
+    _invalidate();
+    eventBus.fire(const FilterVisibilityChangedEvent());
   }
 
   Iterable<AvesEntry> _applyTrashFilter(Iterable<AvesEntry> entries) {

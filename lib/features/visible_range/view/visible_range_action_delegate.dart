@@ -5,7 +5,6 @@ import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
 import 'package:aves/model/filters/filters.dart';
-import 'package:aves/model/query.dart';
 import 'package:aves/model/selection.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/durations.dart';
@@ -21,9 +20,10 @@ import 'package:provider/provider.dart';
 
 /// Album-chip actions adapted to visible-range candidates.
 ///
-/// Layout, sort, title search and selection reuse the album page's delegate.
-/// Only rename, delete and "open media set" need feature logic, because a
-/// candidate stands for a rule rather than an album.
+/// Layout, sort, search, title search and selection reuse the album page's
+/// delegate, so the app bar behaves the same as on the album and media-set
+/// pages. Only rename, delete and "open media set" need feature logic, because
+/// a candidate stands for a rule rather than an album.
 class VisibleRangeActionDelegate extends ChipSetActionDelegate<VisibleRangeCandidateFilter> {
   final VisibleRangeController controller;
   @override
@@ -144,10 +144,9 @@ class VisibleRangeActionDelegate extends ChipSetActionDelegate<VisibleRangeCandi
   @override
   void onActionSelected(BuildContext context, ChipSetAction action) {
     switch (action) {
-      // The album page's search icon opens the media search; here it filters
-      // the candidate tiles instead, which is the title query bar.
-      case .search:
-        context.read<Query>().toggle();
+      // `.search` is intentionally not overridden: the search action must open
+      // the media search like it does on the album and media-set pages, and the
+      // title query stays reachable only from the overflow menu.
       case .rename:
         final rules = _selectedRules(context);
         if (rules.length == 1) {

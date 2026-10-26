@@ -66,13 +66,20 @@ class VisibleRangeCandidate extends Equatable {
 
   /// A candidate for an active base whose preset was deleted: the range still
   /// carries its filters, so it must stay visible and selected.
-  factory customBase({required String name, required Set<CollectionFilter> filters}) => VisibleRangeCandidate(
-        id: customBaseId,
-        kind: VisibleRangeCandidateKind.base,
-        filters: filters,
-        label: name,
-        active: true,
-      );
+  ///
+  /// Like a rule label, a name starting with `@` is an ARB key (a wallpaper
+  /// group's bundled base name); anything else is user text.
+  factory customBase({required String name, required Set<CollectionFilter> filters}) {
+    final isKey = name.startsWith('@');
+    return VisibleRangeCandidate(
+      id: customBaseId,
+      kind: VisibleRangeCandidateKind.base,
+      filters: filters,
+      labelKey: isKey ? name.substring(1) : '',
+      label: isKey ? '' : name,
+      active: true,
+    );
+  }
 
   factory fromRule(VisibleRangeRule rule) {
     final rawLabel = rule.label;

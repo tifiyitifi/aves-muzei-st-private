@@ -6931,6 +6931,465 @@ class VisibleRangeKeyValuesCompanion
   }
 }
 
+class $WallpaperGroupRowsTable extends WallpaperGroupRows
+    with TableInfo<$WallpaperGroupRowsTable, WallpaperGroupRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $WallpaperGroupRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _enabledMeta = const VerificationMeta(
+    'enabled',
+  );
+  @override
+  late final GeneratedColumn<bool> enabled = GeneratedColumn<bool>(
+    'enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _currentMeta = const VerificationMeta(
+    'current',
+  );
+  @override
+  late final GeneratedColumn<bool> current = GeneratedColumn<bool>(
+    'current',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("current" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'createdAt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updatedAt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    enabled,
+    current,
+    position,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'wallpaper_groups';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<WallpaperGroupRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('enabled')) {
+      context.handle(
+        _enabledMeta,
+        enabled.isAcceptableOrUnknown(data['enabled']!, _enabledMeta),
+      );
+    }
+    if (data.containsKey('current')) {
+      context.handle(
+        _currentMeta,
+        current.isAcceptableOrUnknown(data['current']!, _currentMeta),
+      );
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    }
+    if (data.containsKey('createdAt')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['createdAt']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updatedAt')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updatedAt']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  WallpaperGroupRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return WallpaperGroupRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      enabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}enabled'],
+      )!,
+      current: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}current'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}createdAt'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updatedAt'],
+      )!,
+    );
+  }
+
+  @override
+  $WallpaperGroupRowsTable createAlias(String alias) {
+    return $WallpaperGroupRowsTable(attachedDatabase, alias);
+  }
+}
+
+class WallpaperGroupRow extends DataClass
+    implements Insertable<WallpaperGroupRow> {
+  final String id;
+
+  /// `@arbKey` while the group keeps its built-in name, plain user text once
+  /// renamed. Never localized in the database.
+  final String name;
+  final bool enabled;
+
+  /// The group the actual wallpaper uses; at most one row is true.
+  final bool current;
+  final int position;
+  final int createdAt;
+  final int updatedAt;
+  const WallpaperGroupRow({
+    required this.id,
+    required this.name,
+    required this.enabled,
+    required this.current,
+    required this.position,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['enabled'] = Variable<bool>(enabled);
+    map['current'] = Variable<bool>(current);
+    map['position'] = Variable<int>(position);
+    map['createdAt'] = Variable<int>(createdAt);
+    map['updatedAt'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  WallpaperGroupRowsCompanion toCompanion(bool nullToAbsent) {
+    return WallpaperGroupRowsCompanion(
+      id: Value(id),
+      name: Value(name),
+      enabled: Value(enabled),
+      current: Value(current),
+      position: Value(position),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory WallpaperGroupRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return WallpaperGroupRow(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      enabled: serializer.fromJson<bool>(json['enabled']),
+      current: serializer.fromJson<bool>(json['current']),
+      position: serializer.fromJson<int>(json['position']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'enabled': serializer.toJson<bool>(enabled),
+      'current': serializer.toJson<bool>(current),
+      'position': serializer.toJson<int>(position),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  WallpaperGroupRow copyWith({
+    String? id,
+    String? name,
+    bool? enabled,
+    bool? current,
+    int? position,
+    int? createdAt,
+    int? updatedAt,
+  }) => WallpaperGroupRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    enabled: enabled ?? this.enabled,
+    current: current ?? this.current,
+    position: position ?? this.position,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  WallpaperGroupRow copyWithCompanion(WallpaperGroupRowsCompanion data) {
+    return WallpaperGroupRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      enabled: data.enabled.present ? data.enabled.value : this.enabled,
+      current: data.current.present ? data.current.value : this.current,
+      position: data.position.present ? data.position.value : this.position,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('WallpaperGroupRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('enabled: $enabled, ')
+          ..write('current: $current, ')
+          ..write('position: $position, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, name, enabled, current, position, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is WallpaperGroupRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.enabled == this.enabled &&
+          other.current == this.current &&
+          other.position == this.position &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<bool> enabled;
+  final Value<bool> current;
+  final Value<int> position;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const WallpaperGroupRowsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.enabled = const Value.absent(),
+    this.current = const Value.absent(),
+    this.position = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  WallpaperGroupRowsCompanion.insert({
+    required String id,
+    this.name = const Value.absent(),
+    this.enabled = const Value.absent(),
+    this.current = const Value.absent(),
+    this.position = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<WallpaperGroupRow> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<bool>? enabled,
+    Expression<bool>? current,
+    Expression<int>? position,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (enabled != null) 'enabled': enabled,
+      if (current != null) 'current': current,
+      if (position != null) 'position': position,
+      if (createdAt != null) 'createdAt': createdAt,
+      if (updatedAt != null) 'updatedAt': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  WallpaperGroupRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<bool>? enabled,
+    Value<bool>? current,
+    Value<int>? position,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return WallpaperGroupRowsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      enabled: enabled ?? this.enabled,
+      current: current ?? this.current,
+      position: position ?? this.position,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (enabled.present) {
+      map['enabled'] = Variable<bool>(enabled.value);
+    }
+    if (current.present) {
+      map['current'] = Variable<bool>(current.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (createdAt.present) {
+      map['createdAt'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updatedAt'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('WallpaperGroupRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('enabled: $enabled, ')
+          ..write('current: $current, ')
+          ..write('position: $position, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -6963,6 +7422,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $VisibleRangeSessionRowsTable(this);
   late final $VisibleRangeKeyValuesTable visibleRangeKeyValues =
       $VisibleRangeKeyValuesTable(this);
+  late final $WallpaperGroupRowsTable wallpaperGroupRows =
+      $WallpaperGroupRowsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6986,6 +7447,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     visibleRangeRuleRows,
     visibleRangeSessionRows,
     visibleRangeKeyValues,
+    wallpaperGroupRows,
   ];
 }
 
@@ -10832,6 +11294,257 @@ typedef $$VisibleRangeKeyValuesTableProcessedTableManager =
       VisibleRangeKeyValue,
       PrefetchHooks Function()
     >;
+typedef $$WallpaperGroupRowsTableCreateCompanionBuilder =
+    WallpaperGroupRowsCompanion Function({
+      required String id,
+      Value<String> name,
+      Value<bool> enabled,
+      Value<bool> current,
+      Value<int> position,
+      required int createdAt,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$WallpaperGroupRowsTableUpdateCompanionBuilder =
+    WallpaperGroupRowsCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<bool> enabled,
+      Value<bool> current,
+      Value<int> position,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$WallpaperGroupRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $WallpaperGroupRowsTable> {
+  $$WallpaperGroupRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get enabled => $composableBuilder(
+    column: $table.enabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get current => $composableBuilder(
+    column: $table.current,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$WallpaperGroupRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $WallpaperGroupRowsTable> {
+  $$WallpaperGroupRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get enabled => $composableBuilder(
+    column: $table.enabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get current => $composableBuilder(
+    column: $table.current,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$WallpaperGroupRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $WallpaperGroupRowsTable> {
+  $$WallpaperGroupRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<bool> get enabled =>
+      $composableBuilder(column: $table.enabled, builder: (column) => column);
+
+  GeneratedColumn<bool> get current =>
+      $composableBuilder(column: $table.current, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$WallpaperGroupRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $WallpaperGroupRowsTable,
+          WallpaperGroupRow,
+          $$WallpaperGroupRowsTableFilterComposer,
+          $$WallpaperGroupRowsTableOrderingComposer,
+          $$WallpaperGroupRowsTableAnnotationComposer,
+          $$WallpaperGroupRowsTableCreateCompanionBuilder,
+          $$WallpaperGroupRowsTableUpdateCompanionBuilder,
+          (
+            WallpaperGroupRow,
+            BaseReferences<
+              _$AppDatabase,
+              $WallpaperGroupRowsTable,
+              WallpaperGroupRow
+            >,
+          ),
+          WallpaperGroupRow,
+          PrefetchHooks Function()
+        > {
+  $$WallpaperGroupRowsTableTableManager(
+    _$AppDatabase db,
+    $WallpaperGroupRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$WallpaperGroupRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$WallpaperGroupRowsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$WallpaperGroupRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<bool> enabled = const Value.absent(),
+                Value<bool> current = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => WallpaperGroupRowsCompanion(
+                id: id,
+                name: name,
+                enabled: enabled,
+                current: current,
+                position: position,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                Value<String> name = const Value.absent(),
+                Value<bool> enabled = const Value.absent(),
+                Value<bool> current = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                required int createdAt,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => WallpaperGroupRowsCompanion.insert(
+                id: id,
+                name: name,
+                enabled: enabled,
+                current: current,
+                position: position,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$WallpaperGroupRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $WallpaperGroupRowsTable,
+      WallpaperGroupRow,
+      $$WallpaperGroupRowsTableFilterComposer,
+      $$WallpaperGroupRowsTableOrderingComposer,
+      $$WallpaperGroupRowsTableAnnotationComposer,
+      $$WallpaperGroupRowsTableCreateCompanionBuilder,
+      $$WallpaperGroupRowsTableUpdateCompanionBuilder,
+      (
+        WallpaperGroupRow,
+        BaseReferences<
+          _$AppDatabase,
+          $WallpaperGroupRowsTable,
+          WallpaperGroupRow
+        >,
+      ),
+      WallpaperGroupRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -10878,4 +11591,6 @@ class $AppDatabaseManager {
       );
   $$VisibleRangeKeyValuesTableTableManager get visibleRangeKeyValues =>
       $$VisibleRangeKeyValuesTableTableManager(_db, _db.visibleRangeKeyValues);
+  $$WallpaperGroupRowsTableTableManager get wallpaperGroupRows =>
+      $$WallpaperGroupRowsTableTableManager(_db, _db.wallpaperGroupRows);
 }

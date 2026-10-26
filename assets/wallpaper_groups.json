@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "id": "wallpaper.group.all",
+      "nameKey": "wallpaperGroupDefaultAll",
+      "enabled": true,
+      "current": true,
+      "filters": []
+    },
+    {
+      "id": "wallpaper.group.dcim",
+      "nameKey": "wallpaperGroupDefaultDcim",
+      "enabled": true,
+      "filters": [{"type": "path", "standard": "dcim"}]
+    },
+    {
+      "id": "wallpaper.group.pictures",
+      "nameKey": "wallpaperGroupDefaultPictures",
+      "enabled": true,
+      "filters": [{"type": "path", "standard": "pictures"}]
+    }
+  ]
+}

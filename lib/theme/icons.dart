@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 class AIcons {
   static const allCollection = Symbols.collections;
   static const image = Symbols.photo;
+  static const imageNotSupported = Symbols.image_not_supported;
   static const video = Symbols.movie;
   static const vector = Symbols.code;
 

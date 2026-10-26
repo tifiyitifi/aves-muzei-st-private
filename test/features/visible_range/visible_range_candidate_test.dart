@@ -92,4 +92,26 @@ void main() {
     expect(VisibleRangeCandidate.unrestricted.filters, isEmpty);
     expect(VisibleRangeCandidate.unrestricted.active, isTrue);
   });
+
+  test('the active section repeats the result, the base and the enabled rules', () {
+    final range = VisibleRange.emptyGallery().copyWith(
+      basePresetId: 'builtin.image',
+      baseName: 'image',
+      baseFilters: {image},
+      rules: [
+        rule('r1', VisibleRangeRuleKind.restriction, {image}, position: 0, active: true),
+        rule('s1', VisibleRangeRuleKind.supplement, {video}, position: 0, active: true),
+        rule('off', VisibleRangeRuleKind.restriction, {video}, position: 1),
+      ],
+    );
+    final active = buildVisibleRangeActiveCandidates(range: range, presets: [preset('builtin.image', {image})]);
+    expect(active.first.isGallery, isTrue, reason: 'the result preview comes first');
+    expect(active[1].preset?.id, 'builtin.image');
+    expect(active.skip(2).map((candidate) => candidate.id), ['r1', 's1'], reason: 'evaluation order, and disabled rules stay out');
+  });
+
+  test('the active section omits an unrestricted base', () {
+    final active = buildVisibleRangeActiveCandidates(range: VisibleRange.emptyGallery(), presets: const []);
+    expect(active.map((candidate) => candidate.isGallery), [true], reason: 'the gallery preview already means "everything"');
+  });
 }

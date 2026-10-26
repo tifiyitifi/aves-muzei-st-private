@@ -5,6 +5,7 @@ import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/services/visible_range_candidate_stats.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
+import 'package:aves/features/visible_range/view/visible_range_section_key.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_tile.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -24,16 +25,6 @@ import 'package:material_ui/material_ui.dart';
 /// The compact style is a wrap of album chips; the tile style is a wrap of tiles
 /// sized like the grid above, so the footer does not shrink.
 class VisibleRangeActiveFooter extends StatelessWidget {
-  /// The gallery result is a read-only preview: it carries the range's filters
-  /// but no condition that could be toggled or removed.
-  static const _resultCandidate = VisibleRangeCandidate(
-    id: 'gallery',
-    kind: VisibleRangeCandidateKind.base,
-    filters: {},
-    labelKey: 'visibleRangeGallery',
-    active: true,
-  );
-
   final VisibleRange range;
   final VisibleRangeCandidate? activeBase;
   final List<VisibleRangeCandidate> activeRules;
@@ -84,10 +75,12 @@ class VisibleRangeActiveFooter extends StatelessWidget {
           Row(
             children: [
               // The lamp marks what the range currently lights up, matching the
-              // old scenario page instead of the previous eye icon.
-              Icon(AIcons.visibleRangeActive, size: 18, color: colors.onSurfaceVariant),
+              // old scenario page instead of the previous eye icon. The title
+              // uses the section style so the footer reads exactly like the
+              // group headers above it.
+              Icon(AIcons.visibleRangeActive, size: 24, color: colors.onSurfaceVariant),
               const SizedBox(width: 8),
-              Expanded(child: Text(l10n.visibleRangeSectionCurrent, style: theme.textTheme.titleSmall)),
+              Expanded(child: Text(l10n.visibleRangeSectionCurrent, style: visibleRangeSectionTitleStyle(context))),
               Text(
                 restricted ? l10n.visibleRangeRestricted : l10n.visibleRangeUnrestricted,
                 style: theme.textTheme.labelLarge?.copyWith(color: restricted ? colors.error : colors.primary),
@@ -134,7 +127,7 @@ class VisibleRangeActiveFooter extends StatelessWidget {
     final cover = resultStats?.cover;
     const iconSize = AvesFilterChip.iconSize;
     return AvesFilterChip(
-      filter: VisibleRangeCandidateFilter(_resultCandidate, summary: true),
+      filter: VisibleRangeCandidateFilter(VisibleRangeCandidate.gallery, summary: true),
       showLeading: true,
       showText: true,
       allowGenericIcon: false,
@@ -151,7 +144,7 @@ class VisibleRangeActiveFooter extends StatelessWidget {
                 ),
               ),
             )
-          : const Icon(AIcons.image, size: iconSize),
+          : const Icon(AIcons.imageNotSupported, size: iconSize),
       details: _buildCount(context),
       heroType: HeroType.never,
       // The result is a preview only: tapping and removing it do nothing.
@@ -166,7 +159,7 @@ class VisibleRangeActiveFooter extends StatelessWidget {
     return SizedBox.fromSize(
       size: size,
       child: VisibleRangeTile(
-        gridItem: FilterGridItem(VisibleRangeCandidateFilter(_resultCandidate, summary: true), resultStats?.cover),
+        gridItem: FilterGridItem(VisibleRangeCandidateFilter(VisibleRangeCandidate.gallery, summary: true), resultStats?.cover),
         stats: resultStats,
         tileLayout: TileLayout.grid,
         tileSize: size,

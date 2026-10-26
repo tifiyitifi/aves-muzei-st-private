@@ -11,7 +11,6 @@ import 'package:aves/features/visible_range/model/visible_range_pin.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/utils/android_file_utils.dart';
-import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
@@ -22,12 +21,20 @@ const List<String> visibleRangeDebugLogKeys = [visibleRangeLogKey];
 
 const AreaKeyLog _log = AreaKeyLog(visibleRangeLogKey);
 
-/// How the "current visible range" footer lists the active candidates.
+/// How the "current visible range" is presented.
 enum VisibleRangeActiveStyle {
+  /// Default: the active conditions repeat as a grid section, sharing the
+  /// layout, tile size and pinch zoom of the three candidate groups.
+  section,
   compactChips,
   tiles;
 
-  static VisibleRangeActiveStyle parse(String? value) => value == tiles.name ? tiles : compactChips;
+  static VisibleRangeActiveStyle parse(String? value) {
+    for (final style in values) {
+      if (style.name == value) return style;
+    }
+    return section;
+  }
 }
 
 /// The single source of truth for visible ranges.
@@ -63,9 +70,7 @@ class VisibleRangeController extends ChangeNotifier {
   List<VisibleRangeSession> _sessions = const [];
   String? _openSessionId;
   VisibleRangeLockPreset _lastLockPreset = VisibleRangeLockPreset.readOnly;
-  SortFactor _viewSortFactor = SortFactor.date;
-  bool _viewSortReverse = false;
-  VisibleRangeActiveStyle _activeStyle = VisibleRangeActiveStyle.compactChips;
+  VisibleRangeActiveStyle _activeStyle = VisibleRangeActiveStyle.section;
   Future<void>? _initFuture;
   bool _initialized = false;
 
@@ -92,25 +97,7 @@ class VisibleRangeController extends ChangeNotifier {
   /// Permissions preset the quick lock reuses.
   VisibleRangeLockPreset get lastLockPreset => _lastLockPreset;
 
-  SortFactor get viewSortFactor => _viewSortFactor;
-
-  bool get viewSortReverse => _viewSortReverse;
-
   VisibleRangeActiveStyle get activeStyle => _activeStyle;
-
-  Future<void> setViewSortFactor(SortFactor factor) async {
-    if (_viewSortFactor == factor) return;
-    _viewSortFactor = factor;
-    await _requireStore().writeState(VisibleRangeStore.keyViewSortFactor, factor.name);
-    notifyListeners();
-  }
-
-  Future<void> setViewSortReverse(bool reverse) async {
-    if (_viewSortReverse == reverse) return;
-    _viewSortReverse = reverse;
-    await _requireStore().writeState(VisibleRangeStore.keyViewSortReverse, reverse ? '1' : '0');
-    notifyListeners();
-  }
 
   Future<void> setActiveStyle(VisibleRangeActiveStyle style) async {
     if (_activeStyle == style) return;
@@ -141,12 +128,6 @@ class VisibleRangeController extends ChangeNotifier {
         (v) => v.name == lastLockPreset,
         orElse: () => VisibleRangeLockPreset.readOnly,
       );
-      final sortName = await store.readState(VisibleRangeStore.keyViewSortFactor);
-      _viewSortFactor = SortFactor.values.firstWhere(
-        (v) => v.name == sortName,
-        orElse: () => SortFactor.date,
-      );
-      _viewSortReverse = await store.readState(VisibleRangeStore.keyViewSortReverse) == '1';
       _activeStyle = VisibleRangeActiveStyle.parse(await store.readState(VisibleRangeStore.keyActiveStyle));
       _initialized = true;
     } catch (error, stack) {
@@ -162,8 +143,13 @@ class VisibleRangeController extends ChangeNotifier {
   ///
   /// Base candidates become presets; restriction and supplement candidates become
   /// inactive rules, so the page can show them as tiles before the user turns
-  /// them on. The version marker also lets an upgraded install replace the old
-  /// default set instead of keeping removed entries forever.
+  /// them on.
+  ///
+  /// A version bump also re-applies the bundled order and prunes entries the
+  /// bundle dropped. Deleted defaults coming back is intended (see
+  /// [VisibleRangeStore.defaultsVersion]): the bundle stays the single source of
+  /// truth, while the user's activation, rename and description on a kept
+  /// default survive the reorder.
   Future<void> _seedDefaults(VisibleRangeStore store) async {
     final rawVersion = await store.readState(VisibleRangeStore.keyDefaultsVersion);
     // Installs seeded by the first release only have the boolean marker.
@@ -186,11 +172,17 @@ class VisibleRangeController extends ChangeNotifier {
     // asset still has to seed.
     if (definitions.isEmpty) return;
 
+    final baseDefinitions = definitions.where((definition) => definition.kind == VisibleRangePresetKind.base).toList();
     if (seededVersion < 2) {
       await store.deleteBuiltinPresets();
+    } else {
+      // The bundle is curated: drop built-ins it no longer ships, keeping the
+      // user's own presets. Later versions prune instead of wiping, so a bump
+      // does not renumber the user's saved positions.
+      await store.deleteBuiltinPresetsExcept(baseDefinitions.map((definition) => definition.id).toSet());
     }
     var position = 0;
-    for (final definition in definitions.where((definition) => definition.kind == VisibleRangePresetKind.base)) {
+    for (final definition in baseDefinitions) {
       await store.savePreset(
         VisibleRangePreset(
           id: definition.id,
@@ -210,25 +202,32 @@ class VisibleRangeController extends ChangeNotifier {
       if (definition.kind == VisibleRangePresetKind.base) continue;
       final id = _builtinRuleId(definition.id);
       builtinIds.add(id);
-      if (rules.any((rule) => rule.id == id)) continue;
       final kind = definition.kind == VisibleRangePresetKind.restriction ? VisibleRangeRuleKind.restriction : VisibleRangeRuleKind.supplement;
       final rulePosition = positions[kind] ?? 0;
       positions[kind] = rulePosition + 1;
-      rules.add(
-        VisibleRangeRule(
-          id: id,
-          rangeId: range.id,
-          kind: kind,
-          position: rulePosition,
-          // `@` marks an ARB key; the page localizes it and a user rename simply
-          // replaces the label with plain text.
-          label: '@${definition.nameKey}',
-          filters: definition.filters,
-          active: false,
-        ),
-      );
+      final existingIndex = rules.indexWhere((rule) => rule.id == id);
+      if (existingIndex < 0) {
+        rules.add(
+          VisibleRangeRule(
+            id: id,
+            rangeId: range.id,
+            kind: kind,
+            position: rulePosition,
+            // `@` marks an ARB key; the page localizes it and a user rename
+            // simply replaces the label with plain text.
+            label: '@${definition.nameKey}',
+            filters: definition.filters,
+            active: false,
+          ),
+        );
+      } else {
+        // Re-apply the bundled order, but keep the activation, rename and
+        // description the user already made on this default.
+        rules[existingIndex] = rules[existingIndex].copyWith(position: rulePosition);
+      }
     }
-    // A version bump may also drop a default; keep user rules untouched.
+    // A version bump may also drop a default and with it its activation state;
+    // user rules stay untouched.
     rules.removeWhere((rule) => _isBuiltinRule(rule.id) && !builtinIds.contains(rule.id));
     await store.saveRange(range.copyWith(rules: rules));
     await store.writeState(VisibleRangeStore.keyDefaultsVersion, '${VisibleRangeStore.defaultsVersion}');

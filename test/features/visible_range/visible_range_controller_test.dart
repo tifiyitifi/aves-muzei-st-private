@@ -6,7 +6,6 @@ import 'package:aves/features/visible_range/services/visible_range_controller.da
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/services/common/services.dart';
-import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -115,15 +114,71 @@ void main() {
   });
 
   test('view preferences persist across a restart', () async {
-    await controller.setViewSortFactor(SortFactor.count);
-    await controller.setViewSortReverse(true);
     await controller.setActiveStyle(VisibleRangeActiveStyle.tiles);
 
     final restarted = VisibleRangeController(injectedDatabase: db, presetLoader: () async => definitions());
     await restarted.init();
-    expect(restarted.viewSortFactor, SortFactor.count);
-    expect(restarted.viewSortReverse, isTrue);
     expect(restarted.activeStyle, VisibleRangeActiveStyle.tiles);
+  });
+
+  test('the active conditions default to the section style', () async {
+    expect(controller.activeStyle, VisibleRangeActiveStyle.section);
+    expect(VisibleRangeActiveStyle.parse(null), VisibleRangeActiveStyle.section);
+    expect(VisibleRangeActiveStyle.parse('compactChips'), VisibleRangeActiveStyle.compactChips);
+    expect(VisibleRangeActiveStyle.parse('tiles'), VisibleRangeActiveStyle.tiles);
+  });
+
+  test('a defaults bump reorders and prunes built-ins while keeping user state', () async {
+    final legacyDb = AppDatabase(NativeDatabase.memory());
+    addTearDown(legacyDb.close);
+    final store = VisibleRangeStore(legacyDb);
+    await store.writeState(VisibleRangeStore.keyDefaultsVersion, '2');
+    await store.savePreset(VisibleRangePreset(id: 'builtin.recent3h', name: 'visibleRangePresetRecent3h', filters: {image}, builtin: true, position: 0));
+    await store.savePreset(VisibleRangePreset(id: 'user.mine', name: 'Mine', filters: {video}, builtin: false, position: 1));
+
+    VisibleRangeRule builtin(String id, VisibleRangeRuleKind kind, int position, {String label = '', bool active = false}) =>
+        VisibleRangeRule(id: id, rangeId: VisibleRange.galleryRangeId, kind: kind, position: position, label: label, filters: {image}, active: active);
+
+    await store.saveRange(
+      VisibleRange.emptyGallery().copyWith(
+        rules: [
+          builtin('user.1', VisibleRangeRuleKind.restriction, 0),
+          builtin('builtin.rule.builtin.restriction.video', VisibleRangeRuleKind.restriction, 7, label: 'My videos', active: true),
+          // No longer shipped by the bundle: pruned together with its state.
+          builtin('builtin.rule.builtin.restriction.notVideo', VisibleRangeRuleKind.restriction, 8),
+          builtin('builtin.rule.builtin.supplement.image', VisibleRangeRuleKind.supplement, 0),
+        ],
+      ),
+    );
+
+    final migrated = VisibleRangeController(
+      injectedDatabase: legacyDb,
+      presetLoader: () async => [
+        VisibleRangePresetDefinition(id: 'builtin.image', nameKey: 'visibleRangePresetImage', filters: {image}),
+        VisibleRangePresetDefinition(id: 'builtin.video', nameKey: 'visibleRangePresetVideo', filters: {video}),
+        VisibleRangePresetDefinition(id: 'builtin.restriction.image', nameKey: 'visibleRangePresetImage', kind: VisibleRangePresetKind.restriction, filters: {image}),
+        VisibleRangePresetDefinition(id: 'builtin.restriction.video', nameKey: 'visibleRangePresetVideo', kind: VisibleRangePresetKind.restriction, filters: {video}),
+        VisibleRangePresetDefinition(id: 'builtin.supplement.recent12h', nameKey: 'visibleRangePresetRecent12h', kind: VisibleRangePresetKind.supplement, filters: {video}),
+      ],
+    );
+    await migrated.init();
+
+    final byId = {for (final rule in migrated.gallery.rules) rule.id: rule};
+    // Kept defaults follow the bundle order but keep what the user made of them.
+    expect(byId['builtin.rule.builtin.restriction.image']!.position, 0);
+    expect(byId['builtin.rule.builtin.restriction.video']!.position, 1);
+    expect(byId['builtin.rule.builtin.restriction.video']!.active, isTrue);
+    expect(byId['builtin.rule.builtin.restriction.video']!.label, 'My videos');
+    // A dropped default disappears with its activation state.
+    expect(byId.containsKey('builtin.rule.builtin.restriction.notVideo'), isFalse);
+    // A missing default is added inactive.
+    expect(byId['builtin.rule.builtin.restriction.image']!.active, isFalse);
+    expect(byId['builtin.rule.builtin.supplement.recent12h']!.active, isFalse);
+    // User rules and presets keep their slots.
+    expect(byId['user.1']!.position, 0);
+    expect(migrated.presets.map((preset) => preset.id), containsAll(['builtin.image', 'builtin.video', 'user.mine']));
+    expect(migrated.presets.map((preset) => preset.id), isNot(contains('builtin.recent3h')));
+    expect(await store.readState(VisibleRangeStore.keyDefaultsVersion), '${VisibleRangeStore.defaultsVersion}');
   });
 
   test('re-adding defaults skips existing ids and fingerprints', () async {

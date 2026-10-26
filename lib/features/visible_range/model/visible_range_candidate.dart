@@ -1,5 +1,6 @@
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/filters/filters.dart';
+import 'package:collection/collection.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
@@ -28,6 +29,7 @@ enum VisibleRangeCandidateKind {
 class VisibleRangeCandidate extends Equatable {
   static const unrestrictedId = 'base.unrestricted';
   static const customBaseId = 'base.custom';
+  static const galleryId = 'gallery';
 
   final String id;
   final VisibleRangeCandidateKind kind;
@@ -95,7 +97,21 @@ class VisibleRangeCandidate extends Equatable {
     active: true,
   );
 
+  /// The result preview: the range itself, not one of its conditions.
+  ///
+  /// Its stats are the range's result stats, so it is never selected, toggled or
+  /// removed like a condition.
+  static const gallery = VisibleRangeCandidate(
+    id: galleryId,
+    kind: VisibleRangeCandidateKind.base,
+    filters: {},
+    labelKey: 'visibleRangeGallery',
+    active: true,
+  );
+
   bool get isUnrestricted => id == unrestrictedId;
+
+  bool get isGallery => id == galleryId;
 
   bool get isBuiltinRule => rule != null && isVisibleRangeBuiltinRule(rule!.id);
 
@@ -164,6 +180,30 @@ List<VisibleRangeCandidateSection> buildVisibleRangeSections({
   return [
     baseSection,
     if (range.order.isIntersectFirst) ...[restrictionSection, supplementSection] else ...[supplementSection, restrictionSection],
+  ];
+}
+
+/// The active conditions repeated as the page's last section.
+///
+/// It reads top-down like the range evaluates: the result preview first, then the
+/// active base, then the active rules in evaluation order. The unrestricted base
+/// is left out because the result preview already stands for "everything".
+List<VisibleRangeCandidate> buildVisibleRangeActiveCandidates({
+  required VisibleRange range,
+  required List<VisibleRangePreset> presets,
+}) {
+  final baseCandidates = buildVisibleRangeSections(range: range, presets: presets).first.candidates;
+  final activeBase = baseCandidates.firstWhereOrNull((candidate) => candidate.active && !candidate.isUnrestricted);
+  final rules = [
+    for (final kind in range.order.isIntersectFirst
+        ? [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement]
+        : [VisibleRangeRuleKind.supplement, VisibleRangeRuleKind.restriction])
+      for (final rule in range.activeRulesOf(kind)) VisibleRangeCandidate.fromRule(rule),
+  ];
+  return [
+    VisibleRangeCandidate.gallery,
+    ?activeBase,
+    ...rules,
   ];
 }
 

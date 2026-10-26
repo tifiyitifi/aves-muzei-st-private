@@ -47,24 +47,23 @@ class VisibleRangeActionDelegate extends ChipSetActionDelegate<VisibleRangeCandi
   @override
   Iterable<FilterGridItem<VisibleRangeCandidateFilter>> get allItems => itemBuilder();
 
+  /// The page shows the bundled order instead of offering sorting, so the
+  /// layout dialog exposes no sort options. The value only feeds the scrollbar
+  /// label, which then names the candidate under the thumb.
   @override
-  SortFactor get sortFactor => controller.viewSortFactor;
+  SortFactor get sortFactor => SortFactor.chipName;
 
   @override
-  set sortFactor(SortFactor factor) => unawaited(controller.setViewSortFactor(factor));
+  set sortFactor(SortFactor factor) {}
 
   @override
-  bool get sortReverse => controller.viewSortReverse;
+  bool get sortReverse => false;
 
   @override
-  set sortReverse(bool value) => unawaited(controller.setViewSortReverse(value));
+  set sortReverse(bool value) {}
 
   @override
-  List<SortFactor> get sortOptions => const [
-        .date,
-        .chipName,
-        .count,
-      ];
+  List<SortFactor> get sortOptions => const [];
 
   @override
   List<TileLayout> get layoutOptions => const [

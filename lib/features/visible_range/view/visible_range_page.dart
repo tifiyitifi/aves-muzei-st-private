@@ -30,7 +30,6 @@ import 'package:aves/widgets/filter_grids/common/app_bar.dart';
 import 'package:aves/widgets/filter_grids/common/filter_grid_page.dart';
 import 'package:aves/widgets/filter_grids/common/section_keys.dart';
 import 'package:aves/widgets/navigation/nav_item.dart';
-import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
@@ -141,7 +140,9 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       builder: (context, _) {
         final source = context.read<CollectionSource>();
         final sections = _buildSections(context);
-        final items = sections.values.expand((list) => list).where((item) => item.filter.candidate.rule != null).toList();
+        // The active section repeats conditions from the groups above, so it
+        // must not feed the rule actions or the multi-selection twice.
+        final items = sections.values.expand((list) => list).where((item) => !item.filter.summary && item.filter.candidate.rule != null).toList();
         final delegate = VisibleRangeActionDelegate(
           controller: _controller,
           settingsRouteKey: VisibleRangePage.routeName,
@@ -183,15 +184,17 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
                     scrollController: scrollController,
                     sections: sections,
                     newFilters: const {},
-                    sortFactor: _controller.viewSortFactor,
+                    sortFactor: delegate.sortFactor,
                     showHeaders: true,
                     selectable: true,
                     emptyBuilder: () => Center(child: Text(context.l10n.visibleRangeNoCandidates)),
                     heroType: HeroType.never,
                     onTileTap: (item, navigate) => _onCandidateTap(context, item),
-                    selectableItem: (item) => item.filter.candidate.rule != null,
+                    selectableItem: (item) => !item.filter.summary && item.filter.candidate.rule != null,
                     tileBuilder: _buildTile,
-                    footerBuilder: _buildFooter,
+                    // The section form repeats the active conditions as the last
+                    // grid section instead of a separate footer.
+                    footerBuilder: _controller.activeStyle == VisibleRangeActiveStyle.section ? null : _buildFooter,
                   ),
                 );
               },
@@ -216,12 +219,11 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
         VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement => '${section.candidates.where((candidate) => candidate.active).length}/${section.candidates.length}',
       };
       final key = VisibleRangeSectionKey(context, section.kind, countText: countText, supplementsOutside: supplementsOutside);
-      final sorted = _sortCandidates(context, section.candidates);
-      // The fixed Unrestricted base stays first regardless of the sort, like the
-      // old page's first base chip.
+      // The bundled order is the page's order: the groups read the same on every
+      // install instead of reshuffling when a cover date changes.
       final ordered = section.kind == VisibleRangeCandidateKind.base
-          ? [...sorted.where((candidate) => candidate.isUnrestricted), ...sorted.where((candidate) => !candidate.isUnrestricted)]
-          : sorted;
+          ? [...section.candidates.where((candidate) => candidate.isUnrestricted), ...section.candidates.where((candidate) => !candidate.isUnrestricted)]
+          : section.candidates;
       result[key] = [
         for (final candidate in ordered)
           // Cover and count stay in the stats map: a candidate is a filter set,
@@ -229,43 +231,34 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
           FilterGridItem(VisibleRangeCandidateFilter(candidate), null),
       ];
     }
-    return result;
-  }
-
-  List<VisibleRangeCandidate> _sortCandidates(BuildContext context, List<VisibleRangeCandidate> candidates) {
-    final sorted = [...candidates];
-    switch (_controller.viewSortFactor) {
-      case SortFactor.chipName:
-        sorted.sort((a, b) => visibleRangeCandidateLabel(context, a).toLowerCase().compareTo(visibleRangeCandidateLabel(context, b).toLowerCase()));
-      case SortFactor.date:
-        sorted.sort((a, b) {
-          final aDate = _stats[a.statsKey]?.cover?.bestDate?.millisecondsSinceEpoch ?? 0;
-          final bDate = _stats[b.statsKey]?.cover?.bestDate?.millisecondsSinceEpoch ?? 0;
-          final byDate = bDate.compareTo(aDate);
-          return byDate != 0 ? byDate : visibleRangeCandidateLabel(context, a).compareTo(visibleRangeCandidateLabel(context, b));
-        });
-      case SortFactor.count:
-        sorted.sort((a, b) {
-          final byCount = (_stats[b.statsKey]?.count ?? -1).compareTo(_stats[a.statsKey]?.count ?? -1);
-          return byCount != 0 ? byCount : visibleRangeCandidateLabel(context, a).compareTo(visibleRangeCandidateLabel(context, b));
-        });
-      default:
-        break;
+    if (_controller.activeStyle == VisibleRangeActiveStyle.section) {
+      // The same conditions, repeated as a read-only group at the bottom: it
+      // shares the grid's columns, tile size and pinch zoom with the groups
+      // above, so it is a section rather than a separate footer strip.
+      final active = buildVisibleRangeActiveCandidates(range: range, presets: _controller.presets);
+      result[VisibleRangeActiveSectionKey(context, restricted: range.isRestricted)] = [
+        for (final candidate in active) FilterGridItem(VisibleRangeCandidateFilter(candidate, summary: true), null),
+      ];
     }
-    return _controller.viewSortReverse ? sorted.reversed.toList() : sorted;
+    return result;
   }
 
   Widget _buildTile(BuildContext context, FilterGridItem<VisibleRangeCandidateFilter> item, Size tileSize) {
     final candidate = item.filter.candidate;
+    final summary = item.filter.summary;
     return MetaData(
       metaData: ScalerMetadata(item),
       child: VisibleRangeTile(
         gridItem: item,
-        stats: _stats[candidate.statsKey],
+        // The gallery preview stands for the whole range, not for the empty
+        // filter set it shares its stats key with.
+        stats: candidate.isGallery ? _resultStats : _stats[candidate.statsKey],
         tileLayout: settings.getTileLayout(VisibleRangePage.routeName),
         tileSize: tileSize,
+        summary: summary,
+        showStateIcon: !candidate.isGallery,
         onTap: () => _onCandidateTap(context, item),
-        onLongPress: candidate.preset != null && !candidate.preset!.builtin ? () => _showPresetEditor(candidate.preset!) : null,
+        onLongPress: !summary && candidate.preset != null && !candidate.preset!.builtin ? () => _showPresetEditor(candidate.preset!) : null,
       ),
     );
   }
@@ -392,6 +385,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
             const SizedBox(height: 8),
             SegmentedButton<VisibleRangeActiveStyle>(
               segments: [
+                ButtonSegment(value: VisibleRangeActiveStyle.section, label: Text(l10n.visibleRangeActiveStyleSection)),
                 ButtonSegment(value: VisibleRangeActiveStyle.compactChips, label: Text(l10n.visibleRangeActiveStyleChips)),
                 ButtonSegment(value: VisibleRangeActiveStyle.tiles, label: Text(l10n.visibleRangeActiveStyleTiles)),
               ],
@@ -413,6 +407,17 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   void _onCandidateTap(BuildContext context, FilterGridItem<VisibleRangeCandidateFilter> item) {
     final candidate = item.filter.candidate;
+    if (item.filter.summary) {
+      // The active section repeats conditions from the groups above: tapping one
+      // cancels it, and the gallery preview is inert.
+      final rule = candidate.rule;
+      if (rule != null) {
+        _toggleRule(rule);
+      } else if (!candidate.isGallery && !candidate.isUnrestricted) {
+        _cancelBase();
+      }
+      return;
+    }
     final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
     if (selection.isSelecting) {
       if (candidate.rule != null) selection.toggleSelection(item);

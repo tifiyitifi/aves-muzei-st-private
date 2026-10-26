@@ -18,13 +18,21 @@ class VisibleRangeStore {
   /// Version of the bundled defaults last written. A new version re-seeds the
   /// built-in base presets and materializes the built-in rules, so an upgraded
   /// install sees the same defaults as a fresh one.
+  ///
+  /// A bump has two intended side effects:
+  /// - defaults the user deleted come back;
+  /// - defaults removed from the bundle, and their activation state, are pruned.
+  ///
+  /// Both are deliberate trade-offs of keeping the bundle as the single source
+  /// of truth: every install converges on one known-good set instead of drifting
+  /// with pieces of older bundles. A per-item tombstone would let deletions
+  /// survive, at the cost of a second source of truth. User-created rules and
+  /// presets are never touched, and an active or renamed default keeps its state.
   static const keyDefaultsVersion = 'defaults.version';
-  static const defaultsVersion = 2;
+  static const defaultsVersion = 3;
 
   /// Page view preferences, persisted with the range store so the feature does
   /// not add upstream settings keys.
-  static const keyViewSortFactor = 'view.sortFactor';
-  static const keyViewSortReverse = 'view.sortReverse';
   static const keyActiveStyle = 'view.activeStyle';
 
   final AppDatabase db;
@@ -145,6 +153,16 @@ class VisibleRangeStore {
   /// as unlabelled leftovers.
   Future<void> deleteBuiltinPresets() async {
     await (db.delete(db.visibleRangePresetRows)..where((t) => t.builtin.equals(true))).go();
+  }
+
+  /// Drops the built-in presets missing from the current bundle, keeping the
+  /// user's own saves and the built-ins still shipped.
+  ///
+  /// The seeding pass re-saves the kept built-ins with their bundled position,
+  /// so this only removes stale entries after a defaults bump.
+  Future<void> deleteBuiltinPresetsExcept(Set<String> keepIds) async {
+    if (keepIds.isEmpty) return deleteBuiltinPresets();
+    await (db.delete(db.visibleRangePresetRows)..where((t) => t.builtin.equals(true) & t.id.isNotIn(keepIds))).go();
   }
 
   // state

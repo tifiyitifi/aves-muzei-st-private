@@ -35,6 +35,40 @@ class const SectionHeader<T>({
 
     final theme = Theme.of(context);
 
+    final content = Text.rich(
+      TextSpan(
+        children: [
+          WidgetSpan(
+            alignment: widgetSpanAlignment,
+            child: Theme(
+              data: theme.copyWith(
+                iconTheme: theme.iconTheme.copyWith(
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              child: _SectionSelectableLeading<T>(
+                selectable: selectable,
+                sectionKey: sectionKey,
+                browsingBuilder: leading != null
+                    ? (context) => Container(
+                          width: leadingSize.width,
+                          height: leadingSize.height,
+                          margin: leadingMargin,
+                          child: leading,
+                        )
+                    : null,
+                onPressed: onTap,
+              ),
+            ),
+          ),
+          TextSpan(
+            text: title,
+            style: titleStyle ?? _headerTextStyle(context),
+          ),
+        ],
+      ),
+    );
+
     Widget child = Container(
       padding: padding,
       constraints: BoxConstraints(minHeight: leadingSize.height),
@@ -52,47 +86,14 @@ class const SectionHeader<T>({
               }, context)
             : null,
         longPressTimeout: settings.longPressTimeout,
-        child: Text.rich(
-          TextSpan(
-            children: [
-              WidgetSpan(
-                alignment: widgetSpanAlignment,
-                child: Theme(
-                  data: theme.copyWith(
-                    iconTheme: theme.iconTheme.copyWith(
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                  child: _SectionSelectableLeading<T>(
-                    selectable: selectable,
-                    sectionKey: sectionKey,
-                    browsingBuilder: leading != null
-                        ? (context) => Container(
-                            width: leadingSize.width,
-                            height: leadingSize.height,
-                            margin: leadingMargin,
-                            child: leading,
-                          )
-                        : null,
-                    onPressed: onTap,
-                  ),
-                ),
+        child: trailing == null
+            ? content
+            : Row(
+                children: [
+                  Flexible(child: content),
+                  Container(margin: trailingMargin, child: trailing),
+                ],
               ),
-              TextSpan(
-                text: title,
-                style: titleStyle ?? _headerTextStyle(context),
-              ),
-              if (trailing != null)
-                WidgetSpan(
-                  alignment: widgetSpanAlignment,
-                  child: Container(
-                    margin: trailingMargin,
-                    child: trailing,
-                  ),
-                ),
-            ],
-          ),
-        ),
       ),
     );
     if (settings.useTvLayout) {

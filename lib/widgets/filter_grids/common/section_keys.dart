@@ -23,6 +23,13 @@ class ChipSectionKey extends SectionKey with Equatable {
   });
 
   Widget? get leading => null;
+
+  /// Whether the header itself can start a selection. A read-only summary
+  /// section opts out so long-pressing it cannot select non-selectable items.
+  bool get selectable => true;
+
+  /// Optional right-aligned widget after the title, e.g. a state label.
+  Widget? buildTrailing(BuildContext context) => null;
 }
 
 class ChipImportanceSectionKey extends ChipSectionKey {

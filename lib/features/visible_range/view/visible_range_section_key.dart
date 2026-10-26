@@ -55,3 +55,37 @@ TextStyle visibleRangeSectionTitleStyle(BuildContext context) => AStyles.section
       letterSpacing: 0,
       fontFeatures: const [],
     );
+
+/// Header of the active-conditions section, shown as the page's last group.
+///
+/// It is the same section header as the three candidate groups, with the lamp as
+/// its leading icon and the restricted state on the right. It never starts a
+/// selection: its tiles summarize conditions that are already selectable above.
+class VisibleRangeActiveSectionKey extends ChipSectionKey {
+  final bool restricted;
+
+  new(BuildContext context, {required this.restricted})
+      : super(
+          title: context.l10n.visibleRangeSectionCurrent,
+          titleStyle: visibleRangeSectionTitleStyle(context),
+        );
+
+  @override
+  bool get selectable => false;
+
+  @override
+  Widget? get leading => const Icon(AIcons.visibleRangeActive);
+
+  @override
+  Widget buildTrailing(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Text(
+      restricted ? context.l10n.visibleRangeRestricted : context.l10n.visibleRangeUnrestricted,
+      style: theme.textTheme.labelLarge?.copyWith(color: restricted ? colors.error : colors.primary),
+    );
+  }
+
+  @override
+  List<Object?> get props => [...super.props, restricted];
+}

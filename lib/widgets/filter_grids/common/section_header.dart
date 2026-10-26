@@ -14,7 +14,10 @@ class const FilterChipSectionHeader<T>({
       leading: sectionKey.leading,
       title: sectionKey.title,
       titleStyle: sectionKey.titleStyle,
-      selectable: selectable,
+      // A read-only section (e.g. the active conditions summary) opts out of
+      // header selection and may show a state label on the right.
+      selectable: selectable && sectionKey.selectable,
+      trailing: sectionKey.buildTrailing(context),
     );
   }
 

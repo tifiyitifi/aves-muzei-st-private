@@ -169,7 +169,7 @@ class VisibleRangeTile extends StatelessWidget {
       ),
       child: Center(
         child: Icon(
-          AIcons.image,
+          AIcons.imageNotSupported,
           size: min(extent * .32, 44),
           color: brightness == Brightness.light ? Colors.black54 : Colors.white70,
         ),

@@ -24,6 +24,10 @@ enum VisibleRangePresetKind {
 }
 
 /// A built-in candidate as declared in `assets/visible_range_presets.json`.
+///
+/// A base entry normally carries one filter. `builtin.cameraRecent6h` is kept on
+/// purpose with two: it shows that a mutually exclusive base range may itself
+/// combine conditions (folder + time span), instead of only offering single ones.
 class VisibleRangePresetDefinition {
   final String id;
 

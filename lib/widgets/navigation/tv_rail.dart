@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -189,6 +190,7 @@ class _TvRailState extends State<TvRail> {
       ..._buildAlbumLinks(context),
       ..._buildPageLinks(context),
       ...[
+        VisibleRangePage.routeName,
         SettingsPage.routeName,
         AboutPage.routeName,
         if (!kReleaseMode) AppDebugPage.routeName,

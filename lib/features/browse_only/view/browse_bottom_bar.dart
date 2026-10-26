@@ -1,3 +1,4 @@
+import 'package:aves/features/visible_range/view/visible_range_nav.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
@@ -47,7 +48,9 @@ class BrowseOnlyBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = context.select<Settings, List<AvesNavItem>>((v) => v.bottomNavigationActions);
+    final configured = context.select<Settings, List<AvesNavItem>>((v) => v.bottomNavigationActions);
+    if (configured.length < 2) return const SizedBox();
+    final items = withVisibleRangeDestination(configured);
     if (items.length < 2) return const SizedBox();
     final views = [for (final item in items) viewFor(item)];
     final safeBottomPadding = MediaQuery.of(context).safeBottomPadding;

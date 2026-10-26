@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
+import 'package:aves/features/visible_range/view/visible_range_nav.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -67,7 +68,10 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
 
   @override
   Widget build(BuildContext context) {
-    final items = _visibleItems(context, context.select<Settings, List<AvesNavItem>>((v) => v.bottomNavigationActions));
+    final configured = context.select<Settings, List<AvesNavItem>>((v) => v.bottomNavigationActions);
+    if (configured.length < 2) return const SizedBox();
+    final picking = CollectionViewHooksScope.maybeOf(context)?.isPicking ?? false;
+    final items = _visibleItems(context, withVisibleRangeDestination(configured, include: !picking));
     if (items.length < 2) return const SizedBox();
 
     final safeBottomPadding = context.select<MediaQueryData, double>((mq) => mq.safeBottomPadding);

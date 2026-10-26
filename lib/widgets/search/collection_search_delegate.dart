@@ -1,3 +1,5 @@
+import 'package:aves/features/search_filters/model/search_assist.dart';
+import 'package:aves/features/search_filters/view/search_assist_section.dart';
 import 'package:aves/locale/calendar/calendar_utils.dart';
 import 'package:aves/model/dynamic_albums.dart';
 import 'package:aves/model/filters/aspect_ratio.dart';
@@ -42,6 +44,10 @@ class CollectionSearchDelegate extends AvesSearchDelegate with FeedbackMixin, Va
   final CollectionSource source;
   final CollectionLens? parentCollection;
   final ValueNotifier<String?> _expandedSectionNotifier = ValueNotifier(null);
+
+  /// Conditions added through the assist group; they apply on top of whatever
+  /// the user submits, and survive until the page is closed.
+  final ValueNotifier<SearchAssist> _assistNotifier = ValueNotifier(SearchAssist.empty);
   final FocusNode _suggestionsTopFocusNode = FocusNode();
   final ScrollController _suggestionsScrollController = ScrollController();
   late final List<MimeFilter> _mimeTypeFilters;
@@ -98,6 +104,7 @@ class CollectionSearchDelegate extends AvesSearchDelegate with FeedbackMixin, Va
   @override
   void dispose() {
     _expandedSectionNotifier.dispose();
+    _assistNotifier.dispose();
     _suggestionsTopFocusNode.dispose();
     _suggestionsScrollController.dispose();
     super.dispose();
@@ -173,6 +180,13 @@ class CollectionSearchDelegate extends AvesSearchDelegate with FeedbackMixin, Va
                     _buildTagFilters(isVisible),
                     _buildRatingFilters(context, isVisible),
                     _buildMetadataFilters(context, isVisible),
+                    SearchAssistSection(
+                      assist: _assistNotifier,
+                      source: source,
+                      // The visible query is part of the search too: applying the
+                      // conditions must not silently drop what the user typed.
+                      onApply: (filters) => _select(context, {...filters, ?_buildQueryFilter(true)}),
+                    ),
                   ],
                 );
               },
@@ -387,7 +401,12 @@ class CollectionSearchDelegate extends AvesSearchDelegate with FeedbackMixin, Va
   }
 
   Future<void> _select(BuildContext context, Set<CollectionFilter?> filters) async {
-    final newFilters = filters.nonNulls.toSet();
+    // The assist conditions are part of the search, not a substitute for it: a
+    // chip selected here still carries them.
+    final newFilters = {
+      ...filters.nonNulls,
+      ..._assistNotifier.value.toFilters(calendar: settings.avesLocale.calendar),
+    };
     if (newFilters.isEmpty) {
       goBack(context);
       return;

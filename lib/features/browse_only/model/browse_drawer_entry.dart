@@ -34,11 +34,14 @@ bool browseDrawerEntryEnabled({
     case AlbumListPage.routeName:
     case ExplorerPage.routeName:
     case MuzeiWallpaperPage.routeName:
-    case VisibleRangePage.routeName:
     case SettingsPage.routeName:
     case AboutPage.routeName:
     case AppDebugPage.routeName:
       return true;
+    case VisibleRangePage.routeName:
+      // The range narrows catalogued browsing, and the browser does not consult
+      // it: opening the page mid-import would edit a condition nothing applies.
+      return false;
     default:
       return false;
   }

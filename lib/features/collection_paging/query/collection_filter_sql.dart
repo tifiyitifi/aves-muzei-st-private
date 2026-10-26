@@ -1,3 +1,5 @@
+import 'package:aves/features/search_filters/model/range_assist_filter.dart';
+import 'package:aves/features/search_filters/model/relative_time_filter.dart';
 import 'package:aves/geo/states.dart';
 import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/model/filters/container/album_group.dart';
@@ -120,6 +122,10 @@ WindowFragment? _positiveFragment(CollectionFilter filter) {
       return _missingFragment(filter);
     case PathFilter(path: final path):
       return _pathFragment(path);
+    case RangeAssistFilter():
+      return _assistRangeFragment(filter);
+    case RelativeTimeFilter():
+      return _relativeTimeFragment(filter);
     case QueryFilter():
       // A `/regex/` has no SQL translation and keeps the legacy path; a field
       // query or the plain title form compiles.
@@ -435,6 +441,57 @@ WindowFragment? _pathFragment(String normalizedPath) {
   );
 }
 
+/// The value a [RangeAssistFilter] bounds, mirroring its in-memory `_valueOf`.
+///
+/// `takenDate` and `contentId` stay nullable on purpose: a NULL never passes a
+/// comparison, which is exactly how the in-memory test treats an entry with no
+/// date or no content id.
+String _assistRangeExpression(AssistRangeField field) => switch (field) {
+      AssistRangeField.takenDate => bestDateIfSetExpression,
+      AssistRangeField.size => 'COALESCE(e.sizeBytes, 0)',
+      AssistRangeField.width => _displayedSizeExpression(isWidth: true),
+      AssistRangeField.height => _displayedSizeExpression(isWidth: false),
+      AssistRangeField.contentId => 'e.contentId',
+    };
+
+WindowFragment _assistRangeFragment(RangeAssistFilter filter) {
+  final expression = _assistRangeExpression(filter.field);
+  final conditions = <String>[];
+  final variables = <Variable>[];
+  final min = filter.min;
+  final max = filter.max;
+  if (min != null) {
+    conditions.add('$expression >= ?');
+    variables.add(Variable(min));
+  }
+  if (max != null) {
+    conditions.add('$expression <= ?');
+    variables.add(Variable(max));
+  }
+  if (conditions.isEmpty) {
+    // An unbounded range matches everything; the assist never builds one, but
+    // the compiler must still be total.
+    return (sql: '1 = 1', variables: const [], requires: const {});
+  }
+  return (
+    sql: '(${conditions.join(' AND ')})',
+    variables: variables,
+    requires: switch (filter.field) {
+      AssistRangeField.takenDate => const {WindowTable.dateTaken},
+      AssistRangeField.width || AssistRangeField.height => const {WindowTable.metadata},
+      AssistRangeField.size || AssistRangeField.contentId => const {},
+    },
+  );
+}
+
+/// The window is anchored by the filter itself, so the database and the
+/// in-memory test read the same instant.
+WindowFragment _relativeTimeFragment(RelativeTimeFilter filter) => (
+      sql: '($bestDateIfSetExpression >= ?)',
+      variables: [Variable(filter.cutoffMillis)],
+      requires: const {WindowTable.dateTaken},
+    );
+
 /// Compiles the `KEY<op>value` forms of a query filter, or null when the string
 /// is not one of them (a `/regex/`, or the plain title form [_titleFragment]
 /// takes) or when the key has no SQL translation.
@@ -484,13 +541,17 @@ WindowFragment? _queryFragment(QueryFilter filter) {
 }
 
 /// `AvesEntry.displaySize`: the two sides swap when the entry is rotated.
-WindowFragment _displayedSizeFragment({required bool isWidth, required String comparison, required int value}) {
+String _displayedSizeExpression({required bool isWidth}) {
   const rotation = 'COALESCE(m.rotationDegrees, e.sourceRotationDegrees, 0)';
   const width = 'COALESCE(e.width, 0)';
   const height = 'COALESCE(e.height, 0)';
   final unrotated = isWidth ? width : height;
   final rotated = isWidth ? height : width;
-  final size = 'CASE WHEN (($rotation % 180) + 180) % 180 = 90 THEN $rotated ELSE $unrotated END';
+  return 'CASE WHEN (($rotation % 180) + 180) % 180 = 90 THEN $rotated ELSE $unrotated END';
+}
+
+WindowFragment _displayedSizeFragment({required bool isWidth, required String comparison, required int value}) {
+  final size = _displayedSizeExpression(isWidth: isWidth);
   return (sql: '($size $comparison ?)', variables: [Variable(value)], requires: const {WindowTable.metadata});
 }
 

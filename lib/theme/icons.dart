@@ -155,6 +155,8 @@ class AIcons {
   static const rotateRight = Symbols.rotate_right;
   static const rotateScreen = Symbols.screen_rotation;
   static const search = Symbols.search;
+  static const searchAssistOther = Symbols.tune;
+  static const searchAssistTime = Symbols.schedule;
   static const select = Symbols.select_all;
   static const setAs = Symbols.wallpaper;
   static const wallpaper = Symbols.wallpaper;

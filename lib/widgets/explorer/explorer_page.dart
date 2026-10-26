@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:aves/app_mode.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/filters/path.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/album.dart';
 import 'package:aves/model/source/collection_source.dart';
@@ -19,6 +20,7 @@ import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/behaviour/pop/double_back.dart';
 import 'package:aves/widgets/common/behaviour/pop/scope.dart';
 import 'package:aves/widgets/common/behaviour/pop/tv_navigation.dart';
+import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/common/identity/aves_filter_chip.dart';
 import 'package:aves/widgets/common/identity/empty.dart';
 import 'package:aves/widgets/explorer/app_bar.dart';
@@ -138,6 +140,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
               child: AvesScaffold(
                 body: body,
                 drawer: canNavigate ? AppDrawer(currentExplorerPath: path) : null,
+                floatingActionButton: canNavigate && path != null
+                    ? FloatingActionButton.extended(
+                        onPressed: () => _goToCollectionPage(context, PathFilter(path)),
+                        icon: const Icon(AIcons.path),
+                        label: Text(context.l10n.explorerUseCurrentPath),
+                      )
+                    : null,
                 bottomNavigationBar: showBottomNavigationBar
                     ? AppBottomNavBar(
                         events: _draggableScrollBarEventStreamController.stream,

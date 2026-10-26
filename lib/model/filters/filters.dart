@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:aves/features/search_filters/model/range_assist_filter.dart';
+import 'package:aves/features/search_filters/model/relative_time_filter.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/aspect_ratio.dart';
 import 'package:aves/model/filters/container/album_group.dart';
@@ -54,6 +56,8 @@ abstract class CollectionFilter extends Equatable implements Comparable<Collecti
     AspectRatioFilter.type,
     MissingFilter.type,
     PathFilter.type,
+    RangeAssistFilter.type,
+    RelativeTimeFilter.type,
   ];
 
   final bool reversed;
@@ -89,6 +93,10 @@ abstract class CollectionFilter extends Equatable implements Comparable<Collecti
         return SetOrFilter.fromMap(jsonMap);
       case PathFilter.type:
         return PathFilter.fromMap(jsonMap);
+      case RangeAssistFilter.type:
+        return RangeAssistFilter.fromMap(jsonMap);
+      case RelativeTimeFilter.type:
+        return RelativeTimeFilter.fromMap(jsonMap);
       case PlaceholderFilter.type:
         return PlaceholderFilter.fromMap(jsonMap);
       case QueryFilter.type:

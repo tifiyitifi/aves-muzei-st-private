@@ -1711,6 +1711,131 @@
   "aboutWallpaperGroups": "Wallpaper groups\n• Group 0 = no wallpaper group effect. It never changes the current wallpaper and is not a single-image mode.\n• Groups 1..n each keep an independent visible range: base, restrictions, supplements and order.\n• The defaults are 1/2/3: 1 all, 2 the Pictures path, 3 the DCIM path. They are demonstrations and can be changed.\n• Switching to a group with no images does nothing.\n• The notification cycles only the enabled groups 1..m; the current group is the one the actual wallpaper uses.\n• Group 0 is fixed first and is never numbered or dragged. 1..m is the enabled section, m+1..n the disabled section; dragging works inside a section.\n• Deleting or disabling the current group falls back to 0 and leaves the wallpaper unchanged until another group is chosen.\n• Numbers are automatic and cannot be edited. The current group follows its content, and the notification updates with it.",
   "aboutWallpaperAvailability": "Available wallpaper / Available wallpaper (browsing restricted)\n• This describes whether gallery browsing is restricted, not the wallpaper.\n• Available wallpaper: the base is Unrestricted and there is no additional restriction group. Supplements do not affect this.\n• Available wallpaper (browsing restricted): the base is not Unrestricted, or at least one additional restriction group exists.\n• While the visible range is unlocked, the wallpaper page's More can temporarily remove or restore the restriction. It only affects browsing on the wallpaper page and is restored when you leave; the actual wallpaper is unaffected.\n• A locked visible range cannot be temporarily removed.",
   "aboutWallpaperSync": "Syncing and resetting\n• Edits on the wallpaper page are a draft. Syncing to wallpaper is what actually bakes it; reset returns to the actual wallpaper.\n• Activating a rule only changes the browsing filters and never bypasses the visible range.",
-  "aboutVisibleRangeOrderNote": "Visible range notes come first on the visible range page; wallpaper notes come first on the wallpaper page. Both pages can read everything."
+  "aboutVisibleRangeOrderNote": "Visible range notes come first on the visible range page; wallpaper notes come first on the wallpaper page. Both pages can read everything.",
+
+  "explorerUseCurrentPath": "Use current folder",
+
+  "searchAssistSectionTitle": "Assist",
+  "searchAssistPath": "Path",
+  "searchAssistOther": "More filters",
+  "searchAssistClear": "Clear",
+  "searchAssistApply": "Apply filters",
+  "searchAssistConfirm": "Done",
+  "searchAssistPathTitle": "Path",
+  "searchAssistPathInclude": "Only this folder",
+  "searchAssistPathExclude": "Exclude this folder",
+  "searchAssistPathUse": "Use this folder",
+  "searchAssistPathNoSubdirectories": "No subfolders here.",
+  "searchAssistPathIncludeLabel": "In {path}",
+  "@searchAssistPathIncludeLabel": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "searchAssistPathExcludeLabel": "Not in {path}",
+  "@searchAssistPathExcludeLabel": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "searchAssistFieldTakenDate": "Date",
+  "searchAssistFieldSize": "Size",
+  "searchAssistFieldDimension": "Dimensions",
+  "searchAssistFieldWidth": "Width",
+  "searchAssistFieldHeight": "Height",
+  "searchAssistFieldId": "Content ID",
+  "searchAssistFieldRecent": "Recently added",
+  "searchAssistFieldExtension": "Format",
+  "searchAssistRangeLabel": "{field}: {value}",
+  "@searchAssistRangeLabel": {
+    "placeholders": {
+      "field": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "searchAssistRangeAtLeast": "≥ {value}",
+  "@searchAssistRangeAtLeast": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "searchAssistRangeAtMost": "≤ {value}",
+  "@searchAssistRangeAtMost": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "searchAssistRangeBetween": "{from} – {to}",
+  "@searchAssistRangeBetween": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "searchAssistDateNone": "Any date",
+  "searchAssistDateToday": "Today",
+  "searchAssistDateLast7Days": "Last 7 days",
+  "searchAssistDateThisMonth": "This month",
+  "searchAssistDateThisYear": "This year",
+  "searchAssistCustomRange": "Custom range",
+  "searchAssistMin": "Min",
+  "searchAssistMax": "Max",
+  "searchAssistSizeSmall": "Under 1 MB",
+  "searchAssistSizeMedium": "1–5 MB",
+  "searchAssistSizeLarge": "Over 5 MB",
+  "searchAssistDimensionHint": "The displayed size, after rotation.",
+  "searchAssistExtensionNone": "No formats available.",
+  "searchAssistExtensions": "Format: {list}",
+  "@searchAssistExtensions": {
+    "placeholders": {
+      "list": {
+        "type": "String"
+      }
+    }
+  },
+  "searchAssistIdHint": "The content ID is the media store identifier of the file.",
+  "searchAssistRecentHours": "{count, plural, =1{Last hour} other{Last {count} hours}}",
+  "@searchAssistRecentHours": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "searchAssistRecentDays": "{count, plural, =1{Last 24 hours} other{Last {count} days}}",
+  "@searchAssistRecentDays": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "searchAssistMatchCount": "{count, plural, =1{1 match} other{{count} matches}}",
+  "@searchAssistMatchCount": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  }
 }
 

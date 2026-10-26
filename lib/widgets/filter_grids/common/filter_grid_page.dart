@@ -397,15 +397,21 @@ class _FilterGridContentState<T extends CollectionFilter> extends State<_FilterG
                               tileHeight: tileHeight,
                               tileBuilder: (gridItem, tileSize) {
                                 final extent = tileSize.shortestSide;
-                                final tile = InteractiveFilterTile(
-                                  gridItem: gridItem,
-                                  chipExtent: extent,
-                                  thumbnailExtent: extent,
-                                  tileLayout: tileLayout,
-                                  banner: _getFilterBanner(context, gridItem.filter),
-                                  heroType: widget.heroType,
-                                  onTap: widget.onTileTap,
-                                );
+                                // The fork seam replaces only the tile: the
+                                // grid, scaling, sections, selection and the TV
+                                // focus treatment stay shared with the album
+                                // page. Without a builder this is exactly the
+                                // album tile.
+                                final tile = widget.tileBuilder?.call(context, gridItem, tileSize) ??
+                                    InteractiveFilterTile(
+                                      gridItem: gridItem,
+                                      chipExtent: extent,
+                                      thumbnailExtent: extent,
+                                      tileLayout: tileLayout,
+                                      banner: _getFilterBanner(context, gridItem.filter),
+                                      heroType: widget.heroType,
+                                      onTap: widget.onTileTap,
+                                    );
                                 if (!settings.useTvLayout) return tile;
 
                                 return Focus(

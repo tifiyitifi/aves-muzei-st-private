@@ -19,6 +19,7 @@ class const SectionHeader<T>({
   required final String title,
   final Widget? trailing,
   final bool selectable = true,
+  final TextStyle? titleStyle,
 }) extends StatelessWidget {
   static const leadingSize = Size.square(32);
   static const widgetSpanAlignmentMargin = EdgeInsetsDirectional.only(bottom: 4);
@@ -79,7 +80,7 @@ class const SectionHeader<T>({
               ),
               TextSpan(
                 text: title,
-                style: _headerTextStyle(context),
+                style: titleStyle ?? _headerTextStyle(context),
               ),
               if (trailing != null)
                 WidgetSpan(

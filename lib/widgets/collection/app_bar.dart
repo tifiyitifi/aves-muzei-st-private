@@ -9,6 +9,8 @@ import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart
 import 'package:aves/features/collection_paging/view/clear_filter_button.dart';
 import 'package:aves/features/collection_paging/view/collection_select_all.dart';
 import 'package:aves/features/collection_paging/view/filter_policy_scope.dart';
+import 'package:aves/features/visible_range/services/visible_range_controller.dart';
+import 'package:aves/features/visible_range/view/visible_range_pin_sheet.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
@@ -53,6 +55,10 @@ import 'package:collection/collection.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
+
+/// The collection app bar's own overflow values; chip-set actions are
+/// [EntrySetAction], so the popup is typed `Object`.
+enum _CollectionAppBarAction { pinToVisibleRange }
 
 class const CollectionAppBar({
   super.key,
@@ -499,6 +505,11 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
       ...isSelecting ? EntrySetActions.pageSelection : EntrySetActions.pageBrowsing,
     ].nonNulls.where(isVisible).map(toCaptionedButton).toList();
 
+    // The TV rail has no overflow menu, so pinning needs its own captioned
+    // button there (same visibility rules as the phone menu entry).
+    final visibleFilters = _visibleFilters(context);
+    final canPin = !isSelecting && appMode == .main && !isTrash && visibleFilters.isNotEmpty;
+
     return [
       if (fabAction != null) ...[
         toCaptionedButton(fabAction),
@@ -515,6 +526,17 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
         ),
       ],
       ...regularActions,
+      if (canPin)
+        CaptionedButton(
+          iconButtonBuilder: (context, focusNode) => IconButton(
+            icon: const Icon(AIcons.visibleRangePin),
+            tooltip: context.l10n.visibleRangePinAction,
+            focusNode: focusNode,
+            onPressed: () => unawaited(_onPinToVisibleRange(context, visibleFilters)),
+          ),
+          captionText: CaptionedButtonText(text: context.l10n.visibleRangePinAction, enabled: true),
+          onPressed: () => unawaited(_onPinToVisibleRange(context, visibleFilters)),
+        ),
     ];
   }
 
@@ -552,9 +574,14 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
 
     final l10n = context.l10n;
     final animations = context.select<Settings, AccessibilityAnimations>((v) => v.accessibilityAnimations);
+    // Pinning is a medium-frequency setup action: a user arranges a few ranges
+    // and then rarely returns, so it reuses the existing Aves overflow instead
+    // of taking a permanent slot next to the filters.
+    final visibleFilters = _visibleFilters(context);
+    final canPin = !isSelecting && appMode == .main && !isTrash && visibleFilters.isNotEmpty;
     return [
       ...quickActionButtons,
-      PopupMenuButton<EntrySetAction>(
+      PopupMenuButton<Object>(
         // key is expected by test driver
         key: const Key('appbar-menu-button'),
         itemBuilder: (context) {
@@ -603,19 +630,30 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
             ],
           ];
 
-          return [
+          return <PopupMenuEntry<Object>>[
             ...generalMenuItems,
+            if (canPin) ...[
+              const PopupMenuDivider(),
+              PopupMenuItem<Object>(
+                value: _CollectionAppBarAction.pinToVisibleRange,
+                child: MenuRow(icon: const Icon(AIcons.visibleRangePin), text: l10n.visibleRangePinAction),
+              ),
+            ],
             if (contextualMenuItems.isNotEmpty) ...[
               const PopupMenuDivider(),
               ...contextualMenuItems,
             ],
           ];
         },
-        onSelected: (action) async {
+        onSelected: (value) async {
           _actionPopupExpandedNotifier.value = null;
           // wait for the popup menu to hide before proceeding with the action
           await Future.delayed(animations.popUpAnimationDelay * timeDilation);
-          await _onActionSelected(action);
+          if (value is EntrySetAction) {
+            await _onActionSelected(value);
+          } else if (value == _CollectionAppBarAction.pinToVisibleRange) {
+            await _onPinToVisibleRange(context, _visibleFilters(context));
+          }
         },
         onCanceled: () {
           _actionPopupExpandedNotifier.value = null;
@@ -623,6 +661,22 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
         popUpAnimationStyle: animations.popUpAnimationStyle,
       ),
     ];
+  }
+
+  /// Opens the unified pin sheet for the filters currently on screen.
+  ///
+  /// A locked range stays listed but cannot be edited: the tap explains why
+  /// instead of opening a sheet whose confirmation would fail.
+  Future<void> _onPinToVisibleRange(BuildContext context, Set<CollectionFilter> filters) async {
+    final l10n = context.l10n;
+    if (!visibleRangeController.canEdit) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.visibleRangeManagementBlocked)));
+      return;
+    }
+    final result = await showVisibleRangePinSheet(context, filters: filters);
+    if (!context.mounted || result == null) return;
+    final text = result.skipped > 0 ? l10n.visibleRangePinPartial(result.pinned, result.skipped) : l10n.visibleRangePinDone(result.pinned);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   Set<AvesEntry> _getExpandedSelectedItems(Selection<AvesEntry> selection) {

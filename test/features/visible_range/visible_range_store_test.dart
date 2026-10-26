@@ -44,7 +44,16 @@ void main() {
     final range = makeRange();
     await store.saveRange(range);
     await store.saveRule(VisibleRangeRule(id: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, position: 0, filters: {favourite}));
-    await store.saveRule(VisibleRangeRule(id: 'r2', rangeId: range.id, kind: VisibleRangeRuleKind.supplement, position: 1, label: 'mine', filters: {image}, active: false));
+    await store.saveRule(VisibleRangeRule(
+      id: 'r2',
+      rangeId: range.id,
+      kind: VisibleRangeRuleKind.supplement,
+      position: 1,
+      label: 'mine',
+      description: 'pinned on a rainy day',
+      filters: {image},
+      active: false,
+    ));
 
     final loaded = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId);
     expect(loaded, isNotNull);
@@ -56,6 +65,8 @@ void main() {
     expect(loaded.permissions.share, isTrue);
     expect(loaded.rules.map((r) => r.id), ['r1', 'r2']);
     expect(loaded.rules[1].label, 'mine');
+    expect(loaded.rules[1].description, 'pinned on a rainy day');
+    expect(loaded.rules[0].description, isEmpty);
     expect(loaded.rules[1].active, isFalse);
   });
 
@@ -107,10 +118,12 @@ void main() {
 
   test('presets and state round-trip', () async {
     await store.savePreset(const VisibleRangePreset(id: 'builtin.image', name: 'visibleRangePresetImage', builtin: true));
-    await store.savePreset(VisibleRangePreset(id: 'user.1', name: 'Mine', filters: {favourite}, position: 1));
+    await store.savePreset(VisibleRangePreset(id: 'user.1', name: 'Mine', description: 'my note', filters: {favourite}, position: 1));
     final presets = await store.loadPresets();
     expect(presets.map((p) => p.id), ['builtin.image', 'user.1']);
     expect(presets[1].filters, {favourite});
+    expect(presets[1].description, 'my note');
+    expect(presets[0].description, isEmpty);
 
     await store.writeState(VisibleRangeStore.keySeeded, '1');
     expect(await store.readState(VisibleRangeStore.keySeeded), '1');

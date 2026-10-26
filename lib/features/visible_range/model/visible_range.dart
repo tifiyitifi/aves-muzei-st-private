@@ -168,6 +168,10 @@ class VisibleRangeRule extends Equatable {
   final VisibleRangeRuleKind kind;
   final int position;
   final String label;
+
+  /// Free-form user note shown under the label, e.g. when and from what the rule
+  /// was pinned. Never localized here: it is user text.
+  final String description;
   final Set<CollectionFilter> filters;
   final bool active;
 
@@ -177,6 +181,7 @@ class VisibleRangeRule extends Equatable {
     required this.kind,
     this.position = 0,
     this.label = '',
+    this.description = '',
     this.filters = const {},
     this.active = true,
   });
@@ -194,6 +199,7 @@ class VisibleRangeRule extends Equatable {
     VisibleRangeRuleKind? kind,
     int? position,
     String? label,
+    String? description,
     Set<CollectionFilter>? filters,
     bool? active,
   }) {
@@ -203,6 +209,7 @@ class VisibleRangeRule extends Equatable {
       kind: kind ?? this.kind,
       position: position ?? this.position,
       label: label ?? this.label,
+      description: description ?? this.description,
       filters: filters ?? this.filters,
       active: active ?? this.active,
     );
@@ -217,7 +224,7 @@ class VisibleRangeRule extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, rangeId, kind, position, label, filters, active];
+  List<Object?> get props => [id, rangeId, kind, position, label, description, filters, active];
 }
 
 /// A base-range preset (built-in or user-saved). Built-in presets are read-only.
@@ -225,6 +232,7 @@ class VisibleRangeRule extends Equatable {
 class VisibleRangePreset extends Equatable {
   final String id;
   final String name;
+  final String description;
   final Set<CollectionFilter> filters;
   final bool builtin;
   final int position;
@@ -232,6 +240,7 @@ class VisibleRangePreset extends Equatable {
   const new({
     required this.id,
     required this.name,
+    this.description = '',
     this.filters = const {},
     this.builtin = false,
     this.position = 0,
@@ -240,8 +249,25 @@ class VisibleRangePreset extends Equatable {
   /// Filters fingerprint, used by "重新加入默认限制" to skip duplicates.
   String get fingerprint => filterFingerprint(filters);
 
+  VisibleRangePreset copyWith({
+    String? name,
+    String? description,
+    Set<CollectionFilter>? filters,
+    bool? builtin,
+    int? position,
+  }) {
+    return VisibleRangePreset(
+      id: id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      filters: filters ?? this.filters,
+      builtin: builtin ?? this.builtin,
+      position: position ?? this.position,
+    );
+  }
+
   @override
-  List<Object?> get props => [id, name, filters, builtin, position];
+  List<Object?> get props => [id, name, description, filters, builtin, position];
 }
 
 /// One "activate to media set" record.

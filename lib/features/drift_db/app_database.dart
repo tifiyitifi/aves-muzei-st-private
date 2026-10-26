@@ -10,6 +10,7 @@ import 'package:aves/features/drift_db/migration/migration_v2.dart';
 import 'package:aves/features/drift_db/migration/migration_v3.dart';
 import 'package:aves/features/drift_db/migration/migration_v4.dart';
 import 'package:aves/features/drift_db/migration/migration_v5.dart';
+import 'package:aves/features/drift_db/migration/migration_v6.dart';
 import 'package:aves/features/drift_db/trash/trash_table.dart';
 import 'package:aves/features/drift_db/vaults/vault_table.dart';
 import 'package:aves/features/drift_db/video_playback/video_playback_table.dart';
@@ -60,7 +61,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -74,6 +75,7 @@ class AppDatabase extends _$AppDatabase {
           if (from < 3) await MigrationV3(this).run(m);
           if (from < 4) await MigrationV4(this).run(m);
           if (from < 5) await MigrationV5(this).run(m);
+          if (from < 6) await MigrationV6(this).run(m);
         },
         beforeOpen: (details) async {
           // The main isolate and the analysis background isolate each open

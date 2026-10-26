@@ -57,8 +57,9 @@ class AIcons {
   static const visibleRangeBase = Symbols.remove_done;
   static const visibleRangeRestriction = Symbols.rule;
   static const visibleRangeSupplement = Symbols.add_task;
-  static const visibleRangeActive = Symbols.visibility;
+  static const visibleRangeActive = Symbols.lightbulb;
   static const visibleRangeInactive = Symbols.block;
+  static const visibleRangePin = Symbols.push_pin;
   static const rating = Symbols.star;
   static const ratingRejected = MdiIcons.starMinusOutline;
   static const ratingUnrated = MdiIcons.starOffOutline;

@@ -103,6 +103,7 @@ class VisibleRangeStore {
         kind: rule.kind.name,
         position: Value(rule.position),
         label: Value(rule.label),
+        description: Value(rule.description),
         filters: Value(VisibleRangeFilterCodec.encode(rule.filters)),
         active: Value(rule.active),
       ),
@@ -127,6 +128,7 @@ class VisibleRangeStore {
       VisibleRangePresetRowsCompanion.insert(
         id: preset.id,
         name: preset.name,
+        description: Value(preset.description),
         filters: Value(VisibleRangeFilterCodec.encode(preset.filters)),
         builtin: Value(preset.builtin),
         position: Value(preset.position),
@@ -220,6 +222,7 @@ class VisibleRangeStore {
         kind: VisibleRangeRuleKind.parse(row.kind),
         position: row.position,
         label: row.label,
+        description: row.description,
         filters: VisibleRangeFilterCodec.decode(row.filters),
         active: row.active,
       );
@@ -227,6 +230,7 @@ class VisibleRangeStore {
   static VisibleRangePreset _toPreset(VisibleRangePresetRow row) => VisibleRangePreset(
         id: row.id,
         name: row.name,
+        description: row.description,
         filters: VisibleRangeFilterCodec.decode(row.filters),
         builtin: row.builtin,
         position: row.position,

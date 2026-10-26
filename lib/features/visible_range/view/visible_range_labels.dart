@@ -14,6 +14,7 @@ String visibleRangePresetLabel(BuildContext context, String key) {
   return switch (key) {
     'visibleRangeUnrestricted' => l10n.visibleRangeUnrestricted,
     'visibleRangePresetImage' => l10n.visibleRangePresetImage,
+    'visibleRangeGallery' => l10n.visibleRangeGallery,
     'visibleRangePresetVideo' => l10n.visibleRangePresetVideo,
     'visibleRangePresetNotVideo' => l10n.visibleRangePresetNotVideo,
     'visibleRangePresetFavourite' => l10n.visibleRangePresetFavourite,

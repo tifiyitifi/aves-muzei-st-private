@@ -7,7 +7,6 @@ import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/icons.dart';
-import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/common/identity/aves_filter_chip.dart';
 import 'package:aves/widgets/common/thumbnail/image.dart';
 import 'package:aves/widgets/filter_grids/common/covered_filter_chip.dart';
@@ -19,17 +18,23 @@ import 'package:provider/provider.dart';
 
 /// One tile of the visible-range grid.
 ///
-/// It is the album page's chip, not a parallel card design: [AvesFilterChip]
-/// supplies the radius, padding, typography and leading icon, while the cover
-/// and count come from the feature's stats service because candidates are filter
-/// sets rather than covered filters. [FilterChipGridDecorator] supplies the
-/// album page's selection and highlight overlays.
+/// It reads like a regular covered chip: a cover, a name and a number. The only
+/// extra is the state icon in the details row, which tells whether the candidate
+/// takes part in the current range (checked) or not (blocked). Description and
+/// kind icon are left out on purpose: the page is a checklist, not an editor.
 class VisibleRangeTile extends StatelessWidget {
   final FilterGridItem<VisibleRangeCandidateFilter> gridItem;
   final VisibleRangeCandidateStats? stats;
   final TileLayout tileLayout;
   final Size tileSize;
+
+  /// Footer copies are not part of the grid's selection: tapping one cancels
+  /// the condition instead.
   final bool summary;
+
+  /// The result chip shows only its count: it is not a condition that can be
+  /// toggled on and off.
+  final bool showStateIcon;
   final VoidCallback? onTap;
   final VoidCallback? onRemove;
   final VoidCallback? onLongPress;
@@ -41,6 +46,7 @@ class VisibleRangeTile extends StatelessWidget {
     required this.tileLayout,
     required this.tileSize,
     this.summary = false,
+    this.showStateIcon = true,
     this.onTap,
     this.onRemove,
     this.onLongPress,
@@ -50,7 +56,10 @@ class VisibleRangeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final extent = tileLayout == TileLayout.grid ? tileSize.width : tileSize.height;
+    // The list row is wider than it is tall and lays the chip out in a fixed
+    // square on the start side, so its extent is the row height. Grid and mosaic
+    // keep the album chip's square extent.
+    final extent = tileLayout == TileLayout.list ? tileSize.height : tileSize.shortestSide;
     if (tileLayout == TileLayout.list) {
       return _buildList(context, extent);
     }
@@ -74,10 +83,7 @@ class VisibleRangeTile extends StatelessWidget {
 
   Widget _buildList(BuildContext context, double extent) {
     final theme = context.read<FilterListDetailsThemeData>();
-    final l10n = context.l10n;
     final label = visibleRangeCandidateLabel(context, candidate);
-    final filtersLabel = visibleRangeFilterLabels(context, candidate.filters);
-    final count = stats?.count;
     return InkWell(
       borderRadius: const BorderRadius.all(Radius.circular(12)),
       onTap: onTap,
@@ -98,26 +104,8 @@ class VisibleRangeTile extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(label, maxLines: theme.titleMaxLines, overflow: TextOverflow.ellipsis, style: theme.titleStyle),
-                  if (filtersLabel.isNotEmpty && filtersLabel != label) ...[
-                    const SizedBox(height: 2),
-                    Text(filtersLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.captionStyle),
-                  ],
-                  if (count != null) ...[
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        if (candidate.active || candidate.rule != null) ...[
-                          Icon(
-                            candidate.active ? AIcons.checked : AIcons.visibleRangeInactive,
-                            size: theme.captionIconTheme.size,
-                            color: candidate.active ? Theme.of(context).colorScheme.primary : theme.captionStyle.color,
-                          ),
-                          const SizedBox(width: 6),
-                        ],
-                        Text(l10n.visibleRangeCount(count), style: theme.captionStyle),
-                      ],
-                    ),
-                  ],
+                  const SizedBox(height: 2),
+                  _buildDetails(context, extent, theme.captionStyle.color),
                 ],
               ),
             ),
@@ -130,14 +118,14 @@ class VisibleRangeTile extends StatelessWidget {
   Widget _buildChip(BuildContext context, double extent, {required bool showText}) {
     final textScaler = MediaQuery.textScalerOf(context);
     final infoHeight = showText ? CoveredFilterChip.infoHeight(extent: extent, textScaler: textScaler, showText: true) : 0.0;
-    final count = stats?.count;
-    final countText = count != null ? settings.avesLocale.decimalNumberFormat().format(count) : null;
     final inactiveRule = candidate.rule != null && !candidate.active;
     return Opacity(
       opacity: inactiveRule ? .62 : 1,
       child: AvesFilterChip(
         filter: gridItem.filter,
-        showLeading: true,
+        // The state icon in the details row replaces the kind icon: a candidate
+        // is identified by its name, and its kind is already the section.
+        showLeading: false,
         showText: showText,
         allowGenericIcon: false,
         useFilterColor: false,
@@ -149,10 +137,10 @@ class VisibleRangeTile extends StatelessWidget {
             child: _buildCover(context, extent),
           ),
         ),
-        details: showText ? _buildDetails(context, extent, countText) : null,
+        details: showText ? _buildDetails(context, extent, Theme.of(context).colorScheme.onSurfaceVariant) : null,
         heroType: HeroType.never,
-        onTap: (_) => onTap?.call(),
-        onRemove: summary ? (_) => onRemove?.call() : null,
+        onTap: onTap != null ? (_) => onTap!.call() : null,
+        onRemove: summary && onRemove != null ? (_) => onRemove!.call() : null,
         onLongPress: onLongPress != null ? (_, _, _) => onLongPress!() : null,
       ),
     );
@@ -169,6 +157,8 @@ class VisibleRangeTile extends StatelessWidget {
     }
     final brightness = Theme.of(context).brightness;
     final color = ThumbnailImage.computeLoadingBackgroundColor(candidate.id.hashCode, brightness);
+    // One neutral placeholder for every candidate without a usable cover, so an
+    // empty group never looks like a per-kind illustration.
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -179,7 +169,7 @@ class VisibleRangeTile extends StatelessWidget {
       ),
       child: Center(
         child: Icon(
-          _kindIcon,
+          AIcons.image,
           size: min(extent * .32, 44),
           color: brightness == Brightness.light ? Colors.black54 : Colors.white70,
         ),
@@ -187,16 +177,19 @@ class VisibleRangeTile extends StatelessWidget {
     );
   }
 
-  Widget _buildDetails(BuildContext context, double extent, String? countText) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+  Widget _buildDetails(BuildContext context, double extent, Color? color) {
+    final colors = Theme.of(context).colorScheme;
+    final count = stats?.count;
+    final countText = count != null ? settings.avesLocale.decimalNumberFormat().format(count) : null;
     final iconSize = CoveredFilterChip.detailIconSize(extent);
-    final fontSize = CoveredFilterChip.detailFontSize(extent);
-    final showIcon = candidate.active || candidate.rule != null;
+    final textStyle = TextStyle(
+      color: color ?? colors.onSurfaceVariant,
+      fontSize: CoveredFilterChip.detailFontSize(extent),
+    );
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showIcon) ...[
+        if (showStateIcon) ...[
           Icon(
             candidate.active ? AIcons.checked : AIcons.visibleRangeInactive,
             size: iconSize,
@@ -210,18 +203,10 @@ class VisibleRangeTile extends StatelessWidget {
               countText,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: colors.onSurfaceVariant, fontSize: fontSize),
+              style: textStyle,
             ),
           ),
       ],
     );
   }
-
-  IconData get _kindIcon => candidate.isUnrestricted
-      ? AIcons.filterOff
-      : switch (candidate.kind) {
-          VisibleRangeCandidateKind.base => AIcons.visibleRangeBase,
-          VisibleRangeCandidateKind.restriction => AIcons.visibleRangeRestriction,
-          VisibleRangeCandidateKind.supplement => AIcons.visibleRangeSupplement,
-        };
 }

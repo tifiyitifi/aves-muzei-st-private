@@ -2,11 +2,13 @@ import 'package:aves/features/collection_paging/query/collection_window_predicat
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/entry/extensions/props.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/vaults/vaults.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
+import 'package:collection/collection.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
@@ -29,16 +31,25 @@ class VisibleRangeCandidateStats extends Equatable {
 /// tile falls back to its drawn cover. Results are keyed by the filter
 /// fingerprint, so candidates that stand for the same conditions share a query.
 abstract final class VisibleRangeCandidateStatsLoader {
+  /// How many newest entries a candidate offers as a possible cover.
+  ///
+  /// The database can still hold entries whose files were deleted since the
+  /// last scan; the newest of those renders as a broken thumbnail, so the loader
+  /// walks a short slice until it finds one that still exists.
+  static const int coverCandidateLimit = 16;
+
   static Future<Map<String, VisibleRangeCandidateStats>> load(
     Iterable<Set<CollectionFilter>> filterSets, {
     Set<CollectionFilter>? hidden,
     Set<String>? lockedVaultDirs,
     LocalMediaDb? database,
+    bool Function(AvesEntry entry)? isCoverUsable,
     void Function(String key, VisibleRangeCandidateStats stats)? onResult,
   }) async {
     final result = <String, VisibleRangeCandidateStats>{};
     final hiddenFilters = hidden ?? settings.hiddenFilters;
     final lockedDirs = lockedVaultDirs ?? vaults.vaultDirectories.where(vaults.isLocked).toSet();
+    final coverTest = isCoverUsable ?? ((entry) => !entry.isMissingAtPath);
     final db = database ?? localMediaDb;
     try {
       await db.init();
@@ -48,7 +59,7 @@ abstract final class VisibleRangeCandidateStatsLoader {
     for (final filters in filterSets) {
       final key = filterFingerprint(filters);
       if (result.containsKey(key)) continue;
-      final stats = await _loadOne(filters, database: db, hidden: hiddenFilters, lockedVaultDirs: lockedDirs);
+      final stats = await _loadOne(filters, database: db, hidden: hiddenFilters, lockedVaultDirs: lockedDirs, isCoverUsable: coverTest);
       result[key] = stats;
       // Let the page paint each tile as soon as its query returns instead of
       // waiting for the whole batch of defaults.
@@ -62,6 +73,7 @@ abstract final class VisibleRangeCandidateStatsLoader {
     required LocalMediaDb database,
     required Set<CollectionFilter> hidden,
     required Set<String> lockedVaultDirs,
+    required bool Function(AvesEntry entry) isCoverUsable,
   }) async {
     try {
       final predicate = predicateForFilters(filters, hidden: hidden, lockedVaultDirs: lockedVaultDirs);
@@ -71,10 +83,10 @@ abstract final class VisibleRangeCandidateStatsLoader {
         predicate: predicate,
         sort: SortFactor.date,
         reverse: false,
-        limit: 1,
+        limit: coverCandidateLimit,
         offset: 0,
       );
-      return VisibleRangeCandidateStats(count: count, cover: entries.firstOrNull);
+      return VisibleRangeCandidateStats(count: count, cover: entries.firstWhereOrNull(isCoverUsable));
     } catch (_) {
       // A preview is never worth blocking the page for.
       return const VisibleRangeCandidateStats();

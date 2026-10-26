@@ -246,6 +246,7 @@ void main() {
 
       // Both sessions stay addressable; writing one back clears all of them.
       expect(controller.sessions, hasLength(2));
+      expect(controller.sessions.map((session) => session.id).toSet(), hasLength(2), reason: 'ids must stay unique even when created in the same millisecond');
       await controller.writeBackSession(controller.sessions.first.id);
       expect(controller.gallery.ruleById(rule.id)!.filters, {image, favourite});
       expect(controller.sessions, isEmpty);

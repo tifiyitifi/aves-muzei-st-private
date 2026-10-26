@@ -1556,11 +1556,12 @@
   },
 
   "visibleRangePageTitle": "Visible range",
-  "visibleRangeSectionBase": "Base range",
-  "visibleRangeSectionRestrictions": "Additional restrictions",
-  "visibleRangeSectionSupplementsOutside": "Supplements outside the base",
-  "visibleRangeSectionSupplementsInside": "Supplements inside the restrictions",
+  "visibleRangeSectionBase": "base range (exclusive)",
+  "visibleRangeSectionRestrictions": "additional restrictions",
+  "visibleRangeSectionSupplementsOutside": "supplements outside the base",
+  "visibleRangeSectionSupplementsInside": "supplements inside the restrictions",
   "visibleRangeSectionCurrent": "Current visible range",
+  "visibleRangeGallery": "gallery",
   "visibleRangeUnrestricted": "Unrestricted",
   "visibleRangeRestricted": "Restricted",
   "visibleRangeRestrictedHint": "Restricted when the base range is not unrestricted, or when at least one additional restriction is active. Supplements never make browsing restricted.",
@@ -1685,6 +1686,43 @@
   "visibleRangeAboutWallpaper": "About grouped wallpaper",
   "visibleRangeMore": "More",
   "visibleRangeManagementBlocked": "Unlock the visible range to change it.",
+  "visibleRangePinAction": "Pin to visible range / wallpaper",
+  "visibleRangePinTitle": "Pin to visible range / wallpaper",
+  "visibleRangePinFilters": "Filters",
+  "visibleRangePinName": "Name",
+  "visibleRangePinDescription": "Description",
+  "visibleRangePinGroups": "Add to groups",
+  "visibleRangePinGroupBase": "Base range",
+  "visibleRangePinGroupRestriction": "Restriction",
+  "visibleRangePinGroupSupplement": "Supplement",
+  "visibleRangePinTargets": "Targets",
+  "visibleRangePinTargetGallery": "Gallery",
+  "visibleRangePinConfirm": "Pin",
+  "visibleRangePinNoGroup": "Choose at least one group.",
+  "visibleRangePinNoTarget": "Choose at least one target.",
+  "visibleRangePinDone": "Pinned to {pinned, plural, =1{{pinned} target} other{{pinned} targets}}",
+  "@visibleRangePinDone": {
+    "placeholders": {
+      "pinned": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "visibleRangePinPartial": "Pinned to {pinned}, skipped {skipped}",
+  "@visibleRangePinPartial": {
+    "placeholders": {
+      "pinned": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "skipped": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "visibleRangeEditNameDescription": "Edit name and description",
   "visibleRangePresetImage": "Images",
   "visibleRangePresetVideo": "Videos",
   "visibleRangePresetNotVideo": "Non-video",

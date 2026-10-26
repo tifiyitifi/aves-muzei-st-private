@@ -13,6 +13,7 @@ class const FilterChipSectionHeader<T>({
       sectionKey: sectionKey,
       leading: sectionKey.leading,
       title: sectionKey.title,
+      titleStyle: sectionKey.titleStyle,
       selectable: selectable,
     );
   }

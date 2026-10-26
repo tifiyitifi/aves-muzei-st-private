@@ -14,6 +14,9 @@ class VisibleRangePresetRows extends Table {
 
   TextColumn get name => text()();
 
+  /// Free-form user note, e.g. when and from what the base was pinned.
+  TextColumn get description => text().withDefault(const Constant(''))();
+
   /// JSON array of `CollectionFilter.toJsonMap()` bodies, AND-ed together.
   TextColumn get filters => text().withDefault(const Constant('[]'))();
 
@@ -87,6 +90,9 @@ class VisibleRangeRuleRows extends Table {
   IntColumn get position => integer().withDefault(const Constant(0))();
 
   TextColumn get label => text().withDefault(const Constant(''))();
+
+  /// Free-form user note, e.g. when and from what the rule was pinned.
+  TextColumn get description => text().withDefault(const Constant(''))();
 
   /// JSON array of filter bodies.
   TextColumn get filters => text().withDefault(const Constant('[]'))();

@@ -10,11 +10,16 @@ import 'package:material_ui/material_ui.dart';
 class ChipSectionKey extends SectionKey with Equatable {
   final String title;
 
+  /// Optional title style for a page whose headers deliberately differ from the
+  /// app-wide small-caps section style. A null style keeps the default.
+  final TextStyle? titleStyle;
+
   @override
-  List<Object?> get props => [title];
+  List<Object?> get props => [title, titleStyle];
 
   const new({
     this.title = '',
+    this.titleStyle,
   });
 
   Widget? get leading => null;

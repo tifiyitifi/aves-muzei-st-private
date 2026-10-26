@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
@@ -32,10 +34,10 @@ void main() {
   final base = DateTime(2026, 1, 1).millisecondsSinceEpoch;
   const day = Duration.millisecondsPerDay;
 
-  AvesEntry entry(int id, String mimeType, {int? takenMillis}) => AvesEntry(
+  AvesEntry entry(int id, String mimeType, {int? takenMillis, String? path}) => AvesEntry(
         id: id,
         uri: 'content://$id',
-        path: '/a/$id',
+        path: path ?? '/a/$id',
         contentId: id,
         pageId: null,
         sourceMimeType: mimeType,
@@ -65,12 +67,17 @@ void main() {
 
   tearDown(() => db.close());
 
-  Future<Map<String, VisibleRangeCandidateStats>> load(Iterable<Set<CollectionFilter>> filterSets) {
+  /// Tests use made-up paths, so cover validation is off unless a test opts in.
+  Future<Map<String, VisibleRangeCandidateStats>> load(
+    Iterable<Set<CollectionFilter>> filterSets, {
+    bool validateCovers = false,
+  }) {
     return VisibleRangeCandidateStatsLoader.load(
       filterSets,
       hidden: const {},
       lockedVaultDirs: const {},
       database: service,
+      isCoverUsable: validateCovers ? null : (_) => true,
     );
   }
 
@@ -121,5 +128,41 @@ void main() {
       database: service,
     );
     expect(stats.values.single.count, 0);
+  });
+
+  test('a cover whose file is gone is skipped in favour of the newest existing one', () async {
+    final dir = await Directory.systemTemp.createTemp('aves_visible_range_stats');
+    addTearDown(() => dir.delete(recursive: true));
+    final existing = File(p.join(dir.path, 'existing.jpg'))..writeAsBytesSync([1, 2, 3]);
+    await service.insertEntries({
+      entry(4, MimeTypes.jpeg, takenMillis: base + 3 * day),
+      entry(5, MimeTypes.jpeg, takenMillis: base + 4 * day, path: existing.path),
+      // Newest, but its file no longer exists (deleted since the last scan).
+      entry(6, MimeTypes.jpeg, takenMillis: base + 5 * day),
+    });
+
+    final stats = await load([
+      <CollectionFilter>{MimeFilter.image},
+    ], validateCovers: true);
+    final image = stats.values.single;
+    expect(image.count, 5);
+    expect(image.cover?.id, 5);
+  });
+
+  test('reports no cover when every candidate file is gone', () async {
+    final stats = await load([
+      <CollectionFilter>{MimeFilter.image},
+    ], validateCovers: true);
+    expect(stats.values.single.count, 2);
+    expect(stats.values.single.cover, isNull);
+  });
+
+  test('an unrestricted range previews the whole library with its newest cover', () async {
+    // The footer's gallery chip resolves an unrestricted range to no filter at
+    // all, which still has to report a count and a cover.
+    final stats = await load([const <CollectionFilter>{}]);
+    final all = stats.values.single;
+    expect(all.count, 3);
+    expect(all.cover?.id, 3);
   });
 }

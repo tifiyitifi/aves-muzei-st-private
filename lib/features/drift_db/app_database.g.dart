@@ -4609,6 +4609,18 @@ class $VisibleRangePresetRowsTable extends VisibleRangePresetRows
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _filtersMeta = const VerificationMeta(
     'filters',
   );
@@ -4649,7 +4661,14 @@ class $VisibleRangePresetRowsTable extends VisibleRangePresetRows
     defaultValue: const Constant(0),
   );
   @override
-  List<GeneratedColumn> get $columns => [id, name, filters, builtin, position];
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    description,
+    filters,
+    builtin,
+    position,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -4674,6 +4693,15 @@ class $VisibleRangePresetRowsTable extends VisibleRangePresetRows
       );
     } else if (isInserting) {
       context.missing(_nameMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
     }
     if (data.containsKey('filters')) {
       context.handle(
@@ -4710,6 +4738,10 @@ class $VisibleRangePresetRowsTable extends VisibleRangePresetRows
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
       filters: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}filters'],
@@ -4736,6 +4768,9 @@ class VisibleRangePresetRow extends DataClass
   final String id;
   final String name;
 
+  /// Free-form user note, e.g. when and from what the base was pinned.
+  final String description;
+
   /// JSON array of `CollectionFilter.toJsonMap()` bodies, AND-ed together.
   final String filters;
 
@@ -4746,6 +4781,7 @@ class VisibleRangePresetRow extends DataClass
   const VisibleRangePresetRow({
     required this.id,
     required this.name,
+    required this.description,
     required this.filters,
     required this.builtin,
     required this.position,
@@ -4755,6 +4791,7 @@ class VisibleRangePresetRow extends DataClass
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
+    map['description'] = Variable<String>(description);
     map['filters'] = Variable<String>(filters);
     map['builtin'] = Variable<bool>(builtin);
     map['position'] = Variable<int>(position);
@@ -4765,6 +4802,7 @@ class VisibleRangePresetRow extends DataClass
     return VisibleRangePresetRowsCompanion(
       id: Value(id),
       name: Value(name),
+      description: Value(description),
       filters: Value(filters),
       builtin: Value(builtin),
       position: Value(position),
@@ -4779,6 +4817,7 @@ class VisibleRangePresetRow extends DataClass
     return VisibleRangePresetRow(
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      description: serializer.fromJson<String>(json['description']),
       filters: serializer.fromJson<String>(json['filters']),
       builtin: serializer.fromJson<bool>(json['builtin']),
       position: serializer.fromJson<int>(json['position']),
@@ -4790,6 +4829,7 @@ class VisibleRangePresetRow extends DataClass
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
+      'description': serializer.toJson<String>(description),
       'filters': serializer.toJson<String>(filters),
       'builtin': serializer.toJson<bool>(builtin),
       'position': serializer.toJson<int>(position),
@@ -4799,12 +4839,14 @@ class VisibleRangePresetRow extends DataClass
   VisibleRangePresetRow copyWith({
     String? id,
     String? name,
+    String? description,
     String? filters,
     bool? builtin,
     int? position,
   }) => VisibleRangePresetRow(
     id: id ?? this.id,
     name: name ?? this.name,
+    description: description ?? this.description,
     filters: filters ?? this.filters,
     builtin: builtin ?? this.builtin,
     position: position ?? this.position,
@@ -4815,6 +4857,9 @@ class VisibleRangePresetRow extends DataClass
     return VisibleRangePresetRow(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
       filters: data.filters.present ? data.filters.value : this.filters,
       builtin: data.builtin.present ? data.builtin.value : this.builtin,
       position: data.position.present ? data.position.value : this.position,
@@ -4826,6 +4871,7 @@ class VisibleRangePresetRow extends DataClass
     return (StringBuffer('VisibleRangePresetRow(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('description: $description, ')
           ..write('filters: $filters, ')
           ..write('builtin: $builtin, ')
           ..write('position: $position')
@@ -4834,13 +4880,15 @@ class VisibleRangePresetRow extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(id, name, filters, builtin, position);
+  int get hashCode =>
+      Object.hash(id, name, description, filters, builtin, position);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is VisibleRangePresetRow &&
           other.id == this.id &&
           other.name == this.name &&
+          other.description == this.description &&
           other.filters == this.filters &&
           other.builtin == this.builtin &&
           other.position == this.position);
@@ -4850,6 +4898,7 @@ class VisibleRangePresetRowsCompanion
     extends UpdateCompanion<VisibleRangePresetRow> {
   final Value<String> id;
   final Value<String> name;
+  final Value<String> description;
   final Value<String> filters;
   final Value<bool> builtin;
   final Value<int> position;
@@ -4857,6 +4906,7 @@ class VisibleRangePresetRowsCompanion
   const VisibleRangePresetRowsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.description = const Value.absent(),
     this.filters = const Value.absent(),
     this.builtin = const Value.absent(),
     this.position = const Value.absent(),
@@ -4865,6 +4915,7 @@ class VisibleRangePresetRowsCompanion
   VisibleRangePresetRowsCompanion.insert({
     required String id,
     required String name,
+    this.description = const Value.absent(),
     this.filters = const Value.absent(),
     this.builtin = const Value.absent(),
     this.position = const Value.absent(),
@@ -4874,6 +4925,7 @@ class VisibleRangePresetRowsCompanion
   static Insertable<VisibleRangePresetRow> custom({
     Expression<String>? id,
     Expression<String>? name,
+    Expression<String>? description,
     Expression<String>? filters,
     Expression<bool>? builtin,
     Expression<int>? position,
@@ -4882,6 +4934,7 @@ class VisibleRangePresetRowsCompanion
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (description != null) 'description': description,
       if (filters != null) 'filters': filters,
       if (builtin != null) 'builtin': builtin,
       if (position != null) 'position': position,
@@ -4892,6 +4945,7 @@ class VisibleRangePresetRowsCompanion
   VisibleRangePresetRowsCompanion copyWith({
     Value<String>? id,
     Value<String>? name,
+    Value<String>? description,
     Value<String>? filters,
     Value<bool>? builtin,
     Value<int>? position,
@@ -4900,6 +4954,7 @@ class VisibleRangePresetRowsCompanion
     return VisibleRangePresetRowsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
+      description: description ?? this.description,
       filters: filters ?? this.filters,
       builtin: builtin ?? this.builtin,
       position: position ?? this.position,
@@ -4915,6 +4970,9 @@ class VisibleRangePresetRowsCompanion
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
     }
     if (filters.present) {
       map['filters'] = Variable<String>(filters.value);
@@ -4936,6 +4994,7 @@ class VisibleRangePresetRowsCompanion
     return (StringBuffer('VisibleRangePresetRowsCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('description: $description, ')
           ..write('filters: $filters, ')
           ..write('builtin: $builtin, ')
           ..write('position: $position, ')
@@ -5678,6 +5737,18 @@ class $VisibleRangeRuleRowsTable extends VisibleRangeRuleRows
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _filtersMeta = const VerificationMeta(
     'filters',
   );
@@ -5710,6 +5781,7 @@ class $VisibleRangeRuleRowsTable extends VisibleRangeRuleRows
     kind,
     position,
     label,
+    description,
     filters,
     active,
   ];
@@ -5758,6 +5830,15 @@ class $VisibleRangeRuleRowsTable extends VisibleRangeRuleRows
         label.isAcceptableOrUnknown(data['label']!, _labelMeta),
       );
     }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
     if (data.containsKey('filters')) {
       context.handle(
         _filtersMeta,
@@ -5799,6 +5880,10 @@ class $VisibleRangeRuleRowsTable extends VisibleRangeRuleRows
         DriftSqlType.string,
         data['${effectivePrefix}label'],
       )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
       filters: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}filters'],
@@ -5824,6 +5909,9 @@ class VisibleRangeRuleRow extends DataClass
   final int position;
   final String label;
 
+  /// Free-form user note, e.g. when and from what the rule was pinned.
+  final String description;
+
   /// JSON array of filter bodies.
   final String filters;
   final bool active;
@@ -5833,6 +5921,7 @@ class VisibleRangeRuleRow extends DataClass
     required this.kind,
     required this.position,
     required this.label,
+    required this.description,
     required this.filters,
     required this.active,
   });
@@ -5844,6 +5933,7 @@ class VisibleRangeRuleRow extends DataClass
     map['kind'] = Variable<String>(kind);
     map['position'] = Variable<int>(position);
     map['label'] = Variable<String>(label);
+    map['description'] = Variable<String>(description);
     map['filters'] = Variable<String>(filters);
     map['active'] = Variable<bool>(active);
     return map;
@@ -5856,6 +5946,7 @@ class VisibleRangeRuleRow extends DataClass
       kind: Value(kind),
       position: Value(position),
       label: Value(label),
+      description: Value(description),
       filters: Value(filters),
       active: Value(active),
     );
@@ -5872,6 +5963,7 @@ class VisibleRangeRuleRow extends DataClass
       kind: serializer.fromJson<String>(json['kind']),
       position: serializer.fromJson<int>(json['position']),
       label: serializer.fromJson<String>(json['label']),
+      description: serializer.fromJson<String>(json['description']),
       filters: serializer.fromJson<String>(json['filters']),
       active: serializer.fromJson<bool>(json['active']),
     );
@@ -5885,6 +5977,7 @@ class VisibleRangeRuleRow extends DataClass
       'kind': serializer.toJson<String>(kind),
       'position': serializer.toJson<int>(position),
       'label': serializer.toJson<String>(label),
+      'description': serializer.toJson<String>(description),
       'filters': serializer.toJson<String>(filters),
       'active': serializer.toJson<bool>(active),
     };
@@ -5896,6 +5989,7 @@ class VisibleRangeRuleRow extends DataClass
     String? kind,
     int? position,
     String? label,
+    String? description,
     String? filters,
     bool? active,
   }) => VisibleRangeRuleRow(
@@ -5904,6 +5998,7 @@ class VisibleRangeRuleRow extends DataClass
     kind: kind ?? this.kind,
     position: position ?? this.position,
     label: label ?? this.label,
+    description: description ?? this.description,
     filters: filters ?? this.filters,
     active: active ?? this.active,
   );
@@ -5914,6 +6009,9 @@ class VisibleRangeRuleRow extends DataClass
       kind: data.kind.present ? data.kind.value : this.kind,
       position: data.position.present ? data.position.value : this.position,
       label: data.label.present ? data.label.value : this.label,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
       filters: data.filters.present ? data.filters.value : this.filters,
       active: data.active.present ? data.active.value : this.active,
     );
@@ -5927,6 +6025,7 @@ class VisibleRangeRuleRow extends DataClass
           ..write('kind: $kind, ')
           ..write('position: $position, ')
           ..write('label: $label, ')
+          ..write('description: $description, ')
           ..write('filters: $filters, ')
           ..write('active: $active')
           ..write(')'))
@@ -5934,8 +6033,16 @@ class VisibleRangeRuleRow extends DataClass
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, rangeId, kind, position, label, filters, active);
+  int get hashCode => Object.hash(
+    id,
+    rangeId,
+    kind,
+    position,
+    label,
+    description,
+    filters,
+    active,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -5945,6 +6052,7 @@ class VisibleRangeRuleRow extends DataClass
           other.kind == this.kind &&
           other.position == this.position &&
           other.label == this.label &&
+          other.description == this.description &&
           other.filters == this.filters &&
           other.active == this.active);
 }
@@ -5956,6 +6064,7 @@ class VisibleRangeRuleRowsCompanion
   final Value<String> kind;
   final Value<int> position;
   final Value<String> label;
+  final Value<String> description;
   final Value<String> filters;
   final Value<bool> active;
   final Value<int> rowid;
@@ -5965,6 +6074,7 @@ class VisibleRangeRuleRowsCompanion
     this.kind = const Value.absent(),
     this.position = const Value.absent(),
     this.label = const Value.absent(),
+    this.description = const Value.absent(),
     this.filters = const Value.absent(),
     this.active = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5975,6 +6085,7 @@ class VisibleRangeRuleRowsCompanion
     required String kind,
     this.position = const Value.absent(),
     this.label = const Value.absent(),
+    this.description = const Value.absent(),
     this.filters = const Value.absent(),
     this.active = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5987,6 +6098,7 @@ class VisibleRangeRuleRowsCompanion
     Expression<String>? kind,
     Expression<int>? position,
     Expression<String>? label,
+    Expression<String>? description,
     Expression<String>? filters,
     Expression<bool>? active,
     Expression<int>? rowid,
@@ -5997,6 +6109,7 @@ class VisibleRangeRuleRowsCompanion
       if (kind != null) 'kind': kind,
       if (position != null) 'position': position,
       if (label != null) 'label': label,
+      if (description != null) 'description': description,
       if (filters != null) 'filters': filters,
       if (active != null) 'active': active,
       if (rowid != null) 'rowid': rowid,
@@ -6009,6 +6122,7 @@ class VisibleRangeRuleRowsCompanion
     Value<String>? kind,
     Value<int>? position,
     Value<String>? label,
+    Value<String>? description,
     Value<String>? filters,
     Value<bool>? active,
     Value<int>? rowid,
@@ -6019,6 +6133,7 @@ class VisibleRangeRuleRowsCompanion
       kind: kind ?? this.kind,
       position: position ?? this.position,
       label: label ?? this.label,
+      description: description ?? this.description,
       filters: filters ?? this.filters,
       active: active ?? this.active,
       rowid: rowid ?? this.rowid,
@@ -6043,6 +6158,9 @@ class VisibleRangeRuleRowsCompanion
     if (label.present) {
       map['label'] = Variable<String>(label.value);
     }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
     if (filters.present) {
       map['filters'] = Variable<String>(filters.value);
     }
@@ -6063,6 +6181,7 @@ class VisibleRangeRuleRowsCompanion
           ..write('kind: $kind, ')
           ..write('position: $position, ')
           ..write('label: $label, ')
+          ..write('description: $description, ')
           ..write('filters: $filters, ')
           ..write('active: $active, ')
           ..write('rowid: $rowid')
@@ -9434,6 +9553,7 @@ typedef $$VisibleRangePresetRowsTableCreateCompanionBuilder =
     VisibleRangePresetRowsCompanion Function({
       required String id,
       required String name,
+      Value<String> description,
       Value<String> filters,
       Value<bool> builtin,
       Value<int> position,
@@ -9443,6 +9563,7 @@ typedef $$VisibleRangePresetRowsTableUpdateCompanionBuilder =
     VisibleRangePresetRowsCompanion Function({
       Value<String> id,
       Value<String> name,
+      Value<String> description,
       Value<String> filters,
       Value<bool> builtin,
       Value<int> position,
@@ -9465,6 +9586,11 @@ class $$VisibleRangePresetRowsTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9503,6 +9629,11 @@ class $$VisibleRangePresetRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get filters => $composableBuilder(
     column: $table.filters,
     builder: (column) => ColumnOrderings(column),
@@ -9533,6 +9664,11 @@ class $$VisibleRangePresetRowsTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get filters =>
       $composableBuilder(column: $table.filters, builder: (column) => column);
@@ -9592,6 +9728,7 @@ class $$VisibleRangePresetRowsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<String> description = const Value.absent(),
                 Value<String> filters = const Value.absent(),
                 Value<bool> builtin = const Value.absent(),
                 Value<int> position = const Value.absent(),
@@ -9599,6 +9736,7 @@ class $$VisibleRangePresetRowsTableTableManager
               }) => VisibleRangePresetRowsCompanion(
                 id: id,
                 name: name,
+                description: description,
                 filters: filters,
                 builtin: builtin,
                 position: position,
@@ -9608,6 +9746,7 @@ class $$VisibleRangePresetRowsTableTableManager
               ({
                 required String id,
                 required String name,
+                Value<String> description = const Value.absent(),
                 Value<String> filters = const Value.absent(),
                 Value<bool> builtin = const Value.absent(),
                 Value<int> position = const Value.absent(),
@@ -9615,6 +9754,7 @@ class $$VisibleRangePresetRowsTableTableManager
               }) => VisibleRangePresetRowsCompanion.insert(
                 id: id,
                 name: name,
+                description: description,
                 filters: filters,
                 builtin: builtin,
                 position: position,
@@ -9982,6 +10122,7 @@ typedef $$VisibleRangeRuleRowsTableCreateCompanionBuilder =
       required String kind,
       Value<int> position,
       Value<String> label,
+      Value<String> description,
       Value<String> filters,
       Value<bool> active,
       Value<int> rowid,
@@ -9993,6 +10134,7 @@ typedef $$VisibleRangeRuleRowsTableUpdateCompanionBuilder =
       Value<String> kind,
       Value<int> position,
       Value<String> label,
+      Value<String> description,
       Value<String> filters,
       Value<bool> active,
       Value<int> rowid,
@@ -10029,6 +10171,11 @@ class $$VisibleRangeRuleRowsTableFilterComposer
 
   ColumnFilters<String> get label => $composableBuilder(
     column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10077,6 +10224,11 @@ class $$VisibleRangeRuleRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get filters => $composableBuilder(
     column: $table.filters,
     builder: (column) => ColumnOrderings(column),
@@ -10111,6 +10263,11 @@ class $$VisibleRangeRuleRowsTableAnnotationComposer
 
   GeneratedColumn<String> get label =>
       $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get filters =>
       $composableBuilder(column: $table.filters, builder: (column) => column);
@@ -10167,6 +10324,7 @@ class $$VisibleRangeRuleRowsTableTableManager
                 Value<String> kind = const Value.absent(),
                 Value<int> position = const Value.absent(),
                 Value<String> label = const Value.absent(),
+                Value<String> description = const Value.absent(),
                 Value<String> filters = const Value.absent(),
                 Value<bool> active = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -10176,6 +10334,7 @@ class $$VisibleRangeRuleRowsTableTableManager
                 kind: kind,
                 position: position,
                 label: label,
+                description: description,
                 filters: filters,
                 active: active,
                 rowid: rowid,
@@ -10187,6 +10346,7 @@ class $$VisibleRangeRuleRowsTableTableManager
                 required String kind,
                 Value<int> position = const Value.absent(),
                 Value<String> label = const Value.absent(),
+                Value<String> description = const Value.absent(),
                 Value<String> filters = const Value.absent(),
                 Value<bool> active = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -10196,6 +10356,7 @@ class $$VisibleRangeRuleRowsTableTableManager
                 kind: kind,
                 position: position,
                 label: label,
+                description: description,
                 filters: filters,
                 active: active,
                 rowid: rowid,

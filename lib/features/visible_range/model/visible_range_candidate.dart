@@ -34,6 +34,7 @@ class VisibleRangeCandidate extends Equatable {
   final Set<CollectionFilter> filters;
   final String labelKey;
   final String label;
+  final String description;
   final bool active;
   final VisibleRangePreset? preset;
   final VisibleRangeRule? rule;
@@ -44,6 +45,7 @@ class VisibleRangeCandidate extends Equatable {
     required this.filters,
     this.labelKey = '',
     this.label = '',
+    this.description = '',
     this.active = false,
     this.preset,
     this.rule,
@@ -55,6 +57,7 @@ class VisibleRangeCandidate extends Equatable {
         filters: preset.filters,
         labelKey: preset.builtin ? preset.name : '',
         label: preset.builtin ? '' : preset.name,
+        description: preset.description,
         active: active,
         preset: preset,
       );
@@ -78,6 +81,7 @@ class VisibleRangeCandidate extends Equatable {
       filters: rule.filters,
       labelKey: isKey ? rawLabel.substring(1) : '',
       label: isKey ? '' : rawLabel,
+      description: rule.description,
       active: rule.active,
       rule: rule,
     );
@@ -100,7 +104,7 @@ class VisibleRangeCandidate extends Equatable {
   String get statsKey => filterFingerprint(filters);
 
   @override
-  List<Object?> get props => [id, kind, filters, labelKey, label, active];
+  List<Object?> get props => [id, kind, filters, labelKey, label, description, active];
 }
 
 /// A titled group of candidates.
@@ -170,6 +174,7 @@ extension on VisibleRangeCandidate {
         filters: filters,
         labelKey: labelKey,
         label: label,
+        description: description,
         active: active,
       );
 }

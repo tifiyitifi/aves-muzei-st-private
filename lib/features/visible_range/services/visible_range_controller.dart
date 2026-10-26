@@ -6,6 +6,8 @@ import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/visible_range/data/default_presets.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
+import 'package:aves/features/visible_range/model/visible_range_pin.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/utils/android_file_utils.dart';
@@ -337,18 +339,35 @@ class VisibleRangeController extends ChangeNotifier {
     return (added: added, skipped: skipped);
   }
 
-  Future<void> saveBasePreset({required String name, required Set<CollectionFilter> filters}) async {
+  Future<void> saveBasePreset({required String name, String description = '', required Set<CollectionFilter> filters}) async {
     _ensureEditable();
     final store = _requireStore();
     final preset = VisibleRangePreset(
-      id: 'user.$_now',
+      id: _newId('user'),
       name: name,
+      description: description,
       filters: filters,
       position: _presets.length,
     );
     await store.savePreset(preset);
     _presets = await store.loadPresets();
     notifyListeners();
+  }
+
+  /// Renames a user base preset and edits its note. Built-in presets are
+  /// read-only. When the preset is the active base, the range snapshot follows
+  /// so the footer shows the new name immediately.
+  Future<void> updateBasePreset(String id, {required String name, required String description}) async {
+    _ensureEditable();
+    final preset = _presets.firstWhereOrNull((v) => v.id == id);
+    if (preset == null || preset.builtin) return;
+    await _requireStore().savePreset(preset.copyWith(name: name, description: description));
+    _presets = [for (final p in _presets) p.id == id ? p.copyWith(name: name, description: description) : p];
+    if (gallery.basePresetId == id && gallery.baseName != name) {
+      await _updateGallery((range) => range.copyWith(baseName: name));
+    } else {
+      notifyListeners();
+    }
   }
 
   Future<void> deleteBasePreset(String id) async {
@@ -384,7 +403,7 @@ class VisibleRangeController extends ChangeNotifier {
     final range = gallery;
     final position = range.rulesOf(kind).length;
     final rule = VisibleRangeRule(
-      id: 'rule.$_now.${range.rules.length}',
+      id: _newId('rule'),
       rangeId: range.id,
       kind: kind,
       position: position,
@@ -416,6 +435,103 @@ class VisibleRangeController extends ChangeNotifier {
   Future<void> setOrder(VisibleRangeOrder order) async {
     _ensureEditable();
     await _updateGallery((range) => range.copyWith(order: order));
+  }
+
+  // pin
+
+  /// Every place the current filters can be pinned to, in badge order.
+  ///
+  /// The gallery owns one range (`number` 0). Wallpaper groups register here in
+  /// a later phase; the pin sheet already renders whatever this returns, so the
+  /// UI needs no change when they arrive.
+  List<VisibleRangePinTarget> get pinTargets => [
+        VisibleRangePinTarget(
+          rangeId: gallery.id,
+          number: 0,
+          name: '',
+          isGallery: true,
+          locked: !canEdit,
+        ),
+      ];
+
+  /// Pins [request.filters] to every selected target and group in one write.
+  ///
+  /// Re-pinning the same conditions to the same group updates the existing item
+  /// (name, description, active) instead of stacking a duplicate. The base is a
+  /// preset shared by all targets, so it is created/reused once and then
+  /// selected per target.
+  Future<VisibleRangePinResult> pinFilters(VisibleRangePinRequest request) async {
+    if (request.isEmpty) return const VisibleRangePinResult(pinned: 0, skipped: 0);
+    _ensureEditable();
+    final store = _requireStore();
+    final requested = request.targetRangeIds;
+    final targets = pinTargets.where((target) => requested.contains(target.rangeId) && !target.locked).toList();
+    final skipped = requested.length - targets.length;
+    if (targets.isEmpty) return VisibleRangePinResult(pinned: 0, skipped: skipped);
+
+    final fingerprint = filterFingerprint(request.filters);
+    final name = request.name.trim();
+
+    // The base lives in the global preset catalog, so one preset serves every
+    // target. Reusing it keeps the page from growing a duplicate per pin.
+    VisibleRangePreset? preset;
+    if (request.kinds.contains(VisibleRangeCandidateKind.base)) {
+      final existing = _presets.firstWhereOrNull((p) => !p.builtin && p.fingerprint == fingerprint && p.name == name);
+      if (existing != null) {
+        preset = existing;
+        if (existing.description != request.description) {
+          preset = existing.copyWith(description: request.description);
+          await store.savePreset(preset);
+        }
+      } else {
+        preset = VisibleRangePreset(
+          id: _newId('user'),
+          name: name,
+          description: request.description,
+          filters: request.filters,
+          position: _presets.length,
+        );
+        await store.savePreset(preset);
+      }
+      // Reload before the range write so listeners observe both together.
+      _presets = await store.loadPresets();
+    }
+
+    final range = gallery;
+    var rules = [...range.rules];
+    for (final kind in request.kinds) {
+      final ruleKind = kind.ruleKind;
+      if (ruleKind == null) continue;
+      final existing = rules.firstWhereOrNull((rule) => rule.kind == ruleKind && filterFingerprint(rule.filters) == fingerprint);
+      if (existing != null) {
+        rules = [
+          for (final rule in rules)
+            rule.id == existing.id ? rule.copyWith(label: name, description: request.description, active: true) : rule
+        ];
+      } else {
+        rules.add(
+          VisibleRangeRule(
+            id: _newId('rule'),
+            rangeId: range.id,
+            kind: ruleKind,
+            position: rules.where((rule) => rule.kind == ruleKind).length,
+            label: name,
+            description: request.description,
+            filters: request.filters,
+          ),
+        );
+      }
+    }
+
+    await _updateGallery(
+      (range) => range.copyWith(
+        basePresetId: preset?.id ?? range.basePresetId,
+        baseName: preset?.name ?? range.baseName,
+        baseFilters: preset?.filters ?? range.baseFilters,
+        rules: rules,
+      ),
+    );
+    return VisibleRangePinResult(pinned: targets.length, skipped: skipped);
   }
 
   // lock
@@ -457,7 +573,7 @@ class VisibleRangeController extends ChangeNotifier {
     // before it (that one is closed when its media set is popped).
     _openSessionId = null;
     final session = VisibleRangeSession(
-      id: 'session.$_now',
+      id: _newId('session'),
       rangeId: gallery.id,
       ruleId: rule.id,
       kind: rule.kind,
@@ -536,6 +652,15 @@ class VisibleRangeController extends ChangeNotifier {
   }
 
   int get _now => DateTime.now().millisecondsSinceEpoch;
+
+  /// Monotonic suffix for generated ids.
+  ///
+  /// Sessions, rules and presets can be created twice in the same millisecond
+  /// (a test, a two-group pin, or two quick taps). A timestamp alone then yields
+  /// duplicate ids, and the session write-back would update the wrong record.
+  int _idSequence = 0;
+
+  String _newId(String prefix) => '$prefix.$_now.${_idSequence++}';
 }
 
 /// The app-wide controller (the same singleton style as `vaults`).

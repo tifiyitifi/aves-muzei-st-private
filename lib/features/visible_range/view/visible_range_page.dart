@@ -6,7 +6,6 @@ import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/services/visible_range_candidate_stats.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
-import 'package:aves/features/visible_range/services/visible_range_counter.dart';
 import 'package:aves/features/visible_range/view/visible_range_about_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_action_delegate.dart';
 import 'package:aves/features/visible_range/view/visible_range_active_footer.dart';
@@ -26,6 +25,7 @@ import 'package:aves/widgets/common/identity/aves_filter_chip.dart';
 import 'package:aves/widgets/common/providers/filter_group_provider.dart';
 import 'package:aves/widgets/common/providers/query_provider.dart';
 import 'package:aves/widgets/common/providers/selection_provider.dart';
+import 'package:aves/widgets/common/tile_extent_controller.dart';
 import 'package:aves/widgets/filter_grids/common/app_bar.dart';
 import 'package:aves/widgets/filter_grids/common/filter_grid_page.dart';
 import 'package:aves/widgets/filter_grids/common/section_keys.dart';
@@ -50,9 +50,7 @@ class VisibleRangePage extends StatefulWidget {
 }
 
 enum _MoreAction {
-  addRestriction,
-  addSupplement,
-  saveBase,
+  editRule,
   order,
   save,
   reAddDefaults,
@@ -62,12 +60,14 @@ enum _MoreAction {
 
 enum _RuleAction { rename, moveToRestriction, moveToSupplement, moveToBase, activateReplace, activateAppend, delete }
 
+enum _PresetAction { edit, delete }
+
 class _VisibleRangePageState extends State<VisibleRangePage> {
   final ValueNotifier<double> _appBarHeightNotifier = ValueNotifier(0);
   final Set<String> _pendingStats = {};
   Map<String, VisibleRangeCandidateStats> _stats = const {};
-  ({int? base, int? intermediate, int? total})? _counts;
-  int _countToken = 0;
+  VisibleRangeCandidateStats? _resultStats;
+  int _resultToken = 0;
 
   VisibleRangeController get _controller => visibleRangeController;
 
@@ -76,7 +76,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     super.initState();
     _controller.addListener(_onControllerChanged);
     unawaited(_controller.init());
-    unawaited(_refreshCount());
+    unawaited(_refreshResultStats());
     unawaited(_refreshStats());
   }
 
@@ -90,15 +90,22 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   void _onControllerChanged() {
     if (!mounted) return;
     setState(() {});
-    unawaited(_refreshCount());
+    unawaited(_refreshResultStats());
     unawaited(_refreshStats());
   }
 
-  Future<void> _refreshCount() async {
-    final token = ++_countToken;
-    final counts = await VisibleRangeCounter.counts(_controller.gallery);
-    if (!mounted || token != _countToken) return;
-    setState(() => _counts = counts);
+  /// Count and cover of what the current range resolves to.
+  ///
+  /// This is the only stat that needs a cover for the whole range: the footer's
+  /// gallery chip previews the result, while the candidate tiles use their own
+  /// per-filter stats.
+  Future<void> _refreshResultStats() async {
+    final token = ++_resultToken;
+    final filter = _controller.gallery.resolve();
+    final filters = filter == null ? const <CollectionFilter>{} : <CollectionFilter>{filter};
+    final stats = await VisibleRangeCandidateStatsLoader.load([filters]);
+    if (!mounted || token != _resultToken) return;
+    setState(() => _resultStats = stats.values.firstOrNull);
   }
 
   Future<void> _refreshStats() async {
@@ -159,8 +166,15 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
                     appBar: FilterGridAppBar<VisibleRangeCandidateFilter, VisibleRangeActionDelegate>(
                       source: source,
                       title: context.l10n.visibleRangePageTitle,
+                      titleStyle: Theme.of(context).appBarTheme.titleTextStyle?.copyWith(
+                        fontWeight: FontWeight.normal,
+                        letterSpacing: 0,
+                        fontFeatures: const [],
+                      ),
                       actionDelegate: delegate,
                       extraActionsBuilder: _buildExtraActions,
+                      extraMenuEntriesBuilder: _buildExtraMenuEntries,
+                      onExtraMenuSelected: (value) => unawaited(_onExtraMenuSelected(value)),
                       appBarHeightNotifier: _appBarHeightNotifier,
                       scrollController: scrollController,
                       onGroupCrumbTap: (context, filter) {},
@@ -190,16 +204,18 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   Map<ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>> _buildSections(BuildContext context) {
     final range = _controller.gallery;
-    final counts = _counts;
     final supplementsOutside = range.order.isIntersectFirst;
     final result = <ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>>{};
     for (final section in buildVisibleRangeSections(range: range, presets: _controller.presets)) {
-      final stepCount = switch (section.kind) {
-        VisibleRangeCandidateKind.base => counts?.base,
-        VisibleRangeCandidateKind.restriction => supplementsOutside ? counts?.intermediate : counts?.total,
-        VisibleRangeCandidateKind.supplement => supplementsOutside ? counts?.total : counts?.intermediate,
+      // Each header counts the conditions its own group contributes, not the
+      // entries left visible: the base group advertises how many choices it
+      // shows, and the rule groups show active/total. The resulting item total
+      // lives on the footer's gallery chip.
+      final countText = switch (section.kind) {
+        VisibleRangeCandidateKind.base => '${section.candidates.length}',
+        VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement => '${section.candidates.where((candidate) => candidate.active).length}/${section.candidates.length}',
       };
-      final key = VisibleRangeSectionKey(context, section.kind, count: stepCount, supplementsOutside: supplementsOutside);
+      final key = VisibleRangeSectionKey(context, section.kind, countText: countText, supplementsOutside: supplementsOutside);
       final sorted = _sortCandidates(context, section.candidates);
       // The fixed Unrestricted base stays first regardless of the sort, like the
       // old page's first base chip.
@@ -208,7 +224,9 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
           : sorted;
       result[key] = [
         for (final candidate in ordered)
-          FilterGridItem(VisibleRangeCandidateFilter(candidate), _stats[candidate.statsKey]?.cover),
+          // Cover and count stay in the stats map: a candidate is a filter set,
+          // not a covered filter, so the grid item carries no entry of its own.
+          FilterGridItem(VisibleRangeCandidateFilter(candidate), null),
       ];
     }
     return result;
@@ -247,7 +265,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
         tileLayout: settings.getTileLayout(VisibleRangePage.routeName),
         tileSize: tileSize,
         onTap: () => _onCandidateTap(context, item),
-        onLongPress: candidate.preset != null && !candidate.preset!.builtin ? () => _deletePreset(candidate.preset!) : null,
+        onLongPress: candidate.preset != null && !candidate.preset!.builtin ? () => _showPresetEditor(candidate.preset!) : null,
       ),
     );
   }
@@ -267,8 +285,11 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       activeBase: activeBase,
       activeRules: activeRules,
       style: _controller.activeStyle,
+      resultStats: _resultStats,
       statsFor: (candidate) => _stats[candidate.statsKey],
-      totalCount: _counts?.total,
+      // The footer tiles match the grid cells above instead of shrinking to a
+      // fixed size.
+      tileExtent: context.select<TileExtentController, double>((controller) => controller.extentNotifier.value),
       onCancelBase: _cancelBase,
       onCancelRule: (candidate) {
         final rule = candidate.rule;
@@ -286,7 +307,15 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   ) {
     final l10n = context.l10n;
     final range = _controller.gallery;
+    final lockButton = IconButton(
+      icon: Icon(range.locked ? AIcons.locked : AIcons.unlocked),
+      tooltip: range.locked ? l10n.visibleRangeUnlock : l10n.visibleRangeLock,
+      onPressed: _toggleLock,
+    );
     if (selection.isSelecting) {
+      // On a TV rail there is no overflow menu, so the single-rule editor has
+      // to stay reachable as an icon.
+      if (!settings.useTvLayout) return const [];
       final selectedRule = _selectedRule(selection);
       return [
         if (selectedRule != null)
@@ -297,30 +326,51 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
           ),
       ];
     }
+    if (!settings.useTvLayout) return [lockButton];
     return [
-      IconButton(
-        icon: Icon(range.locked ? AIcons.locked : AIcons.unlocked),
-        tooltip: range.locked ? l10n.visibleRangeUnlock : l10n.visibleRangeLock,
-        onPressed: _toggleLock,
-      ),
+      lockButton,
+      // The app bar's ⋮ is the single overflow on phones. The TV rail has none,
+      // so the feature keeps its own menu there instead of losing the actions.
       PopupMenuButton<_MoreAction>(
         icon: const Icon(AIcons.more),
         tooltip: l10n.visibleRangeMore,
-        onSelected: _onMore,
-        itemBuilder: (context) => [
-          PopupMenuItem(value: _MoreAction.addRestriction, child: _menuRow(context, AIcons.visibleRangeRestriction, l10n.visibleRangeAddRestriction)),
-          PopupMenuItem(value: _MoreAction.addSupplement, child: _menuRow(context, AIcons.visibleRangeSupplement, l10n.visibleRangeAddSupplement)),
-          PopupMenuItem(value: _MoreAction.saveBase, child: _menuRow(context, AIcons.folder, l10n.visibleRangeSaveBase)),
-          const PopupMenuDivider(),
-          PopupMenuItem(value: _MoreAction.order, child: _menuRow(context, AIcons.sortOrder, l10n.visibleRangeOrder)),
-          PopupMenuItem(value: _MoreAction.save, child: _menuRow(context, AIcons.checked, l10n.visibleRangeSaveAs)),
-          PopupMenuItem(value: _MoreAction.reAddDefaults, child: _menuRow(context, AIcons.newTier, l10n.visibleRangeReAddDefaults)),
-          const PopupMenuDivider(),
-          PopupMenuItem(value: _MoreAction.lockDetailed, child: _menuRow(context, AIcons.locked, l10n.visibleRangeLockSheetTitle)),
-          PopupMenuItem(value: _MoreAction.about, child: _menuRow(context, AIcons.info, l10n.visibleRangeAbout)),
-        ],
+        onSelected: (action) => unawaited(_onExtraMenuSelected(action)),
+        itemBuilder: _menuEntries,
       ),
     ];
+  }
+
+  /// Feature entries injected into the app bar's single overflow menu.
+  List<PopupMenuEntry<Object>> _buildExtraMenuEntries(
+    BuildContext context,
+    AppMode appMode,
+    Selection<FilterGridItem<VisibleRangeCandidateFilter>> selection,
+    VisibleRangeActionDelegate delegate,
+  ) {
+    if (selection.isSelecting) {
+      final selectedRule = _selectedRule(selection);
+      if (selectedRule == null) return const [];
+      return [
+        _menuItem<_MoreAction>(context, _MoreAction.editRule, AIcons.edit, context.l10n.visibleRangeEditRule),
+      ];
+    }
+    return _menuEntries(context);
+  }
+
+  List<PopupMenuEntry<_MoreAction>> _menuEntries(BuildContext context) {
+    final l10n = context.l10n;
+    return [
+      _menuItem(context, _MoreAction.order, AIcons.sortOrder, l10n.visibleRangeOrder),
+      _menuItem(context, _MoreAction.save, AIcons.checked, l10n.visibleRangeSaveAs),
+      _menuItem(context, _MoreAction.reAddDefaults, AIcons.newTier, l10n.visibleRangeReAddDefaults),
+      const PopupMenuDivider(),
+      _menuItem(context, _MoreAction.lockDetailed, AIcons.locked, l10n.visibleRangeLockSheetTitle),
+      _menuItem(context, _MoreAction.about, AIcons.info, l10n.visibleRangeAbout),
+    ];
+  }
+
+  PopupMenuItem<T> _menuItem<T>(BuildContext context, T value, IconData icon, String text) {
+    return PopupMenuItem<T>(value: value, child: _menuRow(context, icon, text));
   }
 
   Widget _buildActiveStyleRow(BuildContext context) {
@@ -443,6 +493,58 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     await _controller.deleteBasePreset(preset.id);
   }
 
+  /// A user base preset is editable and removable, unlike the built-in ones.
+  Future<void> _showPresetEditor(VisibleRangePreset preset) async {
+    final l10n = context.l10n;
+    final action = await showModalBottomSheet<_PresetAction>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(visibleRangePresetLabel(context, preset.name)),
+              subtitle: preset.description.isEmpty ? null : Text(preset.description, maxLines: 2, overflow: TextOverflow.ellipsis),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(AIcons.edit),
+              title: Text(l10n.visibleRangeActionRename),
+              onTap: () => Navigator.pop(context, _PresetAction.edit),
+            ),
+            ListTile(
+              leading: const Icon(AIcons.delete),
+              title: Text(l10n.visibleRangeActionDelete),
+              onTap: () => Navigator.pop(context, _PresetAction.delete),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _PresetAction.edit:
+        await _editPresetNameDescription(preset);
+      case _PresetAction.delete:
+        await _deletePreset(preset);
+    }
+  }
+
+  Future<void> _editPresetNameDescription(VisibleRangePreset preset) async {
+    final result = await _showNameDescriptionDialog(
+      title: context.l10n.visibleRangeEditNameDescription,
+      initialName: preset.name,
+      initialDescription: preset.description,
+    );
+    if (result == null) return;
+    await _controller.updateBasePreset(
+      preset.id,
+      name: result.name.isEmpty ? preset.name : result.name,
+      description: result.description,
+    );
+    _browseSelection();
+  }
+
   /// Single-rule actions. Locked rules show only read-only actions.
   Future<void> _showRuleEditor(VisibleRangeRule rule) async {
     final l10n = context.l10n;
@@ -456,7 +558,11 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
           children: [
             ListTile(
               title: Text(title.isEmpty ? _kindLabel(context, rule.kind) : title),
-              subtitle: Text(_kindLabel(context, rule.kind)),
+              subtitle: Text(
+                [rule.description, _kindLabel(context, rule.kind)].where((v) => v.isNotEmpty).join(' · '),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             const Divider(height: 1),
             ListTile(
@@ -524,27 +630,65 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   Future<void> _renameRule(VisibleRangeRule rule) async {
+    final result = await _showNameDescriptionDialog(
+      title: context.l10n.visibleRangeEditNameDescription,
+      initialName: rule.label.startsWith('@') ? '' : rule.label,
+      initialDescription: rule.description,
+      nameHint: visibleRangeRuleLabel(context, rule),
+    );
+    if (result == null) return;
+    await _controller.updateRule(rule.copyWith(label: result.name, description: result.description));
+    _browseSelection();
+  }
+
+  /// Shared editor for the user text of a rule or a base preset.
+  Future<({String name, String description})?> _showNameDescriptionDialog({
+    required String title,
+    required String initialName,
+    required String initialDescription,
+    String? nameHint,
+  }) async {
     final l10n = context.l10n;
-    final controller = TextEditingController(text: rule.label.startsWith('@') ? '' : rule.label);
-    final name = await showDialog<String>(
+    final nameController = TextEditingController(text: initialName);
+    final descriptionController = TextEditingController(text: initialDescription);
+    final result = await showDialog<({String name, String description})>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(l10n.visibleRangeRenameTitle),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(hintText: visibleRangeRuleLabel(context, rule)),
+        title: Text(title),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                decoration: InputDecoration(labelText: l10n.visibleRangePinName, hintText: nameHint),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descriptionController,
+                minLines: 1,
+                maxLines: 3,
+                decoration: InputDecoration(labelText: l10n.visibleRangePinDescription),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
-          TextButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
+          TextButton(
+            onPressed: () => Navigator.pop(
+              context,
+              (name: nameController.text.trim(), description: descriptionController.text.trim()),
+            ),
+            child: Text(MaterialLocalizations.of(context).okButtonLabel),
+          ),
         ],
       ),
     );
-    controller.dispose();
-    if (name == null) return;
-    await _controller.updateRule(rule.copyWith(label: name));
-    _browseSelection();
+    nameController.dispose();
+    descriptionController.dispose();
+    return result;
   }
 
   Future<void> _moveRule(VisibleRangeRule rule, VisibleRangeRuleKind kind) async {
@@ -607,15 +751,13 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     };
   }
 
-  Future<void> _onMore(_MoreAction action) async {
-    final l10n = context.l10n;
-    switch (action) {
-      case _MoreAction.addRestriction:
-        await _addRule(VisibleRangeRuleKind.restriction);
-      case _MoreAction.addSupplement:
-        await _addRule(VisibleRangeRuleKind.supplement);
-      case _MoreAction.saveBase:
-        await _saveBaseFromCurrentFilters();
+  Future<void> _onExtraMenuSelected(Object value) async {
+    if (value is! _MoreAction) return;
+    switch (value) {
+      case _MoreAction.editRule:
+        final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
+        final rule = _selectedRule(selection);
+        if (rule != null) await _showRuleEditor(rule);
       case _MoreAction.order:
         await _pickOrder();
       case _MoreAction.save:
@@ -627,58 +769,12 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
         }
         final result = await _controller.reAddDefaultPresets();
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.visibleRangeReAddDefaultsResult(result.added, result.skipped))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.visibleRangeReAddDefaultsResult(result.added, result.skipped))));
       case _MoreAction.lockDetailed:
         await _lockDetailed();
       case _MoreAction.about:
         await _openAbout();
     }
-  }
-
-  Future<void> _addRule(VisibleRangeRuleKind kind) async {
-    final l10n = context.l10n;
-    if (!_controller.canEdit) {
-      _showBlocked();
-      return;
-    }
-    final filters = mediaSetTab.currentFilters;
-    if (filters == null || filters.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.visibleRangeAddNoFilters)));
-      return;
-    }
-    await _controller.addRule(kind: kind, filters: filters);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.visibleRangeRuleAdded)));
-  }
-
-  Future<void> _saveBaseFromCurrentFilters() async {
-    final l10n = context.l10n;
-    if (!_controller.canEdit) {
-      _showBlocked();
-      return;
-    }
-    final filters = mediaSetTab.currentFilters;
-    if (filters == null || filters.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.visibleRangeAddNoFilters)));
-      return;
-    }
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.visibleRangeSaveBaseTitle),
-        content: TextField(controller: controller, autofocus: true),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
-          TextButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (name == null || name.isEmpty) return;
-    await _controller.saveBasePreset(name: name, filters: filters);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.visibleRangeBaseSaved)));
   }
 
   Future<void> _pickOrder() async {

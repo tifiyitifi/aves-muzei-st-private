@@ -39,12 +39,29 @@ typedef ActionsBuilder<T extends CollectionFilter, CSAD extends ChipSetActionDel
   CSAD actionDelegate,
 );
 
+/// Extra entries injected into the app bar's single overflow menu.
+///
+/// A fork-owned surface can own menu items that are not chip-set actions while
+/// keeping one ⋮: the album page passes no builder, so its menu is unchanged.
+typedef ExtraMenuEntriesBuilder<T extends CollectionFilter, CSAD extends ChipSetActionDelegate<T>> = List<PopupMenuEntry<Object>> Function(
+  BuildContext context,
+  AppMode appMode,
+  Selection<FilterGridItem<T>> selection,
+  CSAD actionDelegate,
+);
+
 class FilterGridAppBar<T extends CollectionFilter, CSAD extends ChipSetActionDelegate<T>> extends StatefulWidget {
   final CollectionSource source;
   final String title;
+
+  /// Optional browsing title style for a page that opts out of the app-wide
+  /// small-caps title look. A null style keeps the theme's title style.
+  final TextStyle? titleStyle;
   final CSAD actionDelegate;
   final ActionsBuilder<T, CSAD>? actionsBuilder;
   final ActionsBuilder<T, CSAD>? extraActionsBuilder;
+  final ExtraMenuEntriesBuilder<T, CSAD>? extraMenuEntriesBuilder;
+  final ValueChanged<Object>? onExtraMenuSelected;
   final ValueNotifier<double> appBarHeightNotifier;
   final ScrollController scrollController;
   final void Function(BuildContext context, T filter)? onGroupCrumbTap;
@@ -53,9 +70,12 @@ class FilterGridAppBar<T extends CollectionFilter, CSAD extends ChipSetActionDel
     super.key,
     required this.source,
     required this.title,
+    this.titleStyle,
     required this.actionDelegate,
     this.actionsBuilder,
     this.extraActionsBuilder,
+    this.extraMenuEntriesBuilder,
+    this.onExtraMenuSelected,
     required this.appBarHeightNotifier,
     required this.scrollController,
     required this.onGroupCrumbTap,
@@ -195,7 +215,10 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
           final useTvLayout = settings.useTvLayout;
           final actions = [
             ...actionsBuilder(context, appMode, selection, actionDelegate),
-            ...?widget.extraActionsBuilder?.call(context, appMode, selection, actionDelegate),
+            // The default builders compose the extra actions themselves so the
+            // overflow menu can stay the rightmost action on mobile. A custom
+            // builder cannot know about the seam, so the extras are appended.
+            if (widget.actionsBuilder != null) ...?widget.extraActionsBuilder?.call(context, appMode, selection, actionDelegate),
           ];
           return AvesAppBar(
             contentHeight: _getAppBarContentHeight(context),
@@ -328,6 +351,7 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
         child: SourceStateAwareAppBarTitle(
           title: Text(
             widget.title,
+            style: widget.titleStyle,
             softWrap: false,
             overflow: .fade,
             maxLines: 1,
@@ -373,6 +397,7 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
     return settings.useTvLayout
         ? _buildTelevisionActions(
             context: context,
+            appMode: appMode,
             selection: selection,
             isVisible: isVisible,
             canApply: canApply,
@@ -380,6 +405,7 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
           )
         : _buildMobileActions(
             context: context,
+            appMode: appMode,
             selection: selection,
             isVisible: isVisible,
             canApply: canApply,
@@ -389,6 +415,7 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
 
   List<Widget> _buildTelevisionActions({
     required BuildContext context,
+    required AppMode appMode,
     required Selection<FilterGridItem<T>> selection,
     required bool Function(ChipSetAction action) isVisible,
     required bool Function(ChipSetAction action) canApply,
@@ -396,10 +423,11 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
   }) {
     final isSelecting = selection.isSelecting;
 
+    final extraActions = widget.extraActionsBuilder?.call(context, appMode, selection, actionDelegate) ?? const <Widget>[];
     return [
       ...ChipSetActions.general,
       ...isSelecting ? ChipSetActions.selection : ChipSetActions.browsing,
-    ].nonNulls.where(isVisible).map((action) {
+    ].nonNulls.where(isVisible).map<Widget>((action) {
       final enabled = canApply(action);
       return CaptionedButton(
         iconButtonBuilder: (context, focusNode) => _buildButtonIcon(
@@ -412,11 +440,12 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
         captionText: _buildButtonCaption(context, action, enabled: enabled),
         onPressed: enabled ? () => _onActionSelected(context, action, actionDelegate) : null,
       );
-    }).toList();
+    }).followedBy(extraActions).toList();
   }
 
   List<Widget> _buildMobileActions({
     required BuildContext context,
+    required AppMode appMode,
     required Selection<FilterGridItem<T>> selection,
     required bool Function(ChipSetAction action) isVisible,
     required bool Function(ChipSetAction action) canApply,
@@ -431,9 +460,14 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
         );
 
     final animations = context.select<Settings, AccessibilityAnimations>((v) => v.accessibilityAnimations);
+    final extraEntries = widget.extraMenuEntriesBuilder?.call(context, appMode, selection, actionDelegate) ?? const <PopupMenuEntry<Object>>[];
+    // Extra actions sit between the quick actions and the overflow, so ⋮ is
+    // always the rightmost action of the bar.
+    final extraActions = widget.extraActionsBuilder?.call(context, appMode, selection, actionDelegate) ?? const <Widget>[];
     return [
       ...quickActionButtons,
-      PopupMenuButton<ChipSetAction>(
+      ...extraActions,
+      PopupMenuButton<Object>(
         itemBuilder: (context) {
           final generalMenuItems = ChipSetActions.general
               .where(isVisible)
@@ -451,8 +485,12 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
             contextualMenuActions.removeLast();
           }
 
-          return [
+          return <PopupMenuEntry<Object>>[
             ...generalMenuItems,
+            if (extraEntries.isNotEmpty) ...[
+              const PopupMenuDivider(),
+              ...extraEntries,
+            ],
             if (contextualMenuActions.isNotEmpty) ...[
               const PopupMenuDivider(),
               ...contextualMenuActions.map(
@@ -464,14 +502,18 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
             ],
           ];
         },
-        onSelected: (action) async {
+        onSelected: (value) async {
           // remove focus, if any, to prevent the keyboard from showing up
           // after the user is done with the popup menu
           FocusManager.instance.primaryFocus?.unfocus();
 
           // wait for the popup menu to hide before proceeding with the action
           await Future.delayed(animations.popUpAnimationDelay * timeDilation);
-          _onActionSelected(context, action, actionDelegate);
+          if (value is ChipSetAction) {
+            _onActionSelected(context, value, actionDelegate);
+          } else {
+            widget.onExtraMenuSelected?.call(value);
+          }
         },
         popUpAnimationStyle: animations.popUpAnimationStyle,
       ),

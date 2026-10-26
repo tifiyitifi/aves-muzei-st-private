@@ -3,6 +3,7 @@ import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
+import 'package:aves/features/visible_range/data/default_presets.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
@@ -35,7 +36,13 @@ void main() {
       ];
 
   WallpaperGroupRangeController makeController() => WallpaperGroupRangeController(
-        groupController: WallpaperGroupController(injectedDatabase: db, defaultLoader: () async => definitions()),
+        groupController: WallpaperGroupController(
+          injectedDatabase: db,
+          defaultLoader: () async => definitions(),
+          ruleLoader: () async => [
+            VisibleRangePresetDefinition(id: 'builtin.restriction.image', nameKey: 'visibleRangePresetImage', kind: VisibleRangePresetKind.restriction, filters: {MimeFilter.image}),
+          ],
+        ),
         injectedDatabase: db,
       );
 
@@ -134,6 +141,16 @@ void main() {
     expect(controller.range!.isBaseUnrestricted, isTrue);
   });
 
+  test('a seeded group rule can be switched on', () async {
+    await controller.selectGroup('wallpaper.group.dcim');
+    final rule = controller.range!.rules.single;
+
+    expect(rule.active, isFalse);
+    await controller.toggleRule(rule.id);
+    expect(controller.range!.ruleById(rule.id)!.active, isTrue);
+    expect((await controller.groupController.groupRange('wallpaper.group.dcim')).ruleById(rule.id)!.active, isTrue);
+  });
+
   test('the active-style form is this page\'s own preference', () async {
     expect(controller.activeStyle, VisibleRangeActiveStyle.section);
     await controller.setActiveStyle(VisibleRangeActiveStyle.tiles);
@@ -147,5 +164,62 @@ void main() {
     final meta = await AppMetaStore(db).read({WallpaperGroupRangeController.keyActiveStyle, VisibleRangeStore.keyActiveStyle});
     expect(meta[WallpaperGroupRangeController.keyActiveStyle], VisibleRangeActiveStyle.tiles.name);
     expect(meta.containsKey(VisibleRangeStore.keyActiveStyle), isFalse);
+  });
+
+  test('adding a group opens it', () async {
+    await controller.addGroup(name: 'Trips');
+
+    final added = controller.groups.last;
+    expect(added.name, 'Trips');
+    expect(controller.selectedGroupId, added.id);
+    expect(controller.range!.ownerId, added.id);
+    expect(controller.range!.isBaseUnrestricted, isTrue);
+  });
+
+  test('deleting the selected group moves the page to another group', () async {
+    await controller.selectGroup('wallpaper.group.dcim');
+    expect(await controller.deleteGroup('wallpaper.group.dcim'), isTrue);
+
+    expect(controller.groups.map((group) => group.id), ['wallpaper.group.all', 'wallpaper.group.pictures']);
+    expect(controller.selectedGroupId, isNotNull);
+    expect(controller.range!.ownerId, controller.selectedGroupId);
+    expect(controller.range!.ownerId, isNot('wallpaper.group.dcim'));
+  });
+
+  test('deleting a group that is not selected keeps the current selection', () async {
+    await controller.selectGroup('wallpaper.group.pictures');
+    await controller.deleteGroup('wallpaper.group.dcim');
+
+    expect(controller.selectedGroupId, 'wallpaper.group.pictures');
+    expect(controller.range!.ownerId, 'wallpaper.group.pictures');
+  });
+
+  test('the last group cannot be deleted', () async {
+    await controller.deleteGroup('wallpaper.group.dcim');
+    await controller.deleteGroup('wallpaper.group.pictures');
+
+    expect(await controller.deleteGroup('wallpaper.group.all'), isFalse);
+    expect(controller.groups, hasLength(1));
+  });
+
+  test('group management reaches the controller and persists', () async {
+    await controller.renameGroup('wallpaper.group.all', 'Everything');
+    expect(controller.groups.first.name, 'Everything');
+
+    await controller.selectCurrent('wallpaper.group.pictures');
+    expect(controller.current.id, 'wallpaper.group.pictures');
+
+    await controller.setEnabled('wallpaper.group.all', false);
+    expect(controller.groups.last.id, 'wallpaper.group.all');
+    expect(controller.groups.last.enabled, isFalse);
+
+    await controller.moveGroup('wallpaper.group.pictures', -1);
+    expect(controller.groups.first.id, 'wallpaper.group.pictures');
+
+    final restarted = makeController();
+    await restarted.init();
+    expect(restarted.groups.first.id, 'wallpaper.group.pictures');
+    expect(restarted.groups.last.name, 'Everything');
+    expect(restarted.current.id, 'wallpaper.group.pictures');
   });
 }

@@ -1798,6 +1798,17 @@
       }
     }
   },
+  "wallpaperGroupUseCurrent": "Use this group",
+  "wallpaperGroupEnable": "Enable",
+  "wallpaperGroupDisable": "Disable",
+  "wallpaperGroupRename": "Rename group",
+  "wallpaperGroupAdd": "Add group",
+  "wallpaperGroupDelete": "Delete group",
+  "wallpaperGroupMoveUp": "Move up",
+  "wallpaperGroupMoveDown": "Move down",
+  "wallpaperGroupDeleteConfirm": "Delete this group and its visible range?",
+  "wallpaperGroupNameTitle": "Group name",
+  "wallpaperGroupKeepOne": "Keep at least one group.",
 
   "explorerUseCurrentPath": "Use current folder",
 

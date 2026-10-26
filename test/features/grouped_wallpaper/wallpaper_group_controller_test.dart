@@ -2,6 +2,7 @@ import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
+import 'package:aves/features/visible_range/data/default_presets.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/path.dart';
@@ -34,8 +35,16 @@ void main() {
         WallpaperGroupDefinition(id: 'wallpaper.group.pictures', nameKey: 'wallpaperGroupDefaultPictures', filters: {PathFilter('/pictures')}),
       ];
 
-  WallpaperGroupController makeController({List<WallpaperGroupDefinition>? bundle}) =>
-      WallpaperGroupController(injectedDatabase: db, defaultLoader: () async => bundle ?? definitions());
+  List<VisibleRangePresetDefinition> ruleDefinitions() => [
+        VisibleRangePresetDefinition(id: 'builtin.restriction.image', nameKey: 'visibleRangePresetImage', kind: VisibleRangePresetKind.restriction, filters: {MimeFilter.image}),
+        VisibleRangePresetDefinition(id: 'builtin.supplement.video', nameKey: 'visibleRangePresetVideo', kind: VisibleRangePresetKind.supplement, filters: {MimeFilter.video}),
+      ];
+
+  WallpaperGroupController makeController({List<WallpaperGroupDefinition>? bundle}) => WallpaperGroupController(
+        injectedDatabase: db,
+        defaultLoader: () async => bundle ?? definitions(),
+        ruleLoader: () async => ruleDefinitions(),
+      );
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
@@ -67,6 +76,20 @@ void main() {
     final restarted = makeController();
     await restarted.init();
     expect(restarted.groups, hasLength(3));
+  });
+
+  test('seeds the bundled rules into every group, all switched off', () async {
+    final dcim = await controller.groupRange('wallpaper.group.dcim');
+    expect(dcim.rules.map((rule) => rule.kind).toSet(), {VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement});
+    expect(dcim.rules.every((rule) => !rule.active), isTrue);
+    // Bundled labels are ARB keys, so they follow the language like the gallery's.
+    expect(dcim.rules.every((rule) => rule.label.startsWith('@')), isTrue);
+    expect(dcim.rules.firstWhere((rule) => rule.kind == VisibleRangeRuleKind.restriction).position, 0);
+
+    // A rule id is global, so the same candidate gets a different id per group.
+    final all = await controller.groupRange('wallpaper.group.all');
+    expect(all.rules, isNotEmpty);
+    expect(all.rules.map((rule) => rule.id).toSet().intersection(dcim.rules.map((rule) => rule.id).toSet()), isEmpty);
   });
 
   test('a group whose folder was not resolvable is seeded closed', () async {

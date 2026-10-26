@@ -43,6 +43,11 @@ falling back to "everything". The same principle is stated in the About page and
 in the visible-range preset parser, which simply does not offer a candidate whose
 path is unknown.
 
+Every new group also materializes the bundled restriction and supplement
+candidates, switched off, so its page offers the same vocabulary as the gallery
+instead of empty sections. Rule ids are global, so the same candidate gets a
+per-group id (`<groupId>.rule.<definitionId>`).
+
 ## Media set
 
 `wallpaperMediaSetFilter` is the only way to turn a group into filters: every

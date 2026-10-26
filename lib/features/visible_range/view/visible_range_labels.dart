@@ -36,6 +36,12 @@ String visibleRangePresetLabel(BuildContext context, String key) {
     'visibleRangePresetNotCamera' => l10n.visibleRangePresetNotCamera,
     'visibleRangePresetNotPortrait' => l10n.visibleRangePresetNotPortrait,
     'visibleRangePresetNotLandscape' => l10n.visibleRangePresetNotLandscape,
+    // Bundled wallpaper-group names double as their range's base name, so the
+    // same switch resolves both (the group page stores `@wallpaperGroupDefault*`).
+    'wallpaperGroupNone' => l10n.wallpaperGroupNone,
+    'wallpaperGroupDefaultAll' => l10n.wallpaperGroupDefaultAll,
+    'wallpaperGroupDefaultDcim' => l10n.wallpaperGroupDefaultDcim,
+    'wallpaperGroupDefaultPictures' => l10n.wallpaperGroupDefaultPictures,
     // An unknown key is a data error, but showing it beats an empty tile.
     _ => key,
   };

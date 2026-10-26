@@ -7,6 +7,7 @@ import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dart';
+import 'package:aves/features/visible_range/data/default_presets.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/services/common/services.dart';
@@ -44,11 +45,17 @@ class WallpaperGroupController extends ChangeNotifier {
   /// ready instead of being seeded closed.
   final bool _usesBundledDefaults;
 
+  /// Loads the bundled restriction/supplement candidates reused per group;
+  /// injectable so tests need no asset bundle.
+  final Future<List<VisibleRangePresetDefinition>> Function() ruleLoader;
+
   new({
     this.injectedDatabase,
     WallpaperGroupDefaultLoader? defaultLoader,
+    Future<List<VisibleRangePresetDefinition>> Function()? ruleLoader,
   })  : _usesBundledDefaults = defaultLoader == null,
-        defaultLoader = defaultLoader ?? _loadBundledDefaults;
+        defaultLoader = defaultLoader ?? _loadBundledDefaults,
+        ruleLoader = ruleLoader ?? loadVisibleRangePresetDefinitions;
 
   static Future<List<WallpaperGroupDefinition>> _loadBundledDefaults() => loadWallpaperGroupDefinitions();
 
@@ -115,6 +122,7 @@ class WallpaperGroupController extends ChangeNotifier {
     }
     final definitions = await defaultLoader();
     if (definitions.isEmpty) return null;
+    final ruleCandidates = await _loadRuleCandidates();
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final ranges = VisibleRangeStore(store.db);
@@ -144,6 +152,7 @@ class WallpaperGroupController extends ChangeNotifier {
           // A base name is only shown when the base is not 「unrestricted」.
           baseName: definition.filters.isEmpty ? '' : '@${definition.nameKey}',
           baseFilters: definition.filters,
+          rules: _bundledRules(definition.id, ruleCandidates),
           createdAt: now,
           updatedAt: now,
         ),
@@ -172,6 +181,50 @@ class WallpaperGroupController extends ChangeNotifier {
   }
 
   static bool _isBundledGroup(String id) => id.startsWith(bundledGroupIdPrefix);
+
+  /// The bundled restriction/supplement candidates, reused for every group.
+  ///
+  /// A wallpaper group narrows like the gallery does, so its page offers the
+  /// same vocabulary instead of an empty restrictions/supplements section. All
+  /// of them start switched off. A candidate whose folder cannot be resolved is
+  /// skipped by the asset parser, which is the same fail-closed rule the gallery
+  /// applies.
+  Future<List<VisibleRangePresetDefinition>> _loadRuleCandidates() async {
+    try {
+      final definitions = await ruleLoader();
+      return definitions.where((definition) => definition.kind != VisibleRangePresetKind.base).toList();
+    } catch (error, stack) {
+      groupedWallpaperLog.e('failed to load the bundled rule candidates, seeding bare groups', error, stack);
+      return const [];
+    }
+  }
+
+  /// Materializes the bundled rules for one group, all inactive.
+  ///
+  /// Rule ids are global, so the same candidate gets a per-group id; position is
+  /// per kind, matching the gallery's ordering.
+  List<VisibleRangeRule> _bundledRules(String groupId, List<VisibleRangePresetDefinition> candidates) {
+    final rangeId = wallpaperGroupRangeId(groupId);
+    final restriction = candidates.where((definition) => definition.kind == VisibleRangePresetKind.restriction).toList();
+    final supplement = candidates.where((definition) => definition.kind == VisibleRangePresetKind.supplement).toList();
+    return [
+      for (var i = 0; i < restriction.length; i++)
+        _bundledRule(groupId, rangeId, restriction[i], VisibleRangeRuleKind.restriction, i),
+      for (var i = 0; i < supplement.length; i++)
+        _bundledRule(groupId, rangeId, supplement[i], VisibleRangeRuleKind.supplement, i),
+    ];
+  }
+
+  static VisibleRangeRule _bundledRule(String groupId, String rangeId, VisibleRangePresetDefinition definition, VisibleRangeRuleKind kind, int position) => VisibleRangeRule(
+        id: wallpaperGroupRuleId(groupId, definition.id),
+        rangeId: rangeId,
+        kind: kind,
+        position: position,
+        // `@` marks an ARB key, like the gallery's own default rules.
+        label: '@${definition.nameKey}',
+        filters: definition.filters,
+        active: false,
+      );
 
   /// Makes the standard directories available before the asset is resolved.
   ///

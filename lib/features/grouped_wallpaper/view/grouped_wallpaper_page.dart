@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_action_delegate.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
@@ -46,7 +47,7 @@ class GroupedWallpaperPage extends StatefulWidget {
   State<GroupedWallpaperPage> createState() => _GroupedWallpaperPageState();
 }
 
-enum _PageAction { order, lock, about }
+enum _PageAction { useCurrent, toggleEnabled, moveUp, moveDown, rename, add, delete, order, lock, about }
 
 class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
   final ValueNotifier<double> _appBarHeightNotifier = ValueNotifier(0);
@@ -392,26 +393,45 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
 
   List<PopupMenuEntry<_PageAction>> _menuEntries(BuildContext context) {
     final l10n = context.l10n;
+    final group = _selectedGroup;
     final range = _controller.range;
     final locked = range?.locked ?? false;
+    final canDelete = _controller.groups.length > 1;
     return [
-      PopupMenuItem<_PageAction>(
-        value: _PageAction.order,
-        child: _menuRow(context, AIcons.sortOrder, l10n.visibleRangeOrder),
-      ),
-      PopupMenuItem<_PageAction>(
-        value: _PageAction.lock,
-        child: _menuRow(context, locked ? AIcons.locked : AIcons.unlocked, locked ? l10n.visibleRangeUnlock : l10n.visibleRangeLock),
-      ),
+      if (group == null)
+        // Group 0 is the explicit "no group effect" choice.
+        _menuItem(_PageAction.useCurrent, AIcons.current, l10n.wallpaperGroupNone)
+      else ...[
+        if (!group.current && group.enabled) _menuItem(_PageAction.useCurrent, AIcons.current, l10n.wallpaperGroupUseCurrent),
+        _menuItem(
+          _PageAction.toggleEnabled,
+          group.enabled ? AIcons.unselected : AIcons.checked,
+          group.enabled ? l10n.wallpaperGroupDisable : l10n.wallpaperGroupEnable,
+        ),
+        _menuItem(_PageAction.moveUp, AIcons.up, l10n.wallpaperGroupMoveUp),
+        _menuItem(_PageAction.moveDown, AIcons.down, l10n.wallpaperGroupMoveDown),
+        const PopupMenuDivider(),
+        _menuItem(_PageAction.rename, AIcons.edit, l10n.wallpaperGroupRename),
+      ],
+      _menuItem(_PageAction.add, AIcons.add, l10n.wallpaperGroupAdd),
+      if (group != null) _menuItem(_PageAction.delete, AIcons.delete, l10n.wallpaperGroupDelete, enabled: canDelete),
       const PopupMenuDivider(),
-      PopupMenuItem<_PageAction>(
-        value: _PageAction.about,
-        child: _menuRow(context, AIcons.info, l10n.visibleRangeAbout),
-      ),
+      if (range != null) ...[
+        _menuItem(_PageAction.order, AIcons.sortOrder, l10n.visibleRangeOrder),
+        _menuItem(_PageAction.lock, locked ? AIcons.locked : AIcons.unlocked, locked ? l10n.visibleRangeUnlock : l10n.visibleRangeLock),
+        const PopupMenuDivider(),
+      ],
+      _menuItem(_PageAction.about, AIcons.info, l10n.visibleRangeAbout),
     ];
   }
 
-  Widget _menuRow(BuildContext context, IconData icon, String text) {
+  PopupMenuItem<_PageAction> _menuItem(_PageAction value, IconData icon, String text, {bool enabled = true}) => PopupMenuItem<_PageAction>(
+        value: value,
+        enabled: enabled,
+        child: _menuRow(icon, text),
+      );
+
+  Widget _menuRow(IconData icon, String text) {
     return Row(
       children: [
         Icon(icon, size: 20),
@@ -421,12 +441,29 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     );
   }
 
+  WallpaperGroup? get _selectedGroup {
+    final id = _controller.selectedGroupId;
+    if (id == null) return null;
+    return _controller.groups.firstWhereOrNull((group) => group.id == id);
+  }
+
   Future<void> _onMenuSelected(_PageAction action) async {
-    if (_controller.selectedGroupId == null) {
-      _showBlocked();
-      return;
-    }
+    final group = _selectedGroup;
     switch (action) {
+      case _PageAction.useCurrent:
+        await _controller.selectCurrent(group?.id);
+      case _PageAction.toggleEnabled:
+        if (group != null) await _controller.setEnabled(group.id, !group.enabled);
+      case _PageAction.moveUp:
+        if (group != null) await _controller.moveGroup(group.id, -1);
+      case _PageAction.moveDown:
+        if (group != null) await _controller.moveGroup(group.id, 1);
+      case _PageAction.rename:
+        if (group != null) await _renameGroup(group);
+      case _PageAction.add:
+        await _addGroup();
+      case _PageAction.delete:
+        if (group != null) await _deleteGroup(group);
       case _PageAction.order:
         await _pickOrder();
       case _PageAction.lock:
@@ -434,6 +471,63 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
       case _PageAction.about:
         await _openAbout();
     }
+  }
+
+  Future<void> _renameGroup(WallpaperGroup group) async {
+    final name = await _askGroupName(
+      title: context.l10n.wallpaperGroupNameTitle,
+      initial: group.hasBundledName ? '' : group.name,
+      hint: wallpaperGroupName(context, group),
+    );
+    if (name == null || name.isEmpty) return;
+    await _controller.renameGroup(group.id, name);
+  }
+
+  Future<void> _addGroup() async {
+    final name = await _askGroupName(title: context.l10n.wallpaperGroupAdd, initial: '', hint: '');
+    // An empty name is allowed: the group keeps its derived number until the
+    // user names it.
+    if (name == null) return;
+    await _controller.addGroup(name: name);
+  }
+
+  Future<String?> _askGroupName({required String title, required String initial, required String hint}) async {
+    final controller = TextEditingController(text: initial);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(hintText: hint.isEmpty ? null : hint),
+          onSubmitted: (value) => Navigator.pop(context, value.trim()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
+          TextButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _deleteGroup(WallpaperGroup group) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text(context.l10n.wallpaperGroupDeleteConfirm),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final deleted = await _controller.deleteGroup(group.id);
+    if (!mounted || deleted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.wallpaperGroupKeepOne)));
   }
 
   Future<void> _pickOrder() async {

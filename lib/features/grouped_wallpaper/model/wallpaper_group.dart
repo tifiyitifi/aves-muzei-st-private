@@ -15,6 +15,13 @@ const String wallpaperGroupNoneId = 'none';
 /// range, and renumbering the groups never moves a range.
 String wallpaperGroupRangeId(String groupId) => '$groupId.range';
 
+/// Rule id owned by a wallpaper group.
+///
+/// Rule ids are global (one table), so the same bundled candidate gets a
+/// different id per group: seeding the same restrictions into two groups must
+/// not collide. The prefix keeps the id readable in a database dump.
+String wallpaperGroupRuleId(String groupId, String definitionId) => '$groupId.rule.$definitionId';
+
 /// One wallpaper group: the unit that owns a visible range.
 ///
 /// [number] is derived from the stored position (`1..n`), never edited by hand.

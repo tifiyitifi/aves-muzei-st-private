@@ -9,6 +9,7 @@ import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
 /// Edits the selected wallpaper group's visible range for the wallpaper page.
@@ -161,6 +162,41 @@ class WallpaperGroupRangeController extends ChangeNotifier {
       );
 
   Future<void> unlock() => _update((range) => range.copyWith(locked: false), allowLocked: true);
+
+  // group management
+
+  /// Adds a group and opens it, so the user can narrow it right away.
+  Future<void> addGroup({String name = ''}) async {
+    await groupController.addGroup(name: name);
+    final added = groups.lastOrNull;
+    if (added != null) await selectGroup(added.id);
+  }
+
+  Future<void> renameGroup(String id, String name) => groupController.renameGroup(id, name);
+
+  /// Deletes a group, moving the page to another one when it was selected.
+  ///
+  /// The group controller refuses to remove the last group, so the page keeps
+  /// something to edit; the boolean is passed on for the "keep one" message.
+  Future<bool> deleteGroup(String id) async {
+    final wasSelected = _selectedGroupId == id;
+    final deleted = await groupController.deleteGroup(id);
+    if (!deleted) return false;
+    if (wasSelected) {
+      await selectGroup(groups.firstOrNull?.id);
+    } else {
+      notifyListeners();
+    }
+    return true;
+  }
+
+  Future<void> setEnabled(String id, bool enabled) => groupController.setEnabled(id, enabled);
+
+  /// Marks [id] as the group the wallpaper uses; null falls back to group 0.
+  Future<void> selectCurrent(String? id) => groupController.selectCurrent(id);
+
+  /// Moves a group inside its own segment (enabled or disabled).
+  Future<void> moveGroup(String id, int delta) => groupController.moveGroup(id, delta);
 
   /// Applies [transform] to the selected range and persists it.
   ///

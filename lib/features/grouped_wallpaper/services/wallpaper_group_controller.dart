@@ -10,6 +10,7 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dar
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:aves/utils/android_file_utils.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
@@ -38,10 +39,16 @@ class WallpaperGroupController extends ChangeNotifier {
   final AppDatabase? injectedDatabase;
   final WallpaperGroupDefaultLoader defaultLoader;
 
+  /// Whether [defaultLoader] reads the bundled asset. Only bundled defaults need
+  /// the device's standard directories, so only they wait for storage to be
+  /// ready instead of being seeded closed.
+  final bool _usesBundledDefaults;
+
   new({
     this.injectedDatabase,
     WallpaperGroupDefaultLoader? defaultLoader,
-  }) : defaultLoader = defaultLoader ?? _loadBundledDefaults;
+  })  : _usesBundledDefaults = defaultLoader == null,
+        defaultLoader = defaultLoader ?? _loadBundledDefaults;
 
   static Future<List<WallpaperGroupDefinition>> _loadBundledDefaults() => loadWallpaperGroupDefinitions();
 
@@ -95,6 +102,17 @@ class WallpaperGroupController extends ChangeNotifier {
   /// the activation inside a group's range survive a defaults bump. A built-in
   /// the bundle dropped is deleted together with its range.
   Future<List<WallpaperGroup>?> _applyDefaults(WallpaperGroupStore store, List<WallpaperGroup> groups) async {
+    if (_usesBundledDefaults) {
+      try {
+        await _ensureStandardPaths();
+      } catch (error, stack) {
+        // Seeding now would resolve no folder and close every group (a privacy
+        // default fails closed), which is wrong while the device is still
+        // booting. Leave the list as it is and retry on the next open.
+        groupedWallpaperLog.e('failed to resolve standard paths, deferring the group defaults', error, stack);
+        return null;
+      }
+    }
     final definitions = await defaultLoader();
     if (definitions.isEmpty) return null;
 
@@ -154,6 +172,25 @@ class WallpaperGroupController extends ChangeNotifier {
   }
 
   static bool _isBundledGroup(String id) => id.startsWith(bundledGroupIdPrefix);
+
+  /// Makes the standard directories available before the asset is resolved.
+  ///
+  /// `androidFileUtils.init` runs after the first frame otherwise. A device that
+  /// is still booting reports no storage volume: skip the seed instead of
+  /// blocking the first frame on its retry loop, and try again next time.
+  Future<void> _ensureStandardPaths() async {
+    try {
+      androidFileUtils.dcimPath;
+      return;
+    } catch (_) {
+      // Not initialized yet.
+    }
+    if (androidFileUtils.storageVolumes.isEmpty) {
+      final volumes = await storageService.getStorageVolumes();
+      if (volumes.isEmpty) throw StateError('storage volumes are not ready');
+    }
+    await androidFileUtils.init();
+  }
 
   /// Adds a group at the end of the enabled segment.
   ///

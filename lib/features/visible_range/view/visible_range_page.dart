@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/services/visible_range_candidate_stats.dart';
@@ -53,6 +54,7 @@ enum _MoreAction {
   order,
   save,
   reAddDefaults,
+  wallpaperGroups,
   lockDetailed,
   about,
 }
@@ -356,6 +358,10 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       _menuItem(context, _MoreAction.order, AIcons.sortOrder, l10n.visibleRangeOrder),
       _menuItem(context, _MoreAction.save, AIcons.checked, l10n.visibleRangeSaveAs),
       _menuItem(context, _MoreAction.reAddDefaults, AIcons.newTier, l10n.visibleRangeReAddDefaults),
+      const PopupMenuDivider(),
+      // The wallpaper groups own their own ranges, so they are reachable from
+      // the range page instead of the bottom bar: one filter entry, one place.
+      _menuItem(context, _MoreAction.wallpaperGroups, AIcons.wallpaper, l10n.wallpaperGroupsTitle),
       const PopupMenuDivider(),
       _menuItem(context, _MoreAction.lockDetailed, AIcons.locked, l10n.visibleRangeLockSheetTitle),
       _menuItem(context, _MoreAction.about, AIcons.info, l10n.visibleRangeAbout),
@@ -775,6 +781,8 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
         final result = await _controller.reAddDefaultPresets();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.visibleRangeReAddDefaultsResult(result.added, result.skipped))));
+      case _MoreAction.wallpaperGroups:
+        await _openWallpaperGroups();
       case _MoreAction.lockDetailed:
         await _lockDetailed();
       case _MoreAction.about:
@@ -884,6 +892,14 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   Future<void> _openAbout() async {
     await Navigator.maybeOf(context)?.push(
       MaterialPageRoute(settings: const RouteSettings(name: VisibleRangeAboutPage.routeName), builder: (_) => const VisibleRangeAboutPage()),
+    );
+  }
+
+  /// Opens the wallpaper-group page, which edits the same kind of range per
+  /// group and keeps its own layout/style preferences.
+  Future<void> _openWallpaperGroups() async {
+    await Navigator.maybeOf(context)?.push(
+      MaterialPageRoute(settings: const RouteSettings(name: GroupedWallpaperPage.routeName), builder: (_) => const GroupedWallpaperPage()),
     );
   }
 }

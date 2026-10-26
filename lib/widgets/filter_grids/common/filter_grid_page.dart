@@ -72,6 +72,12 @@ class FilterGridPage<T extends CollectionFilter> extends StatelessWidget {
   final FilterTileTapCallback<T> onTileTap;
   final FilterTileBuilder<T>? tileBuilder;
   final WidgetBuilder? footerBuilder;
+
+  /// Optional widget pinned above the sections, inside the same scroll view.
+  ///
+  /// The wallpaper-group page uses it for the group switcher, so the switcher
+  /// scrolls with the grid instead of shrinking the grid's viewport.
+  final WidgetBuilder? headerBuilder;
   final bool Function(FilterGridItem<T> item)? selectableItem;
   final StreamController<DraggableScrollbarEvent> _draggableScrollBarEventStreamController = StreamController.broadcast();
 
@@ -92,6 +98,7 @@ class FilterGridPage<T extends CollectionFilter> extends StatelessWidget {
     required this.onTileTap,
     this.tileBuilder,
     this.footerBuilder,
+    this.headerBuilder,
     this.selectableItem,
   });
 
@@ -123,6 +130,7 @@ class FilterGridPage<T extends CollectionFilter> extends StatelessWidget {
               onTileTap: onTileTap,
               tileBuilder: tileBuilder,
               footerBuilder: footerBuilder,
+              headerBuilder: headerBuilder,
               selectableItem: selectableItem,
             );
           },
@@ -196,6 +204,7 @@ class _FilterGrid<T extends CollectionFilter> extends StatefulWidget {
   final FilterTileTapCallback<T> onTileTap;
   final FilterTileBuilder<T>? tileBuilder;
   final WidgetBuilder? footerBuilder;
+  final WidgetBuilder? headerBuilder;
   final bool Function(FilterGridItem<T> item)? selectableItem;
 
   const new({
@@ -214,6 +223,7 @@ class _FilterGrid<T extends CollectionFilter> extends StatefulWidget {
     required this.onTileTap,
     this.tileBuilder,
     this.footerBuilder,
+    this.headerBuilder,
     this.selectableItem,
   });
 
@@ -272,6 +282,7 @@ class _FilterGridState<T extends CollectionFilter> extends State<_FilterGrid<T>>
           onTileTap: widget.onTileTap,
           tileBuilder: widget.tileBuilder,
           footerBuilder: widget.footerBuilder,
+          headerBuilder: widget.headerBuilder,
           selectableItem: widget.selectableItem,
         ),
       ),
@@ -292,6 +303,7 @@ class _FilterGridContent<T extends CollectionFilter> extends StatefulWidget {
   final FilterTileTapCallback<T> onTileTap;
   final FilterTileBuilder<T>? tileBuilder;
   final WidgetBuilder? footerBuilder;
+  final WidgetBuilder? headerBuilder;
   final bool Function(FilterGridItem<T> item)? selectableItem;
 
   const new({
@@ -309,6 +321,7 @@ class _FilterGridContent<T extends CollectionFilter> extends StatefulWidget {
     required this.onTileTap,
     this.tileBuilder,
     this.footerBuilder,
+    this.headerBuilder,
     this.selectableItem,
   });
 
@@ -464,6 +477,7 @@ class _FilterGridContentState<T extends CollectionFilter> extends State<_FilterG
                 tileLayout: tileLayout,
                 tileBuilder: widget.tileBuilder,
                 footerBuilder: widget.footerBuilder,
+                headerBuilder: widget.headerBuilder,
                 selectableItem: widget.selectableItem,
               ),
             );
@@ -509,6 +523,7 @@ class _FilterSectionedContent<T extends CollectionFilter> extends StatefulWidget
   final TileLayout tileLayout;
   final FilterTileBuilder<T>? tileBuilder;
   final WidgetBuilder? footerBuilder;
+  final WidgetBuilder? headerBuilder;
   final bool Function(FilterGridItem<T> item)? selectableItem;
 
   const new({
@@ -523,6 +538,7 @@ class _FilterSectionedContent<T extends CollectionFilter> extends StatefulWidget
     required this.tileLayout,
     this.tileBuilder,
     this.footerBuilder,
+    this.headerBuilder,
     this.selectableItem,
   });
 
@@ -602,6 +618,7 @@ class _FilterSectionedContentState<T extends CollectionFilter> extends State<_Fi
       emptyBuilder: emptyBuilder,
       scrollController: scrollController,
       footerBuilder: widget.footerBuilder,
+      headerBuilder: widget.headerBuilder,
     );
 
     final scaler = _FilterScaler<T>(
@@ -729,6 +746,7 @@ class _FilterScrollView<T extends CollectionFilter> extends StatelessWidget {
   final Widget Function() emptyBuilder;
   final ScrollController scrollController;
   final WidgetBuilder? footerBuilder;
+  final WidgetBuilder? headerBuilder;
 
   const new({
     required this.scrollableKey,
@@ -738,6 +756,7 @@ class _FilterScrollView<T extends CollectionFilter> extends StatelessWidget {
     required this.emptyBuilder,
     required this.scrollController,
     this.footerBuilder,
+    this.headerBuilder,
   });
 
   @override
@@ -803,6 +822,7 @@ class _FilterScrollView<T extends CollectionFilter> extends StatelessWidget {
                 ),
           slivers: [
             appBar,
+            if (headerBuilder != null) SliverToBoxAdapter(child: headerBuilder!(context)),
             AnimationLimiter(
               key: ValueKey(context.select<FilterGroupNotifier?, Uri?>((v) => v?.value)),
               child: isEmpty

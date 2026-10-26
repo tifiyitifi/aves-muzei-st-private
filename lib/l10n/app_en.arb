@@ -1785,6 +1785,19 @@
   "wallpaperGroupDefaultAll": "All",
   "wallpaperGroupDefaultDcim": "DCIM",
   "wallpaperGroupDefaultPictures": "Pictures",
+  "wallpaperGroupsTitle": "Wallpaper groups",
+  "wallpaperGroupCurrentTag": "Current",
+  "wallpaperGroupDisabledTag": "Off",
+  "wallpaperGroupNoneBody": "Group 0 does not affect the wallpaper and has no visible range of its own.",
+  "wallpaperGroupsEmpty": "No wallpaper group yet.",
+  "wallpaperGroupFallbackName": "Group {number}",
+  "@wallpaperGroupFallbackName": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
 
   "explorerUseCurrentPath": "Use current folder",
 

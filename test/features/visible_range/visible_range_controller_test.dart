@@ -6,6 +6,7 @@ import 'package:aves/features/visible_range/services/visible_range_controller.da
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:aves_model/aves_model.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -113,12 +114,114 @@ void main() {
     expect(controller.gallery.permissions.trash, isTrue);
   });
 
+  test('view preferences persist across a restart', () async {
+    await controller.setViewSortFactor(SortFactor.count);
+    await controller.setViewSortReverse(true);
+    await controller.setActiveStyle(VisibleRangeActiveStyle.tiles);
+
+    final restarted = VisibleRangeController(injectedDatabase: db, presetLoader: () async => definitions());
+    await restarted.init();
+    expect(restarted.viewSortFactor, SortFactor.count);
+    expect(restarted.viewSortReverse, isTrue);
+    expect(restarted.activeStyle, VisibleRangeActiveStyle.tiles);
+  });
+
   test('re-adding defaults skips existing ids and fingerprints', () async {
     // Delete nothing; a second run must skip both.
     await controller.saveBasePreset(name: 'same filters', filters: {image});
     final result = await controller.reAddDefaultPresets();
     expect(result.added, 0);
     expect(result.skipped, 2);
+  });
+
+  test('restriction and supplement defaults are seeded switched off', () async {
+    final fresh = AppDatabase(NativeDatabase.memory());
+    addTearDown(fresh.close);
+    final withRules = [
+      VisibleRangePresetDefinition(id: 'builtin.image', nameKey: 'visibleRangePresetImage', filters: {image}),
+      VisibleRangePresetDefinition(
+        id: 'builtin.restriction.image',
+        nameKey: 'visibleRangePresetImage',
+        kind: VisibleRangePresetKind.restriction,
+        filters: {video},
+      ),
+      VisibleRangePresetDefinition(
+        id: 'builtin.supplement.favourite',
+        nameKey: 'visibleRangePresetFavourite',
+        kind: VisibleRangePresetKind.supplement,
+        filters: {favourite},
+      ),
+    ];
+    final seeded = VisibleRangeController(injectedDatabase: fresh, presetLoader: () async => withRules);
+    await seeded.init();
+
+    // Only base candidates are presets; the other sections are rules.
+    expect(seeded.presets.map((preset) => preset.id), ['builtin.image']);
+    final rules = seeded.gallery.rules;
+    expect(rules, hasLength(2));
+    expect(rules.every((rule) => !rule.active), isTrue);
+    expect(rules.map((rule) => rule.kind).toSet(), {VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement});
+    expect(rules.every((rule) => rule.label.startsWith('@')), isTrue);
+    // Seeded defaults never restrict the library by themselves.
+    expect(seeded.gallery.isRestricted, isFalse);
+  });
+
+  test('a deleted default is restored switched off', () async {
+    final fresh = AppDatabase(NativeDatabase.memory());
+    addTearDown(fresh.close);
+    final definitions = [
+      VisibleRangePresetDefinition(id: 'builtin.image', nameKey: 'visibleRangePresetImage', filters: {image}),
+      VisibleRangePresetDefinition(
+        id: 'builtin.restriction.image',
+        nameKey: 'visibleRangePresetImage',
+        kind: VisibleRangePresetKind.restriction,
+        filters: {video},
+      ),
+    ];
+    final seeded = VisibleRangeController(injectedDatabase: fresh, presetLoader: () async => definitions);
+    await seeded.init();
+    final rule = seeded.gallery.rules.single;
+    await seeded.deleteRules({rule.id});
+    expect(seeded.gallery.rules, isEmpty);
+
+    final result = await seeded.reAddDefaultPresets();
+    expect(result.added, 1);
+    final restored = seeded.gallery.rules.single;
+    expect(restored.id, rule.id);
+    expect(restored.active, isFalse);
+  });
+
+  test('a defaults version bump replaces the default set but keeps user rules', () async {
+    final fresh = AppDatabase(NativeDatabase.memory());
+    addTearDown(fresh.close);
+    final first = [
+      VisibleRangePresetDefinition(id: 'builtin.image', nameKey: 'visibleRangePresetImage', filters: {image}),
+      VisibleRangePresetDefinition(
+        id: 'builtin.restriction.image',
+        nameKey: 'visibleRangePresetImage',
+        kind: VisibleRangePresetKind.restriction,
+        filters: {video},
+      ),
+    ];
+    final firstController = VisibleRangeController(injectedDatabase: fresh, presetLoader: () async => first);
+    await firstController.init();
+    final userRule = (await firstController.addRule(kind: VisibleRangeRuleKind.supplement, filters: {favourite}))!;
+
+    // Pretend the install predates the current defaults version.
+    final store = VisibleRangeStore(fresh);
+    await store.writeState(VisibleRangeStore.keyDefaultsVersion, '1');
+
+    final second = [
+      VisibleRangePresetDefinition(id: 'builtin.video', nameKey: 'visibleRangePresetVideo', filters: {video}),
+    ];
+    final secondController = VisibleRangeController(injectedDatabase: fresh, presetLoader: () async => second);
+    await secondController.init();
+
+    expect(secondController.presets.map((preset) => preset.id), ['builtin.video']);
+    expect(secondController.gallery.ruleById(userRule.id)?.filters, {favourite});
+    // The dropped built-in rule is gone; only the user rule remains.
+    expect(secondController.gallery.rules, hasLength(1));
+    expect(secondController.gallery.rules.single.id, userRule.id);
   });
 
   group('sessions', () {

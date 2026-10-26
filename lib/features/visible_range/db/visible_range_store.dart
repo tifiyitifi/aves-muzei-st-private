@@ -15,6 +15,18 @@ class VisibleRangeStore {
   /// One-time seeding marker for the built-in presets.
   static const keySeeded = 'seeded';
 
+  /// Version of the bundled defaults last written. A new version re-seeds the
+  /// built-in base presets and materializes the built-in rules, so an upgraded
+  /// install sees the same defaults as a fresh one.
+  static const keyDefaultsVersion = 'defaults.version';
+  static const defaultsVersion = 2;
+
+  /// Page view preferences, persisted with the range store so the feature does
+  /// not add upstream settings keys.
+  static const keyViewSortFactor = 'view.sortFactor';
+  static const keyViewSortReverse = 'view.sortReverse';
+  static const keyActiveStyle = 'view.activeStyle';
+
   final AppDatabase db;
 
   new(this.db);
@@ -30,21 +42,30 @@ class VisibleRangeStore {
   }
 
   Future<void> saveRange(VisibleRange range) async {
-    await db.visibleRangeRows.insertOnConflictUpdate(
-      VisibleRangeRowsCompanion.insert(
-        id: range.id,
-        scope: range.scope.name,
-        ownerId: range.ownerId,
-        createdAt: range.createdAt,
-        updatedAt: range.updatedAt,
-        baseName: Value(range.baseName),
-        basePresetId: Value(range.basePresetId),
-        baseFilters: Value(VisibleRangeFilterCodec.encode(range.baseFilters)),
-        orderMode: Value(range.order.name),
-        locked: Value(range.locked),
-        permissions: Value(range.locked ? _encodePermissions(range.permissions) : null),
-      ),
-    );
+    // A range and its rules are one aggregate: every caller reads them back
+    // together, so a rule edit must be written with the range instead of
+    // lingering in memory until the next explicit `replaceRules`.
+    await db.transaction(() async {
+      await db.visibleRangeRows.insertOnConflictUpdate(
+        VisibleRangeRowsCompanion.insert(
+          id: range.id,
+          scope: range.scope.name,
+          ownerId: range.ownerId,
+          createdAt: range.createdAt,
+          updatedAt: range.updatedAt,
+          baseName: Value(range.baseName),
+          basePresetId: Value(range.basePresetId),
+          baseFilters: Value(VisibleRangeFilterCodec.encode(range.baseFilters)),
+          orderMode: Value(range.order.name),
+          locked: Value(range.locked),
+          permissions: Value(range.locked ? _encodePermissions(range.permissions) : null),
+        ),
+      );
+      await (db.delete(db.visibleRangeRuleRows)..where((t) => t.rangeId.equals(range.id))).go();
+      for (final rule in range.rules) {
+        await saveRule(rule);
+      }
+    });
   }
 
   Future<void> replaceRules(String rangeId, List<VisibleRangeRule> rules) async {
@@ -115,6 +136,13 @@ class VisibleRangeStore {
 
   Future<void> deletePreset(String id) async {
     await (db.delete(db.visibleRangePresetRows)..where((t) => t.id.equals(id))).go();
+  }
+
+  /// Drops every built-in preset, keeping the user's own saves. Used when the
+  /// bundled defaults change, so removed entries disappear instead of lingering
+  /// as unlabelled leftovers.
+  Future<void> deleteBuiltinPresets() async {
+    await (db.delete(db.visibleRangePresetRows)..where((t) => t.builtin.equals(true))).go();
   }
 
   // state

@@ -29,6 +29,10 @@ class const ChangeLayoutDialog<G>({
   required final String Function(SortFactor sort, bool reverse) sortOrder,
   final bool Function(TileLayout? layout, SortFactor? sort, G? section)? canSection,
   required final TileExtentController tileExtentController,
+  /// Additional rows owned by a fork surface, inserted after the section
+  /// selector. They write their own state, so the dialog's result stays the
+  /// generic layout/sort/section tuple.
+  final List<Widget> extraRows = const [],
 }) extends StatefulWidget {
   static const routeName = '/dialog/change_layout';
 
@@ -116,6 +120,7 @@ class _ChangeLayoutDialogState<G> extends State<ChangeLayoutDialog<G>> with Sing
           value: _selectedSection,
           onChanged: (v) => _selectedSection = v as G,
         ),
+        ...widget.extraRows,
         if (settings.showPinchGestureAlternatives)
           AnimatedSwitcher(
             duration: context.select<DurationsData, Duration>((v) => v.formTransition),

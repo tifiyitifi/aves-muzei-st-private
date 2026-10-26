@@ -87,7 +87,7 @@ class NavigationDisplay {
       case MuzeiWallpaperPage.routeName:
         return AIcons.wallpaper;
       case VisibleRangePage.routeName:
-        return AIcons.show;
+        return AIcons.visibleRange;
       case SearchPage.routeName:
         return AIcons.search;
       case SettingsPage.routeName:

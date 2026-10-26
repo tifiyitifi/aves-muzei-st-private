@@ -440,6 +440,12 @@ String filterFingerprint(Iterable<CollectionFilter> filters) {
   return keys.join('\u0000');
 }
 
+/// Id of a built-in rule materialized from the bundled defaults.
+String visibleRangeBuiltinRuleId(String definitionId) => 'builtin.rule.$definitionId';
+
+/// Whether a rule is a materialized default rather than a user rule.
+bool isVisibleRangeBuiltinRule(String id) => id.startsWith('builtin.rule.');
+
 /// JSON codec for filter collections stored in text columns.
 abstract final class VisibleRangeFilterCodec {
   static String encode(Iterable<CollectionFilter> filters) => jsonEncode(filters.map((v) => v.toJsonMap()).toList());

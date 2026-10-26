@@ -1,65 +1,64 @@
 {
-  "version": 1,
+  "version": 2,
   "presets": [
+    { "id": "builtin.image", "kind": "base", "nameKey": "visibleRangePresetImage", "filters": [{ "type": "mime", "mime": "image/*" }] },
+    { "id": "builtin.video", "kind": "base", "nameKey": "visibleRangePresetVideo", "filters": [{ "type": "mime", "mime": "video/*" }] },
+    { "id": "builtin.notVideo", "kind": "base", "nameKey": "visibleRangePresetNotVideo", "filters": [{ "type": "mime", "mime": "video/*", "reversed": true }] },
+    { "id": "builtin.favourite", "kind": "base", "nameKey": "visibleRangePresetFavourite", "filters": [{ "type": "favourite" }] },
+    { "id": "builtin.rating5", "kind": "base", "nameKey": "visibleRangePresetRating5", "filters": [{ "type": "rating", "rating": 5, "op": ">=" }] },
+    { "id": "builtin.rating4", "kind": "base", "nameKey": "visibleRangePresetRating4", "filters": [{ "type": "rating", "rating": 4, "op": ">=" }] },
+    { "id": "builtin.rating3", "kind": "base", "nameKey": "visibleRangePresetRating3", "filters": [{ "type": "rating", "rating": 3, "op": ">=" }] },
+    { "id": "builtin.portrait", "kind": "base", "nameKey": "visibleRangePresetPortrait", "filters": [{ "type": "aspect_ratio", "threshold": 1.0, "op": "<" }] },
+    { "id": "builtin.landscape", "kind": "base", "nameKey": "visibleRangePresetLandscape", "filters": [{ "type": "aspect_ratio", "threshold": 1.0, "op": ">" }] },
+    { "id": "builtin.panorama", "kind": "base", "nameKey": "visibleRangePresetPanorama", "filters": [{ "type": "type", "itemType": "panorama" }] },
+    { "id": "builtin.raw", "kind": "base", "nameKey": "visibleRangePresetRaw", "filters": [{ "type": "type", "itemType": "raw" }] },
+    { "id": "builtin.motionPhoto", "kind": "base", "nameKey": "visibleRangePresetMotionPhoto", "filters": [{ "type": "type", "itemType": "motion_photo" }] },
+    { "id": "builtin.animated", "kind": "base", "nameKey": "visibleRangePresetAnimated", "filters": [{ "type": "type", "itemType": "animated" }] },
+    { "id": "builtin.camera", "kind": "base", "nameKey": "visibleRangePresetCamera", "filters": [{ "type": "path", "standard": "dcim" }] },
     {
-      "id": "builtin.image",
-      "nameKey": "visibleRangePresetImage",
-      "filters": [{ "type": "mime", "mime": "image/*" }]
+      "id": "builtin.cameraRecent3h",
+      "kind": "base",
+      "nameKey": "visibleRangePresetCameraRecent3h",
+      "filters": [{ "type": "path", "standard": "dcim" }, { "type": "relative_time", "span": "3h" }]
+    },
+    { "id": "builtin.recent3h", "kind": "base", "nameKey": "visibleRangePresetRecent3h", "filters": [{ "type": "relative_time", "span": "3h" }] },
+    { "id": "builtin.recent12h", "kind": "base", "nameKey": "visibleRangePresetRecent12h", "filters": [{ "type": "relative_time", "span": "12h" }] },
+    { "id": "builtin.recent3d", "kind": "base", "nameKey": "visibleRangePresetRecent3d", "filters": [{ "type": "relative_time", "span": "3d" }] },
+
+    { "id": "builtin.restriction.portrait", "kind": "restriction", "nameKey": "visibleRangePresetPortrait", "filters": [{ "type": "aspect_ratio", "threshold": 1.0, "op": "<" }] },
+    { "id": "builtin.restriction.landscape", "kind": "restriction", "nameKey": "visibleRangePresetLandscape", "filters": [{ "type": "aspect_ratio", "threshold": 1.0, "op": ">" }] },
+    {
+      "id": "builtin.restriction.notPortrait",
+      "kind": "restriction",
+      "nameKey": "visibleRangePresetNotPortrait",
+      "filters": [{ "type": "aspect_ratio", "threshold": 1.0, "op": "<", "reversed": true }]
     },
     {
-      "id": "builtin.video",
-      "nameKey": "visibleRangePresetVideo",
-      "filters": [{ "type": "mime", "mime": "video/*" }]
+      "id": "builtin.restriction.notLandscape",
+      "kind": "restriction",
+      "nameKey": "visibleRangePresetNotLandscape",
+      "filters": [{ "type": "aspect_ratio", "threshold": 1.0, "op": ">", "reversed": true }]
     },
-    {
-      "id": "builtin.notVideo",
-      "nameKey": "visibleRangePresetNotVideo",
-      "filters": [{ "type": "mime", "mime": "video/*", "reversed": true }]
-    },
-    {
-      "id": "builtin.favourite",
-      "nameKey": "visibleRangePresetFavourite",
-      "filters": [{ "type": "favourite" }]
-    },
-    {
-      "id": "builtin.rating5",
-      "nameKey": "visibleRangePresetRating5",
-      "filters": [{ "type": "rating", "rating": 5, "op": ">=" }]
-    },
-    {
-      "id": "builtin.rating4",
-      "nameKey": "visibleRangePresetRating4",
-      "filters": [{ "type": "rating", "rating": 4, "op": ">=" }]
-    },
-    {
-      "id": "builtin.rating3",
-      "nameKey": "visibleRangePresetRating3",
-      "filters": [{ "type": "rating", "rating": 3, "op": ">=" }]
-    },
-    {
-      "id": "builtin.portrait",
-      "nameKey": "visibleRangePresetPortrait",
-      "filters": [{ "type": "aspect_ratio", "threshold": 1.0, "op": "<" }]
-    },
-    {
-      "id": "builtin.landscape",
-      "nameKey": "visibleRangePresetLandscape",
-      "filters": [{ "type": "aspect_ratio", "threshold": 1.0, "op": ">" }]
-    },
-    {
-      "id": "builtin.panorama",
-      "nameKey": "visibleRangePresetPanorama",
-      "filters": [{ "type": "type", "itemType": "panorama" }]
-    },
-    {
-      "id": "builtin.raw",
-      "nameKey": "visibleRangePresetRaw",
-      "filters": [{ "type": "type", "itemType": "raw" }]
-    },
-    {
-      "id": "builtin.motionPhoto",
-      "nameKey": "visibleRangePresetMotionPhoto",
-      "filters": [{ "type": "type", "itemType": "motion_photo" }]
-    }
+    { "id": "builtin.restriction.recent3h", "kind": "restriction", "nameKey": "visibleRangePresetRecent3h", "filters": [{ "type": "relative_time", "span": "3h" }] },
+    { "id": "builtin.restriction.recent12h", "kind": "restriction", "nameKey": "visibleRangePresetRecent12h", "filters": [{ "type": "relative_time", "span": "12h" }] },
+    { "id": "builtin.restriction.recent3d", "kind": "restriction", "nameKey": "visibleRangePresetRecent3d", "filters": [{ "type": "relative_time", "span": "3d" }] },
+    { "id": "builtin.restriction.notVideo", "kind": "restriction", "nameKey": "visibleRangePresetNotVideo", "filters": [{ "type": "mime", "mime": "video/*", "reversed": true }] },
+    { "id": "builtin.restriction.notCamera", "kind": "restriction", "nameKey": "visibleRangePresetNotCamera", "filters": [{ "type": "path", "standard": "dcim", "reversed": true }] },
+    { "id": "builtin.restriction.favourite", "kind": "restriction", "nameKey": "visibleRangePresetFavourite", "filters": [{ "type": "favourite" }] },
+    { "id": "builtin.restriction.rating5", "kind": "restriction", "nameKey": "visibleRangePresetRating5", "filters": [{ "type": "rating", "rating": 5, "op": ">=" }] },
+    { "id": "builtin.restriction.image", "kind": "restriction", "nameKey": "visibleRangePresetImage", "filters": [{ "type": "mime", "mime": "image/*" }] },
+
+    { "id": "builtin.supplement.video", "kind": "supplement", "nameKey": "visibleRangePresetVideo", "filters": [{ "type": "mime", "mime": "video/*" }] },
+    { "id": "builtin.supplement.image", "kind": "supplement", "nameKey": "visibleRangePresetImage", "filters": [{ "type": "mime", "mime": "image/*" }] },
+    { "id": "builtin.supplement.pictures", "kind": "supplement", "nameKey": "visibleRangePresetPictures", "filters": [{ "type": "path", "standard": "pictures" }] },
+    { "id": "builtin.supplement.camera", "kind": "supplement", "nameKey": "visibleRangePresetCamera", "filters": [{ "type": "path", "standard": "dcim" }] },
+    { "id": "builtin.supplement.favourite", "kind": "supplement", "nameKey": "visibleRangePresetFavourite", "filters": [{ "type": "favourite" }] },
+    { "id": "builtin.supplement.rating5", "kind": "supplement", "nameKey": "visibleRangePresetRating5", "filters": [{ "type": "rating", "rating": 5, "op": ">=" }] },
+    { "id": "builtin.supplement.recent3h", "kind": "supplement", "nameKey": "visibleRangePresetRecent3h", "filters": [{ "type": "relative_time", "span": "3h" }] },
+    { "id": "builtin.supplement.recent3d", "kind": "supplement", "nameKey": "visibleRangePresetRecent3d", "filters": [{ "type": "relative_time", "span": "3d" }] },
+    { "id": "builtin.supplement.raw", "kind": "supplement", "nameKey": "visibleRangePresetRaw", "filters": [{ "type": "type", "itemType": "raw" }] },
+    { "id": "builtin.supplement.panorama", "kind": "supplement", "nameKey": "visibleRangePresetPanorama", "filters": [{ "type": "type", "itemType": "panorama" }] },
+    { "id": "builtin.supplement.motionPhoto", "kind": "supplement", "nameKey": "visibleRangePresetMotionPhoto", "filters": [{ "type": "type", "itemType": "motion_photo" }] },
+    { "id": "builtin.supplement.animated", "kind": "supplement", "nameKey": "visibleRangePresetAnimated", "filters": [{ "type": "type", "itemType": "animated" }] }
   ]
 }

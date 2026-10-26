@@ -8,6 +8,8 @@ import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:aves/utils/android_file_utils.dart';
+import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
@@ -17,6 +19,14 @@ const String visibleRangeLogKey = 'log.visible_range';
 const List<String> visibleRangeDebugLogKeys = [visibleRangeLogKey];
 
 const AreaKeyLog _log = AreaKeyLog(visibleRangeLogKey);
+
+/// How the "current visible range" footer lists the active candidates.
+enum VisibleRangeActiveStyle {
+  compactChips,
+  tiles;
+
+  static VisibleRangeActiveStyle parse(String? value) => value == tiles.name ? tiles : compactChips;
+}
 
 /// The single source of truth for visible ranges.
 ///
@@ -34,8 +44,16 @@ class VisibleRangeController extends ChangeNotifier {
   /// bundle.
   final Future<List<VisibleRangePresetDefinition>> Function() presetLoader;
 
+  /// Whether [presetLoader] is the bundled asset loader. Only the bundled
+  /// defaults need the device's standard directories, so only they wait for
+  /// storage volumes to be ready.
+  final bool _usesBundledDefaults;
+
   new({this.injectedDatabase, Future<List<VisibleRangePresetDefinition>> Function()? presetLoader})
-      : presetLoader = presetLoader ?? loadVisibleRangePresetDefinitions;
+      : _usesBundledDefaults = presetLoader == null,
+        presetLoader = presetLoader ?? _loadBundledPresets;
+
+  static Future<List<VisibleRangePresetDefinition>> _loadBundledPresets() => loadVisibleRangePresetDefinitions();
 
   VisibleRangeStore? _store;
   VisibleRange? _gallery;
@@ -43,6 +61,9 @@ class VisibleRangeController extends ChangeNotifier {
   List<VisibleRangeSession> _sessions = const [];
   String? _openSessionId;
   VisibleRangeLockPreset _lastLockPreset = VisibleRangeLockPreset.readOnly;
+  SortFactor _viewSortFactor = SortFactor.date;
+  bool _viewSortReverse = false;
+  VisibleRangeActiveStyle _activeStyle = VisibleRangeActiveStyle.compactChips;
   Future<void>? _initFuture;
   bool _initialized = false;
 
@@ -69,6 +90,33 @@ class VisibleRangeController extends ChangeNotifier {
   /// Permissions preset the quick lock reuses.
   VisibleRangeLockPreset get lastLockPreset => _lastLockPreset;
 
+  SortFactor get viewSortFactor => _viewSortFactor;
+
+  bool get viewSortReverse => _viewSortReverse;
+
+  VisibleRangeActiveStyle get activeStyle => _activeStyle;
+
+  Future<void> setViewSortFactor(SortFactor factor) async {
+    if (_viewSortFactor == factor) return;
+    _viewSortFactor = factor;
+    await _requireStore().writeState(VisibleRangeStore.keyViewSortFactor, factor.name);
+    notifyListeners();
+  }
+
+  Future<void> setViewSortReverse(bool reverse) async {
+    if (_viewSortReverse == reverse) return;
+    _viewSortReverse = reverse;
+    await _requireStore().writeState(VisibleRangeStore.keyViewSortReverse, reverse ? '1' : '0');
+    notifyListeners();
+  }
+
+  Future<void> setActiveStyle(VisibleRangeActiveStyle style) async {
+    if (_activeStyle == style) return;
+    _activeStyle = style;
+    await _requireStore().writeState(VisibleRangeStore.keyActiveStyle, style.name);
+    notifyListeners();
+  }
+
   Future<void> init() => _initFuture ??= _doInit();
 
   Future<void> _doInit() async {
@@ -76,7 +124,13 @@ class VisibleRangeController extends ChangeNotifier {
     final store = VisibleRangeStore(db);
     _store = store;
     try {
-      await _seedBuiltinPresetsOnce(store);
+      await _seedDefaults(store);
+    } catch (error, stack) {
+      // A failed default seed must not hide an already saved range: keep the
+      // stored set, skip the version marker and retry on the next start.
+      _log.e('failed to seed visible range defaults, keeping the stored set', error, stack);
+    }
+    try {
       _presets = await store.loadPresets();
       _gallery = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId) ?? VisibleRange.emptyGallery(now: _now);
       _sessions = await store.loadSessions(rangeId: _gallery!.id);
@@ -85,6 +139,13 @@ class VisibleRangeController extends ChangeNotifier {
         (v) => v.name == lastLockPreset,
         orElse: () => VisibleRangeLockPreset.readOnly,
       );
+      final sortName = await store.readState(VisibleRangeStore.keyViewSortFactor);
+      _viewSortFactor = SortFactor.values.firstWhere(
+        (v) => v.name == sortName,
+        orElse: () => SortFactor.date,
+      );
+      _viewSortReverse = await store.readState(VisibleRangeStore.keyViewSortReverse) == '1';
+      _activeStyle = VisibleRangeActiveStyle.parse(await store.readState(VisibleRangeStore.keyActiveStyle));
       _initialized = true;
     } catch (error, stack) {
       // A broken range store must never hide the library: fall back to 「不限」.
@@ -95,44 +156,133 @@ class VisibleRangeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Seeds the built-in base presets exactly once. A user deleting one keeps it
-  /// deleted until "重新加入默认限制" adds it back.
-  Future<void> _seedBuiltinPresetsOnce(VisibleRangeStore store) async {
-    final seeded = await store.readState(VisibleRangeStore.keySeeded);
-    if (seeded == '1') return;
+  /// Writes the bundled defaults for the current [VisibleRangeStore.defaultsVersion].
+  ///
+  /// Base candidates become presets; restriction and supplement candidates become
+  /// inactive rules, so the page can show them as tiles before the user turns
+  /// them on. The version marker also lets an upgraded install replace the old
+  /// default set instead of keeping removed entries forever.
+  Future<void> _seedDefaults(VisibleRangeStore store) async {
+    final rawVersion = await store.readState(VisibleRangeStore.keyDefaultsVersion);
+    // Installs seeded by the first release only have the boolean marker.
+    final legacySeeded = await store.readState(VisibleRangeStore.keySeeded) == '1';
+    final seededVersion = int.tryParse(rawVersion ?? '') ?? (legacySeeded ? 1 : 0);
+    if (seededVersion >= VisibleRangeStore.defaultsVersion) return;
+
+    if (_usesBundledDefaults) {
+      try {
+        await _ensureStandardPaths();
+      } catch (error, stack) {
+        // Without the device's standard directories the camera/pictures defaults
+        // would be wrong. Leave the old set in place and retry next start.
+        _log.e('failed to resolve standard paths, keeping existing defaults', error, stack);
+        return;
+      }
+    }
     final definitions = await presetLoader();
-    // An empty bundle must not burn the one-time marker: the next start with a
-    // readable asset still has to seed.
+    // An empty bundle must not burn the marker: the next start with a readable
+    // asset still has to seed.
     if (definitions.isEmpty) return;
-    for (var i = 0; i < definitions.length; i++) {
-      final definition = definitions[i];
+
+    if (seededVersion < 2) {
+      await store.deleteBuiltinPresets();
+    }
+    var position = 0;
+    for (final definition in definitions.where((definition) => definition.kind == VisibleRangePresetKind.base)) {
       await store.savePreset(
         VisibleRangePreset(
           id: definition.id,
           name: definition.nameKey,
           filters: definition.filters,
           builtin: true,
-          position: i,
+          position: position++,
         ),
       );
     }
-    await store.writeState(VisibleRangeStore.keySeeded, '1');
+
+    final range = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId) ?? VisibleRange.emptyGallery(now: _now);
+    final rules = [...range.rules];
+    final builtinIds = <String>{};
+    final positions = <VisibleRangeRuleKind, int>{};
+    for (final definition in definitions) {
+      if (definition.kind == VisibleRangePresetKind.base) continue;
+      final id = _builtinRuleId(definition.id);
+      builtinIds.add(id);
+      if (rules.any((rule) => rule.id == id)) continue;
+      final kind = definition.kind == VisibleRangePresetKind.restriction ? VisibleRangeRuleKind.restriction : VisibleRangeRuleKind.supplement;
+      final rulePosition = positions[kind] ?? 0;
+      positions[kind] = rulePosition + 1;
+      rules.add(
+        VisibleRangeRule(
+          id: id,
+          rangeId: range.id,
+          kind: kind,
+          position: rulePosition,
+          // `@` marks an ARB key; the page localizes it and a user rename simply
+          // replaces the label with plain text.
+          label: '@${definition.nameKey}',
+          filters: definition.filters,
+          active: false,
+        ),
+      );
+    }
+    // A version bump may also drop a default; keep user rules untouched.
+    rules.removeWhere((rule) => _isBuiltinRule(rule.id) && !builtinIds.contains(rule.id));
+    await store.saveRange(range.copyWith(rules: rules));
+    await store.writeState(VisibleRangeStore.keyDefaultsVersion, '${VisibleRangeStore.defaultsVersion}');
   }
+
+  /// Makes the standard directories available before the asset is parsed.
+  ///
+  /// `androidFileUtils.init` runs after the first frame otherwise; defaults are
+  /// only seeded on a fresh install or a defaults bump, so this one-time wait
+  /// does not affect normal startup. A device that is still booting reports no
+  /// storage volume: skip the seed instead of blocking the first frame on its
+  /// retry loop, and try again on the next start.
+  Future<void> _ensureStandardPaths() async {
+    try {
+      androidFileUtils.dcimPath;
+      return;
+    } catch (_) {
+      // Not initialized yet.
+    }
+    if (androidFileUtils.storageVolumes.isEmpty) {
+      final volumes = await storageService.getStorageVolumes();
+      if (volumes.isEmpty) throw StateError('storage volumes are not ready');
+    }
+    await androidFileUtils.init();
+  }
+
+  static String _builtinRuleId(String definitionId) => visibleRangeBuiltinRuleId(definitionId);
+
+  static bool _isBuiltinRule(String id) => isVisibleRangeBuiltinRule(id);
 
   // presets
 
-  /// Re-adds the bundled presets, skipping ids and filter fingerprints that are
-  /// already present. Returns how many were added and skipped.
+  /// Re-adds the bundled candidates, skipping ids and filter fingerprints that
+  /// are already present. Returns how many were added and skipped.
+  ///
+  /// Restriction and supplement defaults are restored as inactive rules, so a
+  /// deleted default comes back switched off instead of silently changing the
+  /// current range.
   Future<({int added, int skipped})> reAddDefaultPresets() async {
     final store = _requireStore();
     if (gallery.locked) return (added: 0, skipped: 0);
+    if (_usesBundledDefaults) {
+      try {
+        await _ensureStandardPaths();
+      } catch (error, stack) {
+        _log.e('failed to resolve standard paths, cannot re-add defaults', error, stack);
+        return (added: 0, skipped: 0);
+      }
+    }
     final definitions = await presetLoader();
     final existingIds = _presets.map((v) => v.id).toSet();
     final existingFingerprints = _presets.map((v) => v.fingerprint).toSet();
     var added = 0;
     var skipped = 0;
     var position = _presets.length;
-    for (final definition in definitions) {
+    for (final definition in definitions.where((definition) => definition.kind == VisibleRangePresetKind.base)) {
       final preset = VisibleRangePreset(
         id: definition.id,
         name: definition.nameKey,
@@ -149,6 +299,40 @@ class VisibleRangeController extends ChangeNotifier {
       added++;
     }
     _presets = await store.loadPresets();
+
+    final range = gallery;
+    final rules = [...range.rules];
+    var rulesAdded = 0;
+    final positions = <VisibleRangeRuleKind, int>{
+      for (final kind in VisibleRangeRuleKind.values) kind: rules.where((rule) => rule.kind == kind).length,
+    };
+    for (final definition in definitions.where((definition) => definition.kind != VisibleRangePresetKind.base)) {
+      final id = _builtinRuleId(definition.id);
+      if (rules.any((rule) => rule.id == id)) {
+        skipped++;
+        continue;
+      }
+      final kind = definition.kind == VisibleRangePresetKind.restriction ? VisibleRangeRuleKind.restriction : VisibleRangeRuleKind.supplement;
+      final rulePosition = positions[kind] ?? 0;
+      positions[kind] = rulePosition + 1;
+      rules.add(
+        VisibleRangeRule(
+          id: id,
+          rangeId: range.id,
+          kind: kind,
+          position: rulePosition,
+          label: '@${definition.nameKey}',
+          filters: definition.filters,
+          active: false,
+        ),
+      );
+      rulesAdded++;
+      added++;
+    }
+    if (rulesAdded > 0) {
+      await _updateGallery((range) => range.copyWith(rules: rules));
+    }
+
     notifyListeners();
     return (added: added, skipped: skipped);
   }

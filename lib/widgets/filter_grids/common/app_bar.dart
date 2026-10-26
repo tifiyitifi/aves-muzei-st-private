@@ -44,6 +44,7 @@ class FilterGridAppBar<T extends CollectionFilter, CSAD extends ChipSetActionDel
   final String title;
   final CSAD actionDelegate;
   final ActionsBuilder<T, CSAD>? actionsBuilder;
+  final ActionsBuilder<T, CSAD>? extraActionsBuilder;
   final ValueNotifier<double> appBarHeightNotifier;
   final ScrollController scrollController;
   final void Function(BuildContext context, T filter)? onGroupCrumbTap;
@@ -54,6 +55,7 @@ class FilterGridAppBar<T extends CollectionFilter, CSAD extends ChipSetActionDel
     required this.title,
     required this.actionDelegate,
     this.actionsBuilder,
+    this.extraActionsBuilder,
     required this.appBarHeightNotifier,
     required this.scrollController,
     required this.onGroupCrumbTap,
@@ -191,6 +193,10 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
           final actionDelegate = widget.actionDelegate;
           final ActionsBuilder<T, CSAD> actionsBuilder = widget.actionsBuilder ?? _buildActions;
           final useTvLayout = settings.useTvLayout;
+          final actions = [
+            ...actionsBuilder(context, appMode, selection, actionDelegate),
+            ...?widget.extraActionsBuilder?.call(context, appMode, selection, actionDelegate),
+          ];
           return AvesAppBar(
             contentHeight: _getAppBarContentHeight(context),
             pinned: context.select<Selection<FilterGridItem<T>>, bool>((selection) => selection.isSelecting),
@@ -199,7 +205,7 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
               isSelecting: isSelecting,
             ),
             title: _buildAppBarTitle(isSelecting),
-            actions: (context, maxWidth) => useTvLayout ? [] : actionsBuilder(context, appMode, selection, actionDelegate),
+            actions: (context, maxWidth) => useTvLayout ? [] : actions,
             bottom: Column(
               children: [
                 if (useTvLayout)
@@ -208,7 +214,7 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
                     child: ListView(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       scrollDirection: Axis.horizontal,
-                      children: actionsBuilder(context, appMode, selection, actionDelegate),
+                      children: actions,
                     ),
                   ),
                 if (_showGroupCrumbLine(context))

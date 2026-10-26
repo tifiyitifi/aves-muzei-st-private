@@ -51,6 +51,14 @@ class AIcons {
   static const palette = Symbols.palette;
   static const path = Symbols.account_tree;
   static const privacy = Symbols.shield_person;
+  // The visible-range destination keeps the shield of the old Aves-ST scenario
+  // page, so the far-right bottom-bar item reads the same as it used to.
+  static const visibleRange = Symbols.security;
+  static const visibleRangeBase = Symbols.remove_done;
+  static const visibleRangeRestriction = Symbols.rule;
+  static const visibleRangeSupplement = Symbols.add_task;
+  static const visibleRangeActive = Symbols.visibility;
+  static const visibleRangeInactive = Symbols.block;
   static const rating = Symbols.star;
   static const ratingRejected = MdiIcons.starMinusOutline;
   static const ratingUnrated = MdiIcons.starOffOutline;

@@ -2,6 +2,8 @@ import 'package:aves/features/collection_paging/query/collection_window_predicat
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/settings/settings.dart';
+import 'package:aves/model/vaults/vaults.dart';
 import 'package:aves/services/common/services.dart';
 
 /// Counts entries for the visible-range page's summary line.
@@ -11,7 +13,11 @@ import 'package:aves/services/common/services.dart';
 abstract final class VisibleRangeCounter {
   static Future<int?> count(CollectionFilter? filter) async {
     try {
-      final predicate = predicateForFilters(filter == null ? const <CollectionFilter>{} : {filter});
+      final predicate = predicateForFilters(
+        filter == null ? const <CollectionFilter>{} : {filter},
+        hidden: settings.hiddenFilters,
+        lockedVaultDirs: vaults.vaultDirectories.where(vaults.isLocked).toSet(),
+      );
       if (predicate == null) return null;
       await localMediaDb.init();
       return await localMediaDb.countEntries(predicate);

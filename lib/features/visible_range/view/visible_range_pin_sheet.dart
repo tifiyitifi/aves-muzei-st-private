@@ -99,6 +99,12 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
 
   bool get _pinning => _kinds.isNotEmpty && _selectedTargets.isNotEmpty;
 
+  /// Whether the selection writes to a wallpaper group whose changes are only a
+  /// draft until the wallpaper page saves them.
+  bool get _draftGroupTargetSelected =>
+      (visibleRangeController.targetSource?.targetsAreDraft ?? false) &&
+      _targets.any((target) => !target.isGallery && _selectedTargets.contains(target.rangeId));
+
   bool get _canConfirm => !_busy && (_pinning || _selectedUsages.isNotEmpty);
 
   Future<void> _confirm() async {
@@ -233,6 +239,7 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
                       },
                     ),
                   if (!_loading && _selectedTargets.isEmpty) _hint(context, l10n.visibleRangePinNoTarget),
+                  if (!_loading && _draftGroupTargetSelected) _hint(context, l10n.wallpaperGroupDraftHint),
                   const SizedBox(height: 20),
                   _sectionLabel(context, l10n.visibleRangeWriteBackSection),
                   Text(l10n.visibleRangeWriteBackHint, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),

@@ -40,6 +40,8 @@ String visibleRangePresetLabel(BuildContext context, String key) {
     // Bundled wallpaper-group names double as their range's base name, so the
     // same switch resolves both (the group page stores `@wallpaperGroupDefault*`).
     'wallpaperGroupNone' => l10n.wallpaperGroupNone,
+    'wallpaperGroupNoFilters' => l10n.wallpaperGroupNoFilters,
+    'wallpaperGroupSectionNone' => l10n.wallpaperGroupSectionNone,
     'wallpaperGroupDefaultAll' => l10n.wallpaperGroupDefaultAll,
     'wallpaperGroupDefaultDcim' => l10n.wallpaperGroupDefaultDcim,
     'wallpaperGroupDefaultPictures' => l10n.wallpaperGroupDefaultPictures,

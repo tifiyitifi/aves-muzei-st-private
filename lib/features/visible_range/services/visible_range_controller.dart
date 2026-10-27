@@ -380,13 +380,13 @@ class VisibleRangeController extends ChangeNotifier {
   Future<void> selectBase({required String presetId, required String name, required Set<CollectionFilter> filters}) async {
     _ensureEditable();
     await _updateGallery(
-      (range) => range.copyWith(basePresetId: presetId, baseName: name, baseFilters: filters),
+      (range) => range.copyWith(basePresetId: presetId, baseName: name, baseFilters: filters, baseActive: true),
     );
   }
 
   Future<void> clearBase() async {
     _ensureEditable();
-    await _updateGallery((range) => range.copyWith(basePresetId: '', baseName: '', baseFilters: {}));
+    await _updateGallery((range) => range.copyWith(basePresetId: '', baseName: '', baseFilters: {}, baseActive: true));
   }
 
   Future<VisibleRangeRule?> addRule({
@@ -478,10 +478,14 @@ class VisibleRangeController extends ChangeNotifier {
     final fingerprint = filterFingerprint(request.filters);
     final name = request.name.trim();
 
-    // The base lives in the global preset catalog, so one preset serves every
-    // target. Reusing it keeps the page from growing a duplicate per pin.
+    // The base preset catalog belongs to the gallery range only. A wallpaper
+    // group's base is its own data: pinning one writes the filters straight onto
+    // the group range, so the group never references (or shows) a gallery
+    // default preset.
+    final wantsBase = request.kinds.contains(VisibleRangeCandidateKind.base);
+    final includesGallery = targets.any((target) => target.isGallery);
     VisibleRangePreset? preset;
-    if (request.kinds.contains(VisibleRangeCandidateKind.base)) {
+    if (wantsBase && includesGallery) {
       final existing = _presets.firstWhereOrNull((p) => !p.builtin && p.fingerprint == fingerprint && p.name == name);
       if (existing != null) {
         preset = existing;
@@ -510,7 +514,7 @@ class VisibleRangeController extends ChangeNotifier {
         skipped++;
         continue;
       }
-      await _saveRange(_pinToRange(range, request, preset, fingerprint, name));
+      await _saveRange(_pinToRange(range, request, target.isGallery ? preset : null, fingerprint, name));
       pinned++;
     }
     notifyListeners();
@@ -520,7 +524,9 @@ class VisibleRangeController extends ChangeNotifier {
   /// Applies one pin request to a single range.
   ///
   /// Rules are matched by kind and filter fingerprint, so re-pinning the same
-  /// conditions refreshes the existing rule rather than adding a twin.
+  /// conditions refreshes the existing rule rather than adding a twin. A base is
+  /// only touched when the request includes it: the gallery copies the shared
+  /// preset, a wallpaper group stores the filters itself.
   VisibleRange _pinToRange(VisibleRange range, VisibleRangePinRequest request, VisibleRangePreset? preset, String fingerprint, String name) {
     var rules = [...range.rules];
     for (final kind in request.kinds) {
@@ -546,10 +552,12 @@ class VisibleRangeController extends ChangeNotifier {
         );
       }
     }
+    final wantsBase = request.kinds.contains(VisibleRangeCandidateKind.base);
     return range.copyWith(
-      basePresetId: preset?.id ?? range.basePresetId,
-      baseName: preset?.name ?? range.baseName,
-      baseFilters: preset?.filters ?? range.baseFilters,
+      basePresetId: wantsBase ? (preset?.id ?? '') : range.basePresetId,
+      baseName: wantsBase ? (preset?.name ?? name) : range.baseName,
+      baseFilters: wantsBase ? (preset?.filters ?? request.filters) : range.baseFilters,
+      baseActive: wantsBase ? true : range.baseActive,
       rules: rules,
       updatedAt: _now,
     );
@@ -636,7 +644,7 @@ class VisibleRangeController extends ChangeNotifier {
       var next = range;
       for (final usage in entry.value) {
         if (usage.isBase) {
-          next = next.copyWith(basePresetId: '', baseName: baseName.trim(), baseFilters: filters);
+          next = next.copyWith(basePresetId: '', baseName: baseName.trim(), baseFilters: filters, baseActive: true);
         } else {
           final rule = next.ruleById(usage.targetId);
           if (rule == null) {

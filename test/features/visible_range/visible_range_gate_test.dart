@@ -7,6 +7,7 @@ import 'package:aves/features/visible_range/services/visible_range_controller.da
 import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/filters/container/set_and.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/path.dart';
@@ -40,6 +41,7 @@ void main() {
 
   tearDown(() async {
     VisibleRangeGate.debugController = null;
+    VisibleRangeGate.overlay = null;
     await db.close();
   });
 
@@ -140,5 +142,30 @@ void main() {
     expect(VisibleRangeGate.filter, isNotNull);
     expect(VisibleRangeGate.apply({MimeFilter.image}), {MimeFilter.image, VisibleRangeGate.filter!});
     expect(VisibleRangeGate.summaryExclusion, VisibleRangeGate.filter!.reverse());
+  });
+
+  test('the wallpaper overlay joins the gallery range and can suspend it', () async {
+    final controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const <VisibleRangePresetDefinition>[]);
+    await controller.init();
+    VisibleRangeGate.debugController = controller;
+    await controller.selectBase(presetId: '', name: 'a', filters: {PathFilter('/a')});
+
+    final group = PathFilter('/b');
+    VisibleRangeGate.overlay = VisibleRangeBrowsingOverlay(groupFilter: group);
+    final combined = VisibleRangeGate.filter;
+    expect(combined, isA<SetAndFilter>());
+    expect((combined as SetAndFilter).innerFilters, {PathFilter('/a'), group});
+
+    // The gallery page has no overlay: the group never applies there.
+    VisibleRangeGate.overlay = null;
+    expect(VisibleRangeGate.filter, PathFilter('/a'));
+
+    // The page can ignore the gallery range temporarily; the group still applies.
+    VisibleRangeGate.overlay = VisibleRangeBrowsingOverlay(groupFilter: group, gallerySuspended: true);
+    expect(VisibleRangeGate.filter, group);
+
+    // Group 0 contributes nothing, so only the gallery range remains.
+    VisibleRangeGate.overlay = const VisibleRangeBrowsingOverlay();
+    expect(VisibleRangeGate.filter, PathFilter('/a'));
   });
 }

@@ -41,6 +41,11 @@ class VisibleRangeCandidate extends Equatable {
   final VisibleRangePreset? preset;
   final VisibleRangeRule? rule;
 
+  /// A slot that only says "nothing here": an empty rule section, or the
+  /// wallpaper page's "no filters" control. It is shown but is not a condition:
+  /// it cannot be selected, opened, counted or deleted.
+  final bool placeholder;
+
   const new({
     required this.id,
     required this.kind,
@@ -51,6 +56,7 @@ class VisibleRangeCandidate extends Equatable {
     this.active = false,
     this.preset,
     this.rule,
+    this.placeholder = false,
   });
 
   factory fromPreset(VisibleRangePreset preset, {required bool active}) => VisibleRangeCandidate(
@@ -69,7 +75,7 @@ class VisibleRangeCandidate extends Equatable {
   ///
   /// Like a rule label, a name starting with `@` is an ARB key (a wallpaper
   /// group's bundled base name); anything else is user text.
-  factory customBase({required String name, required Set<CollectionFilter> filters}) {
+  factory customBase({required String name, required Set<CollectionFilter> filters, bool active = true}) {
     final isKey = name.startsWith('@');
     return VisibleRangeCandidate(
       id: customBaseId,
@@ -77,7 +83,7 @@ class VisibleRangeCandidate extends Equatable {
       filters: filters,
       labelKey: isKey ? name.substring(1) : '',
       label: isKey ? '' : name,
-      active: true,
+      active: active,
     );
   }
 
@@ -124,7 +130,7 @@ class VisibleRangeCandidate extends Equatable {
   ///
   /// The result preview and 「Unrestricted」 are not conditions, and an empty
   /// filter set would add nothing, so neither is a target.
-  bool get isApplicable => !isGallery && !isUnrestricted && filters.isNotEmpty;
+  bool get isApplicable => !isGallery && !isUnrestricted && !placeholder && filters.isNotEmpty;
 
   bool get isBuiltinRule => rule != null && isVisibleRangeBuiltinRule(rule!.id);
 
@@ -133,7 +139,7 @@ class VisibleRangeCandidate extends Equatable {
   String get statsKey => filterFingerprint(filters);
 
   @override
-  List<Object?> get props => [id, kind, filters, labelKey, label, description, active];
+  List<Object?> get props => [id, kind, filters, labelKey, label, description, active, placeholder];
 }
 
 /// A titled group of candidates.
@@ -157,11 +163,15 @@ List<VisibleRangeCandidateSection> buildVisibleRangeSections({
   final base = <VisibleRangeCandidate>[
     range.isBaseUnrestricted ? VisibleRangeCandidate.unrestricted : VisibleRangeCandidate.unrestricted.copyWithActive(false),
     if (!range.isBaseUnrestricted && (range.basePresetId.isEmpty || !presetIds.contains(range.basePresetId)))
-      VisibleRangeCandidate.customBase(name: range.baseName, filters: range.baseFilters),
+      VisibleRangeCandidate.customBase(
+        name: range.baseName,
+        filters: range.baseFilters,
+        active: range.baseActive,
+      ),
     for (final preset in presets)
       VisibleRangeCandidate.fromPreset(
         preset,
-        active: !range.isBaseUnrestricted && range.basePresetId == preset.id,
+        active: range.baseActive && !range.isBaseUnrestricted && range.basePresetId == preset.id,
       ),
   ];
 

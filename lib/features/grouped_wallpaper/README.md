@@ -6,11 +6,12 @@ of the Muzei-style live wallpaper mechanism.
 ## Status
 
 - **Done**: group model, layout invariants, bundled defaults (JSON), storage
-  (`wallpaper_groups` table, schema v7), controller, and the wallpaper-group page
-  reachable from the visible-range page's More menu.
+  (`wallpaper_groups` table, schema v7; `baseActive` in v9), controller with the
+  page's in-memory draft, and the wallpaper-group page reachable from the
+  visible-range page's More menu / the shared bottom-bar entry.
 - **Not done yet**: the live wallpaper engine (baking, notifications, `isActive`
-  arbitration), the browsing effect, the availability label and the temporary
-  unlock. Until then a group only decides which filters it *would* use.
+  arbitration), the availability label. Until then a group only decides which
+  filters it *would* use and 「Sync wallpaper now」 stays disabled.
 
 ## Concepts
 
@@ -27,7 +28,7 @@ of the Muzei-style live wallpaper mechanism.
   current group clears the flag, i.e. falls back to group 0.
 - **Range ownership**: each group owns exactly one `wallpaper`-scope visible
   range, whose id is *derived* (`wallpaperGroupRangeId`), never stored. Deleting
-  a group deletes its range, rules and sessions in the same transaction.
+  a group deletes its range, rules and applied targets in the same transaction.
 
 ## Defaults
 
@@ -43,10 +44,39 @@ falling back to "everything". The same principle is stated in the About page and
 in the visible-range preset parser, which simply does not offer a candidate whose
 path is unknown.
 
-Every new group also materializes the bundled restriction and supplement
-candidates, switched off, so its page offers the same vocabulary as the gallery
-instead of empty sections. Rule ids are global, so the same candidate gets a
-per-group id (`<groupId>.rule.<definitionId>`).
+A group owns its range only. It never shows the gallery's preset catalogue or
+its default restriction/supplement candidates: those belong to the visible-range
+page. Conditions are added by pinning them from a media set, and the group page
+only shows, toggles, renames, takes out and deletes what is already there.
+
+Each group range starts with the 「no filters」 control as its first tile. It is
+not a condition: tapping it switches the group's base and every rule off without
+deleting anything. A base keeps its filters when switched off (`baseActive`), so
+it can be switched back on. An empty rules section keeps one 「None」 slot so the
+page still shows the section exists.
+
+## The page's draft
+
+The wallpaper page is a draft until the user saves it. The first time it opens in
+a process it loads every group and range into memory (the wallpaper feature may
+never be visited); from then on group edits — including pin targets, since they
+read the same aggregate — stay in memory. The database and the live wallpaper
+keep the saved state.
+
+- **Save changes** writes groups, ranges, rules and deletions in one transaction.
+- **Discard changes** reloads the saved state.
+- **Sync wallpaper now** saves a pending draft and asks the engine to apply it
+  immediately instead of waiting for the wallpaper's interval. The entry is
+  disabled until a grouped-wallpaper engine has attached to `wallpaperEngineLink`.
+
+## Browsing scopes
+
+The gallery range and a group range are independent data sets. While the
+wallpaper page is open, `VisibleRangeGate.overlay` adds the selected group's
+range to browsing (gallery AND group), and the page can temporarily ignore the
+gallery range when it is unlocked. Leaving the page clears the overlay, so every
+other surface acts as group 0. The live wallpaper never reads the gate: it uses
+the saved group range through `wallpaperMediaSetFilter`.
 
 ## Media set
 

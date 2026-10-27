@@ -57,6 +57,13 @@ class VisibleRangeRows extends Table {
   /// JSON array, AND-ed together. Empty means unrestricted.
   TextColumn get baseFilters => text().named('baseFilters').withDefault(const Constant('[]'))();
 
+  /// Whether the base takes part in the range.
+  ///
+  /// A wallpaper group keeps its base when the user clears the group: switching
+  /// the base off is a state change, not a deletion, so the same conditions can
+  /// be switched back on without pinning them again.
+  BoolColumn get baseActive => boolean().named('baseActive').withDefault(const Constant(true))();
+
   /// `intersectFirst` (restrictions before supplements) or `unionFirst`
   /// (supplements before restrictions).
   TextColumn get orderMode => text().named('orderMode').withDefault(const Constant('intersectFirst'))();

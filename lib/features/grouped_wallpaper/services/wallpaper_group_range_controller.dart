@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
@@ -6,12 +8,9 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
-import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
-import 'package:aves/model/filters/filters.dart';
 import 'package:aves/services/common/services.dart';
-import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
 /// Edits the selected wallpaper group's visible range for the wallpaper page.
@@ -45,13 +44,18 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   bool _loading = false;
   String? _selectedGroupId;
   VisibleRange? _range;
-  List<VisibleRangePreset> _presets = const [];
   VisibleRangeActiveStyle _activeStyle = VisibleRangeActiveStyle.section;
   WallpaperGroupSwitcherStyle _switcherStyle = WallpaperGroupSwitcherStyle.chips;
+  int _rangeToken = 0;
 
   bool get initialized => _initialized;
 
   bool get loading => _loading;
+
+  /// Whether the group data is an unsaved draft.
+  bool get draftActive => groupController.draftActive;
+
+  bool get dirty => groupController.dirty;
 
   /// Groups in display order (group 0 is not a row and is not listed).
   List<WallpaperGroup> get groups => groupController.groups;
@@ -65,8 +69,6 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   /// The selected group's range, or null for group 0.
   VisibleRange? get range => _range;
 
-  List<VisibleRangePreset> get presets => _presets;
-
   VisibleRangeActiveStyle get activeStyle => _activeStyle;
 
   WallpaperGroupSwitcherStyle get switcherStyle => _switcherStyle;
@@ -78,18 +80,20 @@ class WallpaperGroupRangeController extends ChangeNotifier {
     if (_initialized) return;
     try {
       await groupController.init();
-      groupController.addListener(notifyListeners);
+      // The page owns the in-memory draft: the first open in a process loads
+      // every group and range, and later edits stay here until the user saves.
+      await groupController.beginDraft();
+      groupController.addListener(_onGroupControllerChanged);
       final db = await _openDb();
       _activeStyle = VisibleRangeActiveStyle.parse((await AppMetaStore(db).read({keyActiveStyle}))[keyActiveStyle]);
       _switcherStyle = WallpaperGroupSwitcherStyle.parse((await AppMetaStore(db).read({keySwitcherStyle}))[keySwitcherStyle]);
-      _presets = await VisibleRangeStore(db).loadPresets();
       _initialized = true;
-      // Resume the group the page showed before it was rebuilt; on a cold start
-      // open on the group the wallpaper actually uses, since group 0 has nothing
-      // to show.
+      // Resume the group the page showed before it was rebuilt; the first open
+      // in a process starts on group 1, since the wallpaper feature itself may
+      // never have been visited.
       final session = wallpaperGroupPageSession;
       final sessionId = session.initialized && groups.any((group) => group.id == session.selectedGroupId) ? session.selectedGroupId : null;
-      await selectGroup(session.initialized ? sessionId : (current.isNone ? groups.firstOrNull?.id : current.id));
+      await selectGroup(session.initialized ? sessionId : groups.firstOrNull?.id);
     } catch (error, stack) {
       groupedWallpaperLog.e('failed to open the wallpaper group page', error, stack);
       _initialized = true;
@@ -99,8 +103,24 @@ class WallpaperGroupRangeController extends ChangeNotifier {
 
   @override
   void dispose() {
-    groupController.removeListener(notifyListeners);
+    groupController.removeListener(_onGroupControllerChanged);
     super.dispose();
+  }
+
+  /// Re-reads the selected range when the group aggregate changed elsewhere
+  /// (a draft edit from the pin sheet, a group rename, discard).
+  void _onGroupControllerChanged() {
+    final id = _selectedGroupId;
+    if (id != null) unawaited(_reloadRange(id));
+    notifyListeners();
+  }
+
+  Future<void> _reloadRange(String id) async {
+    final token = ++_rangeToken;
+    final range = await groupController.groupRange(id);
+    if (token != _rangeToken || _selectedGroupId != id) return;
+    _range = range;
+    notifyListeners();
   }
 
   /// Shows [id]'s range; null selects group 0 (no range to edit).
@@ -111,15 +131,16 @@ class WallpaperGroupRangeController extends ChangeNotifier {
     _selectedGroupId = id;
     _range = null;
     _loading = id != null;
+    final token = ++_rangeToken;
     notifyListeners();
     if (id == null) return;
     try {
       final range = await groupController.groupRange(id);
       // The user may have switched again while the range was loading.
-      if (_selectedGroupId != id) return;
+      if (token != _rangeToken || _selectedGroupId != id) return;
       _range = range;
     } finally {
-      _loading = false;
+      if (token == _rangeToken) _loading = false;
       notifyListeners();
     }
   }
@@ -138,10 +159,38 @@ class WallpaperGroupRangeController extends ChangeNotifier {
     await AppMetaStore(await _openDb()).write({keySwitcherStyle: style.name});
   }
 
-  Future<void> selectBase({required String presetId, required String name, required Set<CollectionFilter> filters}) =>
-      _update((range) => range.copyWith(basePresetId: presetId, baseName: name, baseFilters: filters));
+  Future<void> toggleBaseActive() => _update((range) {
+        if (range.baseFilters.isEmpty) return range;
+        return range.copyWith(baseActive: !range.baseActive);
+      });
 
-  Future<void> clearBase() => _update((range) => range.copyWith(basePresetId: '', baseName: '', baseFilters: const {}));
+  Future<void> setBaseActive(bool active) => _update((range) {
+        if (range.baseFilters.isEmpty || range.baseActive == active) return range;
+        return range.copyWith(baseActive: active);
+      });
+
+  /// 「无 filters」: switches every condition of the group off without deleting
+  /// it, so the group falls back to all images and each condition can be turned
+  /// back on.
+  Future<void> deactivateAll() => _update((range) {
+        if (!range.baseActive && range.rules.every((rule) => !rule.active)) return range;
+        return range.copyWith(
+          baseActive: false,
+          rules: [for (final rule in range.rules) rule.copyWith(active: false)],
+        );
+      });
+
+  /// Deletes the selected conditions; the base is cleared when [base] is true.
+  Future<void> deleteConditions({bool base = false, Set<String> ruleIds = const {}}) => _update((range) {
+        if (!base && ruleIds.isEmpty) return range;
+        return range.copyWith(
+          baseName: base ? '' : range.baseName,
+          basePresetId: base ? '' : range.basePresetId,
+          baseFilters: base ? const {} : range.baseFilters,
+          baseActive: true,
+          rules: range.rules.where((rule) => !ruleIds.contains(rule.id)).toList(),
+        );
+      });
 
   Future<void> toggleRule(String ruleId) => _update((range) {
         final rule = range.ruleById(ruleId);
@@ -189,9 +238,8 @@ class WallpaperGroupRangeController extends ChangeNotifier {
 
   /// Adds a group and opens it, so the user can narrow it right away.
   Future<void> addGroup({String name = '', String description = ''}) async {
-    await groupController.addGroup(name: name, description: description);
-    final added = groups.lastOrNull;
-    if (added != null) await selectGroup(added.id);
+    final added = await groupController.addGroup(name: name, description: description);
+    await selectGroup(added.id);
   }
 
   Future<void> updateGroup(String id, {required String name, String? description}) => groupController.updateGroup(id, name: name, description: description);
@@ -219,6 +267,16 @@ class WallpaperGroupRangeController extends ChangeNotifier {
 
   /// Moves a group inside its own segment (enabled or disabled).
   Future<void> moveGroup(String id, int delta) => groupController.moveGroup(id, delta);
+
+  /// Writes the draft to the database in one transaction.
+  Future<void> saveDraft() => groupController.saveDraft();
+
+  /// Drops the draft and shows the saved state again.
+  Future<void> discardDraft() async {
+    final id = _selectedGroupId;
+    await groupController.discardDraft();
+    await selectGroup(groups.any((group) => group.id == id) ? id : groups.firstOrNull?.id);
+  }
 
   /// Applies [transform] to the selected range and persists it.
   ///

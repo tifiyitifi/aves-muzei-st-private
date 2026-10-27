@@ -77,7 +77,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     final version = (await db.customSelect('PRAGMA user_version').get()).single.data['user_version'];
-    expect(version, 8);
+    expect(version, db.schemaVersion);
 
     final columns = (await db.customSelect('PRAGMA table_info(wallpaper_groups)').get()).map((row) => row.data['name']).toSet();
     expect(columns, contains('description'));

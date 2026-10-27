@@ -2,6 +2,7 @@ import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
+import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/path.dart';
@@ -238,5 +239,48 @@ void main() {
 
     expect(notified, 1);
     expect(controller.groups.first.updatedAt, greaterThan(0));
+  });
+
+  test('the draft keeps edits in memory until saved', () async {
+    await controller.beginDraft();
+    await controller.updateGroup('wallpaper.group.dcim', name: 'Draft name');
+    final range = await controller.groupRange('wallpaper.group.dcim');
+    await controller.saveGroupRange(range.copyWith(baseFilters: {PathFilter('/draft')}, baseActive: true));
+    await controller.deleteGroup('wallpaper.group.pictures');
+    expect(controller.dirty, isTrue);
+    expect(controller.groups, hasLength(2));
+
+    // A controller without the draft reads the saved state.
+    final reader = makeController();
+    await reader.init();
+    expect(reader.groups[1].name, isNot('Draft name'));
+    expect(reader.groups, hasLength(3));
+    expect((await reader.groupRange('wallpaper.group.dcim')).baseFilters, {PathFilter('/dcim')});
+
+    await controller.saveDraft();
+    expect(controller.dirty, isFalse);
+
+    final saved = makeController();
+    await saved.init();
+    expect(saved.groups[1].name, 'Draft name');
+    expect(saved.groups, hasLength(2));
+    expect((await saved.groupRange('wallpaper.group.dcim')).baseFilters, {PathFilter('/draft')});
+    // The deleted group and its range are gone.
+    expect(await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: 'wallpaper.group.pictures'), isNull);
+  });
+
+  test('discarding the draft restores the saved state', () async {
+    await controller.beginDraft();
+    await controller.updateGroup('wallpaper.group.dcim', name: 'Draft name');
+    final range = await controller.groupRange('wallpaper.group.dcim');
+    await controller.saveGroupRange(range.copyWith(baseActive: false));
+    expect(controller.dirty, isTrue);
+
+    await controller.discardDraft();
+    expect(controller.dirty, isFalse);
+    expect(controller.groups[1].name, '@wallpaperGroupDefaultDcim');
+    final restored = await controller.groupRange('wallpaper.group.dcim');
+    expect(restored.baseFilters, {PathFilter('/dcim')});
+    expect(restored.baseActive, isTrue);
   });
 }

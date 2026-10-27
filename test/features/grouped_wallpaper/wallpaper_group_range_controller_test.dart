@@ -56,7 +56,7 @@ void main() {
 
   tearDown(() => db.close());
 
-  test('opens on the current group', () {
+  test('opens on group 1', () {
     expect(controller.groups, hasLength(3));
     expect(controller.selectedGroupId, 'wallpaper.group.all');
     expect(controller.range, isNotNull);
@@ -82,24 +82,68 @@ void main() {
     expect(all.baseFilters, isEmpty);
   });
 
-  test('writes go to the selected group only and persist', () async {
+  test('writes go to the selected group only and persist on save', () async {
     await controller.selectGroup('wallpaper.group.dcim');
-    await controller.selectBase(presetId: 'builtin.image', name: 'visibleRangePresetImage', filters: {MimeFilter.image});
+    await controller.groupController.saveGroupRange(
+      controller.range!.copyWith(basePresetId: 'builtin.image', baseName: 'Image', baseFilters: {MimeFilter.image}, baseActive: true),
+    );
 
     expect(controller.range!.basePresetId, 'builtin.image');
-    final stored = await controller.groupController.groupRange('wallpaper.group.dcim');
+
+    // The draft is not in the database until the page saves it.
+    final updated = makeController();
+    await updated.init();
+    expect((await updated.groupController.groupRange('wallpaper.group.dcim')).basePresetId, isNot('builtin.image'));
+
+    await controller.saveDraft();
+    final restarted = makeController();
+    await restarted.init();
+    final stored = await restarted.groupController.groupRange('wallpaper.group.dcim');
     expect(stored.basePresetId, 'builtin.image');
     expect(stored.baseFilters, {MimeFilter.image});
     // Other groups keep their own base.
-    expect((await controller.groupController.groupRange('wallpaper.group.pictures')).baseFilters, {PathFilter('/pictures')});
+    expect((await restarted.groupController.groupRange('wallpaper.group.pictures')).baseFilters, {PathFilter('/pictures')});
   });
 
   test('clearing the base makes the group unrestricted', () async {
     await controller.selectGroup('wallpaper.group.dcim');
-    await controller.clearBase();
+    await controller.deleteConditions(base: true);
 
     expect(controller.range!.isBaseUnrestricted, isTrue);
+    expect(controller.range!.baseFilters, isEmpty);
     expect((await controller.groupController.groupRange('wallpaper.group.dcim')).isBaseUnrestricted, isTrue);
+  });
+
+  test('switching the base off keeps its conditions for later', () async {
+    await controller.selectGroup('wallpaper.group.dcim');
+    await controller.setBaseActive(false);
+
+    expect(controller.range!.baseFilters, {PathFilter('/dcim')});
+    expect(controller.range!.isBaseUnrestricted, isTrue);
+    expect(controller.range!.resolve(), isNull);
+
+    await controller.setBaseActive(true);
+    expect(controller.range!.resolve(), PathFilter('/dcim'));
+  });
+
+  test('the no-filters control switches every condition off without deleting it', () async {
+    await controller.selectGroup('wallpaper.group.dcim');
+    final range = controller.range!;
+    await controller.groupController.saveGroupRange(
+      range.copyWith(
+        rules: [
+          VisibleRangeRule(id: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}),
+          VisibleRangeRule(id: 'r2', rangeId: range.id, kind: VisibleRangeRuleKind.supplement, filters: {MimeFilter.video}),
+        ],
+      ),
+    );
+    await controller.selectGroup('wallpaper.group.dcim');
+
+    await controller.deactivateAll();
+    expect(controller.range!.baseActive, isFalse);
+    expect(controller.range!.baseFilters, {PathFilter('/dcim')});
+    expect(controller.range!.rules.map((rule) => rule.active), everyElement(isFalse));
+    expect(controller.range!.resolve(), isNull);
   });
 
   test('rules toggle, rename and reorder on the group range', () async {
@@ -133,13 +177,13 @@ void main() {
     await controller.lockWithPreset(VisibleRangeLockPreset.readOnly);
     expect(controller.canEdit, isFalse);
 
-    await controller.clearBase();
+    await controller.deleteConditions(base: true);
     // Still the seeded base: the lock guard stopped the write.
     expect(controller.range!.baseFilters, {PathFilter('/dcim')});
 
     await controller.unlock();
     expect(controller.canEdit, isTrue);
-    await controller.clearBase();
+    await controller.deleteConditions(base: true);
     expect(controller.range!.isBaseUnrestricted, isTrue);
   });
 
@@ -193,7 +237,7 @@ void main() {
     expect(controller.groups, hasLength(1));
   });
 
-  test('group management reaches the controller and persists', () async {
+  test('group management reaches the controller and persists on save', () async {
     await controller.updateGroup('wallpaper.group.all', name: 'Everything', description: 'my trips');
     expect(controller.groups.first.name, 'Everything');
     expect(controller.groups.first.description, 'my trips');
@@ -208,6 +252,7 @@ void main() {
     await controller.moveGroup('wallpaper.group.pictures', -1);
     expect(controller.groups.first.id, 'wallpaper.group.pictures');
 
+    await controller.saveDraft();
     final restarted = makeController();
     await restarted.init();
     expect(restarted.groups.first.id, 'wallpaper.group.pictures');
@@ -220,6 +265,19 @@ void main() {
     await controller.addGroup(name: 'Trips', description: 'created today');
     expect(controller.groups.last.description, 'created today');
     expect((await controller.groupController.groupRange(controller.groups.last.id)).isBaseUnrestricted, isTrue);
+  });
+
+  test('discarding the draft restores the saved groups and ranges', () async {
+    await controller.selectGroup('wallpaper.group.dcim');
+    await controller.deleteConditions(base: true);
+    await controller.updateGroup('wallpaper.group.all', name: 'Renamed');
+    expect(controller.dirty, isTrue);
+
+    await controller.discardDraft();
+    expect(controller.dirty, isFalse);
+    expect(controller.selectedGroupId, 'wallpaper.group.dcim');
+    expect(controller.range!.baseFilters, {PathFilter('/dcim')});
+    expect(controller.groups.first.name, '@wallpaperGroupDefaultAll');
   });
 
   test('the group switcher style is this page\'s own preference', () async {
@@ -236,6 +294,19 @@ void main() {
     expect(meta.containsKey(VisibleRangeStore.keyActiveStyle), isFalse);
   });
 
+  test('a cold start opens group 1 even when the wallpaper uses another group', () async {
+    await controller.selectCurrent('wallpaper.group.pictures');
+    await controller.saveDraft();
+
+    wallpaperGroupPageSession
+      ..initialized = false
+      ..selectedGroupId = null;
+    final cold = makeController();
+    await cold.init();
+    expect(cold.selectedGroupId, 'wallpaper.group.all');
+    expect(cold.current.id, 'wallpaper.group.pictures');
+  });
+
   test('the selected group survives a rebuilt page but not a cold start', () async {
     await controller.selectGroup('wallpaper.group.pictures');
 
@@ -244,8 +315,8 @@ void main() {
     await rebuilt.init();
     expect(rebuilt.selectedGroupId, 'wallpaper.group.pictures');
 
-    // A process death clears the in-memory session: the page opens on the group
-    // the wallpaper uses.
+    // A process death clears the in-memory session: the page opens on group 1,
+    // since the wallpaper feature may never have been visited.
     wallpaperGroupPageSession
       ..initialized = false
       ..selectedGroupId = null;

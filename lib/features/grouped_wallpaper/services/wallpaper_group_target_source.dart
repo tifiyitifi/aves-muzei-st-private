@@ -15,6 +15,9 @@ class WallpaperGroupTargetSource implements VisibleRangeTargetSource {
   const new(this.controller);
 
   @override
+  bool get targetsAreDraft => controller.draftActive;
+
+  @override
   Future<List<VisibleRangePinTarget>> loadPinTargets() async {
     await controller.init();
     final targets = <VisibleRangePinTarget>[];

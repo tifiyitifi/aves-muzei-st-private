@@ -174,6 +174,28 @@ void main() {
       expect(source.ranges[groupRangeId]!.rules, isEmpty);
     });
 
+    test('a base pinned to a group is stored on the range, not in the preset catalog', () async {
+      final result = await controller.pinFilters(
+        VisibleRangePinRequest(
+          filters: {image},
+          name: 'Pinned base',
+          description: 'now',
+          kinds: const {VisibleRangeCandidateKind.base},
+          targetRangeIds: const {groupRangeId},
+        ),
+      );
+
+      expect(result.pinned, 1);
+      final range = source.ranges[groupRangeId]!;
+      expect(range.baseName, 'Pinned base');
+      expect(range.baseFilters, {image});
+      expect(range.baseActive, isTrue);
+      expect(range.basePresetId, isEmpty);
+      // The gallery's preset catalog is not involved at all.
+      expect(controller.presets, isEmpty);
+      expect(controller.gallery.baseFilters, isEmpty);
+    });
+
     test('a group rule can be taken out and written back through the source', () async {
       final rule = VisibleRangeRule(id: 'g1', rangeId: groupRangeId, kind: VisibleRangeRuleKind.supplement, label: 'G', filters: {image});
       source.ranges[groupRangeId] = groupRange(rules: [rule]);
@@ -198,6 +220,9 @@ class _FakeTargetSource implements VisibleRangeTargetSource {
   final Map<String, VisibleRange> ranges;
 
   new(this.ranges);
+
+  @override
+  bool get targetsAreDraft => false;
 
   @override
   Future<List<VisibleRangePinTarget>> loadPinTargets() async => [

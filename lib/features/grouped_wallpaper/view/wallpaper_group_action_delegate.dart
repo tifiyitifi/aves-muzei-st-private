@@ -1,7 +1,10 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
 import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/selection.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/durations.dart';
 import 'package:aves/view/view.dart';
@@ -28,11 +31,13 @@ class WallpaperGroupActionDelegate extends ChipSetActionDelegate<CollectionFilte
 
   final Iterable<FilterGridItem<CollectionFilter>> Function() itemBuilder;
   final List<Widget> Function(BuildContext context) extraLayoutRows;
+  final Future<void> Function(BuildContext context, VisibleRangeRule rule) onRename;
 
   new({
     required this.settingsRouteKey,
     required this.itemBuilder,
     required this.extraLayoutRows,
+    required this.onRename,
   });
 
   @override
@@ -56,6 +61,8 @@ class WallpaperGroupActionDelegate extends ChipSetActionDelegate<CollectionFilte
   @override
   List<TileLayout> get layoutOptions => const [.mosaic, .grid, .list];
 
+  static VisibleRangeRule? _ruleOf(CollectionFilter filter) => filter is VisibleRangeCandidateFilter ? filter.candidate.rule : null;
+
   @override
   bool isVisible(
     ChipSetAction action, {
@@ -64,9 +71,13 @@ class WallpaperGroupActionDelegate extends ChipSetActionDelegate<CollectionFilte
     required int itemCount,
     required Set<CollectionFilter> selectedFilters,
   }) {
+    final selectedRules = selectedFilters.map(_ruleOf).nonNulls.toList();
+    final onlyRules = selectedFilters.isNotEmpty && selectedRules.length == selectedFilters.length;
     return switch (action) {
       // Selection is allowed here too: a rule can be taken out to the media set
       // or deleted from the wallpaper page, exactly like on the range page.
+      // Rename is the page's only "modify": conditions themselves are added by
+      // pinning from a media set, never edited into existence here.
       .changeLayout || .search || .toggleTitleSearch || .select || .selectAll || .selectNone => super.isVisible(
           action,
           appMode: appMode,
@@ -74,8 +85,35 @@ class WallpaperGroupActionDelegate extends ChipSetActionDelegate<CollectionFilte
           itemCount: itemCount,
           selectedFilters: selectedFilters,
         ),
+      .rename => isSelecting && selectedRules.length == 1 && onlyRules,
       _ => false,
     };
+  }
+
+  @override
+  bool canApply(
+    ChipSetAction action, {
+    required bool isSelecting,
+    required int itemCount,
+    required Set<CollectionFilter> selectedFilters,
+  }) {
+    if (action != .rename) return super.canApply(action, isSelecting: isSelecting, itemCount: itemCount, selectedFilters: selectedFilters);
+    final selectedRules = selectedFilters.map(_ruleOf).nonNulls.toList();
+    final onlyRules = selectedFilters.isNotEmpty && selectedRules.length == selectedFilters.length;
+    return isSelecting && selectedRules.length == 1 && onlyRules;
+  }
+
+  @override
+  void onActionSelected(BuildContext context, ChipSetAction action) {
+    if (action == .rename) {
+      final rule = _ruleOf(context.read<Selection<FilterGridItem<CollectionFilter>>>().selectedItems.first.filter);
+      if (rule != null) {
+        unawaited(onRename(context, rule));
+        browse(context);
+      }
+      return;
+    }
+    super.onActionSelected(context, action);
   }
 
   @override

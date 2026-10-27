@@ -19,9 +19,13 @@ class VisibleRangeCandidateFilter extends CollectionFilter {
   /// the condition instead.
   final bool summary;
 
+  /// Layout-specific text for a placeholder tile (the list can spell out what
+  /// the cover chip has no room for). Empty keeps the candidate's own label.
+  final String labelOverride;
+
   late final EntryPredicate _test;
 
-  new(this.candidate, {this.summary = false, super.reversed = false}) {
+  new(this.candidate, {this.summary = false, this.labelOverride = '', super.reversed = false}) {
     final filters = candidate.filters;
     _test = filters.isEmpty ? (entry) => true : (entry) => filters.every((filter) => filter.test(entry));
   }
@@ -41,7 +45,7 @@ class VisibleRangeCandidateFilter extends CollectionFilter {
   }
 
   @override
-  String getLabel(BuildContext context) => visibleRangeCandidateLabel(context, candidate);
+  String getLabel(BuildContext context) => labelOverride.isNotEmpty ? labelOverride : visibleRangeCandidateLabel(context, candidate);
 
   @override
   Widget? iconBuilder(BuildContext context, double size, {bool allowGenericIcon = true}) {
@@ -59,7 +63,7 @@ class VisibleRangeCandidateFilter extends CollectionFilter {
   String get category => type;
 
   @override
-  String get key => '$type-${summary ? 'summary' : 'grid'}-${candidate.id}-${candidate.active}';
+  String get key => '$type-${summary ? 'summary' : 'grid'}-${candidate.id}-${candidate.active}-$labelOverride';
 
   @override
   Map<String, Object?> toJsonMap() => {
@@ -67,9 +71,10 @@ class VisibleRangeCandidateFilter extends CollectionFilter {
         'id': candidate.id,
         'summary': summary,
         'active': candidate.active,
+        if (labelOverride.isNotEmpty) 'label': labelOverride,
         if (reversed) 'reversed': reversed,
       };
 
   @override
-  List<Object?> get props => [candidate.id, summary, candidate.active, candidate.labelKey, candidate.label, candidate.filters, reversed];
+  List<Object?> get props => [candidate.id, summary, candidate.active, candidate.labelKey, candidate.label, candidate.filters, labelOverride, reversed];
 }

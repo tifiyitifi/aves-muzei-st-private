@@ -27,6 +27,7 @@ void main() {
 
   VisibleRange range({
     Set<CollectionFilter> base = const {},
+    bool baseActive = true,
     List<VisibleRangeRule> rules = const [],
     VisibleRangeOrder order = VisibleRangeOrder.intersectFirst,
   }) {
@@ -35,6 +36,7 @@ void main() {
       scope: VisibleRangeScope.gallery,
       ownerId: VisibleRange.galleryOwnerId,
       baseFilters: base,
+      baseActive: baseActive,
       rules: rules,
       order: order,
     );
@@ -48,6 +50,19 @@ void main() {
     test('an empty range restricts nothing', () {
       expect(range().resolve(), isNull);
       expect(range().isRestricted, isFalse);
+    });
+
+    test('a switched-off base does not restrict and keeps its filters', () {
+      final off = range(base: {image}, baseActive: false);
+      expect(off.baseFilters, {image});
+      expect(off.resolve(), isNull);
+      expect(off.isBaseUnrestricted, isTrue);
+      expect(off.isRestricted, isFalse);
+      expect(off.isUnrestricted, isTrue);
+      // Rules still apply on their own, like on an unrestricted base.
+      final withRestriction = range(base: {image}, baseActive: false, rules: [rule('r1', VisibleRangeRuleKind.restriction, {favourite})]);
+      expect(withRestriction.resolve(), favourite);
+      expect(withRestriction.isRestricted, isTrue);
     });
 
     test('intersect-first combines base AND restrictions, then OR supplements', () {

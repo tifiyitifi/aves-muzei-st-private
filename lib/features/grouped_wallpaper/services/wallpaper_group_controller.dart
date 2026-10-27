@@ -60,7 +60,24 @@ class WallpaperGroupController extends ChangeNotifier {
   bool _initialized = false;
   int _idSequence = 0;
 
+  /// Whether the wallpaper page's in-memory draft owns the groups and ranges.
+  ///
+  /// The page starts the draft on its first open in a process: from then on all
+  /// group edits stay in memory until [saveDraft], so the user can preview
+  /// changes without touching the state the live wallpaper uses. Before the
+  /// page is ever opened, edits persist immediately (the pin sheet can target a
+  /// group without the page).
+  bool _draftActive = false;
+  bool _dirty = false;
+  final Map<String, VisibleRange> _ranges = {};
+  final Set<String> _deletedIds = {};
+
   bool get initialized => _initialized;
+
+  bool get draftActive => _draftActive;
+
+  /// Whether the draft differs from what is saved in the database.
+  bool get dirty => _dirty;
 
   /// Groups in display order; numbers are `1..n`, enabled groups first.
   List<WallpaperGroup> get groups => _groups;
@@ -199,6 +216,64 @@ class WallpaperGroupController extends ChangeNotifier {
 
   static bool _isBundledGroup(String id) => id.startsWith(bundledGroupIdPrefix);
 
+  /// Starts (or keeps) the wallpaper page's in-memory draft.
+  ///
+  /// Called on the page's first open in a process, not at startup: the wallpaper
+  /// feature may never be visited. Loading all ranges here means the page can
+  /// switch groups and toggle conditions without hitting the database, and the
+  /// saved state keeps serving the live wallpaper until [saveDraft].
+  Future<void> beginDraft() async {
+    await init();
+    if (_draftActive) return;
+    final store = await _openStore();
+    await _loadDraftRanges(store);
+    _deletedIds.clear();
+    _draftActive = true;
+    _dirty = false;
+    notifyListeners();
+  }
+
+  Future<void> _loadDraftRanges(WallpaperGroupStore store) async {
+    final ranges = VisibleRangeStore(store.db);
+    _ranges.clear();
+    for (final group in _groups) {
+      final range = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
+      if (range != null) _ranges[group.id] = range;
+    }
+  }
+
+  /// Writes the draft back in one transaction: removed groups and their ranges
+  /// first, then the group list, then every edited range.
+  Future<void> saveDraft() async {
+    if (!_draftActive) return;
+    final store = await _openStore();
+    final ranges = VisibleRangeStore(store.db);
+    await store.db.transaction(() async {
+      for (final id in _deletedIds) {
+        await store.deleteGroup(id);
+      }
+      await store.saveGroups(_groups);
+      for (final group in _groups) {
+        final range = _ranges[group.id];
+        if (range != null) await ranges.saveRange(range);
+      }
+    });
+    _deletedIds.clear();
+    _dirty = false;
+    notifyListeners();
+  }
+
+  /// Drops the draft and reloads the saved state.
+  Future<void> discardDraft() async {
+    if (!_draftActive) return;
+    final store = await _openStore();
+    _groups = normalizeWallpaperGroups(await store.loadGroups());
+    await _loadDraftRanges(store);
+    _deletedIds.clear();
+    _dirty = false;
+    notifyListeners();
+  }
+
   /// Makes the standard directories available before the asset is resolved.
   ///
   /// `androidFileUtils.init` runs after the first frame otherwise. A device that
@@ -233,9 +308,8 @@ class WallpaperGroupController extends ChangeNotifier {
   /// A new group starts unrestricted: the user just created it, so showing every
   /// image until they narrow it is the expected behaviour. Failing closed only
   /// applies to a bundled group whose folder could not be resolved.
-  Future<void> addGroup({String name = '', String description = ''}) async {
+  Future<WallpaperGroup> addGroup({String name = '', String description = ''}) async {
     _requireInitialized();
-    final store = await _openStore();
     final now = _now;
     final group = WallpaperGroup(
       id: 'group.$now.${_idSequence++}',
@@ -245,7 +319,8 @@ class WallpaperGroupController extends ChangeNotifier {
       createdAt: now,
       updatedAt: now,
     );
-    await _commit(store, [..._groups, group]);
+    await _writeGroups([..._groups, group]);
+    return _groups.firstWhere((candidate) => candidate.id == group.id);
   }
 
   /// Updates the user text of a group. An empty name keeps the current one, so
@@ -259,8 +334,7 @@ class WallpaperGroupController extends ChangeNotifier {
     final nextName = trimmed.isEmpty ? group.name : trimmed;
     final resolvedDescription = nextDescription ?? group.description;
     if (group.name == nextName && group.description == resolvedDescription) return;
-    final store = await _openStore();
-    await _commit(store, [
+    await _writeGroups([
       for (final candidate in _groups)
         if (candidate.id == id) candidate.copyWith(name: nextName, description: resolvedDescription, updatedAt: _now) else candidate,
     ]);
@@ -273,9 +347,20 @@ class WallpaperGroupController extends ChangeNotifier {
   Future<bool> deleteGroup(String id) async {
     _requireInitialized();
     if (_groups.length <= 1 || !_groups.any((group) => group.id == id)) return false;
+    final remaining = _groups.where((group) => group.id != id).toList();
+    if (_draftActive) {
+      _groups = normalizeWallpaperGroups(remaining);
+      _ranges.remove(id);
+      _deletedIds.add(id);
+      _dirty = true;
+      notifyListeners();
+      return true;
+    }
     final store = await _openStore();
     await store.deleteGroup(id);
-    await _commit(store, _groups.where((group) => group.id != id).toList());
+    _groups = normalizeWallpaperGroups(remaining);
+    await store.saveGroups(_groups);
+    notifyListeners();
     return true;
   }
 
@@ -283,14 +368,14 @@ class WallpaperGroupController extends ChangeNotifier {
     _requireInitialized();
     final next = setWallpaperGroupEnabled(_groups, id, enabled);
     if (listEquals(next, _groups)) return;
-    await _commit(await _openStore(), next);
+    await _writeGroups(next);
   }
 
   Future<void> moveGroup(String id, int delta) async {
     _requireInitialized();
     final next = moveWallpaperGroup(_groups, id, delta);
     if (listEquals(next, _groups)) return;
-    await _commit(await _openStore(), next);
+    await _writeGroups(next);
   }
 
   /// Makes [id] the current group, or group 0 when null.
@@ -301,11 +386,22 @@ class WallpaperGroupController extends ChangeNotifier {
       for (final group in _groups) group.copyWith(current: id != null && group.id == id),
     ]);
     if (listEquals(next, _groups)) return;
-    await _commit(await _openStore(), next);
+    await _writeGroups(next);
   }
 
   /// The group's visible range, or a fresh unrestricted one when it has none.
   Future<VisibleRange> groupRange(String groupId) async {
+    if (_draftActive) {
+      final cached = _ranges[groupId];
+      if (cached != null) return cached;
+      return VisibleRange(
+        id: wallpaperGroupRangeId(groupId),
+        scope: VisibleRangeScope.wallpaper,
+        ownerId: groupId,
+        createdAt: _now,
+        updatedAt: _now,
+      );
+    }
     final store = await _openStore();
     final existing = await VisibleRangeStore(store.db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: groupId);
     if (existing != null) return existing;
@@ -321,7 +417,8 @@ class WallpaperGroupController extends ChangeNotifier {
   /// Saves a group's range after checking it really belongs to that group.
   ///
   /// The id is derived from the owner, so a caller cannot write a range under
-  /// another group by mistake.
+  /// another group by mistake. While the draft is active this only updates the
+  /// in-memory range; [saveDraft] is what touches the database.
   Future<void> saveGroupRange(VisibleRange range) async {
     _requireInitialized();
     if (range.scope != VisibleRangeScope.wallpaper) {
@@ -333,9 +430,20 @@ class WallpaperGroupController extends ChangeNotifier {
     if (!_groups.any((group) => group.id == range.ownerId)) {
       throw ArgumentError.value(range.ownerId, 'range.ownerId', 'unknown wallpaper group');
     }
-    final store = await _openStore();
     final now = _now;
-    await VisibleRangeStore(store.db).saveRange(range.copyWith(updatedAt: now));
+    final next = range.copyWith(updatedAt: now);
+    if (_draftActive) {
+      _ranges[range.ownerId] = next;
+      _groups = [
+        for (final group in _groups)
+          if (group.id == range.ownerId) group.copyWith(updatedAt: now) else group,
+      ];
+      _dirty = true;
+      notifyListeners();
+      return;
+    }
+    final store = await _openStore();
+    await VisibleRangeStore(store.db).saveRange(next);
     _groups = [
       for (final group in _groups)
         if (group.id == range.ownerId) group.copyWith(updatedAt: now) else group,
@@ -344,8 +452,17 @@ class WallpaperGroupController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _commit(WallpaperGroupStore store, List<WallpaperGroup> groups) async {
-    _groups = normalizeWallpaperGroups(groups);
+  /// Updates the group list in memory (draft) or in the database.
+  Future<void> _writeGroups(List<WallpaperGroup> groups) async {
+    final next = normalizeWallpaperGroups(groups);
+    if (_draftActive) {
+      _groups = next;
+      _dirty = true;
+      notifyListeners();
+      return;
+    }
+    final store = await _openStore();
+    _groups = next;
     await store.saveGroups(_groups);
     notifyListeners();
   }

@@ -5075,6 +5075,21 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
     requiredDuringInsert: false,
     defaultValue: const Constant('[]'),
   );
+  static const VerificationMeta _baseActiveMeta = const VerificationMeta(
+    'baseActive',
+  );
+  @override
+  late final GeneratedColumn<bool> baseActive = GeneratedColumn<bool>(
+    'baseActive',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("baseActive" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   static const VerificationMeta _orderModeMeta = const VerificationMeta(
     'orderMode',
   );
@@ -5141,6 +5156,7 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
     baseName,
     basePresetId,
     baseFilters,
+    baseActive,
     orderMode,
     locked,
     permissions,
@@ -5202,6 +5218,12 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
           data['baseFilters']!,
           _baseFiltersMeta,
         ),
+      );
+    }
+    if (data.containsKey('baseActive')) {
+      context.handle(
+        _baseActiveMeta,
+        baseActive.isAcceptableOrUnknown(data['baseActive']!, _baseActiveMeta),
       );
     }
     if (data.containsKey('orderMode')) {
@@ -5274,6 +5296,10 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
         DriftSqlType.string,
         data['${effectivePrefix}baseFilters'],
       )!,
+      baseActive: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}baseActive'],
+      )!,
       orderMode: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}orderMode'],
@@ -5320,6 +5346,13 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
   /// JSON array, AND-ed together. Empty means unrestricted.
   final String baseFilters;
 
+  /// Whether the base takes part in the range.
+  ///
+  /// A wallpaper group keeps its base when the user clears the group: switching
+  /// the base off is a state change, not a deletion, so the same conditions can
+  /// be switched back on without pinning them again.
+  final bool baseActive;
+
   /// `intersectFirst` (restrictions before supplements) or `unionFirst`
   /// (supplements before restrictions).
   final String orderMode;
@@ -5337,6 +5370,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     required this.baseName,
     required this.basePresetId,
     required this.baseFilters,
+    required this.baseActive,
     required this.orderMode,
     required this.locked,
     this.permissions,
@@ -5352,6 +5386,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     map['baseName'] = Variable<String>(baseName);
     map['basePresetId'] = Variable<String>(basePresetId);
     map['baseFilters'] = Variable<String>(baseFilters);
+    map['baseActive'] = Variable<bool>(baseActive);
     map['orderMode'] = Variable<String>(orderMode);
     map['locked'] = Variable<bool>(locked);
     if (!nullToAbsent || permissions != null) {
@@ -5370,6 +5405,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
       baseName: Value(baseName),
       basePresetId: Value(basePresetId),
       baseFilters: Value(baseFilters),
+      baseActive: Value(baseActive),
       orderMode: Value(orderMode),
       locked: Value(locked),
       permissions: permissions == null && nullToAbsent
@@ -5392,6 +5428,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
       baseName: serializer.fromJson<String>(json['baseName']),
       basePresetId: serializer.fromJson<String>(json['basePresetId']),
       baseFilters: serializer.fromJson<String>(json['baseFilters']),
+      baseActive: serializer.fromJson<bool>(json['baseActive']),
       orderMode: serializer.fromJson<String>(json['orderMode']),
       locked: serializer.fromJson<bool>(json['locked']),
       permissions: serializer.fromJson<String?>(json['permissions']),
@@ -5409,6 +5446,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
       'baseName': serializer.toJson<String>(baseName),
       'basePresetId': serializer.toJson<String>(basePresetId),
       'baseFilters': serializer.toJson<String>(baseFilters),
+      'baseActive': serializer.toJson<bool>(baseActive),
       'orderMode': serializer.toJson<String>(orderMode),
       'locked': serializer.toJson<bool>(locked),
       'permissions': serializer.toJson<String?>(permissions),
@@ -5424,6 +5462,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     String? baseName,
     String? basePresetId,
     String? baseFilters,
+    bool? baseActive,
     String? orderMode,
     bool? locked,
     Value<String?> permissions = const Value.absent(),
@@ -5436,6 +5475,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     baseName: baseName ?? this.baseName,
     basePresetId: basePresetId ?? this.basePresetId,
     baseFilters: baseFilters ?? this.baseFilters,
+    baseActive: baseActive ?? this.baseActive,
     orderMode: orderMode ?? this.orderMode,
     locked: locked ?? this.locked,
     permissions: permissions.present ? permissions.value : this.permissions,
@@ -5454,6 +5494,9 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
       baseFilters: data.baseFilters.present
           ? data.baseFilters.value
           : this.baseFilters,
+      baseActive: data.baseActive.present
+          ? data.baseActive.value
+          : this.baseActive,
       orderMode: data.orderMode.present ? data.orderMode.value : this.orderMode,
       locked: data.locked.present ? data.locked.value : this.locked,
       permissions: data.permissions.present
@@ -5473,6 +5516,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
           ..write('baseName: $baseName, ')
           ..write('basePresetId: $basePresetId, ')
           ..write('baseFilters: $baseFilters, ')
+          ..write('baseActive: $baseActive, ')
           ..write('orderMode: $orderMode, ')
           ..write('locked: $locked, ')
           ..write('permissions: $permissions, ')
@@ -5490,6 +5534,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     baseName,
     basePresetId,
     baseFilters,
+    baseActive,
     orderMode,
     locked,
     permissions,
@@ -5506,6 +5551,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
           other.baseName == this.baseName &&
           other.basePresetId == this.basePresetId &&
           other.baseFilters == this.baseFilters &&
+          other.baseActive == this.baseActive &&
           other.orderMode == this.orderMode &&
           other.locked == this.locked &&
           other.permissions == this.permissions &&
@@ -5520,6 +5566,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
   final Value<String> baseName;
   final Value<String> basePresetId;
   final Value<String> baseFilters;
+  final Value<bool> baseActive;
   final Value<String> orderMode;
   final Value<bool> locked;
   final Value<String?> permissions;
@@ -5533,6 +5580,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     this.baseName = const Value.absent(),
     this.basePresetId = const Value.absent(),
     this.baseFilters = const Value.absent(),
+    this.baseActive = const Value.absent(),
     this.orderMode = const Value.absent(),
     this.locked = const Value.absent(),
     this.permissions = const Value.absent(),
@@ -5547,6 +5595,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     this.baseName = const Value.absent(),
     this.basePresetId = const Value.absent(),
     this.baseFilters = const Value.absent(),
+    this.baseActive = const Value.absent(),
     this.orderMode = const Value.absent(),
     this.locked = const Value.absent(),
     this.permissions = const Value.absent(),
@@ -5565,6 +5614,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     Expression<String>? baseName,
     Expression<String>? basePresetId,
     Expression<String>? baseFilters,
+    Expression<bool>? baseActive,
     Expression<String>? orderMode,
     Expression<bool>? locked,
     Expression<String>? permissions,
@@ -5579,6 +5629,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
       if (baseName != null) 'baseName': baseName,
       if (basePresetId != null) 'basePresetId': basePresetId,
       if (baseFilters != null) 'baseFilters': baseFilters,
+      if (baseActive != null) 'baseActive': baseActive,
       if (orderMode != null) 'orderMode': orderMode,
       if (locked != null) 'locked': locked,
       if (permissions != null) 'permissions': permissions,
@@ -5595,6 +5646,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     Value<String>? baseName,
     Value<String>? basePresetId,
     Value<String>? baseFilters,
+    Value<bool>? baseActive,
     Value<String>? orderMode,
     Value<bool>? locked,
     Value<String?>? permissions,
@@ -5609,6 +5661,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
       baseName: baseName ?? this.baseName,
       basePresetId: basePresetId ?? this.basePresetId,
       baseFilters: baseFilters ?? this.baseFilters,
+      baseActive: baseActive ?? this.baseActive,
       orderMode: orderMode ?? this.orderMode,
       locked: locked ?? this.locked,
       permissions: permissions ?? this.permissions,
@@ -5638,6 +5691,9 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     }
     if (baseFilters.present) {
       map['baseFilters'] = Variable<String>(baseFilters.value);
+    }
+    if (baseActive.present) {
+      map['baseActive'] = Variable<bool>(baseActive.value);
     }
     if (orderMode.present) {
       map['orderMode'] = Variable<String>(orderMode.value);
@@ -5669,6 +5725,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
           ..write('baseName: $baseName, ')
           ..write('basePresetId: $basePresetId, ')
           ..write('baseFilters: $baseFilters, ')
+          ..write('baseActive: $baseActive, ')
           ..write('orderMode: $orderMode, ')
           ..write('locked: $locked, ')
           ..write('permissions: $permissions, ')
@@ -10160,6 +10217,7 @@ typedef $$VisibleRangeRowsTableCreateCompanionBuilder =
       Value<String> baseName,
       Value<String> basePresetId,
       Value<String> baseFilters,
+      Value<bool> baseActive,
       Value<String> orderMode,
       Value<bool> locked,
       Value<String?> permissions,
@@ -10175,6 +10233,7 @@ typedef $$VisibleRangeRowsTableUpdateCompanionBuilder =
       Value<String> baseName,
       Value<String> basePresetId,
       Value<String> baseFilters,
+      Value<bool> baseActive,
       Value<String> orderMode,
       Value<bool> locked,
       Value<String?> permissions,
@@ -10219,6 +10278,11 @@ class $$VisibleRangeRowsTableFilterComposer
 
   ColumnFilters<String> get baseFilters => $composableBuilder(
     column: $table.baseFilters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get baseActive => $composableBuilder(
+    column: $table.baseActive,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10287,6 +10351,11 @@ class $$VisibleRangeRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get baseActive => $composableBuilder(
+    column: $table.baseActive,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get orderMode => $composableBuilder(
     column: $table.orderMode,
     builder: (column) => ColumnOrderings(column),
@@ -10341,6 +10410,11 @@ class $$VisibleRangeRowsTableAnnotationComposer
 
   GeneratedColumn<String> get baseFilters => $composableBuilder(
     column: $table.baseFilters,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get baseActive => $composableBuilder(
+    column: $table.baseActive,
     builder: (column) => column,
   );
 
@@ -10405,6 +10479,7 @@ class $$VisibleRangeRowsTableTableManager
                 Value<String> baseName = const Value.absent(),
                 Value<String> basePresetId = const Value.absent(),
                 Value<String> baseFilters = const Value.absent(),
+                Value<bool> baseActive = const Value.absent(),
                 Value<String> orderMode = const Value.absent(),
                 Value<bool> locked = const Value.absent(),
                 Value<String?> permissions = const Value.absent(),
@@ -10418,6 +10493,7 @@ class $$VisibleRangeRowsTableTableManager
                 baseName: baseName,
                 basePresetId: basePresetId,
                 baseFilters: baseFilters,
+                baseActive: baseActive,
                 orderMode: orderMode,
                 locked: locked,
                 permissions: permissions,
@@ -10433,6 +10509,7 @@ class $$VisibleRangeRowsTableTableManager
                 Value<String> baseName = const Value.absent(),
                 Value<String> basePresetId = const Value.absent(),
                 Value<String> baseFilters = const Value.absent(),
+                Value<bool> baseActive = const Value.absent(),
                 Value<String> orderMode = const Value.absent(),
                 Value<bool> locked = const Value.absent(),
                 Value<String?> permissions = const Value.absent(),
@@ -10446,6 +10523,7 @@ class $$VisibleRangeRowsTableTableManager
                 baseName: baseName,
                 basePresetId: basePresetId,
                 baseFilters: baseFilters,
+                baseActive: baseActive,
                 orderMode: orderMode,
                 locked: locked,
                 permissions: permissions,

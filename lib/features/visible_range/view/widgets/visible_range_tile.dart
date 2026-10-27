@@ -51,6 +51,9 @@ class VisibleRangeTile extends StatelessWidget {
 
   /// Whether this tile is currently selected.
   final bool selected;
+
+  /// Layout-specific text for a placeholder tile; empty keeps the candidate's.
+  final String labelOverride;
   final VoidCallback? onTap;
   final VoidCallback? onRemove;
   final VoidCallback? onLongPress;
@@ -66,6 +69,7 @@ class VisibleRangeTile extends StatelessWidget {
     this.selectable = false,
     this.selecting = false,
     this.selected = false,
+    this.labelOverride = '',
     this.onTap,
     this.onRemove,
     this.onLongPress,
@@ -140,7 +144,7 @@ class VisibleRangeTile extends StatelessWidget {
 
   Widget _buildList(BuildContext context, double extent) {
     final theme = context.read<FilterListDetailsThemeData>();
-    final label = visibleRangeCandidateLabel(context, candidate);
+    final label = labelOverride.isNotEmpty ? labelOverride : visibleRangeCandidateLabel(context, candidate);
     return InkWell(
       borderRadius: const BorderRadius.all(Radius.circular(12)),
       onTap: onTap,
@@ -176,10 +180,13 @@ class VisibleRangeTile extends StatelessWidget {
     final textScaler = MediaQuery.textScalerOf(context);
     final infoHeight = showText ? CoveredFilterChip.infoHeight(extent: extent, textScaler: textScaler, showText: true) : 0.0;
     final inactiveRule = candidate.rule != null && !candidate.active;
+    final displayFilter = labelOverride.isEmpty
+        ? gridItem.filter
+        : VisibleRangeCandidateFilter(candidate, summary: summary, labelOverride: labelOverride);
     return Opacity(
       opacity: inactiveRule ? .62 : 1,
       child: AvesFilterChip(
-        filter: gridItem.filter,
+        filter: displayFilter,
         // The state icon in the details row replaces the kind icon: a candidate
         // is identified by its name, and its kind is already the section.
         showLeading: false,

@@ -273,6 +273,11 @@ class VisibleRange extends Equatable {
   final String baseName;
   final String basePresetId;
   final Set<CollectionFilter> baseFilters;
+
+  /// Whether the base takes part in the range. The gallery clears its base by
+  /// emptying [baseFilters]; a wallpaper group can switch it off instead and
+  /// keep the conditions for later.
+  final bool baseActive;
   final List<VisibleRangeRule> rules;
   final VisibleRangeOrder order;
   final bool locked;
@@ -287,6 +292,7 @@ class VisibleRange extends Equatable {
     this.baseName = '',
     this.basePresetId = '',
     this.baseFilters = const {},
+    this.baseActive = true,
     this.rules = const [],
     this.order = VisibleRangeOrder.intersectFirst,
     this.locked = false,
@@ -296,13 +302,16 @@ class VisibleRange extends Equatable {
   });
 
   /// 「不限」: no base filter set selected.
-  bool get isBaseUnrestricted => baseFilters.isEmpty;
+  bool get isBaseUnrestricted => !baseActive || baseFilters.isEmpty;
+
+  /// The base filters that count, i.e. ignoring a switched-off base.
+  Set<CollectionFilter> get activeBaseFilters => baseActive ? baseFilters : const {};
 
   /// Only the base and the active restrictions decide "受限"; supplements never
   /// do, because a supplement can only add back what the base already allowed
   /// when the base is unrestricted.
   bool get isRestricted {
-    if (baseFilters.isNotEmpty) return true;
+    if (baseActive && baseFilters.isNotEmpty) return true;
     return rules.any((rule) => rule.active && rule.kind == VisibleRangeRuleKind.restriction && rule.filters.isNotEmpty);
   }
 
@@ -317,7 +326,7 @@ class VisibleRange extends Equatable {
   VisibleRangeRule? ruleById(String id) => rules.firstWhereOrNull((rule) => rule.id == id);
 
   /// The base alone, as a filter (null for 「不限」).
-  CollectionFilter? get resolvedBase => _and(baseFilters);
+  CollectionFilter? get resolvedBase => _and(activeBaseFilters);
 
   /// The first group applied on top of the base, following [order].
   ///
@@ -326,6 +335,7 @@ class VisibleRange extends Equatable {
   CollectionFilter? get resolvedIntermediate {
     final restrictions = [for (final rule in activeRulesOf(VisibleRangeRuleKind.restriction)) ...rule.filters];
     final supplements = [for (final rule in activeRulesOf(VisibleRangeRuleKind.supplement)) ...rule.filters];
+    final baseFilters = activeBaseFilters;
     if (order.isIntersectFirst) return _and({...baseFilters, ...restrictions});
     // Union-first: an unrestricted base excepts the whole union, so there is no
     // intermediate narrowing to show.
@@ -342,6 +352,7 @@ class VisibleRange extends Equatable {
   CollectionFilter? resolve() {
     final restrictions = [for (final rule in activeRulesOf(VisibleRangeRuleKind.restriction)) ...rule.filters];
     final supplements = [for (final rule in activeRulesOf(VisibleRangeRuleKind.supplement)) ...rule.filters];
+    final baseFilters = activeBaseFilters;
 
     if (order.isIntersectFirst) {
       final conjunction = _and({...baseFilters, ...restrictions});
@@ -372,6 +383,7 @@ class VisibleRange extends Equatable {
     String? baseName,
     String? basePresetId,
     Set<CollectionFilter>? baseFilters,
+    bool? baseActive,
     List<VisibleRangeRule>? rules,
     VisibleRangeOrder? order,
     bool? locked,
@@ -385,6 +397,7 @@ class VisibleRange extends Equatable {
       baseName: baseName ?? this.baseName,
       basePresetId: basePresetId ?? this.basePresetId,
       baseFilters: baseFilters ?? this.baseFilters,
+      baseActive: baseActive ?? this.baseActive,
       rules: rules ?? this.rules,
       order: order ?? this.order,
       locked: locked ?? this.locked,
@@ -407,7 +420,7 @@ class VisibleRange extends Equatable {
   static const galleryRangeId = 'gallery';
 
   @override
-  List<Object?> get props => [id, scope, ownerId, baseName, basePresetId, baseFilters, rules, order, locked, permissions, createdAt, updatedAt];
+  List<Object?> get props => [id, scope, ownerId, baseName, basePresetId, baseFilters, baseActive, rules, order, locked, permissions, createdAt, updatedAt];
 }
 
 /// Stable fingerprint of a filter set, used to dedupe presets/rules.

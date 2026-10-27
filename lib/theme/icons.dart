@@ -254,6 +254,11 @@ class AIcons {
   /// Marks "the page you are on", like a radio button rather than a to-do check.
   static const current = Symbols.radio_button_checked;
 
+  /// Draft actions on the wallpaper page.
+  static const save = Symbols.save;
+  static const sync = Symbols.sync;
+  static const discard = Symbols.undo;
+
   // Material Icons references to make constant instances of `IconData`
   // as non-constant instances of `IconData` prevent icon font tree shaking
   static const labelImportantOutlineCodePoint = 0xe362;

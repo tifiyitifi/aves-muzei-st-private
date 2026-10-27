@@ -12,6 +12,12 @@ abstract interface class VisibleRangeTargetSource {
   /// flagged when its range refuses edits.
   Future<List<VisibleRangePinTarget>> loadPinTargets();
 
+  /// Whether writes to these targets are kept as an unsaved draft.
+  ///
+  /// The pin sheet tells the user when a group write still needs saving; the
+  /// gallery range always persists immediately.
+  bool get targetsAreDraft => false;
+
   /// The range with [rangeId], or null when it is unknown.
   Future<VisibleRange?> loadRange(String rangeId);
 

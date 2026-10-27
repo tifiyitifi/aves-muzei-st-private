@@ -5,6 +5,8 @@
     <string name="wallpaper">Wallpaper</string>
     <string name="live_wallpaper_label">Muzei Wallpaper</string>
     <string name="live_wallpaper_description">A port of Muzei: local photos with blur, dim and greyscale effects</string>
+    <string name="grouped_live_wallpaper_label">Grouped Wallpaper</string>
+    <string name="grouped_live_wallpaper_description">Shows a photo from the current wallpaper group</string>
     <string name="map_shortcut_short_label">Map</string>
     <string name="search_shortcut_short_label">Search</string>
     <string name="videos_shortcut_short_label">Videos</string>

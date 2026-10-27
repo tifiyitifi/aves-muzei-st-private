@@ -332,6 +332,21 @@
                 android:resource="@xml/live_wallpaper" />
         </service>
 
+        <service
+            android:name=".features.grouped_wallpaper.GroupedLiveWallpaperService"
+            android:directBootAware="true"
+            android:exported="true"
+            android:label="@string/grouped_live_wallpaper_label"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/live_wallpaper_grouped" />
+        </service>
+
         <!-- file provider to share files having a file:// URI -->
         <provider
             android:name="androidx.core.content.FileProvider"

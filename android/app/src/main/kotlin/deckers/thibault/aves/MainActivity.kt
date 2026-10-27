@@ -58,6 +58,8 @@ import deckers.thibault.aves.channel.streams.platformtodart.MediaStoreChangeStre
 import deckers.thibault.aves.channel.streams.platformtodart.MessageStreamHandler
 import deckers.thibault.aves.channel.streams.platformtodart.SettingsChangeStreamHandler
 import deckers.thibault.aves.channel.streams.platformtodart.WindowChangeStreamHandler
+import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperAppBridge
+import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperHandler
 import deckers.thibault.aves.features.muzei_wallpaper.LiveWallpaperHandler
 import deckers.thibault.aves.features.muzei_wallpaper.WallpaperAppBridge
 import deckers.thibault.aves.model.FieldMap
@@ -139,6 +141,7 @@ open class MainActivity : FlutterFragmentActivity() {
         // advanced the artwork, so the mounted page can adopt and refill it
         liveWallpaperAppMessenger = messenger
         WallpaperAppBridge.attach(messenger)
+        GroupedWallpaperAppBridge.attach(messenger)
 
         // notification: platform -> dart
         analysisStreamHandler = AnalysisStreamHandler().apply {
@@ -185,6 +188,8 @@ open class MainActivity : FlutterFragmentActivity() {
         MethodChannel(messenger, WallpaperHandler.CHANNEL).setMethodCallHandler(WallpaperHandler(this))
         // - live wallpaper lifecycle, state lives in `filesDir/muzei_wallpaper`
         MethodChannel(messenger, LiveWallpaperHandler.CHANNEL).setMethodCallHandler(LiveWallpaperHandler(this))
+        // - grouped live wallpaper, state lives in `filesDir/grouped_wallpaper`
+        MethodChannel(messenger, GroupedWallpaperHandler.CHANNEL).setMethodCallHandler(GroupedWallpaperHandler(this))
         // - need Activity
         MethodChannel(messenger, AppProfileHandler.CHANNEL).setMethodCallHandler(AppProfileHandler(this))
         MethodChannel(messenger, WindowHandler.CHANNEL).setMethodCallHandler(ActivityWindowHandler(this))
@@ -242,6 +247,7 @@ open class MainActivity : FlutterFragmentActivity() {
     override fun onDestroy() {
         Log.i(LOG_TAG, "onDestroy")
         liveWallpaperAppMessenger?.let(WallpaperAppBridge::detach)
+        liveWallpaperAppMessenger?.let(GroupedWallpaperAppBridge::detach)
         liveWallpaperAppMessenger = null
         mediaSessionHandler.dispose()
         mediaStoreChangeStreamHandler.dispose()

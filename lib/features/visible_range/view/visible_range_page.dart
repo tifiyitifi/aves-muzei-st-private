@@ -52,7 +52,6 @@ class VisibleRangePage extends StatefulWidget {
 enum _MoreAction {
   editRule,
   order,
-  save,
   reAddDefaults,
   wallpaperGroups,
   lockDetailed,
@@ -356,7 +355,6 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     final l10n = context.l10n;
     return [
       _menuItem(context, _MoreAction.order, AIcons.sortOrder, l10n.visibleRangeOrder),
-      _menuItem(context, _MoreAction.save, AIcons.checked, l10n.visibleRangeSaveAs),
       _menuItem(context, _MoreAction.reAddDefaults, AIcons.newTier, l10n.visibleRangeReAddDefaults),
       const PopupMenuDivider(),
       // The wallpaper groups own their own ranges, so they are reachable from
@@ -771,8 +769,6 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
         if (rule != null) await _showRuleEditor(rule);
       case _MoreAction.order:
         await _pickOrder();
-      case _MoreAction.save:
-        await _saveRange();
       case _MoreAction.reAddDefaults:
         if (!_controller.canEdit) {
           _showBlocked();
@@ -827,57 +823,6 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       trailing: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked),
       onTap: () => Navigator.pop(context, value),
     );
-  }
-
-  Future<void> _saveRange() async {
-    final l10n = context.l10n;
-    final sessions = _controller.sessions.where((session) => session.hasChanges).toList();
-    var chosen = '';
-    if (sessions.isNotEmpty) {
-      final picked = await showDialog<String>(
-        context: context,
-        builder: (context) {
-          var selected = '';
-          return StatefulBuilder(
-            builder: (context, setDialogState) => AlertDialog(
-              title: Text(l10n.visibleRangeWriteBackTitle),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(l10n.visibleRangeWriteBackHint),
-                    ListTile(
-                      title: Text(l10n.visibleRangeWriteBackNone),
-                      trailing: Icon(selected.isEmpty ? Icons.radio_button_checked : Icons.radio_button_unchecked),
-                      onTap: () => setDialogState(() => selected = ''),
-                    ),
-                    for (final session in sessions)
-                      ListTile(
-                        title: Text(_kindLabel(context, session.kind)),
-                        subtitle: Text(l10n.visibleRangeWriteBackLine(_kindLabel(context, session.kind), session.added.length, session.removed.length)),
-                        trailing: Icon(selected == session.id ? Icons.radio_button_checked : Icons.radio_button_unchecked),
-                        onTap: () => setDialogState(() => selected = session.id),
-                      ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
-                TextButton(onPressed: () => Navigator.pop(context, selected), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
-              ],
-            ),
-          );
-        },
-      );
-      if (picked == null) return;
-      chosen = picked;
-    }
-    if (chosen.isNotEmpty) {
-      await _controller.writeBackSession(chosen);
-    }
-    await _controller.clearSessions();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.visibleRangeSaved)));
   }
 
   Future<void> _lockDetailed() async {

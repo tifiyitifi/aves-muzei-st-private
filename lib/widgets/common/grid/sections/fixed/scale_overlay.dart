@@ -20,39 +20,47 @@ class const FixedExtentScaleOverlay({
     final xMin = contentRect.left;
     final xMax = contentRect.right;
     return MediaQueryDataProvider(
-      child: IgnorePointer(
-        child: _OverlayBackground(
-          gradientCenter: tileLayout == .grid ? tileCenter : Offset(context.isRtl ? xMax : xMin, tileCenter.dy),
-          child: ValueListenableBuilder<Size>(
-            valueListenable: scaledSizeNotifier,
-            builder: (context, scaledSize, child) {
-              final width = scaledSize.width;
-              final height = scaledSize.height;
-              // keep scaled thumbnail within the screen
-              var dx = .0;
-              if (tileCenter.dx - width / 2 < xMin) {
-                dx = xMin - (tileCenter.dx - width / 2);
-              } else if (tileCenter.dx + width / 2 > xMax) {
-                dx = xMax - (tileCenter.dx + width / 2);
-              }
-              final clampedCenter = tileCenter.translate(dx, 0);
+      // The overlay lives in its own `OverlayEntry`, above the page's
+      // `Material`, while a list tile keeps its `InkWell` so the scaled preview
+      // still looks tappable. Without a material ancestor every scaled frame
+      // throws `No Material widget found`; a transparent material satisfies the
+      // ink without painting anything over the gradient.
+      child: Material(
+        type: MaterialType.transparency,
+        child: IgnorePointer(
+          child: _OverlayBackground(
+            gradientCenter: tileLayout == .grid ? tileCenter : Offset(context.isRtl ? xMax : xMin, tileCenter.dy),
+            child: ValueListenableBuilder<Size>(
+              valueListenable: scaledSizeNotifier,
+              builder: (context, scaledSize, child) {
+                final width = scaledSize.width;
+                final height = scaledSize.height;
+                // keep scaled thumbnail within the screen
+                var dx = .0;
+                if (tileCenter.dx - width / 2 < xMin) {
+                  dx = xMin - (tileCenter.dx - width / 2);
+                } else if (tileCenter.dx + width / 2 > xMax) {
+                  dx = xMax - (tileCenter.dx + width / 2);
+                }
+                final clampedCenter = tileCenter.translate(dx, 0);
 
-              var child = builder(scaledSize);
-              child = Stack(
-                children: [
-                  Positioned(
-                    left: clampedCenter.dx - width / 2,
-                    top: clampedCenter.dy - height / 2,
-                    child: DefaultTextStyle(
-                      style: const TextStyle(),
-                      child: child,
+                var child = builder(scaledSize);
+                child = Stack(
+                  children: [
+                    Positioned(
+                      left: clampedCenter.dx - width / 2,
+                      top: clampedCenter.dy - height / 2,
+                      child: DefaultTextStyle(
+                        style: const TextStyle(),
+                        child: child,
+                      ),
                     ),
-                  ),
-                ],
-              );
-              child = gridBuilder(clampedCenter, scaledSize, child);
-              return child;
-            },
+                  ],
+                );
+                child = gridBuilder(clampedCenter, scaledSize, child);
+                return child;
+              },
+            ),
           ),
         ),
       ),

@@ -507,6 +507,11 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
 
     // The TV rail has no overflow menu, so pinning needs its own captioned
     // button there (same visibility rules as the phone menu entry).
+    //
+    // The label says "Pin to visible range" and drops "/ wallpaper" on purpose:
+    // the destination list already covers the wallpaper groups, and a browsing
+    // action should read short. This is a product decision, not a bug; the sheet
+    // itself keeps the full title.
     final visibleFilters = _visibleFilters(context);
     final canPin = !isSelecting && appMode == .main && !isTrash && visibleFilters.isNotEmpty;
 

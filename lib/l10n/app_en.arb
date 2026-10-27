@@ -1701,6 +1701,76 @@
       }
     }
   },
+  "visibleRangePinSkipped": "{count, plural, =1{Skipped {count} target} other{Skipped {count} targets}}",
+  "@visibleRangePinSkipped": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "visibleRangePinAndWriteBack": "Pinned to {pinned}, wrote back to {written}",
+  "@visibleRangePinAndWriteBack": {
+    "placeholders": {
+      "pinned": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "written": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "visibleRangeApplyToMediaSet": "Apply to media set",
+  "visibleRangeWriteBackSection": "Write back to rules",
+  "visibleRangeWriteBackHint": "The current filters overwrite the selected targets. A base only changes its own range, never the shared presets.",
+  "visibleRangeWriteBackEmpty": "No rule has opened a media set yet.",
+  "visibleRangeWriteBackTargetLine": "{owner} · {kind}",
+  "@visibleRangeWriteBackTargetLine": {
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      }
+    }
+  },
+  "visibleRangeOwnerWithNumber": "Group {number} · {name}",
+  "@visibleRangeOwnerWithNumber": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "visibleRangeWriteBackDone": "{count, plural, =1{Wrote back to {count} target} other{Wrote back to {count} targets}}",
+  "@visibleRangeWriteBackDone": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "visibleRangeWriteBackPartial": "Wrote back to {written}, skipped {skipped}",
+  "@visibleRangeWriteBackPartial": {
+    "placeholders": {
+      "written": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "skipped": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
   "visibleRangeEditNameDescription": "Edit name and description",
   "visibleRangePresetImage": "Images",
   "visibleRangePresetVideo": "Videos",
@@ -1749,7 +1819,7 @@
   "aboutVisibleRangeWhat": "1. What the visible range is\n• It decides which photos and videos the gallery browsing shows. Files are not moved, copied or hidden elsewhere.\n• It applies to the collection, album list, tags, places, formats, search suggestions, counts and covers.\n• It does not change the grouped wallpaper. Wallpaper groups have their own ranges and their own browsing toggle.\n• The gallery has one visible range. Only wallpaper groups have several.\n• Visible range restrictions apply only inside this app; other apps are not affected.",
   "aboutVisibleRangeParts": "2. The three parts\n• Base range (exclusive): the first item, Unrestricted, is fixed and cannot be deleted. The rest comes from the built-in presets or from ranges you save.\n• Additional restrictions (AND): narrow the base further. Built-in restrictions are listed here switched off.\n• Supplements (OR): add back what was filtered out. Built-in supplements are listed here switched off. Depending on the group order they are shown as supplements outside the base or inside the restrictions.\n• Group order: restrictions before supplements, or supplements before restrictions. Each visible range saves its own.\n• Every step shows its count. The current visible range at the bottom shows every active condition.\n• Switching the base keeps the restrictions and supplements.",
   "aboutVisibleRangeRestricted": "3. Unrestricted and restricted\n• Unrestricted: the base is Unrestricted and no additional restriction group exists. Supplements do not change this.\n• Restricted: the base is not Unrestricted, or at least one additional restriction group exists.\n• Example: Unrestricted base with only a supplement is still Unrestricted, because the result is still everything; a supplement only changes the final set.\n• The same rule labels the wallpaper page's Available wallpaper and Available wallpaper (browsing restricted).",
-  "aboutVisibleRangeActivate": "4. Activating and editing\n• Long press a rule to start selecting. With one rule selected, More can move it to the base, restrictions or supplements, open the media set with it (replace or append), or rename it.\n• Multi-selection, including a single rule, can be deleted.\n• Activating only changes the media set's browsing filters. It does not bypass the visible range; an empty result is shown as empty.",
+  "aboutVisibleRangeActivate": "4. Activating and editing\n• Long press a candidate to start selecting. A base range (except Unrestricted), a restriction or a supplement can be selected.\n• More → Apply to media set opens the media set with the selected filters appended and deduplicated; one selection takes one condition.\n• The pin sheet's write-back list remembers every target used this way and overwrites its filters with the current ones. A base only changes its own range.\n• A single rule's editor can still replace or append, move, rename or delete it.\n• Activating only changes the media set's browsing filters. It does not bypass the visible range; an empty result is shown as empty.",
   "aboutVisibleRangeLock": "5. Locking and permissions\n• The floating button locks or unlocks. A detailed lock sets permissions before locking.\n• The default is read-only with sharing allowed. Each visible range can set deleting, editing, vault, recycle bin and metadata permissions.\n• While locked the range cannot be switched or edited, and entries that would bypass the filter are filtered instead.\n• The lock is protection against casual peeking inside this app, not a security boundary. It does not encrypt or otherwise change your files. Clearing app data, using another app or root can still bypass it, but at least you will know it was not an accident.",
   "aboutVisibleRangeWallpaper": "6. Relation to wallpaper\n• Visible ranges and wallpaper groups are saved separately. With the wallpaper browsing effect on, browsing is the visible range AND the current wallpaper group, so both constrain it.\n• Wallpaper group 0 means no wallpaper group effect. Groups 1..n each have their own visible range.\n• Wallpaper only uses images; videos do not participate.\n• Available wallpaper and Available wallpaper (browsing restricted) describe whether gallery browsing is restricted, not whether the wallpaper itself is limited.",
   "aboutVisibleRangeDefaults": "7. Defaults and restoring\n• Built-in candidates cover all three sections: base candidates are presets, restriction and supplement candidates are rules listed switched off.\n• Re-add defaults restores the built-in presets and rules, deduping by id and by filter fingerprint.\n• You can customize every base, restriction and supplement: built-in base presets are read-only, while a built-in rule can be switched on, renamed or deleted like your own.\n• Defaults are data, not code. When a default names a folder this device cannot resolve, the candidate is not offered at all, and a wallpaper group instead shows nothing rather than everything: a range that hides private photos must fail closed, never open.",

@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:aves/app_flavor.dart';
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
+import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_target_source.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/features/session_restore/session_restore_collection_state.dart';
@@ -510,6 +511,10 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
       // saved range never flashes the unfiltered library.
       _timed('visible range', visibleRangeController.init),
     ]);
+    // The pin sheet and the write-back list reach the wallpaper groups through
+    // this source. The groups themselves load on first use, so assigning the
+    // source adds nothing to the first-frame path.
+    visibleRangeController.targetSource = wallpaperGroupTargetSource;
     _monitorSettings();
     videoControllerFactory.init();
     videoMetadataFetcher.init();

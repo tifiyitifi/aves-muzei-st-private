@@ -33,7 +33,7 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   new({
     WallpaperGroupController? groupController,
     this.injectedDatabase,
-  }) : groupController = groupController ?? WallpaperGroupController();
+  }) : groupController = groupController ?? wallpaperGroupController;
 
   AppDatabase? _db;
   bool _initialized = false;

@@ -6,6 +6,7 @@ import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/services/visible_range_candidate_stats.dart';
+import 'package:aves/features/visible_range/services/visible_range_apply.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/visible_range/view/visible_range_about_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_action_delegate.dart';
@@ -51,6 +52,7 @@ class VisibleRangePage extends StatefulWidget {
 
 enum _MoreAction {
   editRule,
+  applyToMediaSet,
   order,
   reAddDefaults,
   wallpaperGroups,
@@ -191,7 +193,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
                     emptyBuilder: () => Center(child: Text(context.l10n.visibleRangeNoCandidates)),
                     heroType: HeroType.never,
                     onTileTap: (item, navigate) => _onCandidateTap(context, item),
-                    selectableItem: (item) => !item.filter.summary && item.filter.candidate.rule != null,
+                    selectableItem: (item) => !item.filter.summary && item.filter.candidate.isApplicable,
                     tileBuilder: _buildTile,
                     // The section form repeats the active conditions as the last
                     // grid section instead of a separate footer.
@@ -307,18 +309,24 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       onPressed: _toggleLock,
     );
     if (selection.isSelecting) {
-      // On a TV rail there is no overflow menu, so the single-rule editor has
-      // to stay reachable as an icon.
-      if (!settings.useTvLayout) return const [];
+      // On a TV rail there is no overflow menu, so the selection actions have to
+      // stay reachable as icons.
       final selectedRule = _selectedRule(selection);
-      return [
+      final actions = <Widget>[
         if (selectedRule != null)
           IconButton(
             icon: const Icon(AIcons.edit),
             tooltip: l10n.visibleRangeEditRule,
             onPressed: () => unawaited(_showRuleEditor(selectedRule)),
           ),
+        if (selection.selectedItemCount > 0)
+          IconButton(
+            icon: const Icon(AIcons.apply),
+            tooltip: l10n.visibleRangeApplyToMediaSet,
+            onPressed: () => unawaited(_applySelectionToMediaSet()),
+          ),
       ];
+      return settings.useTvLayout ? actions : const [];
     }
     if (!settings.useTvLayout) return [lockButton];
     return [
@@ -343,9 +351,9 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   ) {
     if (selection.isSelecting) {
       final selectedRule = _selectedRule(selection);
-      if (selectedRule == null) return const [];
       return [
-        _menuItem<_MoreAction>(context, _MoreAction.editRule, AIcons.edit, context.l10n.visibleRangeEditRule),
+        if (selectedRule != null) _menuItem<_MoreAction>(context, _MoreAction.editRule, AIcons.edit, context.l10n.visibleRangeEditRule),
+        if (selection.selectedItemCount > 0) _menuItem<_MoreAction>(context, _MoreAction.applyToMediaSet, AIcons.apply, context.l10n.visibleRangeApplyToMediaSet),
       ];
     }
     return _menuEntries(context);
@@ -424,7 +432,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     }
     final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
     if (selection.isSelecting) {
-      if (candidate.rule != null) selection.toggleSelection(item);
+      if (candidate.isApplicable) selection.toggleSelection(item);
       return;
     }
     switch (candidate.kind) {
@@ -722,6 +730,22 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     await AvesNavItem(route: CollectionPage.routeName, filters: target).goTo(context, topLevel: false);
   }
 
+  /// Takes the selected candidates out to the media set.
+  ///
+  /// The union of their filters is appended to what the media set currently
+  /// shows, and every target is remembered for the pin sheet's write-back list.
+  Future<void> _applySelectionToMediaSet() async {
+    final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
+    if (!selection.isSelecting) return;
+    final candidates = [
+      for (final item in selection.selectedItems)
+        if (!item.filter.summary) item.filter.candidate,
+    ];
+    if (candidates.isEmpty) return;
+    _browseSelection();
+    await applyVisibleRangeCandidates(context, rangeId: _controller.gallery.id, candidates: candidates);
+  }
+
   Future<void> _deleteRules(Set<VisibleRangeRule> rules) async {
     if (!_controller.canEdit) {
       _showBlocked();
@@ -764,6 +788,8 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
         final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
         final rule = _selectedRule(selection);
         if (rule != null) await _showRuleEditor(rule);
+      case _MoreAction.applyToMediaSet:
+        await _applySelectionToMediaSet();
       case _MoreAction.order:
         await _pickOrder();
       case _MoreAction.reAddDefaults:

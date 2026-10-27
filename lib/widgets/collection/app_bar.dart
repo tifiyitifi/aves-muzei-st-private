@@ -9,7 +9,7 @@ import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart
 import 'package:aves/features/collection_paging/view/clear_filter_button.dart';
 import 'package:aves/features/collection_paging/view/collection_select_all.dart';
 import 'package:aves/features/collection_paging/view/filter_policy_scope.dart';
-import 'package:aves/features/visible_range/services/visible_range_controller.dart';
+import 'package:aves/features/visible_range/model/visible_range_pin.dart';
 import 'package:aves/features/visible_range/view/visible_range_pin_sheet.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -670,18 +670,32 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
 
   /// Opens the unified pin sheet for the filters currently on screen.
   ///
-  /// A locked range stays listed but cannot be edited: the tap explains why
-  /// instead of opening a sheet whose confirmation would fail.
+  /// A locked gallery range no longer blocks the sheet: it is listed but greyed
+  /// out, so the wallpaper groups stay pinnable. The sheet explains a locked
+  /// range itself instead of refusing to open.
   Future<void> _onPinToVisibleRange(BuildContext context, Set<CollectionFilter> filters) async {
-    final l10n = context.l10n;
-    if (!visibleRangeController.canEdit) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.visibleRangeManagementBlocked)));
-      return;
-    }
     final result = await showVisibleRangePinSheet(context, filters: filters);
     if (!context.mounted || result == null) return;
-    final text = result.skipped > 0 ? l10n.visibleRangePinPartial(result.pinned, result.skipped) : l10n.visibleRangePinDone(result.pinned);
+    final text = _pinResultText(context, result);
+    if (text == null) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  /// One confirmation can pin and write back; the message reports whichever
+  /// happened, and says so when every selected target was skipped.
+  String? _pinResultText(BuildContext context, VisibleRangePinResult result) {
+    final l10n = context.l10n;
+    final pinned = result.pinned;
+    final written = result.written;
+    if (pinned == 0 && written == 0) {
+      final skipped = result.skipped + result.writeSkipped;
+      return skipped > 0 ? l10n.visibleRangePinSkipped(skipped) : null;
+    }
+    if (pinned > 0 && written > 0) return l10n.visibleRangePinAndWriteBack(pinned, written);
+    if (written > 0) {
+      return result.writeSkipped > 0 ? l10n.visibleRangeWriteBackPartial(written, result.writeSkipped) : l10n.visibleRangeWriteBackDone(written);
+    }
+    return result.skipped > 0 ? l10n.visibleRangePinPartial(pinned, result.skipped) : l10n.visibleRangePinDone(pinned);
   }
 
   Set<AvesEntry> _getExpandedSelectedItems(Selection<AvesEntry> selection) {

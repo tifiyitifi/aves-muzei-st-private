@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/model/visible_range_pin.dart';
+import 'package:aves/features/visible_range/model/visible_range_write_back.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_target_grid.dart';
@@ -15,7 +16,9 @@ import 'package:material_ui/material_ui.dart';
 /// Opens the unified "pin to visible range / wallpaper" sheet.
 ///
 /// One confirmation writes the same filters to the cross product of the chosen
-/// groups and targets, so arranging several surfaces takes a single visit.
+/// groups and targets, so arranging several surfaces takes a single visit. The
+/// same confirmation can also write the filters back over the rules the user has
+/// opened a media set with.
 Future<VisibleRangePinResult?> showVisibleRangePinSheet(BuildContext context, {required Set<CollectionFilter> filters}) {
   final description = formatDateTime(DateTime.now(), settings.avesLocale, MediaQuery.alwaysUse24HourFormatOf(context));
   return showModalBottomSheet<VisibleRangePinResult>(
@@ -49,13 +52,19 @@ class VisibleRangePinSheet extends StatefulWidget {
 class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
   late final TextEditingController _nameController = TextEditingController(text: widget.initialName);
   late final TextEditingController _descriptionController = TextEditingController(text: widget.initialDescription);
-  late final List<VisibleRangePinTarget> _targets = visibleRangeController.pinTargets;
-  late final Set<String> _selectedTargets = {
-    for (final target in _targets)
-      if (target.isGallery && !target.locked) target.rangeId,
-  };
+  List<VisibleRangePinTarget> _targets = const [];
+  List<VisibleRangeWriteBackTarget> _appliedTargets = const [];
+  final Set<String> _selectedTargets = {};
+  final Set<String> _selectedUsages = {};
   final Set<VisibleRangeCandidateKind> _kinds = {VisibleRangeCandidateKind.restriction};
+  bool _loading = true;
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
 
   @override
   void dispose() {
@@ -64,23 +73,64 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
     super.dispose();
   }
 
-  bool get _canConfirm => !_busy && _kinds.isNotEmpty && _selectedTargets.isNotEmpty;
+  /// The targets and the write-back list are read once per open, so a group
+  /// created a moment ago is already selectable.
+  Future<void> _load() async {
+    try {
+      final targets = await visibleRangeController.loadPinTargets();
+      final applied = await visibleRangeController.loadAppliedTargets();
+      if (!mounted) return;
+      setState(() {
+        _targets = targets;
+        _appliedTargets = applied;
+        _selectedTargets.addAll([
+          for (final target in targets)
+            if (target.isGallery && !target.locked) target.rangeId,
+        ]);
+        _loading = false;
+      });
+    } on StateError {
+      // The controller is not initialized (a test or a very early open): an
+      // empty sheet is better than a crash, and confirming stays disabled.
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  bool get _pinning => _kinds.isNotEmpty && _selectedTargets.isNotEmpty;
+
+  bool get _canConfirm => !_busy && (_pinning || _selectedUsages.isNotEmpty);
 
   Future<void> _confirm() async {
     if (!_canConfirm) return;
     setState(() => _busy = true);
     try {
-      final result = await visibleRangeController.pinFilters(
-        VisibleRangePinRequest(
-          filters: widget.filters,
-          name: _nameController.text.trim(),
-          description: _descriptionController.text.trim(),
-          kinds: {..._kinds},
-          targetRangeIds: {..._selectedTargets},
-        ),
+      final pinResult = _pinning
+          ? await visibleRangeController.pinFilters(
+              VisibleRangePinRequest(
+                filters: widget.filters,
+                name: _nameController.text.trim(),
+                description: _descriptionController.text.trim(),
+                kinds: {..._kinds},
+                targetRangeIds: {..._selectedTargets},
+              ),
+            )
+          : const VisibleRangePinResult(pinned: 0, skipped: 0);
+      final writeBack = await visibleRangeController.writeBackTargets(
+        usageIds: {..._selectedUsages},
+        filters: widget.filters,
+        baseName: _nameController.text.trim(),
       );
       if (!mounted) return;
-      Navigator.pop(context, result);
+      Navigator.pop(
+        context,
+        VisibleRangePinResult(
+          pinned: pinResult.pinned,
+          skipped: pinResult.skipped,
+          written: writeBack.written,
+          writeSkipped: writeBack.skipped,
+        ),
+      );
     } on StateError {
       if (!mounted) return;
       setState(() => _busy = false);
@@ -168,18 +218,49 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
                   if (_kinds.isEmpty) _hint(context, l10n.visibleRangePinNoGroup),
                   const SizedBox(height: 20),
                   _sectionLabel(context, l10n.visibleRangePinTargets),
-                  VisibleRangeTargetGrid(
-                    targets: _targets,
-                    selectedRangeIds: _selectedTargets,
-                    onToggle: (target) {
-                      setState(() {
-                        if (!_selectedTargets.remove(target.rangeId)) {
-                          _selectedTargets.add(target.rangeId);
-                        }
-                      });
-                    },
-                  ),
-                  if (_selectedTargets.isEmpty) _hint(context, l10n.visibleRangePinNoTarget),
+                  if (_loading)
+                    const Center(child: Padding(padding: EdgeInsets.all(8), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))))
+                  else
+                    VisibleRangeTargetGrid(
+                      targets: _targets,
+                      selectedRangeIds: _selectedTargets,
+                      onToggle: (target) {
+                        setState(() {
+                          if (!_selectedTargets.remove(target.rangeId)) {
+                            _selectedTargets.add(target.rangeId);
+                          }
+                        });
+                      },
+                    ),
+                  if (!_loading && _selectedTargets.isEmpty) _hint(context, l10n.visibleRangePinNoTarget),
+                  const SizedBox(height: 20),
+                  _sectionLabel(context, l10n.visibleRangeWriteBackSection),
+                  Text(l10n.visibleRangeWriteBackHint, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                  const SizedBox(height: 8),
+                  if (!_loading && _appliedTargets.isEmpty)
+                    Text(l10n.visibleRangeWriteBackEmpty, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant))
+                  else
+                    for (final target in _appliedTargets)
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        value: _selectedUsages.contains(target.usageId),
+                        enabled: !target.locked,
+                        title: Text(visibleRangeWriteBackTargetLabel(context, target)),
+                        subtitle: Text(visibleRangeWriteBackTargetLine(context, target)),
+                        onChanged: target.locked
+                            ? null
+                            : (selected) {
+                                setState(() {
+                                  if (selected == true) {
+                                    _selectedUsages.add(target.usageId);
+                                  } else {
+                                    _selectedUsages.remove(target.usageId);
+                                  }
+                                });
+                              },
+                      ),
                 ],
               ),
             ),

@@ -66,7 +66,9 @@ class WallpaperGroupActionDelegate extends ChipSetActionDelegate<VisibleRangeCan
     required Set<VisibleRangeCandidateFilter> selectedFilters,
   }) {
     return switch (action) {
-      .changeLayout || .search || .toggleTitleSearch => super.isVisible(
+      // Selection is allowed here too: a rule can be taken out to the media set
+      // or deleted from the wallpaper page, exactly like on the range page.
+      .changeLayout || .search || .toggleTitleSearch || .select || .selectAll || .selectNone => super.isVisible(
           action,
           appMode: appMode,
           isSelecting: isSelecting,

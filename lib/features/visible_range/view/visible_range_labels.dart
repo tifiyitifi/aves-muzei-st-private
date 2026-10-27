@@ -1,5 +1,6 @@
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
+import 'package:aves/features/visible_range/model/visible_range_write_back.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:flutter/widgets.dart';
@@ -65,4 +66,35 @@ String visibleRangeCandidateLabel(BuildContext context, VisibleRangeCandidate ca
   if (candidate.labelKey.isNotEmpty) return visibleRangePresetLabel(context, candidate.labelKey);
   if (candidate.label.isNotEmpty) return candidate.label;
   return visibleRangeFilterLabels(context, candidate.filters);
+}
+
+/// The name of a remembered write-back target: a rule's own name, or the base
+/// range's name, falling back to the filters' labels when it was never named.
+String visibleRangeWriteBackTargetLabel(BuildContext context, VisibleRangeWriteBackTarget target) {
+  final label = target.label;
+  if (label.startsWith('@')) return visibleRangePresetLabel(context, label.substring(1));
+  if (label.isNotEmpty) return label;
+  final filters = visibleRangeFilterLabels(context, target.filters);
+  if (filters.isNotEmpty) return filters;
+  return context.l10n.visibleRangePinGroupBase;
+}
+
+/// The owner of a target followed by what it is, e.g. "Group 2 · Pictures ·
+/// Restriction". The gallery is named from ARB; a group keeps its own name.
+String visibleRangeWriteBackTargetLine(BuildContext context, VisibleRangeWriteBackTarget target) {
+  final l10n = context.l10n;
+  final owner = target.isGallery ? l10n.visibleRangePinTargetGallery : l10n.visibleRangeOwnerWithNumber(target.number, _groupName(context, target));
+  final kind = switch (target.kind) {
+    VisibleRangeCandidateKind.base => l10n.visibleRangePinGroupBase,
+    VisibleRangeCandidateKind.restriction => l10n.visibleRangePinGroupRestriction,
+    VisibleRangeCandidateKind.supplement => l10n.visibleRangePinGroupSupplement,
+  };
+  return l10n.visibleRangeWriteBackTargetLine(owner, kind);
+}
+
+String _groupName(BuildContext context, VisibleRangeWriteBackTarget target) {
+  final name = target.ownerName;
+  if (name.startsWith('@')) return visibleRangePresetLabel(context, name.substring(1));
+  if (name.isNotEmpty) return name;
+  return context.l10n.wallpaperGroupFallbackName(target.number);
 }

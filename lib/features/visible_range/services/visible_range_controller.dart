@@ -8,6 +8,9 @@ import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/model/visible_range_pin.dart';
+import 'package:aves/features/visible_range/model/visible_range_usage.dart';
+import 'package:aves/features/visible_range/model/visible_range_write_back.dart';
+import 'package:aves/features/visible_range/services/visible_range_target_source.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/utils/android_file_utils.dart';
@@ -430,36 +433,46 @@ class VisibleRangeController extends ChangeNotifier {
     await _updateGallery((range) => range.copyWith(order: order));
   }
 
-  // pin
+  // targets
 
-  /// Every place the current filters can be pinned to, in badge order.
+  /// Extra range surfaces (the wallpaper groups), set by the composition root.
   ///
-  /// The gallery owns one range (`number` 0). Wallpaper groups register here in
-  /// a later phase; the pin sheet already renders whatever this returns, so the
-  /// UI needs no change when they arrive.
-  List<VisibleRangePinTarget> get pinTargets => [
-        VisibleRangePinTarget(
-          rangeId: gallery.id,
-          number: 0,
-          name: '',
-          isGallery: true,
-          locked: !canEdit,
-        ),
-      ];
+  /// It is a plain field rather than a constructor argument so a test can leave
+  /// it unset: the gallery range then stands alone.
+  VisibleRangeTargetSource? targetSource;
+
+  /// Every place the current filters can be pinned to: the gallery first, then
+  /// the registered wallpaper groups in badge order.
+  Future<List<VisibleRangePinTarget>> loadPinTargets() async {
+    final extra = targetSource == null ? const <VisibleRangePinTarget>[] : await targetSource!.loadPinTargets();
+    return [
+      VisibleRangePinTarget(
+        rangeId: gallery.id,
+        number: 0,
+        name: '',
+        isGallery: true,
+        locked: !canEdit,
+      ),
+      ...extra,
+    ];
+  }
 
   /// Pins [request.filters] to every selected target and group in one write.
   ///
-  /// Re-pinning the same conditions to the same group updates the existing item
-  /// (name, description, active) instead of stacking a duplicate. The base is a
-  /// preset shared by all targets, so it is created/reused once and then
-  /// selected per target.
+  /// A locked or unknown target is skipped instead of failing the request, so
+  /// the sheet can offer the gallery and the groups side by side. Re-pinning the
+  /// same conditions to the same target updates the existing item (name,
+  /// description, active) instead of stacking a duplicate. The base is a preset
+  /// shared by all targets, so it is created/reused once and then selected per
+  /// target.
   Future<VisibleRangePinResult> pinFilters(VisibleRangePinRequest request) async {
-    if (request.isEmpty) return const VisibleRangePinResult(pinned: 0, skipped: 0);
-    _ensureEditable();
+    if (request.filters.isEmpty || request.kinds.isEmpty || request.targetRangeIds.isEmpty) {
+      return const VisibleRangePinResult(pinned: 0, skipped: 0);
+    }
     final store = _requireStore();
     final requested = request.targetRangeIds;
-    final targets = pinTargets.where((target) => requested.contains(target.rangeId) && !target.locked).toList();
-    final skipped = requested.length - targets.length;
+    final targets = (await loadPinTargets()).where((target) => requested.contains(target.rangeId) && !target.locked).toList();
+    var skipped = requested.length - targets.length;
     if (targets.isEmpty) return VisibleRangePinResult(pinned: 0, skipped: skipped);
 
     final fingerprint = filterFingerprint(request.filters);
@@ -490,7 +503,25 @@ class VisibleRangeController extends ChangeNotifier {
       _presets = await store.loadPresets();
     }
 
-    final range = gallery;
+    var pinned = 0;
+    for (final target in targets) {
+      final range = await _loadRangeById(target.rangeId);
+      if (range == null) {
+        skipped++;
+        continue;
+      }
+      await _saveRange(_pinToRange(range, request, preset, fingerprint, name));
+      pinned++;
+    }
+    notifyListeners();
+    return VisibleRangePinResult(pinned: pinned, skipped: skipped);
+  }
+
+  /// Applies one pin request to a single range.
+  ///
+  /// Rules are matched by kind and filter fingerprint, so re-pinning the same
+  /// conditions refreshes the existing rule rather than adding a twin.
+  VisibleRange _pinToRange(VisibleRange range, VisibleRangePinRequest request, VisibleRangePreset? preset, String fingerprint, String name) {
     var rules = [...range.rules];
     for (final kind in request.kinds) {
       final ruleKind = kind.ruleKind;
@@ -515,17 +546,138 @@ class VisibleRangeController extends ChangeNotifier {
         );
       }
     }
-
-    await _updateGallery(
-      (range) => range.copyWith(
-        basePresetId: preset?.id ?? range.basePresetId,
-        baseName: preset?.name ?? range.baseName,
-        baseFilters: preset?.filters ?? range.baseFilters,
-        rules: rules,
-      ),
+    return range.copyWith(
+      basePresetId: preset?.id ?? range.basePresetId,
+      baseName: preset?.name ?? range.baseName,
+      baseFilters: preset?.filters ?? range.baseFilters,
+      rules: rules,
+      updatedAt: _now,
     );
-    return VisibleRangePinResult(pinned: targets.length, skipped: skipped);
   }
+
+  // applied targets
+
+  /// Remembers that [candidates] opened a media set, so the pin sheet can offer
+  /// to write the current filters back to them later.
+  ///
+  /// A rule target is addressed by its global, never reused id; a base target by
+  /// its range, because the base has no id of its own. Usage is a set, so taking
+  /// the same rule out twice keeps one row (and a fresh timestamp).
+  Future<void> markAppliedTargets({required String rangeId, required Iterable<VisibleRangeCandidate> candidates}) async {
+    final store = _requireStore();
+    final now = _now;
+    for (final candidate in candidates) {
+      final rule = candidate.rule;
+      final usage = rule != null
+          ? VisibleRangeRuleUsage.forRule(ruleId: rule.id, rangeId: rangeId, kind: rule.kind, usedAt: now)
+          : VisibleRangeRuleUsage.forBase(rangeId: rangeId, usedAt: now);
+      await store.saveUsage(usage);
+    }
+  }
+
+  /// Every remembered target, resolved for the write-back list.
+  ///
+  /// A usage whose rule disappeared is dropped from the list (the store prunes
+  /// the row on the next range save); a locked range stays listed but marked, so
+  /// the sheet can grey it out instead of hiding it.
+  Future<List<VisibleRangeWriteBackTarget>> loadAppliedTargets() async {
+    final store = _requireStore();
+    final usages = await store.loadUsages();
+    if (usages.isEmpty) return const [];
+    final owners = {for (final target in await loadPinTargets()) target.rangeId: target};
+    final ranges = <String, VisibleRange?>{};
+    final result = <VisibleRangeWriteBackTarget>[];
+    for (final usage in usages) {
+      final range = ranges[usage.rangeId] ??= await _loadRangeById(usage.rangeId);
+      if (range == null) continue;
+      final rule = usage.isBase ? null : range.ruleById(usage.targetId);
+      if (!usage.isBase && rule == null) continue;
+      final owner = owners[usage.rangeId];
+      result.add(
+        VisibleRangeWriteBackTarget(
+          usageId: usage.id,
+          rangeId: usage.rangeId,
+          targetId: usage.targetId,
+          kind: usage.kind,
+          isGallery: usage.rangeId == gallery.id,
+          number: owner?.number ?? 0,
+          ownerName: owner?.name ?? '',
+          label: usage.isBase ? range.baseName : rule!.label,
+          filters: usage.isBase ? range.baseFilters : rule!.filters,
+          locked: !_canWrite(range),
+        ),
+      );
+    }
+    return result;
+  }
+
+  /// Writes [filters] over the selected remembered targets.
+  ///
+  /// A rule keeps its name, kind and position; a base only changes the range it
+  /// belongs to, never the shared preset catalog. Locked ranges and rules that
+  /// disappeared are skipped and counted.
+  Future<VisibleRangeWriteBackResult> writeBackTargets({
+    required Set<String> usageIds,
+    required Set<CollectionFilter> filters,
+    required String baseName,
+  }) async {
+    if (usageIds.isEmpty || filters.isEmpty) return const VisibleRangeWriteBackResult(written: 0, skipped: 0);
+    final store = _requireStore();
+    final usages = (await store.loadUsages()).where((usage) => usageIds.contains(usage.id)).toList();
+    final byRange = groupBy(usages, (usage) => usage.rangeId);
+    var written = 0;
+    var skipped = 0;
+    for (final entry in byRange.entries) {
+      final range = await _loadRangeById(entry.key);
+      if (range == null || !_canWrite(range)) {
+        skipped += entry.value.length;
+        continue;
+      }
+      var next = range;
+      for (final usage in entry.value) {
+        if (usage.isBase) {
+          next = next.copyWith(basePresetId: '', baseName: baseName.trim(), baseFilters: filters);
+        } else {
+          final rule = next.ruleById(usage.targetId);
+          if (rule == null) {
+            skipped++;
+            continue;
+          }
+          next = next.copyWith(
+            rules: [
+              for (final candidate in next.rules)
+                if (candidate.id == rule.id) candidate.copyWith(filters: filters) else candidate,
+            ],
+          );
+        }
+        written++;
+      }
+      if (next == range) continue;
+      await _saveRange(next.copyWith(updatedAt: _now));
+    }
+    if (written > 0) notifyListeners();
+    return VisibleRangeWriteBackResult(written: written, skipped: skipped);
+  }
+
+  /// Loads a range by id from whichever surface owns it.
+  Future<VisibleRange?> _loadRangeById(String rangeId) async {
+    if (rangeId == gallery.id) return gallery;
+    return targetSource?.loadRange(rangeId);
+  }
+
+  /// Persists a range back to its owner, keeping the in-memory gallery in sync.
+  Future<void> _saveRange(VisibleRange range) async {
+    if (range.id == gallery.id) {
+      await _requireStore().saveRange(range);
+      _gallery = range;
+    } else {
+      await targetSource!.saveRange(range);
+    }
+  }
+
+  /// A locked range refuses writes unless its frozen permissions allow editing,
+  /// the same gate the page and the pin targets use.
+  static bool _canWrite(VisibleRange range) => !range.locked || range.permissions.edit;
 
   // lock
 

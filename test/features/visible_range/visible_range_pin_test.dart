@@ -54,8 +54,8 @@ void main() {
     );
   }
 
-  test('the gallery is the only registered target for now', () {
-    final targets = controller.pinTargets;
+  test('the gallery is the only target without a registered source', () async {
+    final targets = await controller.loadPinTargets();
     expect(targets, hasLength(1));
     final gallery = targets.single;
     expect(gallery.rangeId, VisibleRange.galleryRangeId);
@@ -165,13 +165,15 @@ void main() {
     expect(restriction.filters, {image});
   });
 
-  test('a locked range rejects pinning without writing anything', () async {
+  test('a locked range is skipped instead of failing the request', () async {
     await controller.lock(permissions: VisibleRangePermissions.readOnly);
 
-    await expectLater(controller.pinFilters(request()), throwsStateError);
+    final result = await controller.pinFilters(request());
+    expect(result.pinned, 0);
+    expect(result.skipped, 1);
     expect(controller.gallery.rules, isEmpty);
     expect(controller.presets.where((p) => !p.builtin), isEmpty);
-    expect(controller.pinTargets.single.locked, isTrue);
+    expect((await controller.loadPinTargets()).single.locked, isTrue);
   });
 
   test('pinned rules and notes survive a restart', () async {

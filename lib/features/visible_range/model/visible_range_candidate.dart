@@ -120,6 +120,12 @@ class VisibleRangeCandidate extends Equatable {
 
   bool get isGallery => id == galleryId;
 
+  /// Whether the candidate can be taken out to a media set.
+  ///
+  /// The result preview and 「Unrestricted」 are not conditions, and an empty
+  /// filter set would add nothing, so neither is a target.
+  bool get isApplicable => !isGallery && !isUnrestricted && filters.isNotEmpty;
+
   bool get isBuiltinRule => rule != null && isVisibleRangeBuiltinRule(rule!.id);
 
   /// Key of the preview statistics: the filter set, not the tile identity, so

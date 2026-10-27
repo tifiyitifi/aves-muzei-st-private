@@ -218,6 +218,16 @@ class WallpaperGroupController extends ChangeNotifier {
     await androidFileUtils.init();
   }
 
+  /// The stored range with [rangeId], or null when it belongs to no group.
+  ///
+  /// The pin sheet and the write-back list address a range by id, while a group
+  /// owns exactly one derived range id, so this is the reverse lookup.
+  Future<VisibleRange?> loadRangeById(String rangeId) async {
+    final group = _groups.firstWhereOrNull((group) => wallpaperGroupRangeId(group.id) == rangeId);
+    if (group == null) return null;
+    return groupRange(group.id);
+  }
+
   /// Adds a group at the end of the enabled segment.
   ///
   /// A new group starts unrestricted: the user just created it, so showing every
@@ -353,3 +363,11 @@ class WallpaperGroupController extends ChangeNotifier {
 
   int get _now => DateTime.now().millisecondsSinceEpoch;
 }
+
+/// The app-wide group controller (the same singleton style as
+/// `visibleRangeController`).
+///
+/// The pin sheet, the write-back list and, later, the wallpaper engine read the
+/// groups without a page being open, so the list has one owner for the whole
+/// process. The page keeps only its scoped range editor.
+final WallpaperGroupController wallpaperGroupController = WallpaperGroupController();

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/app_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
@@ -7,6 +8,7 @@ import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_action_dele
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
+import 'package:aves/features/visible_range/services/visible_range_apply.dart';
 import 'package:aves/features/visible_range/services/visible_range_candidate_stats.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
 import 'package:aves/features/visible_range/view/visible_range_about_page.dart';
@@ -15,6 +17,7 @@ import 'package:aves/features/visible_range/view/visible_range_candidate_filter.
 import 'package:aves/features/visible_range/view/visible_range_section_key.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_tile.dart';
 import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/selection.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/theme/format.dart';
@@ -49,7 +52,7 @@ class GroupedWallpaperPage extends StatefulWidget {
   State<GroupedWallpaperPage> createState() => _GroupedWallpaperPageState();
 }
 
-enum _PageAction { useCurrent, toggleEnabled, moveUp, moveDown, rename, add, delete, order, lock, about }
+enum _PageAction { useCurrent, toggleEnabled, moveUp, moveDown, rename, add, delete, order, lock, about, applyToMediaSet, deleteSelectedRules }
 
 class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
   final ValueNotifier<double> _appBarHeightNotifier = ValueNotifier(0);
@@ -158,7 +161,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
                         fontFeatures: const [],
                       ),
                       actionDelegate: delegate,
-                      extraMenuEntriesBuilder: (context, appMode, selection, actionDelegate) => _menuEntries(context),
+                      extraActionsBuilder: _buildExtraActions,
+                      extraMenuEntriesBuilder: _buildExtraMenuEntries,
                       onExtraMenuSelected: (value) {
                         if (value is _PageAction) unawaited(_onMenuSelected(value));
                       },
@@ -172,12 +176,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
                     newFilters: const {},
                     sortFactor: delegate.sortFactor,
                     showHeaders: true,
-                    selectable: false,
+                    selectable: true,
                     headerBuilder: _buildGroupSwitcher,
                     emptyBuilder: _buildEmpty,
                     heroType: HeroType.never,
                     onTileTap: (item, navigate) => _onCandidateTap(item),
-                    selectableItem: (item) => false,
+                    selectableItem: (item) => !item.filter.summary && item.filter.candidate.isApplicable,
                     tileBuilder: _buildTile,
                     footerBuilder: _controller.activeStyle == VisibleRangeActiveStyle.section ? null : _buildFooter,
                   ),
@@ -345,6 +349,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
   void _onCandidateTap(FilterGridItem<VisibleRangeCandidateFilter> item) {
     final candidate = item.filter.candidate;
     if (_controller.selectedGroupId == null) return;
+    final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
+    if (selection.isSelecting) {
+      if (candidate.isApplicable) selection.toggleSelection(item);
+      return;
+    }
     if (!_controller.canEdit) {
       _showBlocked();
       return;
@@ -403,6 +412,95 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
         ),
       ),
     );
+  }
+
+  /// The TV rail has no overflow menu, so the selection actions stay reachable
+  /// as icons, mirroring the visible-range page.
+  List<Widget> _buildExtraActions(
+    BuildContext context,
+    AppMode appMode,
+    Selection<FilterGridItem<VisibleRangeCandidateFilter>> selection,
+    WallpaperGroupActionDelegate delegate,
+  ) {
+    if (selection.isSelecting) {
+      if (!settings.useTvLayout) return const [];
+      final hasSelection = selection.selectedItemCount > 0;
+      final hasRules = _selectedRules(selection).isNotEmpty;
+      return [
+        if (hasSelection)
+          IconButton(
+            icon: const Icon(AIcons.apply),
+            tooltip: context.l10n.visibleRangeApplyToMediaSet,
+            onPressed: () => unawaited(_applySelectionToMediaSet()),
+          ),
+        if (hasRules)
+          IconButton(
+            icon: const Icon(AIcons.delete),
+            tooltip: context.l10n.visibleRangeActionDelete,
+            onPressed: () => unawaited(_deleteSelectedRules()),
+          ),
+      ];
+    }
+    if (!settings.useTvLayout) return const [];
+    return [
+      PopupMenuButton<_PageAction>(
+        icon: const Icon(AIcons.more),
+        tooltip: context.l10n.visibleRangeMore,
+        onSelected: (action) => unawaited(_onMenuSelected(action)),
+        itemBuilder: _menuEntries,
+      ),
+    ];
+  }
+
+  /// Feature entries injected into the app bar's single overflow menu.
+  List<PopupMenuEntry<Object>> _buildExtraMenuEntries(
+    BuildContext context,
+    AppMode appMode,
+    Selection<FilterGridItem<VisibleRangeCandidateFilter>> selection,
+    WallpaperGroupActionDelegate delegate,
+  ) {
+    if (selection.isSelecting) {
+      final hasSelection = selection.selectedItemCount > 0;
+      final hasRules = _selectedRules(selection).isNotEmpty;
+      return [
+        if (hasSelection) _menuItem(_PageAction.applyToMediaSet, AIcons.apply, context.l10n.visibleRangeApplyToMediaSet),
+        if (hasRules) _menuItem(_PageAction.deleteSelectedRules, AIcons.delete, context.l10n.visibleRangeActionDelete),
+      ];
+    }
+    return _menuEntries(context);
+  }
+
+  Set<VisibleRangeRule> _selectedRules(Selection<FilterGridItem<VisibleRangeCandidateFilter>> selection) {
+    if (!selection.isSelecting) return {};
+    return selection.selectedItems.map((item) => item.filter.candidate.rule).nonNulls.toSet();
+  }
+
+  /// Takes the selected candidates out to the media set, exactly like the
+  /// visible-range page: the union of their filters is appended and every
+  /// target is remembered for the pin sheet's write-back list.
+  Future<void> _applySelectionToMediaSet() async {
+    final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
+    final range = _controller.range;
+    if (!selection.isSelecting || range == null) return;
+    final candidates = [
+      for (final item in selection.selectedItems)
+        if (!item.filter.summary) item.filter.candidate,
+    ];
+    if (candidates.isEmpty) return;
+    selection.browse();
+    await applyVisibleRangeCandidates(context, rangeId: range.id, candidates: candidates);
+  }
+
+  Future<void> _deleteSelectedRules() async {
+    final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
+    final rules = _selectedRules(selection);
+    if (rules.isEmpty) return;
+    if (!_controller.canEdit) {
+      _showBlocked();
+      return;
+    }
+    selection.browse();
+    await _controller.deleteRules(rules.map((rule) => rule.id).toSet());
   }
 
   List<PopupMenuEntry<_PageAction>> _menuEntries(BuildContext context) {
@@ -484,6 +582,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
         await _toggleLock();
       case _PageAction.about:
         await _openAbout();
+      case _PageAction.applyToMediaSet:
+        await _applySelectionToMediaSet();
+      case _PageAction.deleteSelectedRules:
+        await _deleteSelectedRules();
     }
   }
 

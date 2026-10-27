@@ -3,6 +3,7 @@ import 'dart:isolate';
 
 import 'package:aves/app_flavor.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
+import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_engine.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
@@ -54,4 +55,7 @@ void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
   // build: refresh it on each launch, not just when the wallpaper page is
   // opened, or a background refill after an update would fail.
   unawaited(registerWallpaperRefillCallback());
+  // The grouped wallpaper service asks for a frame when it starts, so the engine
+  // has to be listening even if the wallpaper page is never opened.
+  unawaited(groupedWallpaperEngine.attach());
 }

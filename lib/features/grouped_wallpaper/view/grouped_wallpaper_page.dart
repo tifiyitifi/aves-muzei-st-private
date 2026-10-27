@@ -2,10 +2,14 @@ import 'dart:async';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_action_delegate.dart';
+import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_filter.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
+import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_section_key.dart';
+import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_tile.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/services/visible_range_apply.dart';
@@ -14,9 +18,11 @@ import 'package:aves/features/visible_range/services/visible_range_controller.da
 import 'package:aves/features/visible_range/view/visible_range_about_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_active_footer.dart';
 import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
+import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_section_key.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_tile.dart';
 import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/selection.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
@@ -32,6 +38,7 @@ import 'package:aves/widgets/common/tile_extent_controller.dart';
 import 'package:aves/widgets/filter_grids/common/app_bar.dart';
 import 'package:aves/widgets/filter_grids/common/filter_grid_page.dart';
 import 'package:aves/widgets/filter_grids/common/section_keys.dart';
+import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
@@ -41,8 +48,12 @@ import 'package:provider/provider.dart';
 ///
 /// It reuses the range page's sections, tiles and active footer, but edits the
 /// range of the selected wallpaper group (`scope = wallpaper`) instead of the
-/// gallery's single range. Its layout, title query and active-style form are
-/// stored under this page's own keys, so the two pages can look different.
+/// gallery's single range. Its layout, title query, active-style form and group
+/// switcher are stored under this page's own keys, so the two pages can look
+/// different.
+///
+/// [routeName] is a settings key only: the page shares the visible-range
+/// destination in the bottom bar and is rendered by [VisibleRangeShellPage].
 class GroupedWallpaperPage extends StatefulWidget {
   static const routeName = '/wallpaper_groups';
 
@@ -52,12 +63,30 @@ class GroupedWallpaperPage extends StatefulWidget {
   State<GroupedWallpaperPage> createState() => _GroupedWallpaperPageState();
 }
 
-enum _PageAction { useCurrent, toggleEnabled, moveUp, moveDown, rename, add, delete, order, lock, about, applyToMediaSet, deleteSelectedRules }
+enum _PageAction {
+  useCurrent,
+  toggleEnabled,
+  moveUp,
+  moveDown,
+  rename,
+  add,
+  delete,
+  order,
+  lock,
+  about,
+  applyToMediaSet,
+  deleteSelectedRules,
+  visibleRange,
+}
 
 class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
+  /// Width of one card of the fixed five-column switcher.
+  static const int _grid5ColumnCount = 5;
+
   final ValueNotifier<double> _appBarHeightNotifier = ValueNotifier(0);
   final Set<String> _pendingStats = {};
   Map<String, VisibleRangeCandidateStats> _stats = const {};
+  Map<String, Set<CollectionFilter>> _groupFilters = const {};
   VisibleRangeCandidateStats? _resultStats;
   int _resultToken = 0;
 
@@ -83,7 +112,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     if (!mounted) return;
     setState(() {});
     unawaited(_refreshResultStats());
-    unawaited(_refreshStats());
+    unawaited(_refreshGroupFilters());
   }
 
   /// Count and cover of what the selected group's range resolves to.
@@ -101,14 +130,32 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     setState(() => _resultStats = stats.values.firstOrNull);
   }
 
+  /// The media set behind every group card, so a card without a note can show
+  /// its image count. Group 0 is every image.
+  Future<void> _refreshGroupFilters() async {
+    final next = <String, Set<CollectionFilter>>{wallpaperGroupNoneId: {MimeFilter.image}};
+    for (final group in _controller.groups) {
+      final range = await _controller.groupController.groupRange(group.id);
+      final filter = wallpaperMediaSetFilter(range);
+      next[group.id] = filter == null ? {MimeFilter.image} : {filter};
+    }
+    if (!mounted) return;
+    setState(() => _groupFilters = next);
+    await _refreshStats();
+  }
+
   Future<void> _refreshStats() async {
     final range = _controller.range;
-    if (range == null) return;
     final filtersByKey = <String, Set<CollectionFilter>>{};
-    for (final section in buildVisibleRangeSections(range: range, presets: _controller.presets)) {
-      for (final candidate in section.candidates) {
-        filtersByKey.putIfAbsent(candidate.statsKey, () => candidate.filters);
+    if (range != null) {
+      for (final section in buildVisibleRangeSections(range: range, presets: _controller.presets)) {
+        for (final candidate in section.candidates) {
+          filtersByKey.putIfAbsent(candidate.statsKey, () => candidate.filters);
+        }
       }
+    }
+    for (final filters in _groupFilters.values) {
+      filtersByKey.putIfAbsent(filterFingerprint(filters), () => filters);
     }
     final missing = filtersByKey.entries
         .where((entry) => !_stats.containsKey(entry.key) && !_pendingStats.contains(entry.key))
@@ -138,21 +185,22 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
         final sections = _buildSections(context);
         final delegate = WallpaperGroupActionDelegate(
           settingsRouteKey: GroupedWallpaperPage.routeName,
-          itemBuilder: () => sections.values.expand((list) => list).where((item) => !item.filter.summary).toList(),
-          // The page keeps its own active-style form, so the layout dialog shows
-          // the same control as the visible-range page but writes this page's key.
-          extraLayoutRows: (context) => [_buildActiveStyleRow(context)],
+          itemBuilder: () => sections.values.expand((list) => list).where((item) => item.filter is VisibleRangeCandidateFilter && !(item.filter as VisibleRangeCandidateFilter).summary).toList(),
+          // The page keeps its own view preferences, so the layout dialog shows
+          // the same controls as the visible-range page but writes this page's
+          // keys.
+          extraLayoutRows: (context) => [_buildActiveStyleRow(context), _buildSwitcherStyleRow(context)],
         );
         return FilterGroupProvider(
-          child: SelectionProvider<FilterGridItem<VisibleRangeCandidateFilter>>(
+          child: SelectionProvider<FilterGridItem<CollectionFilter>>(
             child: Builder(
               builder: (context) {
                 final scrollController = PrimaryScrollController.of(context);
                 return QueryProvider(
                   startEnabled: settings.getShowTitleQuery(GroupedWallpaperPage.routeName),
-                  child: FilterGridPage<VisibleRangeCandidateFilter>(
+                  child: FilterGridPage<CollectionFilter>(
                     settingsRouteKey: GroupedWallpaperPage.routeName,
-                    appBar: FilterGridAppBar<VisibleRangeCandidateFilter, WallpaperGroupActionDelegate>(
+                    appBar: FilterGridAppBar<CollectionFilter, WallpaperGroupActionDelegate>(
                       source: source,
                       title: context.l10n.wallpaperGroupsTitle,
                       titleStyle: Theme.of(context).appBarTheme.titleTextStyle?.copyWith(
@@ -177,11 +225,15 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
                     sortFactor: delegate.sortFactor,
                     showHeaders: true,
                     selectable: true,
-                    headerBuilder: _buildGroupSwitcher,
+                    // The section mode already lays the groups out in the grid.
+                    headerBuilder: _controller.switcherStyle == WallpaperGroupSwitcherStyle.sections ? null : _buildGroupSwitcher,
                     emptyBuilder: _buildEmpty,
                     heroType: HeroType.never,
-                    onTileTap: (item, navigate) => _onCandidateTap(item),
-                    selectableItem: (item) => !item.filter.summary && item.filter.candidate.isApplicable,
+                    onTileTap: (item, navigate) => _onTileTap(item),
+                    selectableItem: (item) {
+                      final filter = item.filter;
+                      return filter is VisibleRangeCandidateFilter && !filter.summary && filter.candidate.isApplicable;
+                    },
                     tileBuilder: _buildTile,
                     footerBuilder: _controller.activeStyle == VisibleRangeActiveStyle.section ? null : _buildFooter,
                   ),
@@ -202,11 +254,24 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     return Center(child: Text(l10n.visibleRangeNoCandidates));
   }
 
-  /// The group switcher pinned above the sections.
+  // group switcher
+
+  /// The switcher pinned above the sections in the chips and five-column modes.
   ///
-  /// It selects which group's range is shown; it never changes the wallpapaper's
-  /// current group, which is a group action and belongs to the group list.
+  /// It selects which group's range is shown; it never changes the wallpaper's
+  /// current group, which is a group action and belongs to the group menu.
   Widget _buildGroupSwitcher(BuildContext context) {
+    switch (_controller.switcherStyle) {
+      case WallpaperGroupSwitcherStyle.chips:
+        return _buildGroupChips(context);
+      case WallpaperGroupSwitcherStyle.grid5:
+        return _buildGroupGrid5(context);
+      case WallpaperGroupSwitcherStyle.sections:
+        return const SizedBox();
+    }
+  }
+
+  Widget _buildGroupChips(BuildContext context) {
     final l10n = context.l10n;
     final selected = _controller.selectedGroupId;
     return SingleChildScrollView(
@@ -225,12 +290,17 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
           for (final group in _controller.groups)
             Padding(
               padding: const EdgeInsetsDirectional.only(end: 8),
-              child: ChoiceChip(
-                avatar: group.current ? Icon(AIcons.visibleRangeActive, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant) : null,
-                label: Text('${group.number}  ${wallpaperGroupName(context, group)}'),
-                selected: selected == group.id,
-                labelStyle: group.enabled ? null : TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                onSelected: (_) => unawaited(_controller.selectGroup(group.id)),
+              child: Tooltip(
+                // The chips mode has no room for a subtitle, so the note reads
+                // as a tooltip instead.
+                message: group.description,
+                child: ChoiceChip(
+                  avatar: _groupStateIcon(context, group),
+                  label: Text('${group.number}  ${wallpaperGroupName(context, group)}'),
+                  selected: selected == group.id,
+                  labelStyle: group.enabled ? null : TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  onSelected: (_) => unawaited(_controller.selectGroup(group.id)),
+                ),
               ),
             ),
         ],
@@ -238,11 +308,74 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     );
   }
 
-  Map<ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>> _buildSections(BuildContext context) {
+  Widget _buildGroupGrid5(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 8.0;
+        const padding = 12.0;
+        final width = (constraints.maxWidth - padding * 2 - spacing * (_grid5ColumnCount - 1)) / _grid5ColumnCount;
+        final height = width * 1.25;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: padding, vertical: 8),
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: [
+              for (final groupId in _groupFilters.keys)
+                SizedBox(
+                  width: width,
+                  height: height,
+                  child: WallpaperGroupTile(
+                    filter: _buildGroupFilter(groupId),
+                    tileLayout: TileLayout.grid,
+                    tileSize: Size(width, height),
+                    onTap: () => unawaited(_controller.selectGroup(groupId == wallpaperGroupNoneId ? null : groupId)),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget? _groupStateIcon(BuildContext context, WallpaperGroup group) {
+    final selected = _controller.selectedGroupId == group.id;
+    if (!group.current && !selected) return null;
+    return Icon(
+      group.current ? AIcons.wallpaperPlaying : AIcons.visibleRangeActive,
+      size: 18,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
+  }
+
+  WallpaperGroupFilter _buildGroupFilter(String groupId) {
+    final group = groupId == wallpaperGroupNoneId ? null : _controller.groups.firstWhereOrNull((candidate) => candidate.id == groupId);
+    final filters = _groupFilters[groupId];
+    return WallpaperGroupFilter(
+      groupId: group?.id,
+      number: group?.number ?? 0,
+      name: group?.name ?? '@wallpaperGroupNone',
+      description: group?.description ?? '',
+      enabled: group?.enabled ?? true,
+      current: group == null ? _controller.current.isNone : group.current,
+      selected: _controller.selectedGroupId == group?.id,
+      count: filters == null ? null : _stats[filterFingerprint(filters)]?.count,
+    );
+  }
+
+  // sections
+
+  Map<ChipSectionKey, List<FilterGridItem<CollectionFilter>>> _buildSections(BuildContext context) {
+    final result = <ChipSectionKey, List<FilterGridItem<CollectionFilter>>>{};
+    if (_controller.switcherStyle == WallpaperGroupSwitcherStyle.sections) {
+      result[WallpaperGroupSectionKey(context)] = [
+        for (final groupId in _groupFilters.keys) FilterGridItem<CollectionFilter>(_buildGroupFilter(groupId), null),
+      ];
+    }
     final range = _controller.range;
-    if (range == null) return const {};
+    if (range == null) return result;
     final supplementsOutside = range.order.isIntersectFirst;
-    final result = <ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>>{};
     for (final section in buildVisibleRangeSections(range: range, presets: _controller.presets)) {
       // A wallpaper group starts with its exclusive base and nothing else, so an
       // empty restrictions/supplements group would only be a title reading 0/0.
@@ -265,31 +398,43 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
           ? [...candidates.where((candidate) => candidate.isUnrestricted), ...candidates.where((candidate) => !candidate.isUnrestricted)]
           : candidates;
       result[key] = [
-        for (final candidate in ordered) FilterGridItem(VisibleRangeCandidateFilter(candidate), null),
+        for (final candidate in ordered) FilterGridItem<CollectionFilter>(VisibleRangeCandidateFilter(candidate), null),
       ];
     }
     if (_controller.activeStyle == VisibleRangeActiveStyle.section) {
       final active = buildVisibleRangeActiveCandidates(range: range, presets: _controller.presets);
       result[VisibleRangeActiveSectionKey(context, restricted: range.isRestricted)] = [
-        for (final candidate in active) FilterGridItem(VisibleRangeCandidateFilter(candidate, summary: true), null),
+        for (final candidate in active) FilterGridItem<CollectionFilter>(VisibleRangeCandidateFilter(candidate, summary: true), null),
       ];
     }
     return result;
   }
 
-  Widget _buildTile(BuildContext context, FilterGridItem<VisibleRangeCandidateFilter> item, Size tileSize) {
-    final candidate = item.filter.candidate;
-    final summary = item.filter.summary;
+  Widget _buildTile(BuildContext context, FilterGridItem<CollectionFilter> item, Size tileSize) {
+    final filter = item.filter;
+    if (filter is WallpaperGroupFilter) {
+      return MetaData(
+        metaData: ScalerMetadata(item),
+        child: WallpaperGroupTile(
+          filter: filter,
+          tileLayout: settings.getTileLayout(GroupedWallpaperPage.routeName),
+          tileSize: tileSize,
+          onTap: () => unawaited(_controller.selectGroup(filter.groupId)),
+        ),
+      );
+    }
+    final candidateFilter = filter as VisibleRangeCandidateFilter;
+    final candidate = candidateFilter.candidate;
     return MetaData(
       metaData: ScalerMetadata(item),
       child: VisibleRangeTile(
-        gridItem: item,
+        gridItem: FilterGridItem(candidateFilter, item.entry),
         stats: candidate.isGallery ? _resultStats : _stats[candidate.statsKey],
         tileLayout: settings.getTileLayout(GroupedWallpaperPage.routeName),
         tileSize: tileSize,
-        summary: summary,
+        summary: candidateFilter.summary,
         showStateIcon: !candidate.isGallery,
-        onTap: () => _onCandidateTap(item),
+        onTap: () => _onTileTap(item),
       ),
     );
   }
@@ -346,10 +491,16 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
         ),
       );
 
-  void _onCandidateTap(FilterGridItem<VisibleRangeCandidateFilter> item) {
-    final candidate = item.filter.candidate;
+  void _onTileTap(FilterGridItem<CollectionFilter> item) {
+    final filter = item.filter;
+    if (filter is WallpaperGroupFilter) {
+      unawaited(_controller.selectGroup(filter.groupId));
+      return;
+    }
+    final candidateFilter = filter as VisibleRangeCandidateFilter;
+    final candidate = candidateFilter.candidate;
     if (_controller.selectedGroupId == null) return;
-    final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
+    final selection = context.read<Selection<FilterGridItem<CollectionFilter>>>();
     if (selection.isSelecting) {
       if (candidate.isApplicable) selection.toggleSelection(item);
       return;
@@ -358,7 +509,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
       _showBlocked();
       return;
     }
-    if (item.filter.summary) {
+    if (candidateFilter.summary) {
       final rule = candidate.rule;
       if (rule != null) {
         unawaited(_controller.toggleRule(rule.id));
@@ -381,6 +532,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
         if (rule != null) unawaited(_controller.toggleRule(rule.id));
     }
   }
+
+  // view preferences
 
   Widget _buildActiveStyleRow(BuildContext context) {
     final l10n = context.l10n;
@@ -414,12 +567,46 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     );
   }
 
+  Widget _buildSwitcherStyleRow(BuildContext context) {
+    final l10n = context.l10n;
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(AIcons.wallpaper),
+                const SizedBox(width: 16),
+                Expanded(child: Text(l10n.wallpaperGroupSwitcherStyle)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<WallpaperGroupSwitcherStyle>(
+              segments: [
+                ButtonSegment(value: WallpaperGroupSwitcherStyle.chips, label: Text(l10n.wallpaperGroupSwitcherChips)),
+                ButtonSegment(value: WallpaperGroupSwitcherStyle.sections, label: Text(l10n.wallpaperGroupSwitcherSections)),
+                ButtonSegment(value: WallpaperGroupSwitcherStyle.grid5, label: Text(l10n.wallpaperGroupSwitcherGrid5)),
+              ],
+              selected: {_controller.switcherStyle},
+              onSelectionChanged: (selection) => unawaited(_controller.setSwitcherStyle(selection.first)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // app bar
+
   /// The TV rail has no overflow menu, so the selection actions stay reachable
   /// as icons, mirroring the visible-range page.
   List<Widget> _buildExtraActions(
     BuildContext context,
     AppMode appMode,
-    Selection<FilterGridItem<VisibleRangeCandidateFilter>> selection,
+    Selection<FilterGridItem<CollectionFilter>> selection,
     WallpaperGroupActionDelegate delegate,
   ) {
     if (selection.isSelecting) {
@@ -456,7 +643,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
   List<PopupMenuEntry<Object>> _buildExtraMenuEntries(
     BuildContext context,
     AppMode appMode,
-    Selection<FilterGridItem<VisibleRangeCandidateFilter>> selection,
+    Selection<FilterGridItem<CollectionFilter>> selection,
     WallpaperGroupActionDelegate delegate,
   ) {
     if (selection.isSelecting) {
@@ -470,21 +657,21 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     return _menuEntries(context);
   }
 
-  Set<VisibleRangeRule> _selectedRules(Selection<FilterGridItem<VisibleRangeCandidateFilter>> selection) {
+  Set<VisibleRangeRule> _selectedRules(Selection<FilterGridItem<CollectionFilter>> selection) {
     if (!selection.isSelecting) return {};
-    return selection.selectedItems.map((item) => item.filter.candidate.rule).nonNulls.toSet();
+    return selection.selectedItems.map((item) => (item.filter as VisibleRangeCandidateFilter?)?.candidate.rule).nonNulls.toSet();
   }
 
   /// Takes the selected candidates out to the media set, exactly like the
   /// visible-range page: the union of their filters is appended and every
   /// target is remembered for the pin sheet's write-back list.
   Future<void> _applySelectionToMediaSet() async {
-    final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
+    final selection = context.read<Selection<FilterGridItem<CollectionFilter>>>();
     final range = _controller.range;
     if (!selection.isSelecting || range == null) return;
     final candidates = [
       for (final item in selection.selectedItems)
-        if (!item.filter.summary) item.filter.candidate,
+        if (item.filter is VisibleRangeCandidateFilter) (item.filter as VisibleRangeCandidateFilter).candidate,
     ];
     if (candidates.isEmpty) return;
     selection.browse();
@@ -492,7 +679,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
   }
 
   Future<void> _deleteSelectedRules() async {
-    final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
+    final selection = context.read<Selection<FilterGridItem<CollectionFilter>>>();
     final rules = _selectedRules(selection);
     if (rules.isEmpty) return;
     if (!_controller.canEdit) {
@@ -510,6 +697,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     final locked = range?.locked ?? false;
     final canDelete = _controller.groups.length > 1;
     return [
+      // The wallpaper page shares one bottom-bar entry with the visible-range
+      // page; this switches the shared destination for the rest of the process.
+      _menuItem(_PageAction.visibleRange, AIcons.visibleRange, l10n.visibleRangePageTitle),
+      const PopupMenuDivider(),
       if (group == null)
         // Group 0 is the explicit "no group effect" choice.
         _menuItem(_PageAction.useCurrent, AIcons.current, l10n.wallpaperGroupNone)
@@ -562,6 +753,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
   Future<void> _onMenuSelected(_PageAction action) async {
     final group = _selectedGroup;
     switch (action) {
+      case _PageAction.visibleRange:
+        visibleRangeDestination.value = VisibleRangeDestination.range;
       case _PageAction.useCurrent:
         await _controller.selectCurrent(group?.id);
       case _PageAction.toggleEnabled:
@@ -666,7 +859,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
       builder: (context) => AlertDialog(
         content: Text(context.l10n.wallpaperGroupDeleteConfirm),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
           TextButton(onPressed: () => Navigator.pop(context, true), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
         ],
       ),

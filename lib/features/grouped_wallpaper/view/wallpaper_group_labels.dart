@@ -8,9 +8,13 @@ import 'package:flutter/widgets.dart';
 /// language change renames it for free. A group the user renamed stores plain
 /// text and is shown as-is. A group that has no name yet (just created) falls
 /// back to its derived number.
-String wallpaperGroupName(BuildContext context, WallpaperGroup group) {
+String wallpaperGroupName(BuildContext context, WallpaperGroup group) =>
+    wallpaperGroupNameOf(context, name: group.name, number: group.number, isNone: group.isNone);
+
+/// Localizes a group name from its stored fields, for the view-only group card
+/// filter, which carries the raw name instead of the group row.
+String wallpaperGroupNameOf(BuildContext context, {required String name, required int number, bool isNone = false}) {
   final l10n = context.l10n;
-  final name = group.name;
   if (name.startsWith('@')) {
     return switch (name.substring(1)) {
       'wallpaperGroupNone' => l10n.wallpaperGroupNone,
@@ -22,5 +26,5 @@ String wallpaperGroupName(BuildContext context, WallpaperGroup group) {
     };
   }
   if (name.isNotEmpty) return name;
-  return group.isNone ? l10n.wallpaperGroupNone : l10n.wallpaperGroupFallbackName(group.number);
+  return isNone ? l10n.wallpaperGroupNone : l10n.wallpaperGroupFallbackName(number);
 }

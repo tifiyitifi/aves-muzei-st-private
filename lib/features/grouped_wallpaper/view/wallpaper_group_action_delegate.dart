@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
-import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/durations.dart';
@@ -23,11 +22,11 @@ import 'package:provider/provider.dart';
 ///
 /// Layout is stored under the page's own route key, so the wallpaper page keeps
 /// its own layout while the visible-range page keeps another.
-class WallpaperGroupActionDelegate extends ChipSetActionDelegate<VisibleRangeCandidateFilter> {
+class WallpaperGroupActionDelegate extends ChipSetActionDelegate<CollectionFilter> {
   @override
   final String settingsRouteKey;
 
-  final Iterable<FilterGridItem<VisibleRangeCandidateFilter>> Function() itemBuilder;
+  final Iterable<FilterGridItem<CollectionFilter>> Function() itemBuilder;
   final List<Widget> Function(BuildContext context) extraLayoutRows;
 
   new({
@@ -37,7 +36,7 @@ class WallpaperGroupActionDelegate extends ChipSetActionDelegate<VisibleRangeCan
   });
 
   @override
-  Iterable<FilterGridItem<VisibleRangeCandidateFilter>> get allItems => itemBuilder();
+  Iterable<FilterGridItem<CollectionFilter>> get allItems => itemBuilder();
 
   @override
   SortFactor get sortFactor => SortFactor.chipName;
@@ -63,7 +62,7 @@ class WallpaperGroupActionDelegate extends ChipSetActionDelegate<VisibleRangeCan
     required AppMode appMode,
     required bool isSelecting,
     required int itemCount,
-    required Set<VisibleRangeCandidateFilter> selectedFilters,
+    required Set<CollectionFilter> selectedFilters,
   }) {
     return switch (action) {
       // Selection is allowed here too: a rule can be taken out to the media set

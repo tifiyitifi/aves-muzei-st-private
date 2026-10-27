@@ -1,7 +1,9 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
+import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
@@ -43,6 +45,10 @@ void main() {
       );
 
   setUp(() async {
+    // The selected-group session is process-wide; a fresh test starts cold.
+    wallpaperGroupPageSession
+      ..initialized = false
+      ..selectedGroupId = null;
     db = AppDatabase(NativeDatabase.memory());
     controller = makeController();
     await controller.init();
@@ -137,8 +143,7 @@ void main() {
     expect(controller.range!.isBaseUnrestricted, isTrue);
   });
 
-  test('the active-style form is this page\'s own preference', () async {
-    expect(controller.activeStyle, VisibleRangeActiveStyle.section);
+  test('the active-style form is this page\'s own preference', () async {    expect(controller.activeStyle, VisibleRangeActiveStyle.section);
     await controller.setActiveStyle(VisibleRangeActiveStyle.tiles);
 
     final restarted = makeController();
@@ -215,5 +220,37 @@ void main() {
     await controller.addGroup(name: 'Trips', description: 'created today');
     expect(controller.groups.last.description, 'created today');
     expect((await controller.groupController.groupRange(controller.groups.last.id)).isBaseUnrestricted, isTrue);
+  });
+
+  test('the group switcher style is this page\'s own preference', () async {
+    expect(controller.switcherStyle, WallpaperGroupSwitcherStyle.chips);
+    await controller.setSwitcherStyle(WallpaperGroupSwitcherStyle.sections);
+
+    final restarted = makeController();
+    await restarted.init();
+    expect(restarted.switcherStyle, WallpaperGroupSwitcherStyle.sections);
+
+    // The visible-range page keeps its own keys: nothing leaked into them.
+    final meta = await AppMetaStore(db).read({WallpaperGroupRangeController.keySwitcherStyle, VisibleRangeStore.keyActiveStyle});
+    expect(meta[WallpaperGroupRangeController.keySwitcherStyle], WallpaperGroupSwitcherStyle.sections.name);
+    expect(meta.containsKey(VisibleRangeStore.keyActiveStyle), isFalse);
+  });
+
+  test('the selected group survives a rebuilt page but not a cold start', () async {
+    await controller.selectGroup('wallpaper.group.pictures');
+
+    // Rebuilding the page (backgrounding, another tab, coming back) resumes it.
+    final rebuilt = makeController();
+    await rebuilt.init();
+    expect(rebuilt.selectedGroupId, 'wallpaper.group.pictures');
+
+    // A process death clears the in-memory session: the page opens on the group
+    // the wallpaper uses.
+    wallpaperGroupPageSession
+      ..initialized = false
+      ..selectedGroupId = null;
+    final cold = makeController();
+    await cold.init();
+    expect(cold.selectedGroupId, 'wallpaper.group.all');
   });
 }

@@ -1,0 +1,188 @@
+import 'dart:math';
+
+import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_filter.dart';
+import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
+import 'package:aves/model/settings/settings.dart';
+import 'package:aves/theme/icons.dart';
+import 'package:aves/widgets/common/extensions/build_context.dart';
+import 'package:aves/widgets/filter_grids/common/list_details_theme.dart';
+import 'package:aves_model/aves_model.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:provider/provider.dart';
+
+/// One wallpaper group on the page: a number, a name, a note and its state.
+///
+/// The lamp marks the group whose range the page shows; the play icon marks the
+/// group the live wallpaper uses. Both can be on at once. A disabled group stays
+/// readable but dimmed, and the note falls back to the image count.
+class WallpaperGroupTile extends StatelessWidget {
+  final WallpaperGroupFilter filter;
+  final TileLayout tileLayout;
+  final Size tileSize;
+  final VoidCallback onTap;
+
+  const new({
+    super.key,
+    required this.filter,
+    required this.tileLayout,
+    required this.tileSize,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final opacity = filter.enabled ? 1.0 : .55;
+    final child = tileLayout == TileLayout.list ? _buildList(context) : _buildCard(context);
+    return Opacity(
+      opacity: opacity,
+      child: filter.selected ? _decorateSelected(context, child) : child,
+    );
+  }
+
+  Widget _decorateSelected(BuildContext context, Widget child) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.primary, width: 2),
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildList(BuildContext context) {
+    final theme = context.read<FilterListDetailsThemeData>();
+    final extent = min(tileSize.height, 56.0);
+    return InkWell(
+      borderRadius: const BorderRadius.all(Radius.circular(12)),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            SizedBox.square(dimension: extent, child: _buildBadge(context, extent)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(_label(context), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.titleStyle),
+                  const SizedBox(height: 2),
+                  _buildSubtitleRow(context, theme.captionStyle.color),
+                ],
+              ),
+            ),
+            _buildStateIcons(context, 20),
+            const SizedBox(width: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCard(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: const BorderRadius.all(Radius.circular(12)),
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _buildBadge(context, tileSize.shortestSide),
+                Positioned(top: 4, right: 4, child: _buildStateIcons(context, 18)),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_label(context), maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.onSurface)),
+                const SizedBox(height: 2),
+                _buildSubtitleRow(context, colors.onSurfaceVariant),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The number, on the same neutral placeholder the range tiles use for a
+  /// candidate without a cover.
+  Widget _buildBadge(BuildContext context, double extent) {
+    final brightness = Theme.of(context).brightness;
+    final color = Color.lerp(
+      Theme.of(context).colorScheme.surfaceContainerHighest,
+      Theme.of(context).colorScheme.primaryContainer,
+      filter.selected ? .7 : .25,
+    )!;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [color, color.withValues(alpha: .72)],
+        ),
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
+      ),
+      child: Center(
+        child: Text(
+          '${filter.number}',
+          style: TextStyle(
+            fontSize: min(extent * .36, 40),
+            fontWeight: FontWeight.w600,
+            color: brightness == Brightness.light ? Colors.black54 : Colors.white70,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSubtitleRow(BuildContext context, Color? color) {
+    final theme = Theme.of(context);
+    final subtitle = _subtitle(context);
+    if (subtitle == null) return const SizedBox.shrink();
+    return Text(
+      subtitle,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodySmall?.copyWith(color: color ?? theme.colorScheme.onSurfaceVariant),
+    );
+  }
+
+  Widget _buildStateIcons(BuildContext context, double size) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (filter.selected)
+          Tooltip(
+            message: context.l10n.wallpaperGroupViewing,
+            child: Icon(AIcons.visibleRangeActive, size: size, color: colors.primary),
+          ),
+        if (filter.current)
+          Tooltip(
+            message: context.l10n.wallpaperGroupPlaying,
+            child: Icon(AIcons.wallpaperPlaying, size: size, color: colors.tertiary),
+          ),
+      ],
+    );
+  }
+
+  String _label(BuildContext context) => wallpaperGroupNameOf(context, name: filter.name, number: filter.number, isNone: filter.isNone);
+
+  /// The group's note, else how many images its range resolves to.
+  String? _subtitle(BuildContext context) {
+    if (filter.description.isNotEmpty) return filter.description;
+    final count = filter.count;
+    if (count == null) return null;
+    return settings.avesLocale.decimalNumberFormat().format(count);
+  }
+}

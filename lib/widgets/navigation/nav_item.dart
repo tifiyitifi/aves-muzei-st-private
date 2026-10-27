@@ -4,6 +4,7 @@ import 'package:aves/features/collection_paging/lens/scope_registry.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
+import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -151,7 +152,7 @@ class AvesNavItem extends Equatable {
       case MuzeiWallpaperPage.routeName:
         return (_) => const MuzeiWallpaperPage();
       case VisibleRangePage.routeName:
-        return (_) => const VisibleRangePage();
+        return (_) => const VisibleRangeShellPage();
       case SettingsPage.routeName:
         return (_) => const SettingsPage();
       default:

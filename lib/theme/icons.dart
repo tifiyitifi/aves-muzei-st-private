@@ -61,6 +61,9 @@ class AIcons {
   static const visibleRangeActive = Symbols.lightbulb;
   static const visibleRangeInactive = Symbols.block;
   static const visibleRangePin = Symbols.push_pin;
+
+  /// The group the live wallpaper currently uses.
+  static const wallpaperPlaying = Symbols.play_circle;
   static const rating = Symbols.star;
   static const ratingRejected = MdiIcons.starMinusOutline;
   static const ratingUnrated = MdiIcons.starOffOutline;

@@ -12,6 +12,7 @@ import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/session_restore/session_restore_plan.dart';
 import 'package:aves/features/session_restore/session_restore_store.dart';
+import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/locale/intl.dart';
@@ -605,7 +606,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
       case MuzeiWallpaperPage.routeName:
         return buildRoute((context) => const MuzeiWallpaperPage());
       case VisibleRangePage.routeName:
-        return buildRoute((context) => const VisibleRangePage());
+        return buildRoute((context) => const VisibleRangeShellPage());
       case ScreenSaverPage.routeName:
         return buildRoute((context) => ScreenSaverPage(source: source));
       case ScreenSaverSettingsPage.routeName:

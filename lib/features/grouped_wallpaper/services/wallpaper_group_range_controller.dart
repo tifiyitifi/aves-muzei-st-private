@@ -3,7 +3,9 @@ import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
+import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
@@ -27,6 +29,9 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   /// AppMeta key of this page's active-style form.
   static const keyActiveStyle = 'wallpaper.page.activeStyle';
 
+  /// AppMeta key of this page's group switcher style.
+  static const keySwitcherStyle = 'wallpaper.page.groupSwitcherStyle';
+
   final WallpaperGroupController groupController;
   final AppDatabase? injectedDatabase;
 
@@ -42,6 +47,7 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   VisibleRange? _range;
   List<VisibleRangePreset> _presets = const [];
   VisibleRangeActiveStyle _activeStyle = VisibleRangeActiveStyle.section;
+  WallpaperGroupSwitcherStyle _switcherStyle = WallpaperGroupSwitcherStyle.chips;
 
   bool get initialized => _initialized;
 
@@ -63,6 +69,8 @@ class WallpaperGroupRangeController extends ChangeNotifier {
 
   VisibleRangeActiveStyle get activeStyle => _activeStyle;
 
+  WallpaperGroupSwitcherStyle get switcherStyle => _switcherStyle;
+
   /// A locked range refuses edits, like on the visible-range page.
   bool get canEdit => _range != null && !_range!.locked;
 
@@ -73,11 +81,15 @@ class WallpaperGroupRangeController extends ChangeNotifier {
       groupController.addListener(notifyListeners);
       final db = await _openDb();
       _activeStyle = VisibleRangeActiveStyle.parse((await AppMetaStore(db).read({keyActiveStyle}))[keyActiveStyle]);
+      _switcherStyle = WallpaperGroupSwitcherStyle.parse((await AppMetaStore(db).read({keySwitcherStyle}))[keySwitcherStyle]);
       _presets = await VisibleRangeStore(db).loadPresets();
       _initialized = true;
-      // Start on the group the wallpaper actually uses, so the page opens on
-      // something meaningful; group 0 has nothing to show.
-      await selectGroup(current.isNone ? groups.firstOrNull?.id : current.id);
+      // Resume the group the page showed before it was rebuilt; on a cold start
+      // open on the group the wallpaper actually uses, since group 0 has nothing
+      // to show.
+      final session = wallpaperGroupPageSession;
+      final sessionId = session.initialized && groups.any((group) => group.id == session.selectedGroupId) ? session.selectedGroupId : null;
+      await selectGroup(session.initialized ? sessionId : (current.isNone ? groups.firstOrNull?.id : current.id));
     } catch (error, stack) {
       groupedWallpaperLog.e('failed to open the wallpaper group page', error, stack);
       _initialized = true;
@@ -93,6 +105,9 @@ class WallpaperGroupRangeController extends ChangeNotifier {
 
   /// Shows [id]'s range; null selects group 0 (no range to edit).
   Future<void> selectGroup(String? id) async {
+    wallpaperGroupPageSession
+      ..initialized = true
+      ..selectedGroupId = id;
     _selectedGroupId = id;
     _range = null;
     _loading = id != null;
@@ -114,6 +129,13 @@ class WallpaperGroupRangeController extends ChangeNotifier {
     _activeStyle = style;
     notifyListeners();
     await AppMetaStore(await _openDb()).write({keyActiveStyle: style.name});
+  }
+
+  Future<void> setSwitcherStyle(WallpaperGroupSwitcherStyle style) async {
+    if (_switcherStyle == style) return;
+    _switcherStyle = style;
+    notifyListeners();
+    await AppMetaStore(await _openDb()).write({keySwitcherStyle: style.name});
   }
 
   Future<void> selectBase({required String presetId, required String name, required Set<CollectionFilter> filters}) =>

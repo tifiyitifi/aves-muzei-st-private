@@ -1,5 +1,6 @@
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Group 0, the derived numbering and the enabled/disabled segment rules.
@@ -98,5 +99,12 @@ void main() {
     expect(group.copyWith(description: 'summer').description, 'summer');
     // The description participates in equality, so a list change is noticed.
     expect(group, isNot(group.copyWith(description: 'other')));
+  });
+
+  test('the switcher style parses by name and defaults to chips', () {
+    expect(WallpaperGroupSwitcherStyle.parse(null), WallpaperGroupSwitcherStyle.chips);
+    expect(WallpaperGroupSwitcherStyle.parse('unknown'), WallpaperGroupSwitcherStyle.chips);
+    expect(WallpaperGroupSwitcherStyle.parse('sections'), WallpaperGroupSwitcherStyle.sections);
+    expect(WallpaperGroupSwitcherStyle.parse('grid5'), WallpaperGroupSwitcherStyle.grid5);
   });
 }

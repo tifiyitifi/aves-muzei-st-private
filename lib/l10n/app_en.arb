@@ -1858,6 +1858,12 @@
   "wallpaperGroupDeleteConfirm": "Delete this group and its visible range?",
   "wallpaperGroupNameTitle": "Group name",
   "wallpaperGroupKeepOne": "Keep at least one group.",
+  "wallpaperGroupSwitcherStyle": "Group switcher",
+  "wallpaperGroupSwitcherChips": "Chips",
+  "wallpaperGroupSwitcherSections": "Section",
+  "wallpaperGroupSwitcherGrid5": "5 columns",
+  "wallpaperGroupViewing": "Selected group",
+  "wallpaperGroupPlaying": "Used by the wallpaper",
 
   "explorerUseCurrentPath": "Use current folder",
 

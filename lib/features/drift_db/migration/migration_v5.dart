@@ -13,7 +13,6 @@ class MigrationV5 {
 
   static const List<String> _indexes = [
     'CREATE INDEX IF NOT EXISTS idx_visible_range_rules_rangeId ON visible_range_rules(rangeId)',
-    'CREATE INDEX IF NOT EXISTS idx_visible_range_sessions_rangeId ON visible_range_sessions(rangeId)',
     'CREATE INDEX IF NOT EXISTS idx_visible_ranges_scope_owner ON visible_ranges(scope, ownerId)',
   ];
 
@@ -28,7 +27,8 @@ class MigrationV5 {
     await m.createTable(db.visibleRangePresetRows);
     await m.createTable(db.visibleRangeRows);
     await m.createTable(db.visibleRangeRuleRows);
-    await m.createTable(db.visibleRangeSessionRows);
+    // `visible_range_sessions` is not created: v8 dropped it again, and a v4
+    // install never had it. Only a v5..v7 database still carries the table.
     await m.createTable(db.visibleRangeKeyValues);
     await createNewIndexes(db);
   }

@@ -103,30 +103,29 @@ class VisibleRangeRuleRows extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// One "activate to media set" session, kept until the next save so the user can
-/// write its delta back to the rule it came from.
-class VisibleRangeSessionRows extends Table {
+/// One target the user has applied to a media set ("take out").
+///
+/// Rule ids are global and never reused, so remembering the id is enough to
+/// point back at the rule later; a base has no id of its own, hence the
+/// `base.<rangeId>` form. The table is the write-back menu's source: it lists
+/// exactly the targets the user has ever opened a media set with, and a target
+/// stays listed after a write-back so it can be updated again.
+class VisibleRangeRuleUsageRows extends Table {
   @override
-  String get tableName => 'visible_range_sessions';
+  String get tableName => 'visible_range_rule_usage';
 
+  /// `rule.<ruleId>` or `base.<rangeId>`.
   TextColumn get id => text()();
 
   TextColumn get rangeId => text().named('rangeId')();
 
-  TextColumn get ruleId => text().named('ruleId')();
+  /// Rule id, or empty for a base target.
+  TextColumn get targetId => text().named('targetId').withDefault(const Constant(''))();
 
+  /// `base`, `restriction` or `supplement`.
   TextColumn get kind => text()();
 
-  /// `override` or `append`.
-  TextColumn get mode => text()();
-
-  /// JSON array of the media-set filters right after activation.
-  TextColumn get initialFilters => text().named('initialFilters').withDefault(const Constant('[]'))();
-
-  /// JSON array of the media-set filters when the session ended.
-  TextColumn get finalFilters => text().named('finalFilters').withDefault(const Constant('[]'))();
-
-  IntColumn get createdAt => integer().named('createdAt')();
+  IntColumn get usedAt => integer().named('usedAt')();
 
   @override
   Set<Column> get primaryKey => {id};

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_action_delegate.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
@@ -16,6 +17,7 @@ import 'package:aves/features/visible_range/view/widgets/visible_range_tile.dart
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
+import 'package:aves/theme/format.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/common/grid/scaling.dart';
@@ -238,14 +240,26 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     final supplementsOutside = range.order.isIntersectFirst;
     final result = <ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>>{};
     for (final section in buildVisibleRangeSections(range: range, presets: _controller.presets)) {
+      // A wallpaper group starts with its exclusive base and nothing else, so an
+      // empty restrictions/supplements group would only be a title reading 0/0.
+      if (section.kind != VisibleRangeCandidateKind.base && section.candidates.isEmpty) continue;
+      // Wallpaper uses images only: a video-only base is not a choice here. An
+      // already selected one stays visible, otherwise the base would read as
+      // unselected while the range still carries it.
+      final candidates = section.kind == VisibleRangeCandidateKind.base
+          ? [
+              for (final candidate in section.candidates)
+                if (candidate.active || candidate.preset == null || !isVideoOnlyFilterSet(candidate.preset!.filters)) candidate,
+            ]
+          : section.candidates;
       final countText = switch (section.kind) {
-        VisibleRangeCandidateKind.base => '${section.candidates.length}',
-        VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement => '${section.candidates.where((candidate) => candidate.active).length}/${section.candidates.length}',
+        VisibleRangeCandidateKind.base => '${candidates.length}',
+        VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement => '${candidates.where((candidate) => candidate.active).length}/${candidates.length}',
       };
       final key = VisibleRangeSectionKey(context, section.kind, countText: countText, supplementsOutside: supplementsOutside);
       final ordered = section.kind == VisibleRangeCandidateKind.base
-          ? [...section.candidates.where((candidate) => candidate.isUnrestricted), ...section.candidates.where((candidate) => !candidate.isUnrestricted)]
-          : section.candidates;
+          ? [...candidates.where((candidate) => candidate.isUnrestricted), ...candidates.where((candidate) => !candidate.isUnrestricted)]
+          : candidates;
       result[key] = [
         for (final candidate in ordered) FilterGridItem(VisibleRangeCandidateFilter(candidate), null),
       ];
@@ -421,7 +435,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
         _menuItem(_PageAction.lock, locked ? AIcons.locked : AIcons.unlocked, locked ? l10n.visibleRangeUnlock : l10n.visibleRangeLock),
         const PopupMenuDivider(),
       ],
-      _menuItem(_PageAction.about, AIcons.info, l10n.visibleRangeAbout),
+      _menuItem(_PageAction.about, AIcons.info, l10n.aboutWallpaperTitle),
     ];
   }
 
@@ -474,42 +488,73 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
   }
 
   Future<void> _renameGroup(WallpaperGroup group) async {
-    final name = await _askGroupName(
+    final result = await _askGroupTexts(
       title: context.l10n.wallpaperGroupNameTitle,
-      initial: group.hasBundledName ? '' : group.name,
-      hint: wallpaperGroupName(context, group),
+      initialName: group.hasBundledName ? '' : group.name,
+      nameHint: wallpaperGroupName(context, group),
+      initialDescription: group.description,
     );
-    if (name == null || name.isEmpty) return;
-    await _controller.renameGroup(group.id, name);
+    if (result == null) return;
+    await _controller.updateGroup(group.id, name: result.name, description: result.description);
   }
 
   Future<void> _addGroup() async {
-    final name = await _askGroupName(title: context.l10n.wallpaperGroupAdd, initial: '', hint: '');
+    final result = await _askGroupTexts(
+      title: context.l10n.wallpaperGroupAdd,
+      initialName: '',
+      // A new group's note defaults to the moment it was created, which is what
+      // the card subtitle shows until the user writes something else.
+      initialDescription: formatDateTime(DateTime.now(), settings.avesLocale, MediaQuery.alwaysUse24HourFormatOf(context)),
+    );
     // An empty name is allowed: the group keeps its derived number until the
     // user names it.
-    if (name == null) return;
-    await _controller.addGroup(name: name);
+    if (result == null) return;
+    await _controller.addGroup(name: result.name, description: result.description);
   }
 
-  Future<String?> _askGroupName({required String title, required String initial, required String hint}) async {
-    final controller = TextEditingController(text: initial);
-    final result = await showDialog<String>(
+  Future<({String name, String description})?> _askGroupTexts({
+    required String title,
+    required String initialName,
+    required String initialDescription,
+    String? nameHint,
+  }) async {
+    final l10n = context.l10n;
+    final nameController = TextEditingController(text: initialName);
+    final descriptionController = TextEditingController(text: initialDescription);
+    final result = await showDialog<({String name, String description})>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(hintText: hint.isEmpty ? null : hint),
-          onSubmitted: (value) => Navigator.pop(context, value.trim()),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                decoration: InputDecoration(labelText: l10n.visibleRangePinName, hintText: nameHint),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descriptionController,
+                minLines: 1,
+                maxLines: 3,
+                decoration: InputDecoration(labelText: l10n.visibleRangePinDescription),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
-          TextButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
+          TextButton(
+            onPressed: () => Navigator.pop(context, (name: nameController.text.trim(), description: descriptionController.text.trim())),
+            child: Text(MaterialLocalizations.of(context).okButtonLabel),
+          ),
         ],
       ),
     );
-    controller.dispose();
+    nameController.dispose();
+    descriptionController.dispose();
     return result;
   }
 

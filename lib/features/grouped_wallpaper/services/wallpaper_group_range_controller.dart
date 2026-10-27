@@ -166,13 +166,13 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   // group management
 
   /// Adds a group and opens it, so the user can narrow it right away.
-  Future<void> addGroup({String name = ''}) async {
-    await groupController.addGroup(name: name);
+  Future<void> addGroup({String name = '', String description = ''}) async {
+    await groupController.addGroup(name: name, description: description);
     final added = groups.lastOrNull;
     if (added != null) await selectGroup(added.id);
   }
 
-  Future<void> renameGroup(String id, String name) => groupController.renameGroup(id, name);
+  Future<void> updateGroup(String id, {required String name, String? description}) => groupController.updateGroup(id, name: name, description: description);
 
   /// Deletes a group, moving the page to another one when it was selected.
   ///

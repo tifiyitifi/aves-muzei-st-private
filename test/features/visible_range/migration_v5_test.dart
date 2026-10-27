@@ -4,11 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/sqlite3_loader.dart';
 
-/// Schema v4 -> v5 adds the visible-range tables and their indexes.
+/// Schema v4 -> current adds the visible-range tables and their indexes.
+///
+/// The session table existed only between v5 and v7 and is gone again, so this
+/// test asserts the range tables survive while the dropped one stays absent.
 void main() {
   setUpAll(ensureSqlite3Loaded);
 
-  test('a v4 database upgrades to v5 with the visible-range tables', () async {
+  test('a v4 database upgrades with the visible-range tables', () async {
     final db = AppDatabase(
       NativeDatabase.memory(
         setup: (raw) => raw.execute('PRAGMA user_version = 4'),
@@ -28,18 +31,19 @@ void main() {
       containsAll([
         'visible_ranges',
         'visible_range_rules',
-        'visible_range_sessions',
+        'visible_range_rule_usage',
         'visible_range_presets',
         'visible_range_state',
       ]),
     );
+    expect(tables, isNot(contains('visible_range_sessions')));
 
     final indexes = (await db.customSelect("SELECT name FROM sqlite_master WHERE type = 'index'").get()).map((row) => row.data['name']).toSet();
     expect(
       indexes,
       containsAll([
         'idx_visible_range_rules_rangeId',
-        'idx_visible_range_sessions_rangeId',
+        'idx_visible_range_rule_usage_rangeId',
         'idx_visible_ranges_scope_owner',
       ]),
     );
@@ -51,7 +55,7 @@ void main() {
 
     expect(await db.select(db.visibleRangeRows).get(), isEmpty);
     expect(await db.select(db.visibleRangeRuleRows).get(), isEmpty);
-    expect(await db.select(db.visibleRangeSessionRows).get(), isEmpty);
+    expect(await db.select(db.visibleRangeRuleUsageRows).get(), isEmpty);
     expect(await db.select(db.visibleRangePresetRows).get(), isEmpty);
     expect(await db.select(db.visibleRangeKeyValues).get(), isEmpty);
   });

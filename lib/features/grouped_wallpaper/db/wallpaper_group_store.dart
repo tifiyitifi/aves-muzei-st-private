@@ -44,6 +44,7 @@ class WallpaperGroupStore {
                 createdAt: group.createdAt,
                 updatedAt: group.updatedAt,
                 name: Value(group.name),
+                description: Value(group.description),
                 enabled: Value(group.enabled),
                 current: Value(group.current),
                 position: Value(i),
@@ -53,7 +54,7 @@ class WallpaperGroupStore {
     });
   }
 
-  /// Deletes a group together with its visible range, rules and sessions.
+  /// Deletes a group together with its visible range and applied-rule targets.
   Future<void> deleteGroup(String id) async {
     await db.transaction(() async {
       await (db.delete(db.wallpaperGroupRows)..where((t) => t.id.equals(id))).go();
@@ -72,6 +73,7 @@ class WallpaperGroupStore {
         id: row.id,
         number: number,
         name: row.name,
+        description: row.description,
         enabled: row.enabled,
         current: row.current,
         createdAt: row.createdAt,

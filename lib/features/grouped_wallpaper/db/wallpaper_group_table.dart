@@ -19,6 +19,10 @@ class WallpaperGroupRows extends Table {
   /// renamed. Never localized in the database.
   TextColumn get name => text().withDefault(const Constant(''))();
 
+  /// Free-form user note shown under the name, e.g. the date the group was
+  /// created. Never localized here: it is user text.
+  TextColumn get description => text().withDefault(const Constant(''))();
+
   BoolColumn get enabled => boolean().withDefault(const Constant(true))();
 
   /// The group the actual wallpaper uses; at most one row is true.

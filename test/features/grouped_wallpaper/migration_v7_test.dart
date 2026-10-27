@@ -41,7 +41,7 @@ void main() {
 
     final version = (await db.customSelect('PRAGMA user_version').get()).single.data['user_version'];
     expect(version, db.schemaVersion);
-    expect(version, 7);
+    expect(version, 8);
 
     final tables = await db.customSelect("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'wallpaper_groups'").get();
     expect(tables.map((row) => row.data['name']), ['wallpaper_groups']);

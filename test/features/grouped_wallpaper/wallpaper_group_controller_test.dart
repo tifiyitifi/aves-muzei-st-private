@@ -2,7 +2,6 @@ import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
-import 'package:aves/features/visible_range/data/default_presets.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/path.dart';
@@ -35,15 +34,9 @@ void main() {
         WallpaperGroupDefinition(id: 'wallpaper.group.pictures', nameKey: 'wallpaperGroupDefaultPictures', filters: {PathFilter('/pictures')}),
       ];
 
-  List<VisibleRangePresetDefinition> ruleDefinitions() => [
-        VisibleRangePresetDefinition(id: 'builtin.restriction.image', nameKey: 'visibleRangePresetImage', kind: VisibleRangePresetKind.restriction, filters: {MimeFilter.image}),
-        VisibleRangePresetDefinition(id: 'builtin.supplement.video', nameKey: 'visibleRangePresetVideo', kind: VisibleRangePresetKind.supplement, filters: {MimeFilter.video}),
-      ];
-
   WallpaperGroupController makeController({List<WallpaperGroupDefinition>? bundle}) => WallpaperGroupController(
         injectedDatabase: db,
         defaultLoader: () async => bundle ?? definitions(),
-        ruleLoader: () async => ruleDefinitions(),
       );
 
   setUp(() async {
@@ -78,18 +71,15 @@ void main() {
     expect(restarted.groups, hasLength(3));
   });
 
-  test('seeds the bundled rules into every group, all switched off', () async {
+  test('seeds each group with its exclusive base and no rules', () async {
     final dcim = await controller.groupRange('wallpaper.group.dcim');
-    expect(dcim.rules.map((rule) => rule.kind).toSet(), {VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement});
-    expect(dcim.rules.every((rule) => !rule.active), isTrue);
-    // Bundled labels are ARB keys, so they follow the language like the gallery's.
-    expect(dcim.rules.every((rule) => rule.label.startsWith('@')), isTrue);
-    expect(dcim.rules.firstWhere((rule) => rule.kind == VisibleRangeRuleKind.restriction).position, 0);
+    // A wallpaper group does not copy the gallery's restriction/supplement
+    // catalogue: it starts with its one base.
+    expect(dcim.rules, isEmpty);
 
-    // A rule id is global, so the same candidate gets a different id per group.
     final all = await controller.groupRange('wallpaper.group.all');
-    expect(all.rules, isNotEmpty);
-    expect(all.rules.map((rule) => rule.id).toSet().intersection(dcim.rules.map((rule) => rule.id).toSet()), isEmpty);
+    expect(all.rules, isEmpty);
+    expect(all.baseFilters, isEmpty);
   });
 
   test('a group whose folder was not resolvable is seeded closed', () async {
@@ -104,15 +94,52 @@ void main() {
   });
 
   test('renaming a group survives a restart and a defaults re-apply', () async {
-    await controller.renameGroup('wallpaper.group.dcim', 'Trips');
+    await controller.updateGroup('wallpaper.group.dcim', name: 'Trips', description: 'summer');
     expect(controller.groups[1].name, 'Trips');
     expect(controller.groups[1].hasBundledName, isFalse);
 
-    // A defaults bump re-applies the bundle but must not overwrite the name.
+    // A defaults bump re-applies the bundle but must not overwrite the name or
+    // the description.
     await WallpaperGroupStore(db).writeDefaultsVersion(0);
     final restarted = makeController();
     await restarted.init();
     expect(restarted.groups[1].name, 'Trips');
+    expect(restarted.groups[1].description, 'summer');
+  });
+
+  test('a defaults bump removes the seeded rules older versions materialized', () async {
+    // Simulate a v1 install: a group range carrying the old candidates, one of
+    // them switched on by the user and one renamed.
+    final range = await controller.groupRange('wallpaper.group.dcim');
+    VisibleRangeRule seeded(String suffix, {bool active = false, String? label}) => VisibleRangeRule(
+          id: 'wallpaper.group.dcim.rule.$suffix',
+          rangeId: range.id,
+          kind: VisibleRangeRuleKind.restriction,
+          label: label ?? '@visibleRangePresetImage',
+          filters: {MimeFilter.image},
+          active: active,
+        );
+    final userRule = VisibleRangeRule(id: 'user.rule', rangeId: range.id, kind: VisibleRangeRuleKind.supplement, label: 'Mine', filters: {MimeFilter.video});
+    await controller.saveGroupRange(
+      range.copyWith(rules: [
+        seeded('builtin.restriction.image'),
+        seeded('builtin.restriction.video', active: true),
+        seeded('builtin.restriction.raw', label: 'My RAW'),
+        userRule,
+      ]),
+    );
+    await WallpaperGroupStore(db).writeDefaultsVersion(1);
+
+    final restarted = makeController();
+    await restarted.init();
+    final rules = (await restarted.groupRange('wallpaper.group.dcim')).rules;
+    // The inactive untouched default goes; the user's activation, the rename and
+    // the user rule stay.
+    expect(rules.map((rule) => rule.id).toSet(), {
+      'wallpaper.group.dcim.rule.builtin.restriction.video',
+      'wallpaper.group.dcim.rule.builtin.restriction.raw',
+      'user.rule',
+    });
   });
 
   test('deleting a middle group renumbers and keeps the current group', () async {
@@ -162,16 +189,18 @@ void main() {
   });
 
   test('a new group is appended, unrestricted and independent', () async {
-    await controller.addGroup(name: 'Trips');
+    await controller.addGroup(name: 'Trips', description: 'created today');
     final added = controller.groups.last;
 
     expect(added.id, isNot(startsWith('wallpaper.group.')));
     expect(added.name, 'Trips');
+    expect(added.description, 'created today');
     expect(added.number, 4);
     expect(controller.groups.first.id, 'wallpaper.group.all');
 
     final range = await controller.groupRange(added.id);
     expect(range.baseFilters, isEmpty);
+    expect(range.rules, isEmpty);
 
     await controller.saveGroupRange(range.copyWith(baseFilters: {PathFilter('/trips')}));
     expect((await controller.groupRange(added.id)).baseFilters, {PathFilter('/trips')});

@@ -6190,12 +6190,12 @@ class VisibleRangeRuleRowsCompanion
   }
 }
 
-class $VisibleRangeSessionRowsTable extends VisibleRangeSessionRows
-    with TableInfo<$VisibleRangeSessionRowsTable, VisibleRangeSessionRow> {
+class $VisibleRangeRuleUsageRowsTable extends VisibleRangeRuleUsageRows
+    with TableInfo<$VisibleRangeRuleUsageRowsTable, VisibleRangeRuleUsageRow> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  $VisibleRangeSessionRowsTable(this.attachedDatabase, [this._alias]);
+  $VisibleRangeRuleUsageRowsTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
@@ -6216,14 +6216,17 @@ class $VisibleRangeSessionRowsTable extends VisibleRangeSessionRows
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _ruleIdMeta = const VerificationMeta('ruleId');
+  static const VerificationMeta _targetIdMeta = const VerificationMeta(
+    'targetId',
+  );
   @override
-  late final GeneratedColumn<String> ruleId = GeneratedColumn<String>(
-    'ruleId',
+  late final GeneratedColumn<String> targetId = GeneratedColumn<String>(
+    'targetId',
     aliasedName,
     false,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
   );
   static const VerificationMeta _kindMeta = const VerificationMeta('kind');
   @override
@@ -6234,69 +6237,25 @@ class $VisibleRangeSessionRowsTable extends VisibleRangeSessionRows
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _modeMeta = const VerificationMeta('mode');
+  static const VerificationMeta _usedAtMeta = const VerificationMeta('usedAt');
   @override
-  late final GeneratedColumn<String> mode = GeneratedColumn<String>(
-    'mode',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _initialFiltersMeta = const VerificationMeta(
-    'initialFilters',
-  );
-  @override
-  late final GeneratedColumn<String> initialFilters = GeneratedColumn<String>(
-    'initialFilters',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    defaultValue: const Constant('[]'),
-  );
-  static const VerificationMeta _finalFiltersMeta = const VerificationMeta(
-    'finalFilters',
-  );
-  @override
-  late final GeneratedColumn<String> finalFilters = GeneratedColumn<String>(
-    'finalFilters',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    defaultValue: const Constant('[]'),
-  );
-  static const VerificationMeta _createdAtMeta = const VerificationMeta(
-    'createdAt',
-  );
-  @override
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
-    'createdAt',
+  late final GeneratedColumn<int> usedAt = GeneratedColumn<int>(
+    'usedAt',
     aliasedName,
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
   @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    rangeId,
-    ruleId,
-    kind,
-    mode,
-    initialFilters,
-    finalFilters,
-    createdAt,
-  ];
+  List<GeneratedColumn> get $columns => [id, rangeId, targetId, kind, usedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'visible_range_sessions';
+  static const String $name = 'visible_range_rule_usage';
   @override
   VerificationContext validateIntegrity(
-    Insertable<VisibleRangeSessionRow> instance, {
+    Insertable<VisibleRangeRuleUsageRow> instance, {
     bool isInserting = false,
   }) {
     final context = VerificationContext();
@@ -6314,13 +6273,11 @@ class $VisibleRangeSessionRowsTable extends VisibleRangeSessionRows
     } else if (isInserting) {
       context.missing(_rangeIdMeta);
     }
-    if (data.containsKey('ruleId')) {
+    if (data.containsKey('targetId')) {
       context.handle(
-        _ruleIdMeta,
-        ruleId.isAcceptableOrUnknown(data['ruleId']!, _ruleIdMeta),
+        _targetIdMeta,
+        targetId.isAcceptableOrUnknown(data['targetId']!, _targetIdMeta),
       );
-    } else if (isInserting) {
-      context.missing(_ruleIdMeta);
     }
     if (data.containsKey('kind')) {
       context.handle(
@@ -6330,39 +6287,13 @@ class $VisibleRangeSessionRowsTable extends VisibleRangeSessionRows
     } else if (isInserting) {
       context.missing(_kindMeta);
     }
-    if (data.containsKey('mode')) {
+    if (data.containsKey('usedAt')) {
       context.handle(
-        _modeMeta,
-        mode.isAcceptableOrUnknown(data['mode']!, _modeMeta),
+        _usedAtMeta,
+        usedAt.isAcceptableOrUnknown(data['usedAt']!, _usedAtMeta),
       );
     } else if (isInserting) {
-      context.missing(_modeMeta);
-    }
-    if (data.containsKey('initialFilters')) {
-      context.handle(
-        _initialFiltersMeta,
-        initialFilters.isAcceptableOrUnknown(
-          data['initialFilters']!,
-          _initialFiltersMeta,
-        ),
-      );
-    }
-    if (data.containsKey('finalFilters')) {
-      context.handle(
-        _finalFiltersMeta,
-        finalFilters.isAcceptableOrUnknown(
-          data['finalFilters']!,
-          _finalFiltersMeta,
-        ),
-      );
-    }
-    if (data.containsKey('createdAt')) {
-      context.handle(
-        _createdAtMeta,
-        createdAt.isAcceptableOrUnknown(data['createdAt']!, _createdAtMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_createdAtMeta);
+      context.missing(_usedAtMeta);
     }
     return context;
   }
@@ -6370,9 +6301,12 @@ class $VisibleRangeSessionRowsTable extends VisibleRangeSessionRows
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
-  VisibleRangeSessionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+  VisibleRangeRuleUsageRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return VisibleRangeSessionRow(
+    return VisibleRangeRuleUsageRow(
       id: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}id'],
@@ -6381,106 +6315,78 @@ class $VisibleRangeSessionRowsTable extends VisibleRangeSessionRows
         DriftSqlType.string,
         data['${effectivePrefix}rangeId'],
       )!,
-      ruleId: attachedDatabase.typeMapping.read(
+      targetId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}ruleId'],
+        data['${effectivePrefix}targetId'],
       )!,
       kind: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}kind'],
       )!,
-      mode: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}mode'],
-      )!,
-      initialFilters: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}initialFilters'],
-      )!,
-      finalFilters: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}finalFilters'],
-      )!,
-      createdAt: attachedDatabase.typeMapping.read(
+      usedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}createdAt'],
+        data['${effectivePrefix}usedAt'],
       )!,
     );
   }
 
   @override
-  $VisibleRangeSessionRowsTable createAlias(String alias) {
-    return $VisibleRangeSessionRowsTable(attachedDatabase, alias);
+  $VisibleRangeRuleUsageRowsTable createAlias(String alias) {
+    return $VisibleRangeRuleUsageRowsTable(attachedDatabase, alias);
   }
 }
 
-class VisibleRangeSessionRow extends DataClass
-    implements Insertable<VisibleRangeSessionRow> {
+class VisibleRangeRuleUsageRow extends DataClass
+    implements Insertable<VisibleRangeRuleUsageRow> {
+  /// `rule.<ruleId>` or `base.<rangeId>`.
   final String id;
   final String rangeId;
-  final String ruleId;
+
+  /// Rule id, or empty for a base target.
+  final String targetId;
+
+  /// `base`, `restriction` or `supplement`.
   final String kind;
-
-  /// `override` or `append`.
-  final String mode;
-
-  /// JSON array of the media-set filters right after activation.
-  final String initialFilters;
-
-  /// JSON array of the media-set filters when the session ended.
-  final String finalFilters;
-  final int createdAt;
-  const VisibleRangeSessionRow({
+  final int usedAt;
+  const VisibleRangeRuleUsageRow({
     required this.id,
     required this.rangeId,
-    required this.ruleId,
+    required this.targetId,
     required this.kind,
-    required this.mode,
-    required this.initialFilters,
-    required this.finalFilters,
-    required this.createdAt,
+    required this.usedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['rangeId'] = Variable<String>(rangeId);
-    map['ruleId'] = Variable<String>(ruleId);
+    map['targetId'] = Variable<String>(targetId);
     map['kind'] = Variable<String>(kind);
-    map['mode'] = Variable<String>(mode);
-    map['initialFilters'] = Variable<String>(initialFilters);
-    map['finalFilters'] = Variable<String>(finalFilters);
-    map['createdAt'] = Variable<int>(createdAt);
+    map['usedAt'] = Variable<int>(usedAt);
     return map;
   }
 
-  VisibleRangeSessionRowsCompanion toCompanion(bool nullToAbsent) {
-    return VisibleRangeSessionRowsCompanion(
+  VisibleRangeRuleUsageRowsCompanion toCompanion(bool nullToAbsent) {
+    return VisibleRangeRuleUsageRowsCompanion(
       id: Value(id),
       rangeId: Value(rangeId),
-      ruleId: Value(ruleId),
+      targetId: Value(targetId),
       kind: Value(kind),
-      mode: Value(mode),
-      initialFilters: Value(initialFilters),
-      finalFilters: Value(finalFilters),
-      createdAt: Value(createdAt),
+      usedAt: Value(usedAt),
     );
   }
 
-  factory VisibleRangeSessionRow.fromJson(
+  factory VisibleRangeRuleUsageRow.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return VisibleRangeSessionRow(
+    return VisibleRangeRuleUsageRow(
       id: serializer.fromJson<String>(json['id']),
       rangeId: serializer.fromJson<String>(json['rangeId']),
-      ruleId: serializer.fromJson<String>(json['ruleId']),
+      targetId: serializer.fromJson<String>(json['targetId']),
       kind: serializer.fromJson<String>(json['kind']),
-      mode: serializer.fromJson<String>(json['mode']),
-      initialFilters: serializer.fromJson<String>(json['initialFilters']),
-      finalFilters: serializer.fromJson<String>(json['finalFilters']),
-      createdAt: serializer.fromJson<int>(json['createdAt']),
+      usedAt: serializer.fromJson<int>(json['usedAt']),
     );
   }
   @override
@@ -6489,175 +6395,121 @@ class VisibleRangeSessionRow extends DataClass
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'rangeId': serializer.toJson<String>(rangeId),
-      'ruleId': serializer.toJson<String>(ruleId),
+      'targetId': serializer.toJson<String>(targetId),
       'kind': serializer.toJson<String>(kind),
-      'mode': serializer.toJson<String>(mode),
-      'initialFilters': serializer.toJson<String>(initialFilters),
-      'finalFilters': serializer.toJson<String>(finalFilters),
-      'createdAt': serializer.toJson<int>(createdAt),
+      'usedAt': serializer.toJson<int>(usedAt),
     };
   }
 
-  VisibleRangeSessionRow copyWith({
+  VisibleRangeRuleUsageRow copyWith({
     String? id,
     String? rangeId,
-    String? ruleId,
+    String? targetId,
     String? kind,
-    String? mode,
-    String? initialFilters,
-    String? finalFilters,
-    int? createdAt,
-  }) => VisibleRangeSessionRow(
+    int? usedAt,
+  }) => VisibleRangeRuleUsageRow(
     id: id ?? this.id,
     rangeId: rangeId ?? this.rangeId,
-    ruleId: ruleId ?? this.ruleId,
+    targetId: targetId ?? this.targetId,
     kind: kind ?? this.kind,
-    mode: mode ?? this.mode,
-    initialFilters: initialFilters ?? this.initialFilters,
-    finalFilters: finalFilters ?? this.finalFilters,
-    createdAt: createdAt ?? this.createdAt,
+    usedAt: usedAt ?? this.usedAt,
   );
-  VisibleRangeSessionRow copyWithCompanion(
-    VisibleRangeSessionRowsCompanion data,
+  VisibleRangeRuleUsageRow copyWithCompanion(
+    VisibleRangeRuleUsageRowsCompanion data,
   ) {
-    return VisibleRangeSessionRow(
+    return VisibleRangeRuleUsageRow(
       id: data.id.present ? data.id.value : this.id,
       rangeId: data.rangeId.present ? data.rangeId.value : this.rangeId,
-      ruleId: data.ruleId.present ? data.ruleId.value : this.ruleId,
+      targetId: data.targetId.present ? data.targetId.value : this.targetId,
       kind: data.kind.present ? data.kind.value : this.kind,
-      mode: data.mode.present ? data.mode.value : this.mode,
-      initialFilters: data.initialFilters.present
-          ? data.initialFilters.value
-          : this.initialFilters,
-      finalFilters: data.finalFilters.present
-          ? data.finalFilters.value
-          : this.finalFilters,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      usedAt: data.usedAt.present ? data.usedAt.value : this.usedAt,
     );
   }
 
   @override
   String toString() {
-    return (StringBuffer('VisibleRangeSessionRow(')
+    return (StringBuffer('VisibleRangeRuleUsageRow(')
           ..write('id: $id, ')
           ..write('rangeId: $rangeId, ')
-          ..write('ruleId: $ruleId, ')
+          ..write('targetId: $targetId, ')
           ..write('kind: $kind, ')
-          ..write('mode: $mode, ')
-          ..write('initialFilters: $initialFilters, ')
-          ..write('finalFilters: $finalFilters, ')
-          ..write('createdAt: $createdAt')
+          ..write('usedAt: $usedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-    id,
-    rangeId,
-    ruleId,
-    kind,
-    mode,
-    initialFilters,
-    finalFilters,
-    createdAt,
-  );
+  int get hashCode => Object.hash(id, rangeId, targetId, kind, usedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is VisibleRangeSessionRow &&
+      (other is VisibleRangeRuleUsageRow &&
           other.id == this.id &&
           other.rangeId == this.rangeId &&
-          other.ruleId == this.ruleId &&
+          other.targetId == this.targetId &&
           other.kind == this.kind &&
-          other.mode == this.mode &&
-          other.initialFilters == this.initialFilters &&
-          other.finalFilters == this.finalFilters &&
-          other.createdAt == this.createdAt);
+          other.usedAt == this.usedAt);
 }
 
-class VisibleRangeSessionRowsCompanion
-    extends UpdateCompanion<VisibleRangeSessionRow> {
+class VisibleRangeRuleUsageRowsCompanion
+    extends UpdateCompanion<VisibleRangeRuleUsageRow> {
   final Value<String> id;
   final Value<String> rangeId;
-  final Value<String> ruleId;
+  final Value<String> targetId;
   final Value<String> kind;
-  final Value<String> mode;
-  final Value<String> initialFilters;
-  final Value<String> finalFilters;
-  final Value<int> createdAt;
+  final Value<int> usedAt;
   final Value<int> rowid;
-  const VisibleRangeSessionRowsCompanion({
+  const VisibleRangeRuleUsageRowsCompanion({
     this.id = const Value.absent(),
     this.rangeId = const Value.absent(),
-    this.ruleId = const Value.absent(),
+    this.targetId = const Value.absent(),
     this.kind = const Value.absent(),
-    this.mode = const Value.absent(),
-    this.initialFilters = const Value.absent(),
-    this.finalFilters = const Value.absent(),
-    this.createdAt = const Value.absent(),
+    this.usedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
-  VisibleRangeSessionRowsCompanion.insert({
+  VisibleRangeRuleUsageRowsCompanion.insert({
     required String id,
     required String rangeId,
-    required String ruleId,
+    this.targetId = const Value.absent(),
     required String kind,
-    required String mode,
-    this.initialFilters = const Value.absent(),
-    this.finalFilters = const Value.absent(),
-    required int createdAt,
+    required int usedAt,
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        rangeId = Value(rangeId),
-       ruleId = Value(ruleId),
        kind = Value(kind),
-       mode = Value(mode),
-       createdAt = Value(createdAt);
-  static Insertable<VisibleRangeSessionRow> custom({
+       usedAt = Value(usedAt);
+  static Insertable<VisibleRangeRuleUsageRow> custom({
     Expression<String>? id,
     Expression<String>? rangeId,
-    Expression<String>? ruleId,
+    Expression<String>? targetId,
     Expression<String>? kind,
-    Expression<String>? mode,
-    Expression<String>? initialFilters,
-    Expression<String>? finalFilters,
-    Expression<int>? createdAt,
+    Expression<int>? usedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (rangeId != null) 'rangeId': rangeId,
-      if (ruleId != null) 'ruleId': ruleId,
+      if (targetId != null) 'targetId': targetId,
       if (kind != null) 'kind': kind,
-      if (mode != null) 'mode': mode,
-      if (initialFilters != null) 'initialFilters': initialFilters,
-      if (finalFilters != null) 'finalFilters': finalFilters,
-      if (createdAt != null) 'createdAt': createdAt,
+      if (usedAt != null) 'usedAt': usedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
-  VisibleRangeSessionRowsCompanion copyWith({
+  VisibleRangeRuleUsageRowsCompanion copyWith({
     Value<String>? id,
     Value<String>? rangeId,
-    Value<String>? ruleId,
+    Value<String>? targetId,
     Value<String>? kind,
-    Value<String>? mode,
-    Value<String>? initialFilters,
-    Value<String>? finalFilters,
-    Value<int>? createdAt,
+    Value<int>? usedAt,
     Value<int>? rowid,
   }) {
-    return VisibleRangeSessionRowsCompanion(
+    return VisibleRangeRuleUsageRowsCompanion(
       id: id ?? this.id,
       rangeId: rangeId ?? this.rangeId,
-      ruleId: ruleId ?? this.ruleId,
+      targetId: targetId ?? this.targetId,
       kind: kind ?? this.kind,
-      mode: mode ?? this.mode,
-      initialFilters: initialFilters ?? this.initialFilters,
-      finalFilters: finalFilters ?? this.finalFilters,
-      createdAt: createdAt ?? this.createdAt,
+      usedAt: usedAt ?? this.usedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -6671,23 +6523,14 @@ class VisibleRangeSessionRowsCompanion
     if (rangeId.present) {
       map['rangeId'] = Variable<String>(rangeId.value);
     }
-    if (ruleId.present) {
-      map['ruleId'] = Variable<String>(ruleId.value);
+    if (targetId.present) {
+      map['targetId'] = Variable<String>(targetId.value);
     }
     if (kind.present) {
       map['kind'] = Variable<String>(kind.value);
     }
-    if (mode.present) {
-      map['mode'] = Variable<String>(mode.value);
-    }
-    if (initialFilters.present) {
-      map['initialFilters'] = Variable<String>(initialFilters.value);
-    }
-    if (finalFilters.present) {
-      map['finalFilters'] = Variable<String>(finalFilters.value);
-    }
-    if (createdAt.present) {
-      map['createdAt'] = Variable<int>(createdAt.value);
+    if (usedAt.present) {
+      map['usedAt'] = Variable<int>(usedAt.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -6697,15 +6540,12 @@ class VisibleRangeSessionRowsCompanion
 
   @override
   String toString() {
-    return (StringBuffer('VisibleRangeSessionRowsCompanion(')
+    return (StringBuffer('VisibleRangeRuleUsageRowsCompanion(')
           ..write('id: $id, ')
           ..write('rangeId: $rangeId, ')
-          ..write('ruleId: $ruleId, ')
+          ..write('targetId: $targetId, ')
           ..write('kind: $kind, ')
-          ..write('mode: $mode, ')
-          ..write('initialFilters: $initialFilters, ')
-          ..write('finalFilters: $finalFilters, ')
-          ..write('createdAt: $createdAt, ')
+          ..write('usedAt: $usedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6956,6 +6796,18 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _enabledMeta = const VerificationMeta(
     'enabled',
   );
@@ -7024,6 +6876,7 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
   List<GeneratedColumn> get $columns => [
     id,
     name,
+    description,
     enabled,
     current,
     position,
@@ -7051,6 +6904,15 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
       context.handle(
         _nameMeta,
         name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
       );
     }
     if (data.containsKey('enabled')) {
@@ -7104,6 +6966,10 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
       enabled: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}enabled'],
@@ -7140,6 +7006,10 @@ class WallpaperGroupRow extends DataClass
   /// `@arbKey` while the group keeps its built-in name, plain user text once
   /// renamed. Never localized in the database.
   final String name;
+
+  /// Free-form user note shown under the name, e.g. the date the group was
+  /// created. Never localized here: it is user text.
+  final String description;
   final bool enabled;
 
   /// The group the actual wallpaper uses; at most one row is true.
@@ -7150,6 +7020,7 @@ class WallpaperGroupRow extends DataClass
   const WallpaperGroupRow({
     required this.id,
     required this.name,
+    required this.description,
     required this.enabled,
     required this.current,
     required this.position,
@@ -7161,6 +7032,7 @@ class WallpaperGroupRow extends DataClass
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
+    map['description'] = Variable<String>(description);
     map['enabled'] = Variable<bool>(enabled);
     map['current'] = Variable<bool>(current);
     map['position'] = Variable<int>(position);
@@ -7173,6 +7045,7 @@ class WallpaperGroupRow extends DataClass
     return WallpaperGroupRowsCompanion(
       id: Value(id),
       name: Value(name),
+      description: Value(description),
       enabled: Value(enabled),
       current: Value(current),
       position: Value(position),
@@ -7189,6 +7062,7 @@ class WallpaperGroupRow extends DataClass
     return WallpaperGroupRow(
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      description: serializer.fromJson<String>(json['description']),
       enabled: serializer.fromJson<bool>(json['enabled']),
       current: serializer.fromJson<bool>(json['current']),
       position: serializer.fromJson<int>(json['position']),
@@ -7202,6 +7076,7 @@ class WallpaperGroupRow extends DataClass
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
+      'description': serializer.toJson<String>(description),
       'enabled': serializer.toJson<bool>(enabled),
       'current': serializer.toJson<bool>(current),
       'position': serializer.toJson<int>(position),
@@ -7213,6 +7088,7 @@ class WallpaperGroupRow extends DataClass
   WallpaperGroupRow copyWith({
     String? id,
     String? name,
+    String? description,
     bool? enabled,
     bool? current,
     int? position,
@@ -7221,6 +7097,7 @@ class WallpaperGroupRow extends DataClass
   }) => WallpaperGroupRow(
     id: id ?? this.id,
     name: name ?? this.name,
+    description: description ?? this.description,
     enabled: enabled ?? this.enabled,
     current: current ?? this.current,
     position: position ?? this.position,
@@ -7231,6 +7108,9 @@ class WallpaperGroupRow extends DataClass
     return WallpaperGroupRow(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
       enabled: data.enabled.present ? data.enabled.value : this.enabled,
       current: data.current.present ? data.current.value : this.current,
       position: data.position.present ? data.position.value : this.position,
@@ -7244,6 +7124,7 @@ class WallpaperGroupRow extends DataClass
     return (StringBuffer('WallpaperGroupRow(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('description: $description, ')
           ..write('enabled: $enabled, ')
           ..write('current: $current, ')
           ..write('position: $position, ')
@@ -7254,14 +7135,23 @@ class WallpaperGroupRow extends DataClass
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, enabled, current, position, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    description,
+    enabled,
+    current,
+    position,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is WallpaperGroupRow &&
           other.id == this.id &&
           other.name == this.name &&
+          other.description == this.description &&
           other.enabled == this.enabled &&
           other.current == this.current &&
           other.position == this.position &&
@@ -7272,6 +7162,7 @@ class WallpaperGroupRow extends DataClass
 class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
   final Value<String> id;
   final Value<String> name;
+  final Value<String> description;
   final Value<bool> enabled;
   final Value<bool> current;
   final Value<int> position;
@@ -7281,6 +7172,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
   const WallpaperGroupRowsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.description = const Value.absent(),
     this.enabled = const Value.absent(),
     this.current = const Value.absent(),
     this.position = const Value.absent(),
@@ -7291,6 +7183,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
   WallpaperGroupRowsCompanion.insert({
     required String id,
     this.name = const Value.absent(),
+    this.description = const Value.absent(),
     this.enabled = const Value.absent(),
     this.current = const Value.absent(),
     this.position = const Value.absent(),
@@ -7303,6 +7196,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
   static Insertable<WallpaperGroupRow> custom({
     Expression<String>? id,
     Expression<String>? name,
+    Expression<String>? description,
     Expression<bool>? enabled,
     Expression<bool>? current,
     Expression<int>? position,
@@ -7313,6 +7207,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (description != null) 'description': description,
       if (enabled != null) 'enabled': enabled,
       if (current != null) 'current': current,
       if (position != null) 'position': position,
@@ -7325,6 +7220,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
   WallpaperGroupRowsCompanion copyWith({
     Value<String>? id,
     Value<String>? name,
+    Value<String>? description,
     Value<bool>? enabled,
     Value<bool>? current,
     Value<int>? position,
@@ -7335,6 +7231,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     return WallpaperGroupRowsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
+      description: description ?? this.description,
       enabled: enabled ?? this.enabled,
       current: current ?? this.current,
       position: position ?? this.position,
@@ -7352,6 +7249,9 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
     }
     if (enabled.present) {
       map['enabled'] = Variable<bool>(enabled.value);
@@ -7379,6 +7279,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     return (StringBuffer('WallpaperGroupRowsCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('description: $description, ')
           ..write('enabled: $enabled, ')
           ..write('current: $current, ')
           ..write('position: $position, ')
@@ -7418,8 +7319,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $VisibleRangeRuleRowsTable visibleRangeRuleRows =
       $VisibleRangeRuleRowsTable(this);
-  late final $VisibleRangeSessionRowsTable visibleRangeSessionRows =
-      $VisibleRangeSessionRowsTable(this);
+  late final $VisibleRangeRuleUsageRowsTable visibleRangeRuleUsageRows =
+      $VisibleRangeRuleUsageRowsTable(this);
   late final $VisibleRangeKeyValuesTable visibleRangeKeyValues =
       $VisibleRangeKeyValuesTable(this);
   late final $WallpaperGroupRowsTable wallpaperGroupRows =
@@ -7445,7 +7346,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     visibleRangePresetRows,
     visibleRangeRows,
     visibleRangeRuleRows,
-    visibleRangeSessionRows,
+    visibleRangeRuleUsageRows,
     visibleRangeKeyValues,
     wallpaperGroupRows,
   ];
@@ -10852,34 +10753,28 @@ typedef $$VisibleRangeRuleRowsTableProcessedTableManager =
       VisibleRangeRuleRow,
       PrefetchHooks Function()
     >;
-typedef $$VisibleRangeSessionRowsTableCreateCompanionBuilder =
-    VisibleRangeSessionRowsCompanion Function({
+typedef $$VisibleRangeRuleUsageRowsTableCreateCompanionBuilder =
+    VisibleRangeRuleUsageRowsCompanion Function({
       required String id,
       required String rangeId,
-      required String ruleId,
+      Value<String> targetId,
       required String kind,
-      required String mode,
-      Value<String> initialFilters,
-      Value<String> finalFilters,
-      required int createdAt,
+      required int usedAt,
       Value<int> rowid,
     });
-typedef $$VisibleRangeSessionRowsTableUpdateCompanionBuilder =
-    VisibleRangeSessionRowsCompanion Function({
+typedef $$VisibleRangeRuleUsageRowsTableUpdateCompanionBuilder =
+    VisibleRangeRuleUsageRowsCompanion Function({
       Value<String> id,
       Value<String> rangeId,
-      Value<String> ruleId,
+      Value<String> targetId,
       Value<String> kind,
-      Value<String> mode,
-      Value<String> initialFilters,
-      Value<String> finalFilters,
-      Value<int> createdAt,
+      Value<int> usedAt,
       Value<int> rowid,
     });
 
-class $$VisibleRangeSessionRowsTableFilterComposer
-    extends Composer<_$AppDatabase, $VisibleRangeSessionRowsTable> {
-  $$VisibleRangeSessionRowsTableFilterComposer({
+class $$VisibleRangeRuleUsageRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $VisibleRangeRuleUsageRowsTable> {
+  $$VisibleRangeRuleUsageRowsTableFilterComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -10896,8 +10791,8 @@ class $$VisibleRangeSessionRowsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get ruleId => $composableBuilder(
-    column: $table.ruleId,
+  ColumnFilters<String> get targetId => $composableBuilder(
+    column: $table.targetId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10906,30 +10801,15 @@ class $$VisibleRangeSessionRowsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get mode => $composableBuilder(
-    column: $table.mode,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get initialFilters => $composableBuilder(
-    column: $table.initialFilters,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get finalFilters => $composableBuilder(
-    column: $table.finalFilters,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<int> get createdAt => $composableBuilder(
-    column: $table.createdAt,
+  ColumnFilters<int> get usedAt => $composableBuilder(
+    column: $table.usedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
 
-class $$VisibleRangeSessionRowsTableOrderingComposer
-    extends Composer<_$AppDatabase, $VisibleRangeSessionRowsTable> {
-  $$VisibleRangeSessionRowsTableOrderingComposer({
+class $$VisibleRangeRuleUsageRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $VisibleRangeRuleUsageRowsTable> {
+  $$VisibleRangeRuleUsageRowsTableOrderingComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -10946,8 +10826,8 @@ class $$VisibleRangeSessionRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get ruleId => $composableBuilder(
-    column: $table.ruleId,
+  ColumnOrderings<String> get targetId => $composableBuilder(
+    column: $table.targetId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -10956,30 +10836,15 @@ class $$VisibleRangeSessionRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get mode => $composableBuilder(
-    column: $table.mode,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get initialFilters => $composableBuilder(
-    column: $table.initialFilters,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get finalFilters => $composableBuilder(
-    column: $table.finalFilters,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<int> get createdAt => $composableBuilder(
-    column: $table.createdAt,
+  ColumnOrderings<int> get usedAt => $composableBuilder(
+    column: $table.usedAt,
     builder: (column) => ColumnOrderings(column),
   );
 }
 
-class $$VisibleRangeSessionRowsTableAnnotationComposer
-    extends Composer<_$AppDatabase, $VisibleRangeSessionRowsTable> {
-  $$VisibleRangeSessionRowsTableAnnotationComposer({
+class $$VisibleRangeRuleUsageRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $VisibleRangeRuleUsageRowsTable> {
+  $$VisibleRangeRuleUsageRowsTableAnnotationComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -10992,70 +10857,57 @@ class $$VisibleRangeSessionRowsTableAnnotationComposer
   GeneratedColumn<String> get rangeId =>
       $composableBuilder(column: $table.rangeId, builder: (column) => column);
 
-  GeneratedColumn<String> get ruleId =>
-      $composableBuilder(column: $table.ruleId, builder: (column) => column);
+  GeneratedColumn<String> get targetId =>
+      $composableBuilder(column: $table.targetId, builder: (column) => column);
 
   GeneratedColumn<String> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
 
-  GeneratedColumn<String> get mode =>
-      $composableBuilder(column: $table.mode, builder: (column) => column);
-
-  GeneratedColumn<String> get initialFilters => $composableBuilder(
-    column: $table.initialFilters,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<String> get finalFilters => $composableBuilder(
-    column: $table.finalFilters,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<int> get createdAt =>
-      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+  GeneratedColumn<int> get usedAt =>
+      $composableBuilder(column: $table.usedAt, builder: (column) => column);
 }
 
-class $$VisibleRangeSessionRowsTableTableManager
+class $$VisibleRangeRuleUsageRowsTableTableManager
     extends
         RootTableManager<
           _$AppDatabase,
-          $VisibleRangeSessionRowsTable,
-          VisibleRangeSessionRow,
-          $$VisibleRangeSessionRowsTableFilterComposer,
-          $$VisibleRangeSessionRowsTableOrderingComposer,
-          $$VisibleRangeSessionRowsTableAnnotationComposer,
-          $$VisibleRangeSessionRowsTableCreateCompanionBuilder,
-          $$VisibleRangeSessionRowsTableUpdateCompanionBuilder,
+          $VisibleRangeRuleUsageRowsTable,
+          VisibleRangeRuleUsageRow,
+          $$VisibleRangeRuleUsageRowsTableFilterComposer,
+          $$VisibleRangeRuleUsageRowsTableOrderingComposer,
+          $$VisibleRangeRuleUsageRowsTableAnnotationComposer,
+          $$VisibleRangeRuleUsageRowsTableCreateCompanionBuilder,
+          $$VisibleRangeRuleUsageRowsTableUpdateCompanionBuilder,
           (
-            VisibleRangeSessionRow,
+            VisibleRangeRuleUsageRow,
             BaseReferences<
               _$AppDatabase,
-              $VisibleRangeSessionRowsTable,
-              VisibleRangeSessionRow
+              $VisibleRangeRuleUsageRowsTable,
+              VisibleRangeRuleUsageRow
             >,
           ),
-          VisibleRangeSessionRow,
+          VisibleRangeRuleUsageRow,
           PrefetchHooks Function()
         > {
-  $$VisibleRangeSessionRowsTableTableManager(
+  $$VisibleRangeRuleUsageRowsTableTableManager(
     _$AppDatabase db,
-    $VisibleRangeSessionRowsTable table,
+    $VisibleRangeRuleUsageRowsTable table,
   ) : super(
         TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$VisibleRangeSessionRowsTableFilterComposer(
+              $$VisibleRangeRuleUsageRowsTableFilterComposer(
                 $db: db,
                 $table: table,
               ),
           createOrderingComposer: () =>
-              $$VisibleRangeSessionRowsTableOrderingComposer(
+              $$VisibleRangeRuleUsageRowsTableOrderingComposer(
                 $db: db,
                 $table: table,
               ),
           createComputedFieldComposer: () =>
-              $$VisibleRangeSessionRowsTableAnnotationComposer(
+              $$VisibleRangeRuleUsageRowsTableAnnotationComposer(
                 $db: db,
                 $table: table,
               ),
@@ -11063,44 +10915,32 @@ class $$VisibleRangeSessionRowsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> rangeId = const Value.absent(),
-                Value<String> ruleId = const Value.absent(),
+                Value<String> targetId = const Value.absent(),
                 Value<String> kind = const Value.absent(),
-                Value<String> mode = const Value.absent(),
-                Value<String> initialFilters = const Value.absent(),
-                Value<String> finalFilters = const Value.absent(),
-                Value<int> createdAt = const Value.absent(),
+                Value<int> usedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => VisibleRangeSessionRowsCompanion(
+              }) => VisibleRangeRuleUsageRowsCompanion(
                 id: id,
                 rangeId: rangeId,
-                ruleId: ruleId,
+                targetId: targetId,
                 kind: kind,
-                mode: mode,
-                initialFilters: initialFilters,
-                finalFilters: finalFilters,
-                createdAt: createdAt,
+                usedAt: usedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
                 required String id,
                 required String rangeId,
-                required String ruleId,
+                Value<String> targetId = const Value.absent(),
                 required String kind,
-                required String mode,
-                Value<String> initialFilters = const Value.absent(),
-                Value<String> finalFilters = const Value.absent(),
-                required int createdAt,
+                required int usedAt,
                 Value<int> rowid = const Value.absent(),
-              }) => VisibleRangeSessionRowsCompanion.insert(
+              }) => VisibleRangeRuleUsageRowsCompanion.insert(
                 id: id,
                 rangeId: rangeId,
-                ruleId: ruleId,
+                targetId: targetId,
                 kind: kind,
-                mode: mode,
-                initialFilters: initialFilters,
-                finalFilters: finalFilters,
-                createdAt: createdAt,
+                usedAt: usedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -11111,25 +10951,25 @@ class $$VisibleRangeSessionRowsTableTableManager
       );
 }
 
-typedef $$VisibleRangeSessionRowsTableProcessedTableManager =
+typedef $$VisibleRangeRuleUsageRowsTableProcessedTableManager =
     ProcessedTableManager<
       _$AppDatabase,
-      $VisibleRangeSessionRowsTable,
-      VisibleRangeSessionRow,
-      $$VisibleRangeSessionRowsTableFilterComposer,
-      $$VisibleRangeSessionRowsTableOrderingComposer,
-      $$VisibleRangeSessionRowsTableAnnotationComposer,
-      $$VisibleRangeSessionRowsTableCreateCompanionBuilder,
-      $$VisibleRangeSessionRowsTableUpdateCompanionBuilder,
+      $VisibleRangeRuleUsageRowsTable,
+      VisibleRangeRuleUsageRow,
+      $$VisibleRangeRuleUsageRowsTableFilterComposer,
+      $$VisibleRangeRuleUsageRowsTableOrderingComposer,
+      $$VisibleRangeRuleUsageRowsTableAnnotationComposer,
+      $$VisibleRangeRuleUsageRowsTableCreateCompanionBuilder,
+      $$VisibleRangeRuleUsageRowsTableUpdateCompanionBuilder,
       (
-        VisibleRangeSessionRow,
+        VisibleRangeRuleUsageRow,
         BaseReferences<
           _$AppDatabase,
-          $VisibleRangeSessionRowsTable,
-          VisibleRangeSessionRow
+          $VisibleRangeRuleUsageRowsTable,
+          VisibleRangeRuleUsageRow
         >,
       ),
-      VisibleRangeSessionRow,
+      VisibleRangeRuleUsageRow,
       PrefetchHooks Function()
     >;
 typedef $$VisibleRangeKeyValuesTableCreateCompanionBuilder =
@@ -11298,6 +11138,7 @@ typedef $$WallpaperGroupRowsTableCreateCompanionBuilder =
     WallpaperGroupRowsCompanion Function({
       required String id,
       Value<String> name,
+      Value<String> description,
       Value<bool> enabled,
       Value<bool> current,
       Value<int> position,
@@ -11309,6 +11150,7 @@ typedef $$WallpaperGroupRowsTableUpdateCompanionBuilder =
     WallpaperGroupRowsCompanion Function({
       Value<String> id,
       Value<String> name,
+      Value<String> description,
       Value<bool> enabled,
       Value<bool> current,
       Value<int> position,
@@ -11333,6 +11175,11 @@ class $$WallpaperGroupRowsTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11381,6 +11228,11 @@ class $$WallpaperGroupRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get enabled => $composableBuilder(
     column: $table.enabled,
     builder: (column) => ColumnOrderings(column),
@@ -11421,6 +11273,11 @@ class $$WallpaperGroupRowsTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<bool> get enabled =>
       $composableBuilder(column: $table.enabled, builder: (column) => column);
@@ -11480,6 +11337,7 @@ class $$WallpaperGroupRowsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<String> description = const Value.absent(),
                 Value<bool> enabled = const Value.absent(),
                 Value<bool> current = const Value.absent(),
                 Value<int> position = const Value.absent(),
@@ -11489,6 +11347,7 @@ class $$WallpaperGroupRowsTableTableManager
               }) => WallpaperGroupRowsCompanion(
                 id: id,
                 name: name,
+                description: description,
                 enabled: enabled,
                 current: current,
                 position: position,
@@ -11500,6 +11359,7 @@ class $$WallpaperGroupRowsTableTableManager
               ({
                 required String id,
                 Value<String> name = const Value.absent(),
+                Value<String> description = const Value.absent(),
                 Value<bool> enabled = const Value.absent(),
                 Value<bool> current = const Value.absent(),
                 Value<int> position = const Value.absent(),
@@ -11509,6 +11369,7 @@ class $$WallpaperGroupRowsTableTableManager
               }) => WallpaperGroupRowsCompanion.insert(
                 id: id,
                 name: name,
+                description: description,
                 enabled: enabled,
                 current: current,
                 position: position,
@@ -11584,10 +11445,10 @@ class $AppDatabaseManager {
       $$VisibleRangeRowsTableTableManager(_db, _db.visibleRangeRows);
   $$VisibleRangeRuleRowsTableTableManager get visibleRangeRuleRows =>
       $$VisibleRangeRuleRowsTableTableManager(_db, _db.visibleRangeRuleRows);
-  $$VisibleRangeSessionRowsTableTableManager get visibleRangeSessionRows =>
-      $$VisibleRangeSessionRowsTableTableManager(
+  $$VisibleRangeRuleUsageRowsTableTableManager get visibleRangeRuleUsageRows =>
+      $$VisibleRangeRuleUsageRowsTableTableManager(
         _db,
-        _db.visibleRangeSessionRows,
+        _db.visibleRangeRuleUsageRows,
       );
   $$VisibleRangeKeyValuesTableTableManager get visibleRangeKeyValues =>
       $$VisibleRangeKeyValuesTableTableManager(_db, _db.visibleRangeKeyValues);

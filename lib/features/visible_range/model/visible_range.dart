@@ -41,12 +41,14 @@ enum VisibleRangeRuleKind {
   static VisibleRangeRuleKind parse(String? value) => VisibleRangeRuleKind.values.firstWhere((v) => v.name == value, orElse: () => restriction);
 }
 
-/// How an "activate to media set" session was started.
+/// How a single rule opens the media set from its editor.
+///
+/// [override] replaces the media set's filters, [append] adds to them. A
+/// multi-selection always appends, so this mode only describes the one-rule
+/// editor.
 enum VisibleRangeActivationMode {
   override,
-  append;
-
-  static VisibleRangeActivationMode parse(String? value) => VisibleRangeActivationMode.values.firstWhere((v) => v.name == value, orElse: () => override);
+  append,
 }
 
 /// Preset lock behaviour. The lock is casual protection inside Aves, never a
@@ -215,14 +217,6 @@ class VisibleRangeRule extends Equatable {
     );
   }
 
-  /// Applies a session delta: only the filters the user actually added/removed
-  /// are written back, so two sessions of the same range never overwrite each
-  /// other's unrelated edits.
-  VisibleRangeRule applyDelta({required Set<CollectionFilter> added, required Set<CollectionFilter> removed}) {
-    final next = filters.whereNot(removed.contains).toSet()..addAll(added);
-    return copyWith(filters: next);
-  }
-
   @override
   List<Object?> get props => [id, rangeId, kind, position, label, description, filters, active];
 }
@@ -268,50 +262,6 @@ class VisibleRangePreset extends Equatable {
 
   @override
   List<Object?> get props => [id, name, description, filters, builtin, position];
-}
-
-/// One "activate to media set" record.
-@immutable
-class VisibleRangeSession extends Equatable {
-  final String id;
-  final String rangeId;
-  final String ruleId;
-  final VisibleRangeRuleKind kind;
-  final VisibleRangeActivationMode mode;
-  final Set<CollectionFilter> initialFilters;
-  final Set<CollectionFilter> finalFilters;
-  final int createdAt;
-
-  const new({
-    required this.id,
-    required this.rangeId,
-    required this.ruleId,
-    required this.kind,
-    required this.mode,
-    required this.initialFilters,
-    required this.finalFilters,
-    required this.createdAt,
-  });
-
-  Set<CollectionFilter> get added => finalFilters.whereNot(initialFilters.contains).toSet();
-
-  Set<CollectionFilter> get removed => initialFilters.whereNot(finalFilters.contains).toSet();
-
-  bool get hasChanges => added.isNotEmpty || removed.isNotEmpty;
-
-  VisibleRangeSession withFinal(Set<CollectionFilter> filters) => VisibleRangeSession(
-        id: id,
-        rangeId: rangeId,
-        ruleId: ruleId,
-        kind: kind,
-        mode: mode,
-        initialFilters: initialFilters,
-        finalFilters: filters,
-        createdAt: createdAt,
-      );
-
-  @override
-  List<Object?> get props => [id, rangeId, ruleId, kind, mode, initialFilters, finalFilters, createdAt];
 }
 
 /// A complete visible range: base + rule sets + order.

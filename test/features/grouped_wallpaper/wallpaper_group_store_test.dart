@@ -3,6 +3,7 @@ import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/features/visible_range/model/visible_range_usage.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/path.dart';
 import 'package:aves/services/common/services.dart';
@@ -57,7 +58,7 @@ void main() {
     expect((await store.loadGroups()).map((g) => g.id), ['c', 'a', 'b']);
   });
 
-  test('deleting a group also deletes its range, rules and sessions', () async {
+  test('deleting a group also deletes its range, rules and applied targets', () async {
     await store.saveGroups([group('a'), group('b')]);
     final ranges = VisibleRangeStore(db);
     final rangeId = wallpaperGroupRangeId('b');
@@ -74,6 +75,7 @@ void main() {
         updatedAt: 2,
       ),
     );
+    await ranges.saveUsage(VisibleRangeRuleUsage.forRule(ruleId: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, usedAt: 1));
     expect(await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: 'b'), isNotNull);
 
     await store.deleteGroup('b');
@@ -81,6 +83,7 @@ void main() {
     expect((await store.loadGroups()).map((g) => g.id), ['a']);
     expect(await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: 'b'), isNull);
     expect(await db.select(db.visibleRangeRuleRows).get(), isEmpty);
+    expect(await db.select(db.visibleRangeRuleUsageRows).get(), isEmpty);
   });
 
   test('the defaults version round-trips through appMeta', () async {

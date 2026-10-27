@@ -15,13 +15,6 @@ const String wallpaperGroupNoneId = 'none';
 /// range, and renumbering the groups never moves a range.
 String wallpaperGroupRangeId(String groupId) => '$groupId.range';
 
-/// Rule id owned by a wallpaper group.
-///
-/// Rule ids are global (one table), so the same bundled candidate gets a
-/// different id per group: seeding the same restrictions into two groups must
-/// not collide. The prefix keeps the id readable in a database dump.
-String wallpaperGroupRuleId(String groupId, String definitionId) => '$groupId.rule.$definitionId';
-
 /// One wallpaper group: the unit that owns a visible range.
 ///
 /// [number] is derived from the stored position (`1..n`), never edited by hand.
@@ -33,6 +26,10 @@ class WallpaperGroup extends Equatable {
   final String id;
   final int number;
   final String name;
+
+  /// Free-form note shown under the name on the group cards. New groups start
+  /// with the creation date, and a bundled group starts empty.
+  final String description;
   final bool enabled;
 
   /// The group the actual wallpaper uses. At most one group is current; when no
@@ -45,6 +42,7 @@ class WallpaperGroup extends Equatable {
     required this.id,
     this.number = 0,
     this.name = '',
+    this.description = '',
     this.enabled = true,
     this.current = false,
     this.createdAt = 0,
@@ -68,6 +66,7 @@ class WallpaperGroup extends Equatable {
   WallpaperGroup copyWith({
     int? number,
     String? name,
+    String? description,
     bool? enabled,
     bool? current,
     int? updatedAt,
@@ -76,6 +75,7 @@ class WallpaperGroup extends Equatable {
       id: id,
       number: number ?? this.number,
       name: name ?? this.name,
+      description: description ?? this.description,
       enabled: enabled ?? this.enabled,
       current: current ?? this.current,
       createdAt: createdAt,
@@ -84,5 +84,5 @@ class WallpaperGroup extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, number, name, enabled, current, createdAt, updatedAt];
+  List<Object?> get props => [id, number, name, description, enabled, current, createdAt, updatedAt];
 }

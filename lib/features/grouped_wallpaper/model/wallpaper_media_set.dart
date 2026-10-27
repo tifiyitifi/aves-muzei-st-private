@@ -19,3 +19,9 @@ CollectionFilter? wallpaperMediaSetFilter(VisibleRange? range) {
   if (resolved == null) return MimeFilter.image;
   return SetAndFilter({MimeFilter.image, resolved});
 }
+
+/// Whether a base filter set only allows videos.
+///
+/// Wallpaper never uses videos, so a video-only base is not a choice the
+/// wallpaper page offers. The gallery keeps it: its browsing does show videos.
+bool isVideoOnlyFilterSet(Set<CollectionFilter> filters) => filters.isNotEmpty && filters.every((filter) => filter is MimeFilter && filter.mime.startsWith('video/'));

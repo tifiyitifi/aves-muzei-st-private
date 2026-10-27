@@ -88,4 +88,15 @@ void main() {
     expect(renamed.createdAt, 5);
     expect(renamed.updatedAt, 6);
   });
+
+  test('a description is part of the group identity and survives a rename', () {
+    const group = WallpaperGroup(id: 'g', name: 'Trips', description: 'created today', createdAt: 5, updatedAt: 6);
+    final renamed = group.copyWith(name: 'Mine', updatedAt: 7);
+
+    expect(renamed.description, 'created today');
+    expect(renamed.updatedAt, 7);
+    expect(group.copyWith(description: 'summer').description, 'summer');
+    // The description participates in equality, so a list change is noticed.
+    expect(group, isNot(group.copyWith(description: 'other')));
+  });
 }

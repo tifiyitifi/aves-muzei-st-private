@@ -1,6 +1,8 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
+import 'package:aves/features/visible_range/model/visible_range_usage.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:drift/native.dart';
@@ -8,8 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/sqlite3_loader.dart';
 
-/// Persistence round-trips for visible ranges, rules, presets, state and
-/// sessions, including explicit cleanup (foreign keys are off).
+/// Persistence round-trips for visible ranges, rules, presets, state and applied
+/// targets, including explicit cleanup (foreign keys are off).
 void main() {
   setUpAll(ensureSqlite3Loaded);
 
@@ -94,26 +96,15 @@ void main() {
     expect((await store.loadRules(range.id)).map((r) => r.id), ['r2']);
   });
 
-  test('deleting a range clears its rules and sessions', () async {
+  test('deleting a range clears its rules and applied targets', () async {
     final range = makeRange();
     await store.saveRange(range);
     await store.saveRule(VisibleRangeRule(id: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, filters: {image}));
-    await store.saveSession(
-      VisibleRangeSession(
-        id: 's1',
-        rangeId: range.id,
-        ruleId: 'r1',
-        kind: VisibleRangeRuleKind.restriction,
-        mode: VisibleRangeActivationMode.override,
-        initialFilters: {image},
-        finalFilters: {favourite},
-        createdAt: 1,
-      ),
-    );
+    await store.saveUsage(VisibleRangeRuleUsage.forRule(ruleId: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, usedAt: 1));
     await store.deleteRange(range.id);
     expect(await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId), isNull);
     expect(await store.loadRules(range.id), isEmpty);
-    expect(await store.loadSessions(), isEmpty);
+    expect(await store.loadUsages(), isEmpty);
   });
 
   test('presets and state round-trip', () async {
@@ -131,21 +122,22 @@ void main() {
     expect(await store.readState(VisibleRangeStore.keySeeded), isNull);
   });
 
-  test('sessions can be filtered by range and cleared', () async {
-    VisibleRangeSession session(String id, String rangeId) => VisibleRangeSession(
-          id: id,
-          rangeId: rangeId,
-          ruleId: 'r1',
-          kind: VisibleRangeRuleKind.restriction,
-          mode: VisibleRangeActivationMode.append,
-          initialFilters: {image},
-          finalFilters: {favourite},
-          createdAt: 1,
-        );
-    await store.saveSession(session('s1', 'gallery'));
-    await store.saveSession(session('s2', 'other'));
-    expect((await store.loadSessions(rangeId: 'gallery')).map((s) => s.id), ['s1']);
-    await store.clearSessions();
-    expect(await store.loadSessions(), isEmpty);
+  test('applied targets round-trip and follow their rule', () async {
+    final range = makeRange();
+    final rule = VisibleRangeRule(id: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, filters: {image});
+    await store.saveRange(range.copyWith(rules: [rule]));
+    await store.saveUsage(VisibleRangeRuleUsage.forRule(ruleId: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, usedAt: 1));
+    await store.saveUsage(VisibleRangeRuleUsage.forBase(rangeId: range.id, usedAt: 2));
+
+    final usages = await store.loadUsages();
+    expect(usages.map((usage) => usage.id), [baseUsageId(range.id), ruleUsageId('r1')]);
+    expect(usages.last.targetId, 'r1');
+    expect(usages.last.kind, VisibleRangeCandidateKind.restriction);
+    expect(usages.first.isBase, isTrue);
+
+    // A rule removed from the range cannot be written back any more; the base
+    // target belongs to the range itself and stays.
+    await store.saveRange(range.copyWith(rules: const []));
+    expect((await store.loadUsages()).map((usage) => usage.id), [baseUsageId(range.id)]);
   });
 }

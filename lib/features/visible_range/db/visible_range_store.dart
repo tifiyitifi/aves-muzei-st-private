@@ -1,6 +1,9 @@
 import 'dart:convert';
 
-import 'package:aves/features/drift_db/app_database.dart';import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/features/drift_db/app_database.dart';
+import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
+import 'package:aves/features/visible_range/model/visible_range_usage.dart';
 import 'package:drift/drift.dart';
 
 /// Persistence for visible ranges. Every read is scope+owner qualified, so the
@@ -73,6 +76,18 @@ class VisibleRangeStore {
       for (final rule in range.rules) {
         await saveRule(rule);
       }
+      // A rule that no longer exists cannot be written back: drop the targets
+      // that pointed at the removed rules. The base target belongs to the range
+      // itself, so it stays.
+      final keptRuleIds = {for (final rule in range.rules) rule.id};
+      final usageRows = await (db.select(db.visibleRangeRuleUsageRows)..where((t) => t.rangeId.equals(range.id))).get();
+      final stale = [
+        for (final row in usageRows)
+          if (!row.id.startsWith('base.') && !keptRuleIds.contains(row.targetId)) row.id,
+      ];
+      if (stale.isNotEmpty) {
+        await (db.delete(db.visibleRangeRuleUsageRows)..where((t) => t.id.isIn(stale))).go();
+      }
     });
   }
 
@@ -88,7 +103,7 @@ class VisibleRangeStore {
   Future<void> deleteRange(String id) async {
     await db.transaction(() async {
       await (db.delete(db.visibleRangeRuleRows)..where((t) => t.rangeId.equals(id))).go();
-      await (db.delete(db.visibleRangeSessionRows)..where((t) => t.rangeId.equals(id))).go();
+      await (db.delete(db.visibleRangeRuleUsageRows)..where((t) => t.rangeId.equals(id))).go();
       await (db.delete(db.visibleRangeRows)..where((t) => t.id.equals(id))).go();
     });
   }
@@ -178,41 +193,31 @@ class VisibleRangeStore {
     );
   }
 
-  // sessions
+  // usage
 
-  Future<List<VisibleRangeSession>> loadSessions({String? rangeId}) async {
-    final query = db.select(db.visibleRangeSessionRows);
-    if (rangeId != null) {
-      query.where((t) => t.rangeId.equals(rangeId));
-    }
-    query.orderBy([(t) => OrderingTerm.asc(t.createdAt)]);
+  /// Every remembered target, most recently used first.
+  Future<List<VisibleRangeRuleUsage>> loadUsages() async {
+    final query = db.select(db.visibleRangeRuleUsageRows)..orderBy([(t) => OrderingTerm.desc(t.usedAt)]);
     final rows = await query.get();
-    return [for (final row in rows) _toSession(row)];
+    return [for (final row in rows) _toUsage(row)];
   }
 
-  Future<void> saveSession(VisibleRangeSession session) async {
-    await db.visibleRangeSessionRows.insertOnConflictUpdate(
-      VisibleRangeSessionRowsCompanion.insert(
-        id: session.id,
-        rangeId: session.rangeId,
-        ruleId: session.ruleId,
-        kind: session.kind.name,
-        mode: session.mode.name,
-        createdAt: session.createdAt,
-        initialFilters: Value(VisibleRangeFilterCodec.encode(session.initialFilters)),
-        finalFilters: Value(VisibleRangeFilterCodec.encode(session.finalFilters)),
+  Future<void> saveUsage(VisibleRangeRuleUsage usage) async {
+    await db.visibleRangeRuleUsageRows.insertOnConflictUpdate(
+      VisibleRangeRuleUsageRowsCompanion.insert(
+        id: usage.id,
+        rangeId: usage.rangeId,
+        targetId: Value(usage.targetId),
+        kind: usage.kind.name,
+        usedAt: usage.usedAt,
       ),
     );
   }
 
-  Future<void> deleteSessions(Iterable<String> ids) async {
+  Future<void> deleteUsages(Iterable<String> ids) async {
     final list = ids.toList();
     if (list.isEmpty) return;
-    await (db.delete(db.visibleRangeSessionRows)..where((t) => t.id.isIn(list))).go();
-  }
-
-  Future<void> clearSessions() async {
-    await db.delete(db.visibleRangeSessionRows).go();
+    await (db.delete(db.visibleRangeRuleUsageRows)..where((t) => t.id.isIn(list))).go();
   }
 
   // mapping
@@ -254,15 +259,12 @@ class VisibleRangeStore {
         position: row.position,
       );
 
-  static VisibleRangeSession _toSession(VisibleRangeSessionRow row) => VisibleRangeSession(
+  static VisibleRangeRuleUsage _toUsage(VisibleRangeRuleUsageRow row) => VisibleRangeRuleUsage(
         id: row.id,
         rangeId: row.rangeId,
-        ruleId: row.ruleId,
-        kind: VisibleRangeRuleKind.parse(row.kind),
-        mode: VisibleRangeActivationMode.parse(row.mode),
-        initialFilters: VisibleRangeFilterCodec.decode(row.initialFilters),
-        finalFilters: VisibleRangeFilterCodec.decode(row.finalFilters),
-        createdAt: row.createdAt,
+        targetId: row.targetId,
+        kind: VisibleRangeCandidateKind.values.firstWhere((v) => v.name == row.kind, orElse: () => VisibleRangeCandidateKind.restriction),
+        usedAt: row.usedAt,
       );
 
   static String _encodePermissions(VisibleRangePermissions permissions) => jsonEncode(permissions.toMap());

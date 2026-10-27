@@ -7,7 +7,6 @@ import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dart';
-import 'package:aves/features/visible_range/data/default_presets.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/services/common/services.dart';
@@ -28,10 +27,11 @@ typedef WallpaperGroupDefaultLoader = Future<List<WallpaperGroupDefinition>> Fun
 /// `isActive` arbitration belong to the engine phase.
 class WallpaperGroupController extends ChangeNotifier {
   /// Version of the bundled defaults last applied, mirroring the visible-range
-  /// seeding. A bump re-applies the bundle order and prunes built-in groups that
-  /// no longer ship, while a renamed or narrowed group keeps what the user made
-  /// of it.
-  static const defaultsVersion = 1;
+  /// seeding. A bump re-applies the bundle order, prunes built-in groups that no
+  /// longer ship and removes the restriction/supplement candidates older
+  /// versions materialized into every group, while a renamed or narrowed group
+  /// keeps what the user made of it.
+  static const defaultsVersion = 2;
 
   /// Prefix of the built-in group ids, so a bundle bump can tell them apart from
   /// the user's own groups.
@@ -45,17 +45,11 @@ class WallpaperGroupController extends ChangeNotifier {
   /// ready instead of being seeded closed.
   final bool _usesBundledDefaults;
 
-  /// Loads the bundled restriction/supplement candidates reused per group;
-  /// injectable so tests need no asset bundle.
-  final Future<List<VisibleRangePresetDefinition>> Function() ruleLoader;
-
   new({
     this.injectedDatabase,
     WallpaperGroupDefaultLoader? defaultLoader,
-    Future<List<VisibleRangePresetDefinition>> Function()? ruleLoader,
   })  : _usesBundledDefaults = defaultLoader == null,
-        defaultLoader = defaultLoader ?? _loadBundledDefaults,
-        ruleLoader = ruleLoader ?? loadVisibleRangePresetDefinitions;
+        defaultLoader = defaultLoader ?? _loadBundledDefaults;
 
   static Future<List<WallpaperGroupDefinition>> _loadBundledDefaults() => loadWallpaperGroupDefinitions();
 
@@ -122,7 +116,6 @@ class WallpaperGroupController extends ChangeNotifier {
     }
     final definitions = await defaultLoader();
     if (definitions.isEmpty) return null;
-    final ruleCandidates = await _loadRuleCandidates();
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final ranges = VisibleRangeStore(store.db);
@@ -152,7 +145,6 @@ class WallpaperGroupController extends ChangeNotifier {
           // A base name is only shown when the base is not 「unrestricted」.
           baseName: definition.filters.isEmpty ? '' : '@${definition.nameKey}',
           baseFilters: definition.filters,
-          rules: _bundledRules(definition.id, ruleCandidates),
           createdAt: now,
           updatedAt: now,
         ),
@@ -163,11 +155,36 @@ class WallpaperGroupController extends ChangeNotifier {
     for (final dropped in groups.where((group) => _isBundledGroup(group.id) && !bundledIds.contains(group.id))) {
       await store.deleteGroup(dropped.id);
     }
+    // A wallpaper group starts with its one exclusive base and nothing else:
+    // the gallery's restriction/supplement catalogue is not copied here. Older
+    // versions materialized it, so the bump removes those seeded rules while a
+    // rule the user switched on or renamed stays.
+    await _pruneSeededRules(ranges, next);
 
     final restored = _applyBundledCurrent(normalizeWallpaperGroups(next), definitions);
     await store.saveGroups(restored);
     await store.writeDefaultsVersion(defaultsVersion);
     return restored;
+  }
+
+  /// Drops the rule candidates an older defaults version seeded into a group.
+  ///
+  /// Only rules that are still switched off and still carry their bundled `@`
+  /// label go: an activation or a rename is the user's decision and outlives the
+  /// bundle. Ids are prefixed with the group id, so a user rule is never caught.
+  static Future<void> _pruneSeededRules(VisibleRangeStore ranges, Iterable<WallpaperGroup> groups) async {
+    for (final group in groups) {
+      final range = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
+      if (range == null) continue;
+      final prefix = '${group.id}.rule.';
+      final kept = [
+        for (final rule in range.rules)
+          if (!(rule.id.startsWith(prefix) && !rule.active && rule.label.startsWith('@'))) rule,
+      ];
+      if (kept.length != range.rules.length) {
+        await ranges.saveRange(range.copyWith(rules: kept));
+      }
+    }
   }
 
   /// Gives the bundle's declared current group the flag when nothing is current.
@@ -181,50 +198,6 @@ class WallpaperGroupController extends ChangeNotifier {
   }
 
   static bool _isBundledGroup(String id) => id.startsWith(bundledGroupIdPrefix);
-
-  /// The bundled restriction/supplement candidates, reused for every group.
-  ///
-  /// A wallpaper group narrows like the gallery does, so its page offers the
-  /// same vocabulary instead of an empty restrictions/supplements section. All
-  /// of them start switched off. A candidate whose folder cannot be resolved is
-  /// skipped by the asset parser, which is the same fail-closed rule the gallery
-  /// applies.
-  Future<List<VisibleRangePresetDefinition>> _loadRuleCandidates() async {
-    try {
-      final definitions = await ruleLoader();
-      return definitions.where((definition) => definition.kind != VisibleRangePresetKind.base).toList();
-    } catch (error, stack) {
-      groupedWallpaperLog.e('failed to load the bundled rule candidates, seeding bare groups', error, stack);
-      return const [];
-    }
-  }
-
-  /// Materializes the bundled rules for one group, all inactive.
-  ///
-  /// Rule ids are global, so the same candidate gets a per-group id; position is
-  /// per kind, matching the gallery's ordering.
-  List<VisibleRangeRule> _bundledRules(String groupId, List<VisibleRangePresetDefinition> candidates) {
-    final rangeId = wallpaperGroupRangeId(groupId);
-    final restriction = candidates.where((definition) => definition.kind == VisibleRangePresetKind.restriction).toList();
-    final supplement = candidates.where((definition) => definition.kind == VisibleRangePresetKind.supplement).toList();
-    return [
-      for (var i = 0; i < restriction.length; i++)
-        _bundledRule(groupId, rangeId, restriction[i], VisibleRangeRuleKind.restriction, i),
-      for (var i = 0; i < supplement.length; i++)
-        _bundledRule(groupId, rangeId, supplement[i], VisibleRangeRuleKind.supplement, i),
-    ];
-  }
-
-  static VisibleRangeRule _bundledRule(String groupId, String rangeId, VisibleRangePresetDefinition definition, VisibleRangeRuleKind kind, int position) => VisibleRangeRule(
-        id: wallpaperGroupRuleId(groupId, definition.id),
-        rangeId: rangeId,
-        kind: kind,
-        position: position,
-        // `@` marks an ARB key, like the gallery's own default rules.
-        label: '@${definition.nameKey}',
-        filters: definition.filters,
-        active: false,
-      );
 
   /// Makes the standard directories available before the asset is resolved.
   ///
@@ -250,13 +223,14 @@ class WallpaperGroupController extends ChangeNotifier {
   /// A new group starts unrestricted: the user just created it, so showing every
   /// image until they narrow it is the expected behaviour. Failing closed only
   /// applies to a bundled group whose folder could not be resolved.
-  Future<void> addGroup({String name = ''}) async {
+  Future<void> addGroup({String name = '', String description = ''}) async {
     _requireInitialized();
     final store = await _openStore();
     final now = _now;
     final group = WallpaperGroup(
       id: 'group.$now.${_idSequence++}',
       name: name.trim(),
+      description: description.trim(),
       enabled: true,
       createdAt: now,
       updatedAt: now,
@@ -264,19 +238,25 @@ class WallpaperGroupController extends ChangeNotifier {
     await _commit(store, [..._groups, group]);
   }
 
-  Future<void> renameGroup(String id, String name) async {
+  /// Updates the user text of a group. An empty name keeps the current one, so
+  /// the dialog cannot leave a group nameless.
+  Future<void> updateGroup(String id, {required String name, String? description}) async {
     _requireInitialized();
     final trimmed = name.trim();
+    final nextDescription = description?.trim();
     final group = _groups.firstWhereOrNull((candidate) => candidate.id == id);
-    if (group == null || trimmed.isEmpty || group.name == trimmed) return;
+    if (group == null) return;
+    final nextName = trimmed.isEmpty ? group.name : trimmed;
+    final resolvedDescription = nextDescription ?? group.description;
+    if (group.name == nextName && group.description == resolvedDescription) return;
     final store = await _openStore();
     await _commit(store, [
       for (final candidate in _groups)
-        if (candidate.id == id) candidate.copyWith(name: trimmed, updatedAt: _now) else candidate,
+        if (candidate.id == id) candidate.copyWith(name: nextName, description: resolvedDescription, updatedAt: _now) else candidate,
     ]);
   }
 
-  /// Deletes a group and its range.
+  /// Deletes a group together with its visible range.
   ///
   /// Refuses to remove the last group: the page and the notification need one
   /// concrete group to fall back to, even when every group is disabled.

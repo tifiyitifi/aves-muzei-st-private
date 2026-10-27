@@ -67,8 +67,6 @@ class VisibleRangeController extends ChangeNotifier {
   VisibleRangeStore? _store;
   VisibleRange? _gallery;
   List<VisibleRangePreset> _presets = const [];
-  List<VisibleRangeSession> _sessions = const [];
-  String? _openSessionId;
   VisibleRangeLockPreset _lastLockPreset = VisibleRangeLockPreset.readOnly;
   VisibleRangeActiveStyle _activeStyle = VisibleRangeActiveStyle.section;
   Future<void>? _initFuture;
@@ -79,9 +77,6 @@ class VisibleRangeController extends ChangeNotifier {
   VisibleRange get gallery => _gallery ?? VisibleRange.emptyGallery();
 
   List<VisibleRangePreset> get presets => _presets;
-
-  /// Sessions recorded since the last save. Any save clears them.
-  List<VisibleRangeSession> get sessions => _sessions;
 
   /// The filter resolved from the current gallery range, or null for 「不限」.
   CollectionFilter? get galleryFilter => gallery.resolve();
@@ -122,7 +117,6 @@ class VisibleRangeController extends ChangeNotifier {
     try {
       _presets = await store.loadPresets();
       _gallery = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId) ?? VisibleRange.emptyGallery(now: _now);
-      _sessions = await store.loadSessions(rangeId: _gallery!.id);
       final lastLockPreset = await store.readState(VisibleRangeStore.keyLastLockPreset);
       _lastLockPreset = VisibleRangeLockPreset.values.firstWhere(
         (v) => v.name == lastLockPreset,
@@ -557,76 +551,6 @@ class VisibleRangeController extends ChangeNotifier {
     await _updateGallery((range) => range.copyWith(locked: false, permissions: VisibleRangePermissions.readOnly));
   }
 
-  // sessions
-
-  /// Starts a session for activating [rule] to the media set.
-  ///
-  /// [resultingFilters] are the filters the media set actually opened with, so
-  /// the delta write-back only accounts for what this activation added.
-  Future<VisibleRangeSession> beginActivation({
-    required VisibleRangeRule rule,
-    required VisibleRangeActivationMode mode,
-    required Set<CollectionFilter> resultingFilters,
-  }) async {
-    // An activation is a new session; it never retroactively rewrites the one
-    // before it (that one is closed when its media set is popped).
-    _openSessionId = null;
-    final session = VisibleRangeSession(
-      id: _newId('session'),
-      rangeId: gallery.id,
-      ruleId: rule.id,
-      kind: rule.kind,
-      mode: mode,
-      initialFilters: resultingFilters,
-      finalFilters: resultingFilters,
-      createdAt: _now,
-    );
-    await _requireStore().saveSession(session);
-    _openSessionId = session.id;
-    _sessions = [..._sessions, session];
-    notifyListeners();
-    return session;
-  }
-
-  /// Snapshots the media set when the user leaves it. Only the open session is
-  /// updated; older sessions keep the final filters they were closed with.
-  Future<void> closeOpenSession(Set<CollectionFilter> finalFilters) async {
-    final id = _openSessionId;
-    if (id == null) return;
-    _openSessionId = null;
-    final session = _sessions.firstWhereOrNull((v) => v.id == id);
-    if (session == null) return;
-    final updated = session.withFinal(finalFilters);
-    await _requireStore().saveSession(updated);
-    _sessions = [for (final s in _sessions) s.id == id ? updated : s];
-    notifyListeners();
-  }
-
-  /// Writes a session's added/removed filters back to its source rule, then
-  /// clears every session (a save always clears them).
-  Future<VisibleRangeRule?> writeBackSession(String sessionId) async {
-    final session = _sessions.firstWhereOrNull((v) => v.id == sessionId);
-    if (session == null) return null;
-    final rule = gallery.ruleById(session.ruleId);
-    if (rule != null) {
-      // The lock freezes rule edits, but a write-back is the save the user
-      // explicitly chose; it still respects the lock's edit permission.
-      if (gallery.locked && !gallery.permissions.edit) return null;
-      await updateRule(rule.applyDelta(added: session.added, removed: session.removed));
-    }
-    await clearSessions();
-    return rule == null ? null : gallery.ruleById(rule.id);
-  }
-
-  /// Clears every session record. Called by any save, chosen write-back or not.
-  Future<void> clearSessions() async {
-    _openSessionId = null;
-    if (_sessions.isEmpty) return;
-    await _requireStore().clearSessions();
-    _sessions = const [];
-    notifyListeners();
-  }
-
   // helpers
 
   Future<void> _updateGallery(VisibleRange Function(VisibleRange range) transform) async {
@@ -654,9 +578,9 @@ class VisibleRangeController extends ChangeNotifier {
 
   /// Monotonic suffix for generated ids.
   ///
-  /// Sessions, rules and presets can be created twice in the same millisecond
-  /// (a test, a two-group pin, or two quick taps). A timestamp alone then yields
-  /// duplicate ids, and the session write-back would update the wrong record.
+  /// Rules and presets can be created twice in the same millisecond (a test, a
+  /// two-group pin, or two quick taps). A timestamp alone then yields duplicate
+  /// ids, and a later write-back would update the wrong record.
   int _idSequence = 0;
 
   String _newId(String prefix) => '$prefix.$_now.${_idSequence++}';

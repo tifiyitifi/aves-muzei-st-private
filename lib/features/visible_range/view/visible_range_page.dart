@@ -718,11 +718,8 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   Future<void> _activate(VisibleRangeRule rule, VisibleRangeActivationMode mode) async {
     final current = mediaSetTab.currentFilters ?? const <CollectionFilter>{};
     final target = mode == VisibleRangeActivationMode.override ? rule.filters : {...current, ...rule.filters};
-    await _controller.beginActivation(rule: rule, mode: mode, resultingFilters: target);
-    if (!mounted) return;
     _browseSelection();
     await AvesNavItem(route: CollectionPage.routeName, filters: target).goTo(context, topLevel: false);
-    await _controller.closeOpenSession(mediaSetTab.currentFilters ?? target);
   }
 
   Future<void> _deleteRules(Set<VisibleRangeRule> rules) async {

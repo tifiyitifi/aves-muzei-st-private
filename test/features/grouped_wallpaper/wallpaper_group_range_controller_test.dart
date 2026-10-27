@@ -3,7 +3,6 @@ import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
-import 'package:aves/features/visible_range/data/default_presets.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
@@ -39,9 +38,6 @@ void main() {
         groupController: WallpaperGroupController(
           injectedDatabase: db,
           defaultLoader: () async => definitions(),
-          ruleLoader: () async => [
-            VisibleRangePresetDefinition(id: 'builtin.restriction.image', nameKey: 'visibleRangePresetImage', kind: VisibleRangePresetKind.restriction, filters: {MimeFilter.image}),
-          ],
         ),
         injectedDatabase: db,
       );
@@ -141,16 +137,6 @@ void main() {
     expect(controller.range!.isBaseUnrestricted, isTrue);
   });
 
-  test('a seeded group rule can be switched on', () async {
-    await controller.selectGroup('wallpaper.group.dcim');
-    final rule = controller.range!.rules.single;
-
-    expect(rule.active, isFalse);
-    await controller.toggleRule(rule.id);
-    expect(controller.range!.ruleById(rule.id)!.active, isTrue);
-    expect((await controller.groupController.groupRange('wallpaper.group.dcim')).ruleById(rule.id)!.active, isTrue);
-  });
-
   test('the active-style form is this page\'s own preference', () async {
     expect(controller.activeStyle, VisibleRangeActiveStyle.section);
     await controller.setActiveStyle(VisibleRangeActiveStyle.tiles);
@@ -203,8 +189,9 @@ void main() {
   });
 
   test('group management reaches the controller and persists', () async {
-    await controller.renameGroup('wallpaper.group.all', 'Everything');
+    await controller.updateGroup('wallpaper.group.all', name: 'Everything', description: 'my trips');
     expect(controller.groups.first.name, 'Everything');
+    expect(controller.groups.first.description, 'my trips');
 
     await controller.selectCurrent('wallpaper.group.pictures');
     expect(controller.current.id, 'wallpaper.group.pictures');
@@ -220,6 +207,13 @@ void main() {
     await restarted.init();
     expect(restarted.groups.first.id, 'wallpaper.group.pictures');
     expect(restarted.groups.last.name, 'Everything');
+    expect(restarted.groups.last.description, 'my trips');
     expect(restarted.current.id, 'wallpaper.group.pictures');
+  });
+
+  test('adding a group stores its description', () async {
+    await controller.addGroup(name: 'Trips', description: 'created today');
+    expect(controller.groups.last.description, 'created today');
+    expect((await controller.groupController.groupRange(controller.groups.last.id)).isBaseUnrestricted, isTrue);
   });
 }

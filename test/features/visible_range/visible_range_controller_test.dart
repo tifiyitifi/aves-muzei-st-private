@@ -12,7 +12,7 @@ import 'package:path/path.dart' as p;
 
 import '../../helpers/sqlite3_loader.dart';
 
-/// The controller's persistence, seeding, lock gate and session lifecycle.
+/// The controller's persistence, seeding, lock gate and applied targets.
 void main() {
   setUpAll(() {
     ensureSqlite3Loaded();
@@ -277,53 +277,5 @@ void main() {
     // The dropped built-in rule is gone; only the user rule remains.
     expect(secondController.gallery.rules, hasLength(1));
     expect(secondController.gallery.rules.single.id, userRule.id);
-  });
-
-  group('sessions', () {
-    test('write-back applies only the session delta and clears every session', () async {
-      final rule = (await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {image}))!;
-      // The user opens the media set with the rule, then adds a video filter.
-      await controller.beginActivation(rule: rule, mode: VisibleRangeActivationMode.override, resultingFilters: {image});
-      await controller.closeOpenSession({image, video});
-      expect(controller.sessions.single.added, {video});
-
-      await controller.writeBackSession(controller.sessions.single.id);
-      expect(controller.gallery.ruleById(rule.id)!.filters, {image, video});
-      expect(controller.sessions, isEmpty);
-    });
-
-    test('a stale session does not overwrite a later one', () async {
-      final rule = (await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {image}))!;
-      await controller.beginActivation(rule: rule, mode: VisibleRangeActivationMode.override, resultingFilters: {image});
-      await controller.closeOpenSession({image, favourite});
-      await controller.beginActivation(rule: rule, mode: VisibleRangeActivationMode.override, resultingFilters: {image});
-      await controller.closeOpenSession({image, video});
-
-      // Both sessions stay addressable; writing one back clears all of them.
-      expect(controller.sessions, hasLength(2));
-      expect(controller.sessions.map((session) => session.id).toSet(), hasLength(2), reason: 'ids must stay unique even when created in the same millisecond');
-      await controller.writeBackSession(controller.sessions.first.id);
-      expect(controller.gallery.ruleById(rule.id)!.filters, {image, favourite});
-      expect(controller.sessions, isEmpty);
-    });
-
-    test('saving without a write-back still clears sessions', () async {
-      final rule = (await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {image}))!;
-      await controller.beginActivation(rule: rule, mode: VisibleRangeActivationMode.append, resultingFilters: {favourite, image});
-      await controller.closeOpenSession({favourite, image, video});
-      await controller.clearSessions();
-      expect(controller.sessions, isEmpty);
-      expect(controller.gallery.ruleById(rule.id)!.filters, {image});
-    });
-
-    test('sessions survive a restart until saved', () async {
-      final rule = (await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {image}))!;
-      await controller.beginActivation(rule: rule, mode: VisibleRangeActivationMode.override, resultingFilters: {image});
-      await controller.closeOpenSession({image, video});
-
-      final restarted = VisibleRangeController(injectedDatabase: db, presetLoader: () async => definitions());
-      await restarted.init();
-      expect(restarted.sessions.single.added, {video});
-    });
   });
 }

@@ -1,4 +1,6 @@
 import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
+import 'package:aves/features/visible_range/model/visible_range_usage.dart';
 import 'package:aves/model/filters/container/set_and.dart';
 import 'package:aves/model/filters/container/set_or.dart';
 import 'package:aves/model/filters/favourite.dart';
@@ -10,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 /// Evaluation of a visible range: two group orders, unrestricted bases, the
-/// "restricted" rule, and the session delta write-back.
+/// "restricted" rule, and the applied-target helpers.
 void main() {
   setUpAll(() {
     getIt.registerLazySingleton<p.Context>(() => p.Context(style: p.Style.posix));
@@ -139,46 +141,34 @@ void main() {
     });
   });
 
-  group('session delta', () {
-    VisibleRangeSession session({required Set<CollectionFilter> initial, required Set<CollectionFilter> finalFilters}) {
-      return VisibleRangeSession(
-        id: 's',
-        rangeId: 'r',
-        ruleId: 'r1',
-        kind: VisibleRangeRuleKind.restriction,
-        mode: VisibleRangeActivationMode.override,
-        initialFilters: initial,
-        finalFilters: finalFilters,
-        createdAt: 0,
-      );
-    }
-
-    test('reports only the filters the user added or removed', () {
-      final s = session(initial: {image}, finalFilters: {image, video});
-      expect(s.added, {video});
-      expect(s.removed, isEmpty);
-      expect(s.hasChanges, isTrue);
-    });
-
-    test('write-back applies the delta, keeping unrelated rule filters', () {
-      final original = rule('r1', VisibleRangeRuleKind.restriction, {image, albumA()});
-      final s = session(initial: {image}, finalFilters: {image, video});
-      final written = original.applyDelta(added: s.added, removed: s.removed);
-      expect(written.filters, {image, albumA(), video});
-    });
-
-    test('write-back removes what the user removed', () {
-      final original = rule('r1', VisibleRangeRuleKind.restriction, {image, albumA()});
-      final s = session(initial: {image}, finalFilters: {});
-      final written = original.applyDelta(added: s.added, removed: s.removed);
-      expect(written.filters, {albumA()});
-    });
-  });
-
   group('fingerprint', () {
     test('is order independent and distinguishes different sets', () {
       expect(filterFingerprint({image, video}), filterFingerprint({video, image}));
       expect(filterFingerprint({image}), isNot(filterFingerprint({video})));
+    });
+  });
+
+  group('applied targets', () {
+    test('a rule target keeps its global id and kind', () {
+      final usage = VisibleRangeRuleUsage.forRule(ruleId: 'rule.7', rangeId: 'gallery', kind: VisibleRangeRuleKind.supplement, usedAt: 3);
+      expect(usage.id, 'rule.rule.7');
+      expect(usage.targetId, 'rule.7');
+      expect(usage.rangeId, 'gallery');
+      expect(usage.kind, VisibleRangeCandidateKind.supplement);
+      expect(usage.isBase, isFalse);
+    });
+
+    test('a base target is addressed by its range', () {
+      final usage = VisibleRangeRuleUsage.forBase(rangeId: 'group.1.range', usedAt: 4);
+      expect(usage.id, 'base.group.1.range');
+      expect(usage.targetId, isEmpty);
+      expect(usage.kind, VisibleRangeCandidateKind.base);
+      expect(usage.isBase, isTrue);
+    });
+
+    test('the same target maps to one stable usage id', () {
+      expect(baseUsageId('gallery'), baseUsageId('gallery'));
+      expect(ruleUsageId('a'), isNot(ruleUsageId('b')));
     });
   });
 }

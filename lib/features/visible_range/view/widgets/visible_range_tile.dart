@@ -6,6 +6,7 @@ import 'package:aves/features/visible_range/view/visible_range_candidate_filter.
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
+import 'package:aves/theme/durations.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/identity/aves_filter_chip.dart';
 import 'package:aves/widgets/common/thumbnail/image.dart';
@@ -22,6 +23,12 @@ import 'package:provider/provider.dart';
 /// extra is the state icon in the details row, which tells whether the candidate
 /// takes part in the current range (checked) or not (blocked). Description and
 /// kind icon are left out on purpose: the page is a checklist, not an editor.
+///
+/// Selection is passed in as plain values instead of read from a
+/// `Selection` provider: the same tile is also rendered by the pinch-zoom
+/// preview, which lives in an `OverlayEntry` outside the page's provider tree,
+/// and the wallpaper page provides a differently typed selection. Keeping the
+/// tile provider-free makes it valid in all three places.
 class VisibleRangeTile extends StatelessWidget {
   final FilterGridItem<VisibleRangeCandidateFilter> gridItem;
   final VisibleRangeCandidateStats? stats;
@@ -35,6 +42,15 @@ class VisibleRangeTile extends StatelessWidget {
   /// The result chip shows only its count: it is not a condition that can be
   /// toggled on and off.
   final bool showStateIcon;
+
+  /// Whether this tile takes part in the grid's selection at all.
+  final bool selectable;
+
+  /// Whether the page is in selection mode.
+  final bool selecting;
+
+  /// Whether this tile is currently selected.
+  final bool selected;
   final VoidCallback? onTap;
   final VoidCallback? onRemove;
   final VoidCallback? onLongPress;
@@ -47,6 +63,9 @@ class VisibleRangeTile extends StatelessWidget {
     required this.tileSize,
     this.summary = false,
     this.showStateIcon = true,
+    this.selectable = false,
+    this.selecting = false,
+    this.selected = false,
     this.onTap,
     this.onRemove,
     this.onLongPress,
@@ -75,9 +94,47 @@ class VisibleRangeTile extends StatelessWidget {
     return FilterChipGridDecorator<VisibleRangeCandidateFilter, FilterGridItem<VisibleRangeCandidateFilter>>(
       gridItem: gridItem,
       extent: extent,
-      selectable: true,
+      // The selection badge is drawn below from plain values; the decorator's
+      // own overlay would look a page-scoped `Selection` provider up, which the
+      // pinch-zoom preview and the wallpaper page cannot satisfy.
+      selectable: false,
       highlightable: true,
-      child: child,
+      child: Stack(
+        fit: StackFit.passthrough,
+        children: [
+          child,
+          if (selecting && selectable) _buildSelectionBadge(context, extent),
+        ],
+      ),
+    );
+  }
+
+  /// The selection mark: a tinted corner and a check, or a hollow circle while
+  /// the page is selecting. It mirrors the album grid's overlay without
+  /// depending on its providers.
+  Widget _buildSelectionBadge(BuildContext context, double extent) {
+    final colors = Theme.of(context).colorScheme;
+    final iconSize = CoveredFilterChip.detailIconSize(extent) * 1.6;
+    return IgnorePointer(
+      child: AnimatedContainer(
+        alignment: AlignmentDirectional.topEnd,
+        padding: EdgeInsets.all(extent / 24),
+        duration: ADurations.chipDecorationAnimation,
+        decoration: BoxDecoration(
+          color: selected ? colors.primary.withValues(alpha: .6) : Colors.transparent,
+          borderRadius: BorderRadius.all(CoveredFilterChip.radius(extent)),
+        ),
+        child: AnimatedSwitcher(
+          duration: ADurations.chipDecorationAnimation,
+          child: selected
+              ? Icon(AIcons.selected, key: const ValueKey(true), size: iconSize, color: colors.onPrimary)
+              : DecoratedBox(
+                  key: const ValueKey(false),
+                  decoration: const BoxDecoration(color: Colors.black38, shape: BoxShape.circle),
+                  child: Icon(AIcons.unselected, size: iconSize, color: Colors.white),
+                ),
+        ),
+      ),
     );
   }
 

@@ -425,16 +425,23 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     }
     final candidateFilter = filter as VisibleRangeCandidateFilter;
     final candidate = candidateFilter.candidate;
+    final selection = context.read<Selection<FilterGridItem<CollectionFilter>>>();
     return MetaData(
       metaData: ScalerMetadata(item),
-      child: VisibleRangeTile(
-        gridItem: FilterGridItem(candidateFilter, item.entry),
-        stats: candidate.isGallery ? _resultStats : _stats[candidate.statsKey],
-        tileLayout: settings.getTileLayout(GroupedWallpaperPage.routeName),
-        tileSize: tileSize,
-        summary: candidateFilter.summary,
-        showStateIcon: !candidate.isGallery,
-        onTap: () => _onTileTap(item),
+      child: ListenableBuilder(
+        listenable: selection,
+        builder: (context, _) => VisibleRangeTile(
+          gridItem: FilterGridItem(candidateFilter, item.entry),
+          stats: candidate.isGallery ? _resultStats : _stats[candidate.statsKey],
+          tileLayout: settings.getTileLayout(GroupedWallpaperPage.routeName),
+          tileSize: tileSize,
+          summary: candidateFilter.summary,
+          showStateIcon: !candidate.isGallery,
+          selectable: !candidateFilter.summary && candidate.isApplicable,
+          selecting: selection.isSelecting,
+          selected: selection.selectedItems.contains(item),
+          onTap: () => _onTileTap(item),
+        ),
       ),
     );
   }

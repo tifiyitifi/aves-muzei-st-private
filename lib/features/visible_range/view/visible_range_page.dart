@@ -249,19 +249,26 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   Widget _buildTile(BuildContext context, FilterGridItem<VisibleRangeCandidateFilter> item, Size tileSize) {
     final candidate = item.filter.candidate;
     final summary = item.filter.summary;
+    final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
     return MetaData(
       metaData: ScalerMetadata(item),
-      child: VisibleRangeTile(
-        gridItem: item,
-        // The gallery preview stands for the whole range, not for the empty
-        // filter set it shares its stats key with.
-        stats: candidate.isGallery ? _resultStats : _stats[candidate.statsKey],
-        tileLayout: settings.getTileLayout(VisibleRangePage.routeName),
-        tileSize: tileSize,
-        summary: summary,
-        showStateIcon: !candidate.isGallery,
-        onTap: () => _onCandidateTap(context, item),
-        onLongPress: !summary && candidate.preset != null && !candidate.preset!.builtin ? () => _showPresetEditor(candidate.preset!) : null,
+      child: ListenableBuilder(
+        listenable: selection,
+        builder: (context, _) => VisibleRangeTile(
+          gridItem: item,
+          // The gallery preview stands for the whole range, not for the empty
+          // filter set it shares its stats key with.
+          stats: candidate.isGallery ? _resultStats : _stats[candidate.statsKey],
+          tileLayout: settings.getTileLayout(VisibleRangePage.routeName),
+          tileSize: tileSize,
+          summary: summary,
+          showStateIcon: !candidate.isGallery,
+          selectable: !summary && candidate.isApplicable,
+          selecting: selection.isSelecting,
+          selected: selection.selectedItems.contains(item),
+          onTap: () => _onCandidateTap(context, item),
+          onLongPress: !summary && candidate.preset != null && !candidate.preset!.builtin ? () => _showPresetEditor(candidate.preset!) : null,
+        ),
       ),
     );
   }

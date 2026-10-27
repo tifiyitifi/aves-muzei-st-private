@@ -33,7 +33,6 @@ import 'package:aves/widgets/common/grid/scaling.dart';
 import 'package:aves/widgets/common/identity/aves_filter_chip.dart';
 import 'package:aves/widgets/common/providers/filter_group_provider.dart';
 import 'package:aves/widgets/common/providers/query_provider.dart';
-import 'package:aves/widgets/common/providers/selection_provider.dart';
 import 'package:aves/widgets/common/tile_extent_controller.dart';
 import 'package:aves/widgets/filter_grids/common/app_bar.dart';
 import 'package:aves/widgets/filter_grids/common/filter_grid_page.dart';
@@ -92,6 +91,20 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
 
   late final WallpaperGroupRangeController _controller;
 
+  /// The page's multi-selection.
+  ///
+  /// The page owns it instead of looking it up in the widget tree: the handlers
+  /// below run from the `State`'s context, which sits above the provider created
+  /// in `build`, so an ancestor lookup would never find it. Holding the instance
+  /// also states who is responsible for disposing it.
+  ///
+  /// `toSelectableItems` is passed explicitly because the model requires the
+  /// choice: a grid item is selected as itself.
+  final _selection = Selection<FilterGridItem<CollectionFilter>>(toSelectableItems: null);
+
+  /// The group the current selection was made in.
+  String? _selectionGroupId;
+
   @override
   void initState() {
     super.initState();
@@ -104,12 +117,21 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
   void dispose() {
     _controller.removeListener(_onControllerChanged);
     _controller.dispose();
+    _selection.dispose();
     _appBarHeightNotifier.dispose();
     super.dispose();
   }
 
   void _onControllerChanged() {
     if (!mounted) return;
+    // A selection only means something inside the group it was made in: the
+    // actions below write to the selected group's range, so carrying candidates
+    // over to another group would apply or delete them in the wrong place.
+    final groupId = _controller.selectedGroupId;
+    if (groupId != _selectionGroupId) {
+      _selectionGroupId = groupId;
+      _selection.browse();
+    }
     setState(() {});
     unawaited(_refreshResultStats());
     unawaited(_refreshGroupFilters());
@@ -185,14 +207,21 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
         final sections = _buildSections(context);
         final delegate = WallpaperGroupActionDelegate(
           settingsRouteKey: GroupedWallpaperPage.routeName,
-          itemBuilder: () => sections.values.expand((list) => list).where((item) => item.filter is VisibleRangeCandidateFilter && !(item.filter as VisibleRangeCandidateFilter).summary).toList(),
+          // Only applicable candidates take part in the selection: the result
+          // preview and the unrestricted base are shown but cannot be selected,
+          // so a "select all" must not pick them up either.
+          itemBuilder: () => sections.values.expand((list) => list).where((item) {
+            final filter = item.filter;
+            return filter is VisibleRangeCandidateFilter && !filter.summary && filter.candidate.isApplicable;
+          }).toList(),
           // The page keeps its own view preferences, so the layout dialog shows
           // the same controls as the visible-range page but writes this page's
           // keys.
           extraLayoutRows: (context) => [_buildActiveStyleRow(context), _buildSwitcherStyleRow(context)],
         );
         return FilterGroupProvider(
-          child: SelectionProvider<FilterGridItem<CollectionFilter>>(
+          child: ChangeNotifierProvider<Selection<FilterGridItem<CollectionFilter>>>.value(
+            value: _selection,
             child: Builder(
               builder: (context) {
                 final scrollController = PrimaryScrollController.of(context);
@@ -425,11 +454,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     }
     final candidateFilter = filter as VisibleRangeCandidateFilter;
     final candidate = candidateFilter.candidate;
-    final selection = context.read<Selection<FilterGridItem<CollectionFilter>>>();
     return MetaData(
       metaData: ScalerMetadata(item),
       child: ListenableBuilder(
-        listenable: selection,
+        listenable: _selection,
         builder: (context, _) => VisibleRangeTile(
           gridItem: FilterGridItem(candidateFilter, item.entry),
           stats: candidate.isGallery ? _resultStats : _stats[candidate.statsKey],
@@ -438,8 +466,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
           summary: candidateFilter.summary,
           showStateIcon: !candidate.isGallery,
           selectable: !candidateFilter.summary && candidate.isApplicable,
-          selecting: selection.isSelecting,
-          selected: selection.selectedItems.contains(item),
+          selecting: _selection.isSelecting,
+          selected: _selection.selectedItems.contains(item),
           onTap: () => _onTileTap(item),
         ),
       ),
@@ -507,9 +535,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     final candidateFilter = filter as VisibleRangeCandidateFilter;
     final candidate = candidateFilter.candidate;
     if (_controller.selectedGroupId == null) return;
-    final selection = context.read<Selection<FilterGridItem<CollectionFilter>>>();
-    if (selection.isSelecting) {
-      if (candidate.isApplicable) selection.toggleSelection(item);
+    if (_selection.isSelecting) {
+      if (candidate.isApplicable) _selection.toggleSelection(item);
       return;
     }
     if (!_controller.canEdit) {
@@ -673,27 +700,25 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
   /// visible-range page: the union of their filters is appended and every
   /// target is remembered for the pin sheet's write-back list.
   Future<void> _applySelectionToMediaSet() async {
-    final selection = context.read<Selection<FilterGridItem<CollectionFilter>>>();
     final range = _controller.range;
-    if (!selection.isSelecting || range == null) return;
+    if (!_selection.isSelecting || range == null) return;
     final candidates = [
-      for (final item in selection.selectedItems)
+      for (final item in _selection.selectedItems)
         if (item.filter is VisibleRangeCandidateFilter) (item.filter as VisibleRangeCandidateFilter).candidate,
     ];
     if (candidates.isEmpty) return;
-    selection.browse();
+    _selection.browse();
     await applyVisibleRangeCandidates(context, rangeId: range.id, candidates: candidates);
   }
 
   Future<void> _deleteSelectedRules() async {
-    final selection = context.read<Selection<FilterGridItem<CollectionFilter>>>();
-    final rules = _selectedRules(selection);
+    final rules = _selectedRules(_selection);
     if (rules.isEmpty) return;
     if (!_controller.canEdit) {
       _showBlocked();
       return;
     }
-    selection.browse();
+    _selection.browse();
     await _controller.deleteRules(rules.map((rule) => rule.id).toSet());
   }
 

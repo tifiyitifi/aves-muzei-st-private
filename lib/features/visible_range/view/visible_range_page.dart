@@ -26,7 +26,6 @@ import 'package:aves/widgets/common/grid/scaling.dart';
 import 'package:aves/widgets/common/identity/aves_filter_chip.dart';
 import 'package:aves/widgets/common/providers/filter_group_provider.dart';
 import 'package:aves/widgets/common/providers/query_provider.dart';
-import 'package:aves/widgets/common/providers/selection_provider.dart';
 import 'package:aves/widgets/common/tile_extent_controller.dart';
 import 'package:aves/widgets/filter_grids/common/app_bar.dart';
 import 'package:aves/widgets/filter_grids/common/filter_grid_page.dart';
@@ -71,6 +70,17 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   VisibleRangeCandidateStats? _resultStats;
   int _resultToken = 0;
 
+  /// The page's multi-selection.
+  ///
+  /// The page owns it instead of looking it up in the widget tree: the handlers
+  /// below run from the `State`'s context, which sits above the provider created
+  /// in `build`, so an ancestor lookup would never find it. Holding the instance
+  /// also states who is responsible for disposing it.
+  ///
+  /// `toSelectableItems` is passed explicitly because the model requires the
+  /// choice: a grid item is selected as itself.
+  final _selection = Selection<FilterGridItem<VisibleRangeCandidateFilter>>(toSelectableItems: null);
+
   VisibleRangeController get _controller => visibleRangeController;
 
   @override
@@ -85,6 +95,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   @override
   void dispose() {
     _controller.removeListener(_onControllerChanged);
+    _selection.dispose();
     _appBarHeightNotifier.dispose();
     super.dispose();
   }
@@ -159,7 +170,8 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
           // The visible-range candidates are not the album page's group
           // children: shadow the app-wide notifier so a stale album group
           // cannot show a crumb or swallow the back gesture here.
-          child: SelectionProvider<FilterGridItem<VisibleRangeCandidateFilter>>(
+          child: ChangeNotifierProvider<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>.value(
+            value: _selection,
             child: Builder(
               builder: (context) {
                 final scrollController = PrimaryScrollController.of(context);
@@ -192,7 +204,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
                     selectable: true,
                     emptyBuilder: () => Center(child: Text(context.l10n.visibleRangeNoCandidates)),
                     heroType: HeroType.never,
-                    onTileTap: (item, navigate) => _onCandidateTap(context, item),
+                    onTileTap: (item, navigate) => _onCandidateTap(item),
                     selectableItem: (item) => !item.filter.summary && item.filter.candidate.isApplicable,
                     tileBuilder: _buildTile,
                     // The section form repeats the active conditions as the last
@@ -249,11 +261,10 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   Widget _buildTile(BuildContext context, FilterGridItem<VisibleRangeCandidateFilter> item, Size tileSize) {
     final candidate = item.filter.candidate;
     final summary = item.filter.summary;
-    final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
     return MetaData(
       metaData: ScalerMetadata(item),
       child: ListenableBuilder(
-        listenable: selection,
+        listenable: _selection,
         builder: (context, _) => VisibleRangeTile(
           gridItem: item,
           // The gallery preview stands for the whole range, not for the empty
@@ -264,9 +275,9 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
           summary: summary,
           showStateIcon: !candidate.isGallery,
           selectable: !summary && candidate.isApplicable,
-          selecting: selection.isSelecting,
-          selected: selection.selectedItems.contains(item),
-          onTap: () => _onCandidateTap(context, item),
+          selecting: _selection.isSelecting,
+          selected: _selection.selectedItems.contains(item),
+          onTap: () => _onCandidateTap(item),
           onLongPress: !summary && candidate.preset != null && !candidate.preset!.builtin ? () => _showPresetEditor(candidate.preset!) : null,
         ),
       ),
@@ -424,7 +435,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     return items.first.filter.candidate.rule;
   }
 
-  void _onCandidateTap(BuildContext context, FilterGridItem<VisibleRangeCandidateFilter> item) {
+  void _onCandidateTap(FilterGridItem<VisibleRangeCandidateFilter> item) {
     final candidate = item.filter.candidate;
     if (item.filter.summary) {
       // The active section repeats conditions from the groups above: tapping one
@@ -437,9 +448,8 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       }
       return;
     }
-    final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
-    if (selection.isSelecting) {
-      if (candidate.isApplicable) selection.toggleSelection(item);
+    if (_selection.isSelecting) {
+      if (candidate.isApplicable) _selection.toggleSelection(item);
       return;
     }
     switch (candidate.kind) {
@@ -742,10 +752,9 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   /// The union of their filters is appended to what the media set currently
   /// shows, and every target is remembered for the pin sheet's write-back list.
   Future<void> _applySelectionToMediaSet() async {
-    final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
-    if (!selection.isSelecting) return;
+    if (!_selection.isSelecting) return;
     final candidates = [
-      for (final item in selection.selectedItems)
+      for (final item in _selection.selectedItems)
         if (!item.filter.summary) item.filter.candidate,
     ];
     if (candidates.isEmpty) return;
@@ -777,7 +786,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   void _browseSelection() {
     if (!mounted) return;
-    context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>().browse();
+    _selection.browse();
   }
 
   String _kindLabel(BuildContext context, VisibleRangeRuleKind kind) {
@@ -792,8 +801,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     if (value is! _MoreAction) return;
     switch (value) {
       case _MoreAction.editRule:
-        final selection = context.read<Selection<FilterGridItem<VisibleRangeCandidateFilter>>>();
-        final rule = _selectedRule(selection);
+        final rule = _selectedRule(_selection);
         if (rule != null) await _showRuleEditor(rule);
       case _MoreAction.applyToMediaSet:
         await _applySelectionToMediaSet();

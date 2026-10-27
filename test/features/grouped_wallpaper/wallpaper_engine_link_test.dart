@@ -1,0 +1,94 @@
+import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// `WallpaperEngineLink`: the page-facing contract, its cached active flag and
+/// the inert behaviour before the engine attaches.
+void main() {
+  late WallpaperEngineLink link;
+  late _FakeConnection connection;
+
+  setUp(() {
+    link = WallpaperEngineLink();
+    connection = _FakeConnection();
+  });
+
+  test('a detached link is inert', () async {
+    expect(link.isAttached, isFalse);
+    expect(link.isActive, isFalse);
+    expect(await link.refreshActive(), isFalse);
+    expect(await link.readState(), isNull);
+    expect(await link.syncNow(), GroupedWallpaperSyncResult.notActive);
+    expect(await link.openChooser(), isFalse);
+  });
+
+  test('refreshActive caches the probe result', () async {
+    link.attach(connection);
+
+    expect(link.isActive, isFalse);
+    expect(await link.refreshActive(), isTrue);
+    expect(link.isActive, isTrue);
+
+    connection.active = false;
+    // Still the cached value until the page asks again.
+    expect(link.isActive, isTrue);
+    expect(await link.refreshActive(), isFalse);
+    expect(link.isActive, isFalse);
+  });
+
+  test('a failed probe counts as not active', () async {
+    connection.error = StateError('channel gone');
+    link.attach(connection);
+
+    expect(await link.refreshActive(), isFalse);
+    expect(link.isActive, isFalse);
+  });
+
+  test('delegates the engine actions', () async {
+    link.attach(connection);
+    connection.state = const GroupedWallpaperState(status: GroupedWallpaperStatus.ready, groupNumber: 2, groupName: 'DCIM', entryId: 7, photo: 'current.png');
+
+    expect((await link.readState())?.groupNumber, 2);
+    expect(await link.syncNow(), GroupedWallpaperSyncResult.baked);
+    expect(connection.syncs, 1);
+    expect(await link.openChooser(), isTrue);
+  });
+
+  test('detaching forgets the engine and the cached flag', () async {
+    link.attach(connection);
+    await link.refreshActive();
+    expect(link.isActive, isTrue);
+
+    link.detach();
+
+    expect(link.isAttached, isFalse);
+    expect(link.isActive, isFalse);
+    expect(await link.syncNow(), GroupedWallpaperSyncResult.notActive);
+  });
+}
+
+class _FakeConnection implements WallpaperEngineConnection {
+  bool active = true;
+  Object? error;
+  int syncs = 0;
+  GroupedWallpaperState? state;
+
+  @override
+  Future<bool> isActive() async {
+    final failure = error;
+    if (failure != null) throw failure;
+    return active;
+  }
+
+  @override
+  Future<GroupedWallpaperState?> readState() async => state;
+
+  @override
+  Future<GroupedWallpaperSyncResult> syncNow() async {
+    syncs++;
+    return GroupedWallpaperSyncResult.baked;
+  }
+
+  @override
+  Future<bool> openChooser() async => true;
+}

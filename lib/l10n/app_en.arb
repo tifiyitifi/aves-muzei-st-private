@@ -1876,6 +1876,48 @@
   "wallpaperGroupSyncNow": "Sync wallpaper now",
   "wallpaperGroupSyncInactive": "Turn on grouped wallpaper to sync it now.",
   "wallpaperGroupSyncDone": "Wallpaper synced.",
+  "wallpaperGroupSetWallpaper": "Set as wallpaper",
+  "wallpaperGroupEngineStatus": "Wallpaper engine",
+  "wallpaperGroupEngineUnavailable": "Grouped wallpaper is not available on this device",
+  "wallpaperGroupEngineNeverSynced": "Not synced yet",
+  "wallpaperGroupEngineShowing": "#{number} {name} · {entry}",
+  "@wallpaperGroupEngineShowing": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      },
+      "entry": {
+        "type": "String"
+      }
+    }
+  },
+  "wallpaperGroupEngineLocked": "#{number} {name} · locked, the current frame stays",
+  "@wallpaperGroupEngineLocked": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "wallpaperGroupEngineEmpty": "{name} · no image to show",
+  "@wallpaperGroupEngineEmpty": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "wallpaperGroupEngineFailed": "The last sync failed",
+  "wallpaperGroupSyncEmpty": "No image in this group; the wallpaper shows a placeholder.",
+  "wallpaperGroupSyncLocked": "This group is locked; the current frame was kept.",
+  "wallpaperGroupSyncFailed": "The wallpaper could not be synced.",
+  "wallpaperGroupChooserUnavailable": "No wallpaper picker is available on this device",
   "wallpaperGroupCancelGalleryRange": "Temporarily ignore the gallery range",
   "wallpaperGroupRestoreGalleryRange": "Restore the gallery range",
   "wallpaperGroupDraftHint": "Wallpaper group changes stay a draft until you save them.",

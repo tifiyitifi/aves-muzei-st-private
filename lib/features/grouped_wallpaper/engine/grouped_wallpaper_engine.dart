@@ -15,24 +15,6 @@ import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.d
 import 'package:aves/model/entry/entry.dart';
 import 'package:flutter/painting.dart';
 
-/// What one sync did, for the page to report.
-enum GroupedWallpaperSyncResult {
-  /// A photo was baked and is now on screen.
-  baked,
-
-  /// The group resolves to no image: the placeholder is on screen.
-  empty,
-
-  /// The group is locked, so its current frame was kept.
-  locked,
-
-  /// The grouped wallpaper is not the system wallpaper: nothing was written.
-  notActive,
-
-  /// Reading, querying, baking or writing failed: the placeholder is on screen.
-  failed,
-}
-
 /// The grouped wallpaper's control plane.
 ///
 /// It owns the only writes to `state.json` and `current.png`: the current group's
@@ -40,7 +22,7 @@ enum GroupedWallpaperSyncResult {
 /// database), baked to one PNG, then the native renderer is asked to reload.
 /// There is no timer and no prefetch in this phase: a frame changes only when the
 /// service starts or the user asks for a sync.
-class GroupedWallpaperEngine {
+class GroupedWallpaperEngine implements WallpaperEngineConnection {
   final GroupedWallpaperPlatform platform;
   final GroupedWallpaperBaker baker;
   final GroupedWallpaperPlanLoader planLoader;
@@ -89,7 +71,7 @@ class GroupedWallpaperEngine {
     // The service asks for a frame when it starts: that is what gives the
     // wallpaper its first photo, with no background worker involved.
     platform.setSyncRequestHandler(onSyncRequested: () => unawaited(syncNow()));
-    link.attach(syncNow: syncNow, isActive: platform.isActive);
+    link.attach(this);
     await link.refreshActive();
   }
 
@@ -99,14 +81,21 @@ class GroupedWallpaperEngine {
     _store = null;
   }
 
+  @override
   Future<bool> isActive() => platform.isActive();
 
+  @override
   Future<bool> openChooser() => platform.openChooser();
+
+  /// The state the renderer is showing, or null when nothing was ever baked.
+  @override
+  Future<GroupedWallpaperState?> readState() async => await _store?.readState();
 
   /// Re-bakes the saved current group and applies it now.
   ///
   /// Concurrent callers share one run: the service's start request and the page's
   /// button must not bake two frames into the same file.
+  @override
   Future<GroupedWallpaperSyncResult> syncNow() {
     return _inFlight ??= _sync().whenComplete(() => _inFlight = null);
   }

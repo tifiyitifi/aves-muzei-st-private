@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_sections.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
@@ -84,10 +85,12 @@ enum _PageAction {
   saveChanges,
   discardChanges,
   syncNow,
+  setWallpaper,
+  engineStatus,
   cancelGalleryRange,
 }
 
-class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
+class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with WidgetsBindingObserver {
   /// Width of one card of the fixed five-column switcher.
   static const int _grid5ColumnCount = 5;
 
@@ -125,23 +128,44 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
   /// changes the range itself or the wallpaper.
   bool _gallerySuspended = false;
 
+  /// What the live wallpaper last baked, read when the page opens or resumes.
+  GroupedWallpaperState? _engineState;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = WallpaperGroupRangeController();
     _controller.addListener(_onControllerChanged);
     _syncBrowsingOverlay();
     unawaited(_controller.init());
+    unawaited(_refreshEngine());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     VisibleRangeGate.overlay = null;
     _controller.removeListener(_onControllerChanged);
     _controller.dispose();
     _selection.dispose();
     _appBarHeightNotifier.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The wallpaper is set from the system chooser, which takes the app to the
+    // background: re-probe on return so the menu reflects the new state.
+    if (state == AppLifecycleState.resumed) unawaited(_refreshEngine());
+  }
+
+  /// Re-reads whether the grouped wallpaper is active and what it is showing.
+  Future<void> _refreshEngine() async {
+    final active = await wallpaperEngineLink.refreshActive();
+    final state = active ? await wallpaperEngineLink.readState() : null;
+    if (!mounted) return;
+    setState(() => _engineState = state);
   }
 
   /// Publishes the page's browsing scope: the group on screen joins the gallery
@@ -930,11 +954,25 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
         subtitle: _controller.dirty ? l10n.wallpaperGroupDraftUnsaved : null,
       ),
       _menuItem(
+        _PageAction.setWallpaper,
+        AIcons.setAs,
+        l10n.wallpaperGroupSetWallpaper,
+        enabled: wallpaperEngineLink.isAttached,
+        subtitle: wallpaperEngineLink.isAttached ? null : l10n.wallpaperGroupEngineUnavailable,
+      ),
+      _menuItem(
         _PageAction.syncNow,
         AIcons.sync,
         l10n.wallpaperGroupSyncNow,
         enabled: engineActive,
         subtitle: engineActive ? null : l10n.wallpaperGroupSyncInactive,
+      ),
+      _menuItem(
+        _PageAction.engineStatus,
+        AIcons.wallpaper,
+        l10n.wallpaperGroupEngineStatus,
+        enabled: false,
+        subtitle: _engineStatusText(context),
       ),
       _menuItem(
         _PageAction.discardChanges,
@@ -1024,6 +1062,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
         await _discardDraft();
       case _PageAction.syncNow:
         await _syncNow();
+      case _PageAction.setWallpaper:
+        await _setWallpaper();
+      case _PageAction.engineStatus:
+        break;
       case _PageAction.cancelGalleryRange:
         _toggleGallerySuspension();
       case _PageAction.useCurrent:
@@ -1083,11 +1125,57 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
   /// Saves a pending draft first, then asks the running engine to apply it now
   /// instead of waiting for the wallpaper's interval.
   Future<void> _syncNow() async {
-    if (!wallpaperEngineLink.isActive) return;
-    if (_controller.dirty) await _controller.saveDraft();
-    await wallpaperEngineLink.syncNow();
+    await _refreshEngine();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.wallpaperGroupSyncDone)));
+    if (!wallpaperEngineLink.isActive) {
+      _showMessage(context.l10n.wallpaperGroupSyncInactive);
+      return;
+    }
+    if (_controller.dirty) await _controller.saveDraft();
+    final result = await wallpaperEngineLink.syncNow();
+    await _refreshEngine();
+    if (!mounted) return;
+    _showMessage(
+      switch (result) {
+        GroupedWallpaperSyncResult.baked => context.l10n.wallpaperGroupSyncDone,
+        GroupedWallpaperSyncResult.empty => context.l10n.wallpaperGroupSyncEmpty,
+        GroupedWallpaperSyncResult.locked => context.l10n.wallpaperGroupSyncLocked,
+        GroupedWallpaperSyncResult.notActive => context.l10n.wallpaperGroupSyncInactive,
+        GroupedWallpaperSyncResult.failed => context.l10n.wallpaperGroupSyncFailed,
+      },
+    );
+  }
+
+  /// Opens the system live-wallpaper chooser for the grouped service.
+  ///
+  /// The picker takes over the screen, so the engine state is re-read on resume
+  /// rather than here; this only reports an OEM that has no picker at all.
+  Future<void> _setWallpaper() async {
+    final opened = await wallpaperEngineLink.openChooser();
+    if (!mounted || opened) return;
+    _showMessage(context.l10n.wallpaperGroupChooserUnavailable);
+  }
+
+  /// One line describing what the live wallpaper is doing, for the menu.
+  String _engineStatusText(BuildContext context) {
+    final l10n = context.l10n;
+    if (!wallpaperEngineLink.isAttached) return l10n.wallpaperGroupEngineUnavailable;
+    if (!wallpaperEngineLink.isActive) return l10n.wallpaperGroupSyncInactive;
+    final state = _engineState;
+    if (state == null) return l10n.wallpaperGroupEngineNeverSynced;
+    return switch (state.status) {
+      GroupedWallpaperStatus.ready =>
+        state.entryTitle.isEmpty
+            ? l10n.visibleRangeOwnerWithNumber(state.groupNumber, state.groupName)
+            : l10n.wallpaperGroupEngineShowing(state.groupNumber, state.groupName, state.entryTitle),
+      GroupedWallpaperStatus.locked => l10n.wallpaperGroupEngineLocked(state.groupNumber, state.groupName),
+      GroupedWallpaperStatus.emptyGroup => l10n.wallpaperGroupEngineEmpty(state.groupName),
+      GroupedWallpaperStatus.unavailable => l10n.wallpaperGroupEngineFailed,
+    };
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// Temporarily stops applying the gallery range to browsing on this page.

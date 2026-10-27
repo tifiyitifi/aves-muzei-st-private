@@ -7,11 +7,42 @@ of the Muzei-style live wallpaper mechanism.
 
 - **Done**: group model, layout invariants, bundled defaults (JSON), storage
   (`wallpaper_groups` table, schema v7; `baseActive` in v9), controller with the
-  page's in-memory draft, and the wallpaper-group page reachable from the
-  visible-range page's More menu / the shared bottom-bar entry.
-- **Not done yet**: the live wallpaper engine (baking, notifications, `isActive`
-  arbitration), the availability label. Until then a group only decides which
-  filters it *would* use and 「Sync wallpaper now」 stays disabled.
+  page's in-memory draft, the wallpaper-group page reachable from the
+  visible-range page's More menu / the shared bottom-bar entry, and the engine's
+  first closed loop (Dart baking + native single-image service).
+- **Not done yet**: auto-advance, the notification, and the availability label.
+  Until then a sync only happens when the service starts or the user asks for it,
+  and the engine has no timer of its own.
+
+## The engine
+
+`lib/features/grouped_wallpaper/engine/` is the control plane; the native service
+only draws. One sync:
+
+1. reads the *saved* current group and its range (`SavedGroupedWallpaperPlanLoader`,
+   deliberately bypassing the page's draft);
+2. resolves the media set with `wallpaperMediaSetFilter`, skipping the image
+   already on screen and any file that disappeared since the last scan;
+3. bakes one cover-cropped PNG at `WallpaperManager.desiredMinimumWidth`;
+4. writes `state.json` and `current.png` atomically, then asks the renderer to
+   reload.
+
+`state.json` is Dart-owned and read-only for the native side, and it carries what
+the notification will need (group number, resolved group name, entry, count,
+lock). Every outcome is recorded instead of thrown: an empty group, a locked
+range, a missing photo or a failed bake all end in the grey placeholder, except a
+locked range, which keeps the frame it froze on.
+
+The service asks the app for a frame when it starts and when the app attaches, so
+the wallpaper gets its first photo without a background worker; if the app is not
+running, the renderer keeps showing its placeholder until the app is opened. The
+engine is attached at startup (`main_common`) for that reason, and the page
+re-probes `isActive` when it opens or resumes.
+
+The native side lives in
+`android/app/src/main/kotlin/deckers/thibault/aves/features/grouped_wallpaper/`
+and uses its own state root (`filesDir/grouped_wallpaper`), so it shares no files
+with Muzei. It never touches the database.
 
 ## Concepts
 
@@ -69,9 +100,12 @@ keep the saved state.
 
 - **Save changes** writes groups, ranges, rules and deletions in one transaction.
 - **Discard changes** reloads the saved state.
+- **Set as wallpaper** opens the system live-wallpaper chooser for the grouped
+  service; it is disabled when the platform channel is unavailable.
 - **Sync wallpaper now** saves a pending draft and asks the engine to apply it
   immediately instead of waiting for the wallpaper's interval. The entry is
-  disabled until a grouped-wallpaper engine has attached to `wallpaperEngineLink`.
+  disabled while the grouped wallpaper is not the system wallpaper, and the
+  status row under it reports what the renderer is showing.
 
 Group cards take part in multi-selection in all three switcher styles: a tap
 toggles them while the page is selecting, and a long press starts a selection

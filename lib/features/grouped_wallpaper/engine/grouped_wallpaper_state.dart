@@ -28,6 +28,24 @@ enum GroupedWallpaperStatus {
   }
 }
 
+/// What one sync did, for the page to report.
+enum GroupedWallpaperSyncResult {
+  /// A photo was baked and is now on screen.
+  baked,
+
+  /// The group resolves to no image: the placeholder is on screen.
+  empty,
+
+  /// The group is locked, so its current frame was kept.
+  locked,
+
+  /// The grouped wallpaper is not the system wallpaper: nothing was written.
+  notActive,
+
+  /// Reading, querying, baking or writing failed: the placeholder is on screen.
+  failed,
+}
+
 /// Dart-owned `state.json` of the grouped wallpaper.
 ///
 /// This is the contract between the Flutter engine and the native renderer: only

@@ -1,8 +1,24 @@
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
+import 'package:aves/model/filters/mime.dart';
 
 /// Candidate id prefix of an empty restriction/supplement section.
 const String wallpaperGroupSectionNoneIdPrefix = 'wallpaper.group.sectionNone.';
+
+/// The wallpaper page's base choice: every image.
+///
+/// It is the same choice as 「Unrestricted」 on the gallery page — the group's
+/// base narrows nothing — so it keeps that id and stays non-applicable. Its
+/// filter set is images only, because a wallpaper never shows videos, and that
+/// is also what makes its cover and count agree with the group cards (both
+/// count images).
+VisibleRangeCandidate wallpaperGroupAllImagesCandidate({required bool active}) => VisibleRangeCandidate(
+      id: VisibleRangeCandidate.unrestrictedId,
+      kind: VisibleRangeCandidateKind.base,
+      filters: {MimeFilter.image},
+      labelKey: 'wallpaperGroupAllImages',
+      active: active,
+    );
 
 VisibleRangeCandidate _sectionNone(VisibleRangeCandidateKind kind) => VisibleRangeCandidate(
       id: '$wallpaperGroupSectionNoneIdPrefix${kind.name}',
@@ -13,7 +29,7 @@ VisibleRangeCandidate _sectionNone(VisibleRangeCandidateKind kind) => VisibleRan
     );
 
 /// Whether [candidate] is the group's own base, as opposed to the
-/// 「Unrestricted」 choice or a section placeholder.
+/// 「All images」 choice or a section placeholder.
 bool isWallpaperGroupBaseCandidate(VisibleRangeCandidate candidate) =>
     candidate.kind == VisibleRangeCandidateKind.base && !candidate.placeholder && candidate.id == VisibleRangeCandidate.customBaseId;
 
@@ -22,15 +38,16 @@ bool isWallpaperGroupBaseCandidate(VisibleRangeCandidate candidate) =>
 /// The gallery's preset catalogue never enters this builder: a group owns its
 /// base and its rules, and conditions are added by pinning from a media set,
 /// never by picking a gallery default here. The base section starts with
-/// 「Unrestricted」, the same candidate the gallery page shows: its empty filter
-/// set is what gives it the whole library's cover and count. The group's own
-/// base follows when it carries conditions, and an empty rule section keeps one
-/// 「None」 slot so the page shows that the section exists instead of hiding it.
+/// 「All images」, the wallpaper counterpart of the gallery page's
+/// 「Unrestricted」: its image filter set is what gives it the images' cover and
+/// count. The group's own base follows when it carries conditions, and an empty
+/// rule section keeps one 「None」 slot so the page shows that the section exists
+/// instead of hiding it.
 List<VisibleRangeCandidateSection> buildWallpaperGroupSections({required VisibleRange range}) {
   final base = <VisibleRangeCandidate>[
     // The base is unrestricted when it narrows nothing, either because it has no
     // conditions or because the group switched them off.
-    VisibleRangeCandidate.unrestricted.copyWithActive(range.isBaseUnrestricted),
+    wallpaperGroupAllImagesCandidate(active: range.isBaseUnrestricted),
     if (range.baseFilters.isNotEmpty)
       VisibleRangeCandidate.customBase(name: range.baseName, filters: range.baseFilters, active: range.baseActive),
   ];

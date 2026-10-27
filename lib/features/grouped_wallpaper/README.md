@@ -51,13 +51,13 @@ only shows, toggles, renames, takes out and deletes what is already there. Older
 builds materialized that catalogue into every group; it is pruned on every start
 (not only on a defaults bump), so a restored backup cannot bring it back.
 
-Each group range starts with the 「Unrestricted」 tile, the same candidate the
-gallery page shows. It is not a condition: its empty filter set is what gives it
-the whole library's cover and count, and tapping it switches the group's base off
-without deleting anything. A base keeps its filters when switched off
-(`baseActive`), so it can be switched back on. Rules are a separate section and
-keep their own switches. An empty rules section keeps one 「None」 slot so the
-page still shows the section exists.
+Each group range starts with the 「All images」 tile, the wallpaper counterpart of
+the gallery page's 「Unrestricted」. It is not a condition: its image filter set is
+what gives it the images' cover and count (the same count the group cards show),
+and tapping it switches the group's base off without deleting anything. A base
+keeps its filters when switched off (`baseActive`), so it can be switched back
+on. Rules are a separate section and keep their own switches. An empty rules
+section keeps one 「None」 slot so the page still shows the section exists.
 
 ## The page's draft
 

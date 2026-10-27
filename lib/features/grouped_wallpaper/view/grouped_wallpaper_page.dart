@@ -206,8 +206,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
       for (final section in buildWallpaperGroupSections(range: range)) {
         for (final candidate in section.candidates) {
           // Empty-section slots are not conditions: querying the whole library
-          // for them would be noise. 「Unrestricted」 is a real candidate, so it
-          // keeps the whole-library cover and count the base section shows.
+          // for them would be noise. 「All images」 is a real candidate, so it
+          // keeps the images' cover and count the base section shows.
           if (candidate.placeholder) continue;
           filtersByKey.putIfAbsent(candidate.statsKey, () => candidate.filters);
         }
@@ -659,7 +659,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> {
     switch (candidate.kind) {
       case VisibleRangeCandidateKind.base:
         if (candidate.isUnrestricted) {
-          // 「Unrestricted」 switches the group's base off instead of deleting its
+          // 「All images」 switches the group's base off instead of deleting its
           // conditions, so they stay available on the base tile. Rules are a
           // separate section and keep their own switches, like on the gallery
           // page. Nothing is written when the base already narrows nothing.

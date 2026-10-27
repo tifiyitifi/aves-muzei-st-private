@@ -19,23 +19,36 @@ class WallpaperGroupTile extends StatelessWidget {
   final WallpaperGroupFilter filter;
   final TileLayout tileLayout;
   final Size tileSize;
+
+  /// Whether the page is selecting group cards.
+  final bool selecting;
+
+  /// Whether this card is in the page's multi-selection.
+  final bool selected;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const new({
     super.key,
     required this.filter,
     required this.tileLayout,
     required this.tileSize,
+    this.selecting = false,
+    this.selected = false,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
     final opacity = filter.enabled ? 1.0 : .55;
     final child = tileLayout == TileLayout.list ? _buildList(context) : _buildCard(context);
+    // While selecting, the card highlights its selection; otherwise the border
+    // marks the group whose range the page shows.
+    final highlighted = selecting ? selected : filter.selected;
     return Opacity(
       opacity: opacity,
-      child: filter.selected ? _decorateSelected(context, child) : child,
+      child: highlighted ? _decorateSelected(context, child) : child,
     );
   }
 
@@ -56,6 +69,7 @@ class WallpaperGroupTile extends StatelessWidget {
     return InkWell(
       borderRadius: const BorderRadius.all(Radius.circular(12)),
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
@@ -86,6 +100,7 @@ class WallpaperGroupTile extends StatelessWidget {
     return InkWell(
       borderRadius: const BorderRadius.all(Radius.circular(12)),
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -121,7 +136,7 @@ class WallpaperGroupTile extends StatelessWidget {
     final color = Color.lerp(
       Theme.of(context).colorScheme.surfaceContainerHighest,
       Theme.of(context).colorScheme.primaryContainer,
-      filter.selected ? .7 : .25,
+      (selecting ? selected : filter.selected) ? .7 : .25,
     )!;
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -162,6 +177,8 @@ class WallpaperGroupTile extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (selecting)
+          Icon(selected ? AIcons.selected : AIcons.unselected, size: size, color: selected ? colors.primary : colors.onSurfaceVariant),
         if (filter.selected)
           Tooltip(
             message: context.l10n.wallpaperGroupViewing,

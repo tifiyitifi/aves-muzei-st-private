@@ -108,9 +108,11 @@ void main() {
     expect(restarted.groups[1].description, 'summer');
   });
 
-  test('a defaults bump removes the seeded rules older versions materialized', () async {
-    // Simulate a v1 install: a group range carrying the old candidates, one of
-    // them switched on by the user and one renamed.
+  test('seeded rules from older versions are pruned on every start', () async {
+    // Simulate an older install: a group range carrying the old gallery
+    // candidates, one of them switched on by the user and one renamed. The
+    // defaults marker is already current, so only an unconditional prune can
+    // keep the group page free of the gallery's catalogue.
     final range = await controller.groupRange('wallpaper.group.dcim');
     VisibleRangeRule seeded(String suffix, {bool active = false, String? label}) => VisibleRangeRule(
           id: 'wallpaper.group.dcim.rule.$suffix',
@@ -129,7 +131,7 @@ void main() {
         userRule,
       ]),
     );
-    await WallpaperGroupStore(db).writeDefaultsVersion(1);
+    await WallpaperGroupStore(db).writeDefaultsVersion(WallpaperGroupController.defaultsVersion);
 
     final restarted = makeController();
     await restarted.init();
@@ -159,6 +161,29 @@ void main() {
     expect(controller.groups, hasLength(1));
     expect(await controller.deleteGroup('wallpaper.group.all'), isFalse);
     expect(controller.groups, hasLength(1));
+  });
+
+  test('deleting several groups is one draft change and refuses to empty the list', () async {
+    await controller.beginDraft();
+    expect(await controller.deleteGroups({'wallpaper.group.dcim', 'wallpaper.group.pictures'}), isTrue);
+    expect(controller.groups.map((group) => group.id), ['wallpaper.group.all']);
+    expect(controller.dirty, isTrue);
+
+    // The draft is not in the database until it is saved.
+    final reader = makeController();
+    await reader.init();
+    expect(reader.groups, hasLength(3));
+
+    // A selection that would remove every group is refused as a whole.
+    expect(await controller.deleteGroups({'wallpaper.group.all'}), isFalse);
+    expect(controller.groups, hasLength(1));
+
+    await controller.saveDraft();
+    final saved = makeController();
+    await saved.init();
+    expect(saved.groups.map((group) => group.id), ['wallpaper.group.all']);
+    expect(await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: 'wallpaper.group.dcim'), isNull);
+    expect(await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: 'wallpaper.group.pictures'), isNull);
   });
 
   test('disabling the current group falls back to group 0', () async {

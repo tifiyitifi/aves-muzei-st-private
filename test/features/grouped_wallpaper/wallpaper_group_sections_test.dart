@@ -39,13 +39,20 @@ void main() {
         active: active,
       );
 
-  test('the base section starts with the no-filters control and never shows a gallery preset', () {
+  test('the base section starts with Unrestricted and never shows a gallery preset', () {
     final sections = buildWallpaperGroupSections(range: range(base: {PathFilter('/dcim')}));
     final base = sections.first;
     expect(base.kind, VisibleRangeCandidateKind.base);
-    expect(base.candidates.map((candidate) => candidate.id), [wallpaperGroupNoFiltersId, VisibleRangeCandidate.customBaseId]);
-    expect(base.candidates.first.placeholder, isTrue);
-    expect(base.candidates.first.active, isFalse);
+    expect(base.candidates.map((candidate) => candidate.id), [VisibleRangeCandidate.unrestrictedId, VisibleRangeCandidate.customBaseId]);
+    final unrestricted = base.candidates.first;
+    expect(unrestricted.placeholder, isFalse);
+    expect(unrestricted.labelKey, 'visibleRangeUnrestricted');
+    expect(unrestricted.active, isFalse);
+    // The empty filter set is what gives the tile the whole library's cover and
+    // count: it must stay empty so the tile previews the unrestricted set.
+    expect(unrestricted.filters, isEmpty);
+    // 「Unrestricted」 is never taken out to a media set: it is not a condition.
+    expect(unrestricted.isApplicable, isFalse);
     expect(base.candidates.last.active, isTrue);
     expect(base.candidates.last.labelKey, 'wallpaperGroupDefaultDcim');
     // No gallery preset catalogue ever enters a group.
@@ -53,10 +60,11 @@ void main() {
     expect(sections.expand((section) => section.candidates).where((candidate) => candidate.isBuiltinRule), isEmpty);
   });
 
-  test('an empty group shows the no-filters control as active', () {
+  test('an empty group shows Unrestricted as active', () {
     final base = buildWallpaperGroupSections(range: range()).first;
-    expect(base.candidates.single.id, wallpaperGroupNoFiltersId);
+    expect(base.candidates.single.id, VisibleRangeCandidate.unrestrictedId);
     expect(base.candidates.single.active, isTrue);
+    expect(base.candidates.single.placeholder, isFalse);
   });
 
   test('an empty rule section keeps one None slot; a populated one drops it', () {
@@ -71,18 +79,20 @@ void main() {
     expect(populatedRestrictions.candidates.map((candidate) => candidate.id), ['r1']);
   });
 
-  test('switching the base off keeps its tile and makes no-filters active', () {
+  test('switching the base off keeps its tile and makes Unrestricted active', () {
     final base = buildWallpaperGroupSections(range: range(base: {PathFilter('/dcim')}, baseActive: false)).first;
-    expect(base.candidates.map((candidate) => candidate.id), [wallpaperGroupNoFiltersId, VisibleRangeCandidate.customBaseId]);
+    expect(base.candidates.map((candidate) => candidate.id), [VisibleRangeCandidate.unrestrictedId, VisibleRangeCandidate.customBaseId]);
     expect(base.candidates.first.active, isTrue);
     expect(base.candidates.last.active, isFalse);
   });
 
-  test('an active rule keeps the no-filters control inactive', () {
+  test('an active rule does not switch the unrestricted base off', () {
+    // The tile is the base choice, not a whole-group switch: rules live in their
+    // own section and are turned off there.
     final base = buildWallpaperGroupSections(
       range: range(base: {PathFilter('/dcim')}, baseActive: false, rules: [rule('r1', VisibleRangeRuleKind.restriction)]),
     ).first;
-    expect(base.candidates.first.active, isFalse);
+    expect(base.candidates.first.active, isTrue);
   });
 
   test('the active list only repeats real conditions', () {

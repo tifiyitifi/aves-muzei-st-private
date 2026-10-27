@@ -27,10 +27,10 @@ typedef WallpaperGroupDefaultLoader = Future<List<WallpaperGroupDefinition>> Fun
 /// `isActive` arbitration belong to the engine phase.
 class WallpaperGroupController extends ChangeNotifier {
   /// Version of the bundled defaults last applied, mirroring the visible-range
-  /// seeding. A bump re-applies the bundle order, prunes built-in groups that no
-  /// longer ship and removes the restriction/supplement candidates older
-  /// versions materialized into every group, while a renamed or narrowed group
-  /// keeps what the user made of it.
+  /// seeding. A bump re-applies the bundle order and prunes built-in groups that
+  /// no longer ship, while a renamed or narrowed group keeps what the user made
+  /// of it. Seeded rule candidates are pruned on every start instead, so an
+  /// older database cannot resurrect them.
   static const defaultsVersion = 2;
 
   /// Prefix of the built-in group ids, so a bundle bump can tell them apart from
@@ -96,6 +96,11 @@ class WallpaperGroupController extends ChangeNotifier {
     try {
       final store = await _openStore();
       var groups = normalizeWallpaperGroups(await store.loadGroups());
+      // Older builds materialized the gallery's rule catalogue into every group.
+      // Prune on every start, not only on a defaults bump: a restored backup or a
+      // marker written by an intermediate build must not resurrect those rules on
+      // the group page. User-created, activated and renamed rules are kept.
+      await _pruneSeededRules(VisibleRangeStore(store.db), groups);
       final storedVersion = await store.readDefaultsVersion();
       if (groups.isEmpty || storedVersion < defaultsVersion) {
         // An unreadable bundle must not burn the version marker: the next start
@@ -172,11 +177,6 @@ class WallpaperGroupController extends ChangeNotifier {
     for (final dropped in groups.where((group) => _isBundledGroup(group.id) && !bundledIds.contains(group.id))) {
       await store.deleteGroup(dropped.id);
     }
-    // A wallpaper group starts with its one exclusive base and nothing else:
-    // the gallery's restriction/supplement catalogue is not copied here. Older
-    // versions materialized it, so the bump removes those seeded rules while a
-    // rule the user switched on or renamed stays.
-    await _pruneSeededRules(ranges, next);
 
     final restored = _applyBundledCurrent(normalizeWallpaperGroups(next), definitions);
     await store.saveGroups(restored);
@@ -341,25 +341,37 @@ class WallpaperGroupController extends ChangeNotifier {
   }
 
   /// Deletes a group together with its visible range.
+  Future<bool> deleteGroup(String id) => deleteGroups({id});
+
+  /// Deletes [ids] together with their visible ranges.
   ///
-  /// Refuses to remove the last group: the page and the notification need one
-  /// concrete group to fall back to, even when every group is disabled.
-  Future<bool> deleteGroup(String id) async {
+  /// All-or-nothing, and refuses to remove every group: the page and the
+  /// notification need one concrete group to fall back to, even when every group
+  /// is disabled. While the draft is active this only updates memory;
+  /// [saveDraft] is what deletes from the database.
+  Future<bool> deleteGroups(Set<String> ids) async {
     _requireInitialized();
-    if (_groups.length <= 1 || !_groups.any((group) => group.id == id)) return false;
-    final remaining = _groups.where((group) => group.id != id).toList();
+    final targets = ids.where((id) => _groups.any((group) => group.id == id)).toSet();
+    if (targets.isEmpty || _groups.length - targets.length < 1) return false;
+    final next = normalizeWallpaperGroups(_groups.where((group) => !targets.contains(group.id)).toList());
     if (_draftActive) {
-      _groups = normalizeWallpaperGroups(remaining);
-      _ranges.remove(id);
-      _deletedIds.add(id);
+      _groups = next;
+      for (final id in targets) {
+        _ranges.remove(id);
+        _deletedIds.add(id);
+      }
       _dirty = true;
       notifyListeners();
       return true;
     }
     final store = await _openStore();
-    await store.deleteGroup(id);
-    _groups = normalizeWallpaperGroups(remaining);
-    await store.saveGroups(_groups);
+    await store.db.transaction(() async {
+      for (final id in targets) {
+        await store.deleteGroup(id);
+      }
+      await store.saveGroups(next);
+    });
+    _groups = next;
     notifyListeners();
     return true;
   }

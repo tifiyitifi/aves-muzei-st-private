@@ -138,6 +138,24 @@ class VisibleRangeCandidate extends Equatable {
   /// the same conditions share one count and one cover.
   String get statsKey => filterFingerprint(filters);
 
+  /// The same candidate in another activation state.
+  ///
+  /// Both base sections start from the constant [unrestricted] candidate and
+  /// flip its state, so the 「Unrestricted」 tile reads and previews the same on
+  /// either page.
+  VisibleRangeCandidate copyWithActive(bool active) => VisibleRangeCandidate(
+        id: id,
+        kind: kind,
+        filters: filters,
+        labelKey: labelKey,
+        label: label,
+        description: description,
+        active: active,
+        preset: preset,
+        rule: rule,
+        placeholder: placeholder,
+      );
+
   @override
   List<Object?> get props => [id, kind, filters, labelKey, label, description, active, placeholder];
 }
@@ -228,16 +246,4 @@ List<VisibleRangeCandidate> buildVisibleRangeActiveCandidates({
     ?activeBase,
     ...rules,
   ];
-}
-
-extension on VisibleRangeCandidate {
-  VisibleRangeCandidate copyWithActive(bool active) => VisibleRangeCandidate(
-        id: id,
-        kind: kind,
-        filters: filters,
-        labelKey: labelKey,
-        label: label,
-        description: description,
-        active: active,
-      );
 }

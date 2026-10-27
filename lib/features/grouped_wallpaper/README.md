@@ -47,12 +47,16 @@ path is unknown.
 A group owns its range only. It never shows the gallery's preset catalogue or
 its default restriction/supplement candidates: those belong to the visible-range
 page. Conditions are added by pinning them from a media set, and the group page
-only shows, toggles, renames, takes out and deletes what is already there.
+only shows, toggles, renames, takes out and deletes what is already there. Older
+builds materialized that catalogue into every group; it is pruned on every start
+(not only on a defaults bump), so a restored backup cannot bring it back.
 
-Each group range starts with the 「no filters」 control as its first tile. It is
-not a condition: tapping it switches the group's base and every rule off without
-deleting anything. A base keeps its filters when switched off (`baseActive`), so
-it can be switched back on. An empty rules section keeps one 「None」 slot so the
+Each group range starts with the 「Unrestricted」 tile, the same candidate the
+gallery page shows. It is not a condition: its empty filter set is what gives it
+the whole library's cover and count, and tapping it switches the group's base off
+without deleting anything. A base keeps its filters when switched off
+(`baseActive`), so it can be switched back on. Rules are a separate section and
+keep their own switches. An empty rules section keeps one 「None」 slot so the
 page still shows the section exists.
 
 ## The page's draft
@@ -68,6 +72,12 @@ keep the saved state.
 - **Sync wallpaper now** saves a pending draft and asks the engine to apply it
   immediately instead of waiting for the wallpaper's interval. The entry is
   disabled until a grouped-wallpaper engine has attached to `wallpaperEngineLink`.
+
+Group cards take part in multi-selection in all three switcher styles: a tap
+toggles them while the page is selecting, and a long press starts a selection
+with that group. Group 0 is never selectable. Deleting the selected groups keeps
+at least one group and stays a draft until it is saved; deleting the viewed group
+moves the page to the first remaining one.
 
 ## Browsing scopes
 

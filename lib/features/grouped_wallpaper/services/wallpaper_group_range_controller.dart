@@ -169,17 +169,6 @@ class WallpaperGroupRangeController extends ChangeNotifier {
         return range.copyWith(baseActive: active);
       });
 
-  /// 「无 filters」: switches every condition of the group off without deleting
-  /// it, so the group falls back to all images and each condition can be turned
-  /// back on.
-  Future<void> deactivateAll() => _update((range) {
-        if (!range.baseActive && range.rules.every((rule) => !rule.active)) return range;
-        return range.copyWith(
-          baseActive: false,
-          rules: [for (final rule in range.rules) rule.copyWith(active: false)],
-        );
-      });
-
   /// Deletes the selected conditions; the base is cleared when [base] is true.
   Future<void> deleteConditions({bool base = false, Set<String> ruleIds = const {}}) => _update((range) {
         if (!base && ruleIds.isEmpty) return range;
@@ -245,12 +234,15 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   Future<void> updateGroup(String id, {required String name, String? description}) => groupController.updateGroup(id, name: name, description: description);
 
   /// Deletes a group, moving the page to another one when it was selected.
+  Future<bool> deleteGroup(String id) => deleteGroups({id});
+
+  /// Deletes groups, moving the page to another one when the viewed group went.
   ///
   /// The group controller refuses to remove the last group, so the page keeps
   /// something to edit; the boolean is passed on for the "keep one" message.
-  Future<bool> deleteGroup(String id) async {
-    final wasSelected = _selectedGroupId == id;
-    final deleted = await groupController.deleteGroup(id);
+  Future<bool> deleteGroups(Set<String> ids) async {
+    final wasSelected = _selectedGroupId != null && ids.contains(_selectedGroupId);
+    final deleted = await groupController.deleteGroups(ids);
     if (!deleted) return false;
     if (wasSelected) {
       await selectGroup(groups.firstOrNull?.id);

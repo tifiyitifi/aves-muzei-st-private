@@ -126,26 +126,6 @@ void main() {
     expect(controller.range!.resolve(), PathFilter('/dcim'));
   });
 
-  test('the no-filters control switches every condition off without deleting it', () async {
-    await controller.selectGroup('wallpaper.group.dcim');
-    final range = controller.range!;
-    await controller.groupController.saveGroupRange(
-      range.copyWith(
-        rules: [
-          VisibleRangeRule(id: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}),
-          VisibleRangeRule(id: 'r2', rangeId: range.id, kind: VisibleRangeRuleKind.supplement, filters: {MimeFilter.video}),
-        ],
-      ),
-    );
-    await controller.selectGroup('wallpaper.group.dcim');
-
-    await controller.deactivateAll();
-    expect(controller.range!.baseActive, isFalse);
-    expect(controller.range!.baseFilters, {PathFilter('/dcim')});
-    expect(controller.range!.rules.map((rule) => rule.active), everyElement(isFalse));
-    expect(controller.range!.resolve(), isNull);
-  });
-
   test('rules toggle, rename and reorder on the group range', () async {
     await controller.selectGroup('wallpaper.group.pictures');
     final range = controller.range!;
@@ -235,6 +215,16 @@ void main() {
 
     expect(await controller.deleteGroup('wallpaper.group.all'), isFalse);
     expect(controller.groups, hasLength(1));
+  });
+
+  test('deleting several groups from the page falls back to another viewed group', () async {
+    await controller.selectGroup('wallpaper.group.dcim');
+    expect(await controller.deleteGroups({'wallpaper.group.dcim', 'wallpaper.group.pictures'}), isTrue);
+
+    expect(controller.groups.map((group) => group.id), ['wallpaper.group.all']);
+    expect(controller.selectedGroupId, 'wallpaper.group.all');
+    expect(controller.range!.ownerId, 'wallpaper.group.all');
+    expect(controller.dirty, isTrue);
   });
 
   test('group management reaches the controller and persists on save', () async {

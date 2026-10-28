@@ -59,7 +59,7 @@ class GroupedWallpaperRenderer(
         const val PLACEHOLDER_SIZE = 256
 
         /** Neutral grey behind the placeholder glyph. */
-        const val PLACEHOLDER_BACKGROUND = 0xFF26282B.toInt()
+        const val PLACEHOLDER_BACKGROUND = 0xFF303338.toInt()
 
         const val PLACEHOLDER_FOREGROUND = 0xFF8A8F98.toInt()
 

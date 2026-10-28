@@ -8,18 +8,19 @@ of the Muzei-style live wallpaper mechanism.
 - **Done**: group model, layout invariants, bundled defaults (JSON), storage
   (`wallpaper_groups` table, schema v7; `baseActive` in v9), controller with the
   page's in-memory draft, the wallpaper-group page reachable from the
-  visible-range page's More menu / the shared bottom-bar entry, and the engine's
-  first closed loop (Dart baking + native single-image service).
-- **Not done yet**: auto-advance, the notification, and the availability label.
-  Until then a sync only happens when the service starts or the user asks for it,
-  and the engine has no timer of its own.
+  visible-range page's More menu / the shared bottom-bar entry, the engine's
+  closed loop (Dart baking + native slot queue), global gestures, and the
+  immersive view page.
+- **Not done yet**: auto-advance intervals, per-group effects, the notification,
+  and the availability label. Until then a sync happens when the service starts,
+  on a wallpaper tap, or when the user asks for it.
 
 ## The engine
 
 `lib/features/grouped_wallpaper/engine/` is the control plane; the native service
 only draws. Two entry points share one pipeline:
 
-- `prepare()` keeps a frame ready for the saved group and **never requires the
+- `prepare()` keeps the queue ready for the saved group and **never requires the
   service to be the system wallpaper yet**, because the system picker can take a
   moment to hand it over; and
 - `syncNow()` is the user asking for the next photo, and only applies while the
@@ -27,31 +28,61 @@ only draws. Two entry points share one pipeline:
 
 One run:
 
-1. reads the *saved* current group, its range and the off switch
+1. reads the *saved* current group, its range, the off switch and the ordering
    (`SavedGroupedWallpaperPlanStore`, deliberately bypassing the page's draft);
 2. adopts the first enabled group when activation finds no group selected;
-3. resolves the media set with `wallpaperMediaSetFilter`, skipping the image
-   already on screen and any file that disappeared since the last scan;
-4. bakes one cover-cropped PNG at `WallpaperManager.desiredMinimumWidth`;
-5. writes `state.json` and `current.png` atomically, then asks the renderer to
+3. adopts a slot the renderer promoted (over the channel when the app is
+   running, from `runtime.json` in a background run);
+4. resolves the media set with `wallpaperMediaSetFilter` and picks each missing
+   slot through the saved ordering;
+5. bakes a cover-cropped PNG at `WallpaperManager.desiredMinimumWidth` per slot;
+6. writes `state.json` and the slot photos atomically, then asks the renderer to
    reload.
 
-A plain `prepare` skips the bake when the state already shows the saved group and
-is newer than the group's and the range's `updatedAt`, so an app start on an
-untouched install costs a database read and a file stat, not a bake.
+A plain `prepare` skips the bake when the state already holds the full queue for
+the saved group and is newer than the group's and the range's `updatedAt`, so an
+app start on an untouched install costs a database read and a file stat, not a
+bake.
+
+### The promotion queue
+
+`state.json` carries `current → next → next2`, so the renderer can move to the
+next photo on a double tap without waiting for Flutter: it switches to the
+texture it already uploaded, records the promotion in `runtime.json`, and asks
+the app (or the shared background worker) to bake the freed slot. A tap that
+arrives before the slot is uploaded is buffered (capacity 5, 10 s expiry) and
+replayed as prefetched slots land, so a burst of taps keeps advancing instead of
+stopping after two.
+
+### Ordering
+
+The next photo is chosen the way Muzei chooses its artwork, and the default is
+the same:
+
+- `newThenRandom` (default): photos added after the wallpaper was set up are
+  served in id order, then the group falls back to random;
+- `inOrder`: walk the group newest first and wrap around at the end;
+- `random`: pick a random photo, avoiding the one on screen and the recently
+  shown ones (bounded to 32).
+
+Each ordering is a database query, not a walk of a fixed window: the old
+"newest 32" window could never leave those 32 photos, which made a tap cycle
+through a handful. `newestEntryId`, `cursor` and `recent` live in `state.json`
+(v3), so an app restart continues the walk instead of starting over.
 
 `state.json` is Dart-owned and read-only for the native side, and it carries what
 the notification will need (group number, resolved group name, entry, count,
 status). Every outcome is recorded instead of thrown: an empty group, a locked
 range, a missing photo or a failed bake all end in the grey placeholder, except a
-locked range or a turned-off feature, which keep the frame they stopped on.
+locked range or a turned-off feature, which keep the frame they stopped on. A
+failed *prefetch* keeps the frame and the queue; only a group with no usable
+photo at all falls back to the placeholder.
 
 The service asks the app for a frame when it starts and when the app attaches, so
 the wallpaper gets its first photo without a background worker; if the app is not
-running, the renderer keeps showing its placeholder until the app is opened. The
-engine is attached at startup (`main_common`) and prepares a frame right away, so
-the system picker finds a photo instead of the placeholder; the page re-probes
-`isActive` when it opens or resumes.
+running, the renderer keeps its placeholder until the app is opened. The engine
+is attached at startup (`main_common`), and the page re-probes `isActive` when it
+opens or resumes.
 
 ## Turning it on and off
 

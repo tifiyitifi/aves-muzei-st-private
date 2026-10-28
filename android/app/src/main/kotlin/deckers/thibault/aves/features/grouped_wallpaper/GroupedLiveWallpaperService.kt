@@ -59,7 +59,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         isRunning = true
         // The app may already be running: ask it for a frame right away instead
         // of waiting for the next time the page is opened.
-        GroupedWallpaperAppBridge.requestSync()
+        GroupedWallpaperAppBridge.requestSync(null)
     }
 
     override fun onDestroy() {
@@ -99,7 +99,11 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
-            renderer = GroupedWallpaperRenderer(this@GroupedLiveWallpaperService) { requestRender() }
+            renderer = GroupedWallpaperRenderer(
+                this@GroupedLiveWallpaperService,
+                requestRender = { requestRender() },
+                onAdvanced = ::notifyAdvance,
+            )
             setEGLContextClientVersion(2)
             setEGLConfigChooser(8, 8, 8, 0, 0, 0)
             setRenderer(renderer)
@@ -182,16 +186,32 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         /**
          * Promotes the prefetched slot, then asks someone to bake the freed one.
          *
-         * A running app does it over the channel; otherwise a WorkManager run
-         * boots a short-lived Flutter engine, so repeated taps keep advancing
-         * instead of stopping after the prefetched queue.
+         * A tap that cannot be served yet is buffered and replayed as soon as a
+         * reload uploads a promotable slot, so a burst of double taps keeps
+         * advancing instead of stopping after the prefetched queue.
          */
         private fun advance() {
-            if (!renderer.promote()) return
-            if (!GroupedWallpaperAppBridge.requestSync()) {
-                Log.d(TAG, "advance notification: no listening app, using the background refill")
-                LiveWallpaperRefillScheduler.enqueueTapRefill(this@GroupedLiveWallpaperService, LiveWallpaperTarget.GROUPED)
+            val promotion = renderer.promote()
+            if (promotion != null) {
+                notifyAdvance(promotion)
+                return
             }
+            renderer.enqueueAdvance()
+            requestRefill()
+        }
+
+        /** Tells a running app about a promotion, or schedules a background run. */
+        private fun notifyAdvance(promotion: GroupedWallpaperPromotion) {
+            if (GroupedWallpaperAppBridge.requestSync(promotion)) return
+            Log.d(TAG, "advance notification: no listening app, using the background refill")
+            LiveWallpaperRefillScheduler.enqueueTapRefill(this@GroupedLiveWallpaperService, LiveWallpaperTarget.GROUPED)
+        }
+
+        /** Asks for a refill even though no slot was promoted. */
+        private fun requestRefill() {
+            if (GroupedWallpaperAppBridge.requestSync(null)) return
+            Log.d(TAG, "refill notification: no listening app, using the background refill")
+            LiveWallpaperRefillScheduler.enqueueTapRefill(this@GroupedLiveWallpaperService, LiveWallpaperTarget.GROUPED)
         }
 
         /** Opens the grouped wallpaper's view page, like Muzei's artwork view. */

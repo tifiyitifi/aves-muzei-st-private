@@ -29,6 +29,19 @@ data class GroupedWallpaperSlotFile(
 )
 
 /**
+ * A slot the renderer promoted, handed to the app so it can refill the queue.
+ *
+ * The renderer also writes it to `runtime.json`, but that write is asynchronous
+ * and a running app can bake before it lands; the channel message arrives with
+ * the refill request instead.
+ */
+data class GroupedWallpaperPromotion(
+    val generation: Int,
+    val current: Int,
+    val next: Int,
+)
+
+/**
  * What the native side needs from the Dart-owned `state.json`.
  *
  * Only the fields the renderer and the notification use are read; everything is
@@ -117,7 +130,7 @@ object GroupedWallpaperStateFile {
             if (status.isEmpty()) return null
             when (version) {
                 1 -> readV1(json, status)
-                2 -> readV2(json, status)
+                2, 3 -> readQueued(json, status)
                 else -> {
                     Log.w(TAG, "ignoring state.json of another version")
                     null
@@ -151,7 +164,7 @@ object GroupedWallpaperStateFile {
         )
     }
 
-    private fun readV2(json: JSONObject, status: String): GroupedWallpaperFileState {
+    private fun readQueued(json: JSONObject, status: String): GroupedWallpaperFileState {
         val slots = mutableListOf<GroupedWallpaperSlotFile>()
         val seen = mutableSetOf<Int>()
         val rawSlots = json.optJSONArray("slots")

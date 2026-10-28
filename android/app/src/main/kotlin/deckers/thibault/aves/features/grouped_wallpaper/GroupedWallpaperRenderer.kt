@@ -25,6 +25,7 @@ import android.graphics.RectF
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.GLUtils
+import android.os.SystemClock
 import android.util.Log
 import java.io.File
 import java.nio.ByteBuffer
@@ -51,6 +52,7 @@ import kotlin.math.min
 class GroupedWallpaperRenderer(
     private val context: Context,
     private val requestRender: () -> Unit,
+    private val onAdvanced: (GroupedWallpaperPromotion) -> Unit,
 ) : GLSurfaceView.Renderer {
     private companion object {
         const val TAG = "AvesGroupedWallpaper"
@@ -117,6 +119,15 @@ class GroupedWallpaperRenderer(
     /** Slot ids whose texture is uploaded, so a promotion never targets a hole. */
     @Volatile
     private var readySlots: Set<Int> = emptySet()
+
+    /**
+     * Guards a promotion: a tap arrives on the main thread while a reload is
+     * consumed on the GL thread, and both may promote.
+     */
+    private val advanceLock = Any()
+
+    /** Taps that arrived before a slot was uploaded; replayed as slots land. */
+    private val advanceRequests = GroupedAdvanceRequestQueue()
 
     @Volatile
     private var offsetX = 0.5f
@@ -264,24 +275,27 @@ class GroupedWallpaperRenderer(
     /**
      * Moves to the prefetched slot, as a wallpaper tap does.
      *
-     * Returns false when there is nothing to promote: the group is locked or
+     * Returns null when there is nothing to promote: the group is locked or
      * turned off, the queue is exhausted, or the texture of the next slot has
-     * not been uploaded yet.
+     * not been uploaded yet. The caller then buffers the tap instead of losing
+     * it.
      */
-    fun promote(): Boolean {
-        val current = state ?: return false
-        if (!current.canPromote) return false
+    fun promote(): GroupedWallpaperPromotion? = synchronized(advanceLock) { promoteLocked() }
+
+    private fun promoteLocked(): GroupedWallpaperPromotion? {
+        val current = state ?: return null
+        if (!current.canPromote) return null
         val nextId = current.next
         if (!readySlots.contains(nextId)) {
             Log.d(TAG, "promote skipped: slot $nextId is not uploaded yet")
-            return false
+            return null
         }
         val nextNext = current.next2
         displayed = nextId
         state = current.copy(current = nextId, next = nextNext, next2 = -1)
         requestRender()
-        // The runtime is what lets Dart learn about the promotion even when no
-        // app is listening; a stale generation makes it ignored.
+        // The runtime is what lets a background refill learn about the promotion
+        // even when no app is listening; a stale generation makes it ignored.
         try {
             loader.execute {
                 GroupedWallpaperStateFile.writeRuntime(context, current.generation, nextId, nextNext, refillRequested = true)
@@ -290,12 +304,41 @@ class GroupedWallpaperRenderer(
             Log.d(TAG, "runtime write ignored after renderer shutdown")
         }
         Log.d(TAG, "promote generation=${current.generation} current=$nextId next=$nextNext")
-        return true
+        return GroupedWallpaperPromotion(current.generation, nextId, nextNext)
+    }
+
+    /** Buffers a tap whose slot is not uploaded yet, so it is not lost. */
+    fun enqueueAdvance() {
+        val pending = synchronized(advanceLock) {
+            advanceRequests.request(SystemClock.elapsedRealtime())
+            advanceRequests.size
+        }
+        Log.d(TAG, "advance queued pending=$pending")
+    }
+
+    /**
+     * Replays one buffered tap once a reload has uploaded a promotable slot.
+     *
+     * A tap can outrun the bake; the reload that follows a refill is the moment
+     * it can be served. Further buffered taps wait for their own refill.
+     */
+    private fun drainPendingAdvance() {
+        if (destroyed) return
+        val promotion = synchronized(advanceLock) {
+            val current = state
+            if (advanceRequests.isEmpty || current == null) return@synchronized null
+            if (!current.canPromote || !readySlots.contains(current.next)) return@synchronized null
+            if (!advanceRequests.consume(SystemClock.elapsedRealtime())) return@synchronized null
+            promoteLocked()
+        } ?: return
+        Log.d(TAG, "advance.drain")
+        onAdvanced(promotion)
     }
 
     fun destroy() {
         destroyed = true
         GroupedWallpaperRenderBus.detach(this)
+        synchronized(advanceLock) { advanceRequests.clear() }
         loader.shutdownNow()
     }
 
@@ -371,6 +414,8 @@ class GroupedWallpaperRenderer(
             displayed = loaded.state.current
         }
         if (!textures.containsKey(displayed)) displayed = -1
+        // A buffered tap may be servable now that the new slots are uploaded.
+        drainPendingAdvance()
     }
 
     private fun drawQuad(vertices: FloatBuffer, coords: FloatBuffer, texture: Int) {

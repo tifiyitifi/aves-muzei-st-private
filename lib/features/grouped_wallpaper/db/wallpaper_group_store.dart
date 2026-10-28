@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:drift/drift.dart';
@@ -28,6 +29,9 @@ class WallpaperGroupStore {
 
   /// AppMeta key of the gesture bindings, which are global to both wallpapers.
   static const keyGestures = 'wallpaper.groupedGestures';
+
+  /// AppMeta key of the ordering, global until each group owns one.
+  static const keyOrdering = 'wallpaper.groupedOrdering';
 
   final AppDatabase db;
 
@@ -98,6 +102,14 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeGestures(GroupedWallpaperGestures gestures) => AppMetaStore(db).write({keyGestures: jsonEncode(gestures.toJsonMap())});
+
+  /// The ordering the next photo is chosen with.
+  Future<GroupedWallpaperOrdering> readOrdering() async {
+    final values = await AppMetaStore(db).read({keyOrdering});
+    return GroupedWallpaperOrdering.tryParse(values[keyOrdering]);
+  }
+
+  Future<void> writeOrdering(GroupedWallpaperOrdering ordering) => AppMetaStore(db).write({keyOrdering: ordering.name});
 
   static WallpaperGroup _toGroup(WallpaperGroupRow row, int number) => WallpaperGroup(
         id: row.id,

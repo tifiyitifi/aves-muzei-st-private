@@ -10,16 +10,19 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_plan.da
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/entry/extensions/props.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// `GroupedWallpaperEngine`: the promotion queue, what a run writes, and how
-/// every failure degrades to the placeholder instead of a stale image.
+/// `GroupedWallpaperEngine`: the promotion queue, the ordering metadata, what a
+/// run writes, and how every failure degrades to the placeholder instead of a
+/// stale image.
 void main() {
   const dcimGroup = WallpaperGroup(id: 'group.1', number: 1, name: '@wallpaperGroupDefaultDcim', current: true, updatedAt: 10);
   const plan = GroupedWallpaperPlan(group: dcimGroup);
@@ -53,11 +56,15 @@ void main() {
         origin: EntryOrigins.mediaStoreContent,
       );
 
-  /// Newest first, as the entry source returns them.
-  GroupedWallpaperEntryWindow window(int n, {int first = 50}) => GroupedWallpaperEntryWindow(
-        count: n,
-        entries: [for (var i = 0; i < n; i++) entry(first - i)],
-      );
+  /// Newest first, as the database returns them.
+  List<AvesEntry> entries(int n, {int first = 50}) => [for (var i = 0; i < n; i++) entry(first - i)];
+
+  void serve(List<AvesEntry> list, {List<AvesEntry> fresh = const [], int? newest}) {
+    entrySource.entries = list;
+    entrySource.fresh = fresh;
+    entrySource.total = list.length;
+    entrySource.newest = newest ?? (list.isEmpty ? 0 : list.first.id);
+  }
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('aves_grouped_engine_');
@@ -108,6 +115,7 @@ void main() {
 
   test('syncNow does nothing while the grouped wallpaper is not the system wallpaper', () async {
     platform.active = false;
+    serve(entries(12));
 
     expect(await engine.syncNow(), GroupedWallpaperSyncResult.notActive);
     expect(await store.stateFile.exists(), isFalse);
@@ -118,7 +126,7 @@ void main() {
   group('prepare', () {
     test('bakes a queue before the service is the system wallpaper', () async {
       platform.active = false;
-      entrySource.window = window(12);
+      serve(entries(12));
 
       expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
 
@@ -128,16 +136,19 @@ void main() {
       expect(state.queueLength, GroupedWallpaperEngine.prefetchAhead + 1);
       expect(state.currentSlot?.entryId, 50);
       expect(state.nextSlot?.entryId, 49);
+      expect(state.next2Slot?.entryId, 48);
       expect(state.count, 12);
       expect(state.width, 100);
       expect(state.height, 200);
+      expect(state.recent.map((entry) => entry.entryId), [50]);
+      expect(state.newestEntryId, 50);
       for (final slot in state.slots) {
         expect(await store.slotPhotoOf(slot)?.exists(), isTrue);
       }
     });
 
     test('keeps the queue it already has instead of cycling on every start', () async {
-      entrySource.window = window(12);
+      serve(entries(12));
       await engine.prepare();
       final first = (await store.readState())!;
 
@@ -148,7 +159,7 @@ void main() {
     });
 
     test('re-bakes when the group range was saved after the bake', () async {
-      entrySource.window = window(12);
+      serve(entries(12));
       await engine.prepare();
 
       planStore.plan = GroupedWallpaperPlan(
@@ -161,7 +172,7 @@ void main() {
     });
 
     test('re-bakes when a slot photo is gone from disk', () async {
-      entrySource.window = window(12);
+      serve(entries(12));
       await engine.prepare();
       final state = (await store.readState())!;
       await store.slotPhoto(state.next).delete();
@@ -172,7 +183,7 @@ void main() {
     });
 
     test('a small group keeps fewer slots instead of repeating an image', () async {
-      entrySource.window = window(2);
+      serve(entries(2));
 
       await engine.prepare();
 
@@ -184,7 +195,7 @@ void main() {
     test('activation with no group adopts the first enabled group', () async {
       planStore.plan = const GroupedWallpaperPlan(group: WallpaperGroup.none);
       planStore.adopted = const GroupedWallpaperPlan(group: dcimGroup);
-      entrySource.window = window(3, first: 7);
+      serve(entries(3, first: 7));
 
       expect(await engine.prepare(activation: true), GroupedWallpaperSyncResult.baked);
 
@@ -209,11 +220,79 @@ void main() {
       expect(planStore.adoptCount, 0);
       expect(baker.bakeCount, 0);
     });
+
+    test('the group range is what the media set is resolved from', () async {
+      final range = VisibleRange(id: 'group.1.range', scope: VisibleRangeScope.wallpaper, ownerId: dcimGroup.id);
+      planStore.plan = GroupedWallpaperPlan(group: dcimGroup, range: range);
+      serve(entries(2));
+
+      await engine.syncNow();
+
+      expect(entrySource.lastRange, range);
+    });
+  });
+
+  group('ordering', () {
+    test('passes the plan ordering and the state metadata to the source', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, ordering: GroupedWallpaperOrdering.inOrder);
+      serve(entries(12));
+
+      await engine.prepare();
+
+      expect(entrySource.lastOrdering, GroupedWallpaperOrdering.inOrder);
+      // The marker is seeded from the group before the first pick.
+      expect(entrySource.lastNewestEntryId, 50);
+      expect((await store.readState())!.ordering, GroupedWallpaperOrdering.inOrder);
+    });
+
+    test('new photos are served before the random fallback', () async {
+      serve(entries(12), fresh: [entry(60), entry(61)], newest: 50);
+
+      await engine.prepare();
+
+      final state = (await store.readState())!;
+      expect(state.currentSlot?.entryId, 60);
+      expect(state.nextSlot?.entryId, 61);
+      // Nothing new is left: the third slot falls back to random.
+      expect(state.next2Slot?.entryId, 50);
+    });
+
+    test('a tap keeps advancing through the whole group instead of cycling', () async {
+      serve(entries(20));
+      await engine.prepare();
+      final seen = <int>{};
+
+      for (var i = 0; i < 12; i++) {
+        seen.add((await store.readState())!.currentSlot!.entryId);
+        expect(await engine.syncNow(), GroupedWallpaperSyncResult.baked);
+      }
+      seen.add((await store.readState())!.currentSlot!.entryId);
+
+      // A 20-image group with a 3-slot queue must not repeat after the first few.
+      expect(seen.length, 13);
+      expect(seen, {for (var id = 50; id >= 38; id--) id});
+    });
+
+    test('the in-order cursor walks the group and wraps around', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, ordering: GroupedWallpaperOrdering.inOrder);
+      serve(entries(3));
+      await engine.prepare();
+      expect((await store.readState())!.currentSlot?.entryId, 50);
+
+      await engine.syncNow();
+      expect((await store.readState())!.currentSlot?.entryId, 49);
+
+      await engine.syncNow();
+      expect((await store.readState())!.currentSlot?.entryId, 48);
+
+      await engine.syncNow();
+      expect((await store.readState())!.currentSlot?.entryId, 50);
+    });
   });
 
   group('advance', () {
     test('moves to the prefetched slot and refills the queue', () async {
-      entrySource.window = window(12);
+      serve(entries(12));
       await engine.prepare();
       final first = (await store.readState())!;
       expect(first.currentSlot?.entryId, 50);
@@ -227,10 +306,11 @@ void main() {
       expect(state.slots.map((slot) => slot.entryId).toSet(), {47, 48, 49});
       // Only the freed slot is baked again: the other two keep their files.
       expect(baker.bakeCount, 4);
+      expect(state.recent.map((entry) => entry.entryId), [49, 50]);
     });
 
     test('a group with a single image keeps showing it', () async {
-      entrySource.window = window(1, first: 5);
+      serve(entries(1, first: 5));
       await engine.prepare();
 
       await engine.syncNow();
@@ -241,7 +321,7 @@ void main() {
     });
 
     test('adopts the slot the renderer promoted to', () async {
-      entrySource.window = window(12);
+      serve(entries(12));
       await engine.prepare();
       final first = (await store.readState())!;
       // The renderer promoted `next` on a tap and recorded it.
@@ -256,8 +336,25 @@ void main() {
       expect(state.queueLength, 3);
     });
 
+    test('adopts the promotion sent over the channel without reading runtime.json', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final first = (await store.readState())!;
+
+      expect(
+        await engine.prepare(promotion: GroupedWallpaperPromotion(generation: first.generation, current: first.next, next: first.next2)),
+        GroupedWallpaperSyncResult.baked,
+      );
+
+      final state = (await store.readState())!;
+      expect(state.currentSlot?.entryId, 49);
+      expect(state.nextSlot?.entryId, 48);
+      expect(state.queueLength, 3);
+      expect(await store.runtimeFile.exists(), isFalse);
+    });
+
     test('a stale runtime is ignored', () async {
-      entrySource.window = window(12);
+      serve(entries(12));
       await engine.prepare();
       final first = (await store.readState())!;
       await store.runtimeFile.writeAsString('{"generation":${first.generation - 1},"current":${first.next},"next":-1}');
@@ -270,7 +367,7 @@ void main() {
 
   group('disabled', () {
     test('keeps the frame on screen and records the status', () async {
-      entrySource.window = window(3);
+      serve(entries(3));
       await engine.prepare();
       final frozen = (await store.readState())!;
 
@@ -294,7 +391,7 @@ void main() {
     });
 
     test('freezes when the group that was playing disappeared', () async {
-      entrySource.window = window(3);
+      serve(entries(3));
       await engine.prepare();
 
       // The group was deleted or disabled: normalize leaves no current group.
@@ -310,10 +407,10 @@ void main() {
   });
 
   test('an empty group clears the photos and records the empty state', () async {
-    entrySource.window = window(2);
+    serve(entries(2));
     await engine.prepare();
 
-    entrySource.window = GroupedWallpaperEntryWindow.empty;
+    serve(const []);
     planStore.plan = const GroupedWallpaperPlan(group: WallpaperGroup(id: 'group.2', number: 2, name: 'B', current: true, updatedAt: 11));
 
     expect(await engine.prepare(), GroupedWallpaperSyncResult.empty);
@@ -326,7 +423,7 @@ void main() {
   });
 
   test('a locked group keeps its queue and bakes nothing', () async {
-    entrySource.window = window(12);
+    serve(entries(12));
     await engine.prepare();
     final frozen = (await store.readState())!;
     final bakes = baker.bakeCount;
@@ -361,12 +458,25 @@ void main() {
     expect(baker.bakeCount, 0);
   });
 
-  test('a bake failure clears the photos and shows the placeholder', () async {
-    entrySource.window = window(4);
+  test('a bake failure while filling the queue keeps the frame and the queue', () async {
+    serve(entries(12));
     await engine.prepare();
     baker.error = const GroupedWallpaperBakeException('decode failed');
 
-    expect(await engine.syncNow(), GroupedWallpaperSyncResult.failed);
+    expect(await engine.syncNow(), GroupedWallpaperSyncResult.baked);
+
+    final state = (await store.readState())!;
+    expect(state.currentSlot?.entryId, 49);
+    expect(state.nextSlot?.entryId, 48);
+    // The freed slot stays empty rather than showing a broken photo.
+    expect(state.next2, -1);
+  });
+
+  test('a bake failure on the first frame clears the photos and shows the placeholder', () async {
+    serve(entries(4));
+    baker.error = const GroupedWallpaperBakeException('decode failed');
+
+    expect(await engine.prepare(), GroupedWallpaperSyncResult.failed);
 
     final state = (await store.readState())!;
     expect(state.status, GroupedWallpaperStatus.unavailable);
@@ -376,7 +486,7 @@ void main() {
   });
 
   test('a plan read failure still leaves the placeholder, not the old frame', () async {
-    entrySource.window = window(2);
+    serve(entries(2));
     await engine.prepare();
     planStore.error = StateError('database is gone');
 
@@ -388,7 +498,7 @@ void main() {
   });
 
   test('concurrent runs are serialized instead of writing at the same time', () async {
-    entrySource.window = window(4);
+    serve(entries(4));
 
     final results = await Future.wait([engine.prepare(), engine.syncNow()]);
 
@@ -398,37 +508,25 @@ void main() {
   });
 
   test('the service request runs a prepare', () async {
-    entrySource.window = window(2, first: 3);
+    serve(entries(2, first: 3));
     final reloaded = Completer<void>();
     platform.onReload = () {
       if (!reloaded.isCompleted) reloaded.complete();
     };
 
-    platform.syncHandler!.call();
+    platform.syncHandler!(null);
     await reloaded.future;
 
     expect((await store.readState())!.hasPhoto, isTrue);
   });
 
-  test('the group range is what the media set is resolved from', () async {
-    final range = VisibleRange(id: 'group.1.range', scope: VisibleRangeScope.wallpaper, ownerId: dcimGroup.id);
-    planStore.plan = GroupedWallpaperPlan(group: dcimGroup, range: range);
-    entrySource.window = window(2);
+  test('a group with a missing file skips it instead of baking a broken photo', () async {
+    serve([entry(3).copyWith(path: '/gone/3.jpg'), entry(1)]);
 
-    await engine.syncNow();
+    await engine.prepare();
 
-    expect(entrySource.lastRange, range);
-  });
-
-  group('_pickEntries', () {
-    test('skips entries whose file disappeared', () async {
-      entrySource.window = GroupedWallpaperEntryWindow(count: 2, entries: [entry(3).copyWith(path: '/gone/3.jpg'), entry(1)]);
-
-      await engine.prepare();
-
-      final state = (await store.readState())!;
-      expect(state.currentSlot?.entryId, 1);
-    });
+    final state = (await store.readState())!;
+    expect(state.currentSlot?.entryId, 1);
   });
 }
 
@@ -437,7 +535,7 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   bool active = true;
   int reloadCount = 0;
   bool chooserOpened = false;
-  VoidCallback? syncHandler;
+  void Function(GroupedWallpaperPromotion? promotion)? syncHandler;
   VoidCallback? onReload;
 
   new(this.root);
@@ -464,7 +562,7 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   }
 
   @override
-  void setSyncRequestHandler({VoidCallback? onSyncRequested}) {
+  void setSyncRequestHandler({void Function(GroupedWallpaperPromotion? promotion)? onSyncRequested}) {
     syncHandler = onSyncRequested;
   }
 }
@@ -512,22 +610,70 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setDisabled(bool disabled) async {
     disabledWrites.add(disabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering);
   }
 
   @override
   Future<void> setGestures(GroupedWallpaperGestures gestures) async {
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering);
+  }
+
+  @override
+  Future<void> setOrdering(GroupedWallpaperOrdering ordering) async {
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: ordering);
   }
 }
 
+/// A deterministic stand-in for the database-backed source.
+///
+/// It mirrors the three orderings without SQL: `inOrder` walks [entries],
+/// `newThenRandom` serves [fresh] first, and `random` walks the not-yet-shown
+/// entries in list order. That is enough to assert how the engine drives it.
 class _FakeEntrySource implements GroupedWallpaperEntrySource {
-  GroupedWallpaperEntryWindow window = GroupedWallpaperEntryWindow.empty;
+  List<AvesEntry> entries = const [];
+  List<AvesEntry> fresh = const [];
+  int total = 0;
+  int newest = 0;
+
   VisibleRange? lastRange;
+  GroupedWallpaperOrdering? lastOrdering;
+  int? lastNewestEntryId;
 
   @override
-  Future<GroupedWallpaperEntryWindow> load(VisibleRange? range, {required int limit}) async {
+  Future<int> count(VisibleRange? range) async => total;
+
+  @override
+  Future<int> newPhotoMarker(VisibleRange? range) async => newest;
+
+  @override
+  Future<GroupedWallpaperPick> pick(
+    VisibleRange? range, {
+    required GroupedWallpaperOrdering ordering,
+    required int cursor,
+    int attempt = 0,
+    int newestEntryId = 0,
+    Set<int> excludeEntryIds = const {},
+  }) async {
     lastRange = range;
-    return window;
+    lastOrdering = ordering;
+    lastNewestEntryId = newestEntryId;
+
+    bool usable(AvesEntry entry) => !entry.isMissingAtPath && !excludeEntryIds.contains(entry.id);
+
+    if (ordering == GroupedWallpaperOrdering.newThenRandom) {
+      final candidates = fresh.where(usable).toList();
+      if (attempt < candidates.length) {
+        return GroupedWallpaperPick(entry: candidates[attempt], total: total);
+      }
+    }
+    if (ordering == GroupedWallpaperOrdering.inOrder) {
+      if (entries.isEmpty) return GroupedWallpaperPick(total: total);
+      final offset = (cursor + attempt) % entries.length;
+      return GroupedWallpaperPick(entry: entries[offset], total: total, offset: offset);
+    }
+    final candidates = entries.where(usable).toList();
+    if (candidates.isEmpty) return GroupedWallpaperPick(total: total);
+    final pick = candidates[attempt % candidates.length];
+    return GroupedWallpaperPick(entry: pick, total: total, offset: entries.indexOf(pick));
   }
 }

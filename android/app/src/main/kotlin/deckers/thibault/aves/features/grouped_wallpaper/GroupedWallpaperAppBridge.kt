@@ -76,14 +76,26 @@ object GroupedWallpaperAppBridge {
     val isRequestHandlerAttached: Boolean
         get() = requestHandlerAttached
 
-    /** Asks the app to bake a frame now; false when no app is listening. */
-    fun requestSync(): Boolean {
+    /**
+     * Asks the app to bake a frame now; false when no app is listening.
+     *
+     * [promotion] is the slot the renderer just promoted, so the app can adopt it
+     * without waiting for the asynchronous `runtime.json` write.
+     */
+    fun requestSync(promotion: GroupedWallpaperPromotion?): Boolean {
         val engineMessenger = messenger ?: return false
         if (!requestHandlerAttached) return false
         mainHandler.post {
             try {
+                val arguments = promotion?.let {
+                    mapOf(
+                        "generation" to it.generation,
+                        "current" to it.current,
+                        "next" to it.next,
+                    )
+                }
                 MethodChannel(engineMessenger, GroupedWallpaperHandler.CHANNEL)
-                    .invokeMethod("syncRequested", null)
+                    .invokeMethod("syncRequested", arguments)
             } catch (t: Throwable) {
                 Log.w(TAG, "failed to ask the app for a frame", t)
             }

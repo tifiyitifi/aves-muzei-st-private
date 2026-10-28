@@ -1,4 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
@@ -127,6 +128,43 @@ class GroupedWallpaperSlot extends Equatable {
   List<Object?> get props => [id, entryId, uri, title, photo, width, height];
 }
 
+/// One photo the wallpaper has shown, for the "recently shown" exclusion and for
+/// the page to fall back on when the queue is empty.
+///
+/// Only metadata: the baked path belongs to a slot, and a later bake recycles that
+/// slot, so a stored path would silently resolve to another photo.
+@immutable
+class GroupedWallpaperRecentEntry extends Equatable {
+  final int entryId;
+  final String uri;
+  final String title;
+
+  const new({
+    required this.entryId,
+    this.uri = '',
+    this.title = '',
+  });
+
+  Map<String, Object?> toJsonMap() => {
+        'entryId': entryId,
+        'uri': uri,
+        'title': title,
+      };
+
+  static GroupedWallpaperRecentEntry? tryFromJsonMap(Map<String, Object?> json) {
+    final entryId = GroupedWallpaperSlot._slotInt(json['entryId']);
+    if (entryId == null || entryId <= 0) return null;
+    return GroupedWallpaperRecentEntry(
+      entryId: entryId,
+      uri: GroupedWallpaperSlot._slotString(json['uri']),
+      title: GroupedWallpaperSlot._slotString(json['title']),
+    );
+  }
+
+  @override
+  List<Object?> get props => [entryId, uri, title];
+}
+
 /// Dart-owned `state.json` of the grouped wallpaper.
 ///
 /// This is the contract between the Flutter engine and the native renderer: only
@@ -144,8 +182,17 @@ class GroupedWallpaperSlot extends Equatable {
 /// crashing the service.
 @immutable
 class GroupedWallpaperState extends Equatable {
-  /// v2 added the slot queue; a v1 file is read as a single-slot queue.
-  static const int currentVersion = 2;
+  /// v2 added the slot queue; v3 added the ordering metadata ([recent],
+  /// [cursor], [newestEntryId]). Older files are read with those at their
+  /// defaults, so an upgrade never loses the frame on screen.
+  static const int currentVersion = 3;
+
+  /// How many recently shown photos are remembered.
+  ///
+  /// The random ordering rejects them, so a group larger than this walks its
+  /// whole library before repeating, while a small group repeats rather than
+  /// blanking. Metadata only, so the cost is negligible.
+  static const int maxRecent = 32;
 
   /// The single photo file a v1 state pointed at.
   static const String photoFileNameV1 = 'current.png';
@@ -170,6 +217,18 @@ class GroupedWallpaperState extends Equatable {
   final int next2;
   final List<GroupedWallpaperSlot> slots;
 
+  /// Photos the wallpaper has shown, newest first.
+  final List<GroupedWallpaperRecentEntry> recent;
+
+  /// Position of the next in-order pick within the group.
+  final int cursor;
+
+  /// Highest entry id shown, so photos added afterwards are served first.
+  final int newestEntryId;
+
+  /// Ordering the queue was baked with, for continuity across restarts.
+  final GroupedWallpaperOrdering ordering;
+
   /// Gestures the renderer acts on without asking Dart.
   final GroupedWallpaperGestures gestures;
 
@@ -187,6 +246,10 @@ class GroupedWallpaperState extends Equatable {
     this.next = -1,
     this.next2 = -1,
     this.slots = const [],
+    this.recent = const [],
+    this.cursor = 0,
+    this.newestEntryId = 0,
+    this.ordering = GroupedWallpaperOrdering.defaultOrdering,
     this.gestures = const GroupedWallpaperGestures(),
     this.bakedAt = 0,
   });
@@ -241,6 +304,10 @@ class GroupedWallpaperState extends Equatable {
     int? next,
     int? next2,
     List<GroupedWallpaperSlot>? slots,
+    List<GroupedWallpaperRecentEntry>? recent,
+    int? cursor,
+    int? newestEntryId,
+    GroupedWallpaperOrdering? ordering,
     GroupedWallpaperGestures? gestures,
     int? bakedAt,
   }) => GroupedWallpaperState(
@@ -255,9 +322,27 @@ class GroupedWallpaperState extends Equatable {
         next: next ?? this.next,
         next2: next2 ?? this.next2,
         slots: slots ?? this.slots,
+        recent: recent ?? this.recent,
+        cursor: cursor ?? this.cursor,
+        newestEntryId: newestEntryId ?? this.newestEntryId,
+        ordering: ordering ?? this.ordering,
         gestures: gestures ?? this.gestures,
         bakedAt: bakedAt ?? this.bakedAt,
       );
+
+  /// [recent] with the current photo moved to the front, de-duplicated and
+  /// capped at [maxRecent].
+  ///
+  /// Only the metadata is kept: the slot's photo path is reused by a later bake
+  /// and would point at another image.
+  static List<GroupedWallpaperRecentEntry> promoteRecent(List<GroupedWallpaperRecentEntry> recent, GroupedWallpaperSlot? slot) {
+    if (slot == null) return recent;
+    final metadata = GroupedWallpaperRecentEntry(entryId: slot.entryId, uri: slot.uri, title: slot.title);
+    return [
+      metadata,
+      ...recent.where((existing) => existing.entryId != metadata.entryId),
+    ].take(maxRecent).toList(growable: false);
+  }
 
   Map<String, Object?> toJsonMap() => {
         'version': version,
@@ -271,6 +356,10 @@ class GroupedWallpaperState extends Equatable {
         'next': next,
         'next2': next2,
         'slots': slots.map((slot) => slot.toJsonMap()).toList(),
+        'recent': recent.map((entry) => entry.toJsonMap()).toList(),
+        'cursor': cursor,
+        'newestEntryId': newestEntryId,
+        'ordering': ordering.name,
         'gestures': gestures.toJsonMap(),
         'bakedAt': bakedAt,
       };
@@ -281,7 +370,7 @@ class GroupedWallpaperState extends Equatable {
     if (status == null) return null;
     return switch (version) {
       1 => _fromV1(json, status),
-      currentVersion => _fromV2(json, status),
+      2 || 3 => _fromQueued(json, status),
       _ => null,
     };
   }
@@ -317,7 +406,7 @@ class GroupedWallpaperState extends Equatable {
     );
   }
 
-  static GroupedWallpaperState _fromV2(Map<String, Object?> json, GroupedWallpaperStatus status) {
+  static GroupedWallpaperState _fromQueued(Map<String, Object?> json, GroupedWallpaperStatus status) {
     final slots = <GroupedWallpaperSlot>[];
     final seenIds = <int>{};
     final rawSlots = json['slots'];
@@ -326,6 +415,16 @@ class GroupedWallpaperState extends Equatable {
         if (rawSlot is! Map) continue;
         final slot = GroupedWallpaperSlot.tryFromJsonMap(rawSlot.map((key, value) => MapEntry(key.toString(), value)));
         if (slot != null && seenIds.add(slot.id)) slots.add(slot);
+      }
+    }
+    final recent = <GroupedWallpaperRecentEntry>[];
+    final seenRecent = <int>{};
+    final rawRecent = json['recent'];
+    if (rawRecent is List) {
+      for (final rawEntry in rawRecent) {
+        if (rawEntry is! Map || recent.length >= maxRecent) continue;
+        final entry = GroupedWallpaperRecentEntry.tryFromJsonMap(rawEntry.map((key, value) => MapEntry(key.toString(), value)));
+        if (entry != null && seenRecent.add(entry.entryId)) recent.add(entry);
       }
     }
     int readSlotId(Object? value) {
@@ -344,6 +443,10 @@ class GroupedWallpaperState extends Equatable {
       next: readSlotId(json['next']),
       next2: readSlotId(json['next2']),
       slots: List.unmodifiable(slots),
+      recent: List.unmodifiable(recent),
+      cursor: _int(json['cursor']) ?? 0,
+      newestEntryId: _int(json['newestEntryId']) ?? 0,
+      ordering: GroupedWallpaperOrdering.tryParse(json['ordering']),
       gestures: GroupedWallpaperGestures.fromJsonMap(_map(json['gestures']) ?? const {}),
       bakedAt: _int(json['bakedAt']) ?? 0,
     );
@@ -366,7 +469,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, gestures, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

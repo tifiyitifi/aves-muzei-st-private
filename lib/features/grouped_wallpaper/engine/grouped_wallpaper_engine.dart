@@ -13,8 +13,6 @@ import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
-import 'package:aves/model/entry/entry.dart';
-import 'package:aves/model/entry/extensions/props.dart';
 import 'package:flutter/painting.dart';
 
 /// The grouped wallpaper's control plane.
@@ -41,6 +39,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// Two matches Muzei's default: the first two taps are instant, and the
   /// renderer buffers the rest until Dart catches up.
   static const int prefetchAhead = 2;
+
+  /// How many candidates one slot tries before giving up.
+  ///
+  /// A decode failure steps to the next photo instead of leaving the slot empty.
+  static const int maxBakeAttempts = 5;
 
   final GroupedWallpaperPlatform platform;
   final GroupedWallpaperBaker baker;
@@ -93,7 +96,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     // The service asks for a frame when it starts, and that moment is also the
     // activation: the system picker may not have committed the switch yet, so
     // the request must not be filtered by `isActive`.
-    platform.setSyncRequestHandler(onSyncRequested: () => unawaited(prepare(activation: true)));
+    platform.setSyncRequestHandler(
+      onSyncRequested: (promotion) => unawaited(prepare(activation: true, promotion: promotion)),
+    );
     link.attach(this);
     await link.refreshActive();
     await link.refreshDisabled();
@@ -140,9 +145,13 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// [activation] is the service telling us it was just created. Only then does
   /// "no group is current" fall back to the first enabled group: a restart of an
   /// install the user turned off must stay off.
+  ///
+  /// [promotion] is the slot the renderer promoted just before asking for this
+  /// run. It is adopted directly, so the refill never races the renderer's
+  /// asynchronous `runtime.json` write and drop the bake.
   @override
-  Future<GroupedWallpaperSyncResult> prepare({bool activation = false}) {
-    return _enqueue(() => _run(advance: false, requireActive: false, activation: activation));
+  Future<GroupedWallpaperSyncResult> prepare({bool activation = false, GroupedWallpaperPromotion? promotion}) {
+    return _enqueue(() => _run(advance: false, requireActive: false, activation: activation, promotion: promotion));
   }
 
   /// Re-bakes the saved current group and applies it now.
@@ -166,7 +175,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     return result;
   }
 
-  Future<GroupedWallpaperSyncResult> _run({required bool advance, required bool requireActive, required bool activation}) async {
+  Future<GroupedWallpaperSyncResult> _run({
+    required bool advance,
+    required bool requireActive,
+    required bool activation,
+    GroupedWallpaperPromotion? promotion,
+  }) async {
     final store = _store;
     if (store == null) return GroupedWallpaperSyncResult.notActive;
     if (requireActive && !await platform.isActive()) {
@@ -207,24 +221,25 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       }
 
       // The renderer may have promoted a slot on its own; adopt it before
-      // deciding what to bake, or the freed slot would never be refilled.
-      final runtime = await store.readRuntime();
+      // deciding what to bake, or the freed slot would never be refilled. The
+      // channel message wins over `runtime.json` because it arrives with the
+      // request instead of racing it.
+      final runtime = promotion?.toRuntime() ?? await store.readRuntime();
       final adopted = _adoptRuntime(previous, runtime);
       final promoted = !identical(adopted, previous);
       final stale = _isStale(plan, adopted);
       final (seed, advanced) = advance && !stale ? _promote(adopted) : (adopted, false);
-      final window = await entrySource.load(plan.range, limit: GroupedWallpaperDbEntrySource.scanLimit);
+      final total = await entrySource.count(plan.range);
       // A promoted slot must be recorded even when nothing is baked, so the
       // runtime stops matching and the next run starts from the new current.
-      if (!advance && !stale && !promoted && await _isQueueReady(store, window, adopted)) {
+      if (!advance && !stale && !promoted && await _isQueueReady(store, total, adopted)) {
         return GroupedWallpaperSyncResult.unchanged;
       }
       return await _bakeQueue(
         store,
         plan,
-        window: window,
+        total: total,
         seed: stale ? null : seed,
-        exclude: stale ? const {} : {for (final slot in previous?.slots ?? const <GroupedWallpaperSlot>[]) slot.entryId},
         mustWrite: promoted || advanced,
       );
     } catch (error, stack) {
@@ -236,15 +251,15 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   /// Bakes every missing slot of the queue for [plan].
   ///
-  /// [seed] is the queue to keep (current/next survive), or null to start over.
-  /// [mustWrite] forces a state write even when nothing was baked, because the
-  /// renderer already promoted a slot and its runtime must stop matching.
+  /// [seed] is the queue and the ordering metadata to keep (current/next
+  /// survive), or null to start the group over. [mustWrite] forces a state write
+  /// even when nothing was baked, because the renderer already promoted a slot
+  /// and its runtime must stop matching.
   Future<GroupedWallpaperSyncResult> _bakeQueue(
     GroupedWallpaperStateStore store,
     GroupedWallpaperPlan plan, {
-    required GroupedWallpaperEntryWindow window,
+    required int total,
     GroupedWallpaperState? seed,
-    required Set<int> exclude,
     required bool mustWrite,
   }) async {
     final state = seed;
@@ -261,31 +276,63 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     if (!slots.any((slot) => slot.id == next)) next = -1;
     if (!slots.any((slot) => slot.id == next2)) next2 = -1;
 
-    final skip = {...exclude, for (final slot in slots) slot.entryId};
-    final picked = _pickEntries(window.entries, exclude: skip, count: prefetchAhead + 1);
+    var cursor = state?.cursor ?? 0;
+    var newestEntryId = state?.newestEntryId ?? 0;
+    var recent = state?.recent ?? const <GroupedWallpaperRecentEntry>[];
+    // Muzei starts its "new photos" marker at zero and walks the whole feed; an
+    // Aves group can hold thousands of photos, so "new" means "added after the
+    // wallpaper was set up" instead of "not shown yet".
+    if (newestEntryId <= 0 && total > 0) {
+      newestEntryId = await entrySource.newPhotoMarker(plan.range);
+    }
+    // The queue plus everything recently shown, so neither a random pick nor the
+    // "new photos" walk returns the photo that just left the screen.
+    final excluded = <int>{
+      for (final slot in slots) slot.entryId,
+      for (final entry in recent) entry.entryId,
+    };
 
     // A slot keeps its id while it stays in the queue, so the renderer can keep
     // the texture it already uploaded.
     final usedIds = {for (final slot in slots) slot.id};
-    var pickIndex = 0;
     var bakedAny = false;
-    Future<GroupedWallpaperSlot?> bakeInto(int? keepId) async {
-      if (pickIndex >= picked.length) return null;
-      final entry = picked[pickIndex++];
-      final id = keepId != null && keepId >= 0 ? keepId : _nextSlotId(usedIds);
-      usedIds.add(id);
-      final bake = await baker.bake(entry: entry, targetSize: await _resolveTargetSize());
-      final photo = await store.writeSlotPhoto(id, bake.png);
-      bakedAny = true;
-      return GroupedWallpaperSlot(
-        id: id,
-        entryId: entry.id,
-        uri: entry.uri,
-        title: entry.bestTitle ?? '',
-        photo: photo,
-        width: bake.size.width.round(),
-        height: bake.size.height.round(),
-      );
+    Future<GroupedWallpaperSlot?> bakeInto() async {
+      for (var attempt = 0; attempt < maxBakeAttempts; attempt++) {
+        final pick = await entrySource.pick(
+          plan.range,
+          ordering: plan.ordering,
+          cursor: cursor,
+          attempt: attempt,
+          newestEntryId: newestEntryId,
+          excludeEntryIds: excluded,
+        );
+        final entry = pick.entry;
+        if (entry == null) return null;
+        // A real offset advances the in-order walk; a "new photo" pick leaves it
+        // alone, exactly like Muzei's repository.
+        if (pick.offset >= 0) cursor = pick.offset + 1;
+        final id = _nextSlotId(usedIds);
+        usedIds.add(id);
+        try {
+          final bake = await baker.bake(entry: entry, targetSize: await _resolveTargetSize());
+          final photo = await store.writeSlotPhoto(id, bake.png);
+          bakedAny = true;
+          excluded.add(entry.id);
+          return GroupedWallpaperSlot(
+            id: id,
+            entryId: entry.id,
+            uri: entry.uri,
+            title: entry.bestTitle ?? '',
+            photo: photo,
+            width: bake.size.width.round(),
+            height: bake.size.height.round(),
+          );
+        } on GroupedWallpaperBakeException catch (error, stack) {
+          // Step to the next candidate rather than leaving the slot empty.
+          groupedWallpaperLog.w('bake failed entry=${entry.id} slot=$id attempt=$attempt', error, stack);
+        }
+      }
+      return null;
     }
 
     // `current` first: it is what the user sees, so it must never be the slot
@@ -299,15 +346,21 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
     GroupedWallpaperSlot? currentSlot = kept(current);
     if (currentSlot == null) {
-      currentSlot = await bakeInto(null);
+      currentSlot = await bakeInto();
       current = currentSlot?.id ?? -1;
+      // The group has images but none could be picked or decoded: show the
+      // placeholder and report a failure, instead of claiming an empty group.
+      // A failed prefetch, on the other hand, keeps the frame and the queue.
+      if (currentSlot == null && total > 0) {
+        throw const GroupedWallpaperBakeException('no usable photo in the group');
+      }
     }
     final byId = {for (final slot in slots) slot.id: slot};
     if (currentSlot != null) byId[currentSlot.id] = currentSlot;
 
     if (prefetchAhead >= 1) {
       var nextSlot = kept(next);
-      nextSlot ??= await bakeInto(null);
+      nextSlot ??= await bakeInto();
       next = nextSlot?.id ?? -1;
       if (nextSlot != null) byId[nextSlot.id] = nextSlot;
     } else {
@@ -315,11 +368,18 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     }
     if (prefetchAhead >= 2) {
       var next2Slot = kept(next2);
-      next2Slot ??= await bakeInto(null);
+      next2Slot ??= await bakeInto();
       next2 = next2Slot?.id ?? -1;
       if (next2Slot != null) byId[next2Slot.id] = next2Slot;
     } else {
       next2 = -1;
+    }
+
+    // Only the photo on screen is "recently shown"; the queued ones are excluded
+    // through the queue itself.
+    recent = GroupedWallpaperState.promoteRecent(recent, currentSlot);
+    if (currentSlot != null && currentSlot.entryId > newestEntryId) {
+      newestEntryId = currentSlot.entryId;
     }
 
     final ordered = [current, next, next2].where((id) => id >= 0).toList();
@@ -337,17 +397,21 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       groupId: plan.group.id,
       groupNumber: plan.group.number,
       groupName: _resolveName(plan.group),
-      count: window.count,
+      count: total,
       current: current,
       next: next,
       next2: next2,
       slots: [for (final id in ordered) byId[id]!],
+      recent: recent,
+      cursor: cursor,
+      newestEntryId: newestEntryId,
+      ordering: plan.ordering,
       gestures: plan.gestures,
       bakedAt: now(),
     );
     await store.writeState(nextState);
     await platform.reload();
-    groupedWallpaperLog.d('queue.baked current=$current next=$next next2=$next2 count=${window.count}');
+    groupedWallpaperLog.d('queue.baked current=$current next=$next next2=$next2 count=$total cursor=$cursor');
     return current < 0 ? GroupedWallpaperSyncResult.empty : GroupedWallpaperSyncResult.baked;
   }
 
@@ -357,22 +421,6 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     for (var id = 0; ; id++) {
       if (!used.contains(id)) return id;
     }
-  }
-
-  /// Picks the newest entries that are not already in the queue.
-  ///
-  /// Newest first, skipping files that disappeared since the last scan. A group
-  /// with fewer images than the queue depth simply keeps fewer slots: repeating
-  /// an image in the queue would make a tap look like it did nothing.
-  static List<AvesEntry> _pickEntries(Iterable<AvesEntry> window, {required Set<int> exclude, required int count}) {
-    final picked = <AvesEntry>[];
-    for (final entry in window) {
-      if (picked.length >= count) break;
-      if (exclude.contains(entry.id)) continue;
-      if (entry.isMissingAtPath) continue;
-      picked.add(entry);
-    }
-    return picked;
   }
 
   /// Moves the queue one step forward, as a tap on the wallpaper does natively.
@@ -432,11 +480,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// two-image group is ready with two slots instead of re-baking forever. A state
   /// written by an older build has one slot and therefore upgrades on the first
   /// run.
-  Future<bool> _isQueueReady(GroupedWallpaperStateStore store, GroupedWallpaperEntryWindow window, GroupedWallpaperState? previous) async {
+  Future<bool> _isQueueReady(GroupedWallpaperStateStore store, int total, GroupedWallpaperState? previous) async {
     if (previous == null) return false;
-    if (previous.status == GroupedWallpaperStatus.emptyGroup && window.count == 0) return true;
+    if (previous.status == GroupedWallpaperStatus.emptyGroup && total == 0) return true;
     if (previous.status != GroupedWallpaperStatus.ready || !previous.hasPhoto) return false;
-    final wanted = window.count < prefetchAhead + 1 ? window.count : prefetchAhead + 1;
+    final wanted = total < prefetchAhead + 1 ? total : prefetchAhead + 1;
     if (previous.queueLength < wanted) return false;
     for (final slot in previous.slots) {
       // The files can be gone while the state still points at them (cache
@@ -458,6 +506,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             groupId: plan.group.id,
             groupNumber: plan.group.number,
             groupName: _resolveName(plan.group),
+            ordering: plan.ordering,
             gestures: plan.gestures,
             bakedAt: now(),
           );

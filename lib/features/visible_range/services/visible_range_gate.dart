@@ -5,12 +5,12 @@ import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/trash.dart';
 import 'package:flutter/foundation.dart';
 
-/// A browsing-only overlay contributed by the wallpaper page.
+/// A browsing-only overlay contributed by the wallpaper group page.
 ///
 /// The gallery range and a wallpaper group's range are independent data sets.
-/// The group one is only applied while the wallpaper page is open, and there it
-/// joins the gallery range instead of replacing it. Suspending the gallery range
-/// is a temporary view choice (the page restores it on leaving), never a write.
+/// The group one follows the group the wallpaper page is showing, and it joins
+/// the gallery range instead of replacing it. Suspending the gallery range is a
+/// temporary view choice (the page restores it on leaving), never a write.
 @immutable
 class VisibleRangeBrowsingOverlay {
   /// Resolved filter of the group the wallpaper page shows, or null for group 0.
@@ -34,17 +34,33 @@ abstract final class VisibleRangeGate {
   @visibleForTesting
   static VisibleRangeController? debugController;
 
-  /// The wallpaper page's browsing overlay, active only while that page is open.
+  /// The wallpaper page's browsing overlay.
+  ///
+  /// It follows the group the page shows and outlives the page: leaving the page
+  /// keeps the group scope, so the other tabs show what the wallpaper may use.
+  /// Only the page-local gallery suspension is dropped on leaving. Selecting
+  /// group 0 clears it. It is in-memory only, so a process restart returns to the
+  /// gallery range alone.
   ///
   /// The live wallpaper never reads this gate: it uses the saved group range
   /// through `wallpaperMediaSetFilter`, so gallery browsing can never narrow the
   /// wallpaper result.
   static VisibleRangeBrowsingOverlay? overlay;
 
+  /// Replaces the overlay with the group scope alone, dropping the page-local
+  /// gallery suspension.
+  ///
+  /// [groupFilter] is the resolved filter of the group the page was showing, or
+  /// null for group 0. Group 0 clears the overlay instead of keeping an empty
+  /// one, so browsing falls back to the gallery range alone.
+  static void setWallpaperScope(CollectionFilter? groupFilter) {
+    overlay = groupFilter == null ? null : VisibleRangeBrowsingOverlay(groupFilter: groupFilter);
+  }
+
   static VisibleRangeController get _controller => debugController ?? visibleRangeController;
 
-  /// The resolved browsing filter: the gallery range, the wallpaper page's
-  /// group range, or their intersection when the page is open.
+  /// The resolved browsing filter: the gallery range, the wallpaper scope's
+  /// group range, or their intersection.
   static CollectionFilter? get filter {
     final current = overlay;
     final gallery = current != null && current.gallerySuspended ? null : _controller.galleryFilter;

@@ -149,7 +149,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    VisibleRangeGate.overlay = null;
+    // Leaving the page keeps the viewed group's scope for browsing, so the other
+    // tabs show exactly what the wallpaper may use. The temporary gallery
+    // suspension is page-local and is restored here; selecting group 0 leaves a
+    // null scope, which clears the overlay.
+    VisibleRangeGate.setWallpaperScope(_controller.range?.resolve());
     _controller.removeListener(_onControllerChanged);
     _controller.dispose();
     _selection.dispose();

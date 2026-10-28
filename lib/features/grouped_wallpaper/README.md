@@ -194,12 +194,18 @@ moves the page to the first remaining one.
 
 ## Browsing scopes
 
-The gallery range and a group range are independent data sets. While the
-wallpaper page is open, `VisibleRangeGate.overlay` adds the selected group's
-range to browsing (gallery AND group), and the page can temporarily ignore the
-gallery range when it is unlocked. Leaving the page clears the overlay, so every
-other surface acts as group 0. The live wallpaper never reads the gate: it uses
-the saved group range through `wallpaperMediaSetFilter`.
+The gallery range and a group range are independent data sets. The group page
+publishes the range of the group it shows through `VisibleRangeGate`, so browsing
+— the page itself and every other tab — sees the gallery range **and** the group
+range, exactly the photos the wallpaper may use. The page can temporarily ignore
+the gallery range while it is open; that choice is page-local and is restored on
+leaving.
+
+Leaving the page keeps the group scope: the restriction follows the viewed group
+until the user selects group 0, which clears it. It is in-memory only, so a
+process restart returns to the gallery range alone. The live wallpaper never reads
+the gate: it uses the saved group range through `wallpaperMediaSetFilter`, so
+gallery browsing can never narrow the wallpaper result.
 
 ## Media set
 

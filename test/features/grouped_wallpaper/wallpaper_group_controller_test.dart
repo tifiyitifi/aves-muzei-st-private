@@ -40,6 +40,13 @@ void main() {
         defaultLoader: () async => bundle ?? definitions(),
       );
 
+  /// The shipped bundle's order and declared current group (Pictures = 1).
+  List<WallpaperGroupDefinition> picturesCurrentBundle() => [
+        WallpaperGroupDefinition(id: 'wallpaper.group.pictures', nameKey: 'wallpaperGroupDefaultPictures', current: true, filters: {PathFilter('/pictures')}),
+        WallpaperGroupDefinition(id: 'wallpaper.group.dcim', nameKey: 'wallpaperGroupDefaultDcim', filters: {PathFilter('/dcim')}),
+        const WallpaperGroupDefinition(id: 'wallpaper.group.all', nameKey: 'wallpaperGroupDefaultAll'),
+      ];
+
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     controller = makeController();
@@ -106,6 +113,36 @@ void main() {
     await restarted.init();
     expect(restarted.groups[1].name, 'Trips');
     expect(restarted.groups[1].description, 'summer');
+  });
+
+  test('a defaults bump moves an untouched seeded current group to the new default', () async {
+    // Bundle v2 declared 「All」 as current, the shipped bundle declares
+    // 「Pictures」: an install that never picked another group follows the bundle.
+    expect(controller.current.id, 'wallpaper.group.all');
+
+    await WallpaperGroupStore(db).writeDefaultsVersion(WallpaperGroupController.defaultsVersion - 1);
+    final restarted = makeController(bundle: picturesCurrentBundle());
+    await restarted.init();
+
+    expect(restarted.current.id, 'wallpaper.group.pictures');
+    expect(restarted.groups.map((group) => group.id), [
+      'wallpaper.group.pictures',
+      'wallpaper.group.dcim',
+      'wallpaper.group.all',
+    ]);
+    expect(restarted.groups.map((group) => group.number), [1, 2, 3]);
+    // Reordering the bundle must not rewrite a group's own range.
+    expect((await restarted.groupRange('wallpaper.group.pictures')).baseFilters, {PathFilter('/pictures')});
+  });
+
+  test('a defaults bump keeps a current group the user picked', () async {
+    await controller.selectCurrent('wallpaper.group.dcim');
+
+    await WallpaperGroupStore(db).writeDefaultsVersion(WallpaperGroupController.defaultsVersion - 1);
+    final restarted = makeController(bundle: picturesCurrentBundle());
+    await restarted.init();
+
+    expect(restarted.current.id, 'wallpaper.group.dcim');
   });
 
   test('seeded rules from older versions are pruned on every start', () async {

@@ -64,9 +64,11 @@ with Muzei. It never touches the database.
 ## Defaults
 
 `assets/wallpaper_groups.json` declares the bundled groups, in display order:
-`all` → `dcim` → `pictures`. Names are ARB keys (`@wallpaperGroupDefault*`) and
-follow the app language; once the user renames a group the stored name is plain
-text and no seeding pass overwrites it.
+`pictures` → `dcim` → `all`, so group 1 is the Pictures path, group 2 DCIM and
+group 3 the unrestricted one, which is also the current group on a fresh
+install. Names are ARB keys (`@wallpaperGroupDefault*`) and follow the app
+language; once the user renames a group the stored name is plain text and no
+seeding pass overwrites it.
 
 **Failure is closed.** A group is a privacy tool, so when a bundled `standard`
 path cannot be resolved the group's base range becomes a deny-all filter

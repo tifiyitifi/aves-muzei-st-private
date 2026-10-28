@@ -31,7 +31,7 @@ class WallpaperGroupController extends ChangeNotifier {
   /// no longer ship, while a renamed or narrowed group keeps what the user made
   /// of it. Seeded rule candidates are pruned on every start instead, so an
   /// older database cannot resurrect them.
-  static const defaultsVersion = 2;
+  static const defaultsVersion = 3;
 
   /// Prefix of the built-in group ids, so a bundle bump can tell them apart from
   /// the user's own groups.
@@ -105,7 +105,7 @@ class WallpaperGroupController extends ChangeNotifier {
       if (groups.isEmpty || storedVersion < defaultsVersion) {
         // An unreadable bundle must not burn the version marker: the next start
         // with a readable asset still has to seed.
-        groups = await _applyDefaults(store, groups) ?? groups;
+        groups = await _applyDefaults(store, groups, previousVersion: storedVersion) ?? groups;
       }
       _groups = groups;
     } catch (error, stack) {
@@ -124,7 +124,7 @@ class WallpaperGroupController extends ChangeNotifier {
   /// Built-ins already stored are kept as-is, so a rename, a disabled switch and
   /// the activation inside a group's range survive a defaults bump. A built-in
   /// the bundle dropped is deleted together with its range.
-  Future<List<WallpaperGroup>?> _applyDefaults(WallpaperGroupStore store, List<WallpaperGroup> groups) async {
+  Future<List<WallpaperGroup>?> _applyDefaults(WallpaperGroupStore store, List<WallpaperGroup> groups, {required int previousVersion}) async {
     if (_usesBundledDefaults) {
       try {
         await _ensureStandardPaths();
@@ -178,7 +178,7 @@ class WallpaperGroupController extends ChangeNotifier {
       await store.deleteGroup(dropped.id);
     }
 
-    final restored = _applyBundledCurrent(normalizeWallpaperGroups(next), definitions);
+    final restored = _applyBundledCurrent(normalizeWallpaperGroups(next), definitions, previousVersion: previousVersion);
     await store.saveGroups(restored);
     await store.writeDefaultsVersion(defaultsVersion);
     return restored;
@@ -205,14 +205,26 @@ class WallpaperGroupController extends ChangeNotifier {
   }
 
   /// Gives the bundle's declared current group the flag when nothing is current.
-  List<WallpaperGroup> _applyBundledCurrent(List<WallpaperGroup> groups, List<WallpaperGroupDefinition> definitions) {
-    if (groups.any((group) => group.current && group.enabled)) return groups;
+  ///
+  /// A bump can also move the declared default. An install that still sits on
+  /// the previous bundle's default follows it once, so the seeded default moves
+  /// with the bundle; a group the user picked explicitly survives the bump.
+  List<WallpaperGroup> _applyBundledCurrent(List<WallpaperGroup> groups, List<WallpaperGroupDefinition> definitions, {required int previousVersion}) {
     final wanted = definitions.firstWhereOrNull((definition) => definition.current)?.id;
     if (wanted == null) return groups;
+    final currentId = currentWallpaperGroupId(groups);
+    final followsBundle = currentId == null || (previousVersion < defaultsVersion && currentId == _previousBundledCurrentId);
+    if (!followsBundle) return groups;
     return normalizeWallpaperGroups([
       for (final group in groups) group.copyWith(current: group.id == wanted),
     ]);
   }
+
+  /// The group the previous bundle declared as current.
+  ///
+  /// Bundle v3 moved it from 「All」 to 「Pictures」: an install that never chose
+  /// another group would otherwise keep pointing at the old default.
+  static const _previousBundledCurrentId = 'wallpaper.group.all';
 
   static bool _isBundledGroup(String id) => id.startsWith(bundledGroupIdPrefix);
 

@@ -70,24 +70,24 @@ void main() {
     expect(definition.filters, isNotEmpty);
   });
 
-  test('the shipped bundle declares all, dcim and pictures in that order', () async {
+  test('the shipped bundle declares pictures, dcim and all in that order', () async {
     final definitions = await loadWallpaperGroupDefinitions(standardPath: (standard) => '/standard/$standard');
 
     expect(definitions.map((definition) => definition.id), [
-      'wallpaper.group.all',
-      'wallpaper.group.dcim',
       'wallpaper.group.pictures',
+      'wallpaper.group.dcim',
+      'wallpaper.group.all',
     ]);
     expect(definitions.map((definition) => definition.nameKey), [
-      'wallpaperGroupDefaultAll',
-      'wallpaperGroupDefaultDcim',
       'wallpaperGroupDefaultPictures',
+      'wallpaperGroupDefaultDcim',
+      'wallpaperGroupDefaultAll',
     ]);
     expect(definitions.map((definition) => definition.id).toSet(), hasLength(definitions.length));
-    // Group 1 is the only current one; every default joins the rotation.
+    // Group 1 (Pictures) is the only current one; every default joins the rotation.
     expect(definitions.map((definition) => definition.current), [true, false, false]);
     expect(definitions.every((definition) => definition.enabled), isTrue);
-    expect(definitions.first.filters, isEmpty);
-    expect(definitions.skip(1).every((definition) => definition.filters.single is PathFilter), isTrue);
+    expect(definitions.last.filters, isEmpty);
+    expect(definitions.take(2).every((definition) => definition.filters.single is PathFilter), isTrue);
   });
 }

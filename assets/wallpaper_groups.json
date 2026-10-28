@@ -1,12 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
   "groups": [
     {
-      "id": "wallpaper.group.all",
-      "nameKey": "wallpaperGroupDefaultAll",
+      "id": "wallpaper.group.pictures",
+      "nameKey": "wallpaperGroupDefaultPictures",
       "enabled": true,
       "current": true,
-      "filters": []
+      "filters": [{"type": "path", "standard": "pictures"}]
     },
     {
       "id": "wallpaper.group.dcim",
@@ -15,10 +15,10 @@
       "filters": [{"type": "path", "standard": "dcim"}]
     },
     {
-      "id": "wallpaper.group.pictures",
-      "nameKey": "wallpaperGroupDefaultPictures",
+      "id": "wallpaper.group.all",
+      "nameKey": "wallpaperGroupDefaultAll",
       "enabled": true,
-      "filters": [{"type": "path", "standard": "pictures"}]
+      "filters": []
     }
   ]
 }

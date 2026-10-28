@@ -347,6 +347,11 @@
                 android:resource="@xml/live_wallpaper_grouped" />
         </service>
 
+        <!-- runs the grouped wallpaper notification's actions; not exported -->
+        <receiver
+            android:name=".features.grouped_wallpaper.GroupedWallpaperActionReceiver"
+            android:exported="false" />
+
         <!-- file provider to share files having a file:// URI -->
         <provider
             android:name="androidx.core.content.FileProvider"

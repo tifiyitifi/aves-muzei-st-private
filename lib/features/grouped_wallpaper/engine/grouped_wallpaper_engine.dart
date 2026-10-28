@@ -10,9 +10,12 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_plan.da
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_command.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
+import 'package:aves/model/entry/entry.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/painting.dart';
 
 /// The grouped wallpaper's control plane.
@@ -98,6 +101,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     // the request must not be filtered by `isActive`.
     platform.setSyncRequestHandler(
       onSyncRequested: () => unawaited(prepare(activation: true)),
+      onCommand: (command) => unawaited(handleCommand(command)),
     );
     link.attach(this);
     await link.refreshActive();
@@ -176,9 +180,72 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     return _enqueue(() => _run(advance: advance, requireActive: false, activation: false));
   }
 
-  Future<GroupedWallpaperSyncResult> _enqueue(Future<GroupedWallpaperSyncResult> Function() body) {
+  /// Freezes or resumes the wallpaper without baking anything.
+  ///
+  /// Only the flag and the generation change, so the renderer keeps the frame it
+  /// already uploaded and simply stops promoting. The notification reads the new
+  /// flag on the reload it gets from the same write.
+  Future<void> setPaused(bool paused) {
+    return _serialize(() async {
+      await planStore.setPaused(paused);
+      final store = _store;
+      if (store == null) return;
+      final previous = await store.readState();
+      if (previous == null || previous.paused == paused) return;
+      await store.writeState(previous.copyWith(generation: previous.generation + 1, paused: paused));
+      await platform.reload();
+    });
+  }
+
+  /// Makes the next (`delta > 0`) or previous enabled group current and bakes it.
+  ///
+  /// A locked target range still displays: baking only reads the range, so the
+  /// lock protects editing and browsing, not which group the wallpaper shows.
+  Future<GroupedWallpaperSyncResult> switchGroup(int delta) {
+    return _serialize(() async {
+      final plan = await planStore.switchGroup(delta);
+      if (plan.isNone) return GroupedWallpaperSyncResult.unchanged;
+      return _run(advance: false, requireActive: false, activation: false, ignoreLock: true);
+    });
+  }
+
+  /// Shows the photo before the current one, when the state still remembers it.
+  ///
+  /// The previous photo is re-baked instead of restored from disk: slots are
+  /// recycled, so the old file may already show another image.
+  Future<GroupedWallpaperSyncResult> previousArtwork() => _enqueue(_runPrevious);
+
+  /// Runs a command sent by the notification.
+  Future<void> handleCommand(String command) async {
+    final parsed = GroupedWallpaperCommand.tryParse(command);
+    if (parsed == null) {
+      groupedWallpaperLog.w('ignoring unknown wallpaper command $command');
+      return;
+    }
+    switch (parsed) {
+      case GroupedWallpaperCommand.previousArtwork:
+        await previousArtwork();
+      case GroupedWallpaperCommand.nextArtwork:
+        // An explicit "next" is the user asking the wallpaper to play again.
+        await setPaused(false);
+        await refill(advance: true);
+      case GroupedWallpaperCommand.nextGroup:
+        await switchGroup(1);
+      case GroupedWallpaperCommand.previousGroup:
+        await switchGroup(-1);
+      case GroupedWallpaperCommand.pause:
+        await setPaused(true);
+      case GroupedWallpaperCommand.resume:
+        await setPaused(false);
+    }
+  }
+
+  Future<GroupedWallpaperSyncResult> _enqueue(Future<GroupedWallpaperSyncResult> Function() body) => _serialize(body);
+
+  /// Runs [body] after every earlier run, and keeps the queue alive after a
+  /// failure so one bad bake cannot disable the engine for the session.
+  Future<T> _serialize<T>(Future<T> Function() body) {
     final result = _queue.then((_) => body());
-    // The queue must survive a failed run, or every later call would be skipped.
     _queue = result.then((_) {}, onError: (Object _, StackTrace _) {});
     return result;
   }
@@ -187,6 +254,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     required bool advance,
     required bool requireActive,
     required bool activation,
+    bool ignoreLock = false,
   }) async {
     final store = _store;
     if (store == null) return GroupedWallpaperSyncResult.notActive;
@@ -222,7 +290,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         // activated, which is what adopts the first group.
         return GroupedWallpaperSyncResult.unchanged;
       }
-      if (plan.locked) {
+      if (plan.locked && !ignoreLock) {
         await _recordLocked(store, plan, previous);
         return GroupedWallpaperSyncResult.locked;
       }
@@ -252,6 +320,59 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     } catch (error, stack) {
       groupedWallpaperLog.e('sync failed', error, stack);
       await _recordFailure(store, plan, previous);
+      return GroupedWallpaperSyncResult.failed;
+    }
+  }
+
+  /// Re-bakes the photo shown before the current one and makes it current.
+  ///
+  /// The queue becomes `previous → current → next`, so "next" returns to the
+  /// photo the user came from without a bake. A missing or unreadable entry is a
+  /// no-op: the frame on screen must never be replaced by a placeholder just
+  /// because a history entry was deleted.
+  Future<GroupedWallpaperSyncResult> _runPrevious() async {
+    final store = _store;
+    if (store == null) return GroupedWallpaperSyncResult.notActive;
+    try {
+      final plan = await planStore.load();
+      final state = await store.readState();
+      if (plan.disabled || plan.isNone || state == null || !state.hasPhoto) return GroupedWallpaperSyncResult.unchanged;
+      final previous = state.recent.firstWhereOrNull(
+        (entry) => (entry.groupId.isEmpty || entry.groupId == state.groupId) && entry.entryId != state.entryId,
+      );
+      if (previous == null) return GroupedWallpaperSyncResult.unchanged;
+      final entry = await entrySource.entryById(plan.range, previous.entryId);
+      if (entry == null) return GroupedWallpaperSyncResult.unchanged;
+
+      final current = state.currentSlot!;
+      final next = state.nextSlot;
+      final id = _nextSlotId({for (final slot in state.slots) slot.id});
+      final slot = await _bakeSlot(store, plan, entry, id);
+      final ordered = [slot.id, current.id, if (next != null) next.id];
+      await store.pruneSlots(ordered);
+      final nextState = state.copyWith(
+        generation: state.generation + 1,
+        status: GroupedWallpaperStatus.ready,
+        current: slot.id,
+        next: current.id,
+        next2: next?.id ?? -1,
+        slots: [slot, current, ?next],
+        recent: GroupedWallpaperState.promoteRecent(state.recent, slot, groupId: plan.group.id),
+        newestEntryId: entry.id > state.newestEntryId ? entry.id : state.newestEntryId,
+        ordering: plan.ordering,
+        gestures: plan.gestures,
+        paused: plan.paused,
+        bakedAt: now(),
+      );
+      await store.writeState(nextState);
+      await platform.reload();
+      groupedWallpaperLog.d('queue.previous entry=${entry.id} current=${slot.id} next=${current.id}');
+      return GroupedWallpaperSyncResult.baked;
+    } on GroupedWallpaperBakeException catch (error, stack) {
+      groupedWallpaperLog.w('previous photo failed', error, stack);
+      return GroupedWallpaperSyncResult.failed;
+    } catch (error, stack) {
+      groupedWallpaperLog.e('previous photo failed', error, stack);
       return GroupedWallpaperSyncResult.failed;
     }
   }
@@ -326,38 +447,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         final id = _nextSlotId(usedIds);
         usedIds.add(id);
         try {
-          final targetSize = await _resolveTargetSize();
-          final bake = await baker.bake(
-            entry: entry,
-            targetSize: targetSize,
-            home: plan.effects.home,
-            lock: plan.effects.effectiveLock,
-          );
-          final photo = await store.writeSlotPhoto(id, bake.sharpPng);
-          // An identity effect is byte-identical to the sharp photo: pointing at
-          // the same file avoids a second copy of a multi-megabyte PNG.
-          final effectHome = identical(bake.effectsHomePng, bake.sharpPng)
-              ? photo
-              : await store.writeSlotPhoto(id, bake.effectsHomePng, name: GroupedWallpaperStateStore.slotEffectHomeFileName);
-          final effectLock = identical(bake.effectsLockPng, bake.sharpPng)
-              ? photo
-              : identical(bake.effectsLockPng, bake.effectsHomePng)
-                  ? effectHome
-                  : await store.writeSlotPhoto(id, bake.effectsLockPng, name: GroupedWallpaperStateStore.slotEffectLockFileName);
+          final slot = await _bakeSlot(store, plan, entry, id);
           bakedAny = true;
           excluded.add(entry.id);
-          return GroupedWallpaperSlot(
-            id: id,
-            entryId: entry.id,
-            uri: entry.uri,
-            title: entry.bestTitle ?? '',
-            photo: photo,
-            effectHome: effectHome,
-            effectLock: effectLock,
-            width: bake.size.width.round(),
-            height: bake.size.height.round(),
-            darkness: bake.darkness,
-          );
+          return slot;
         } on GroupedWallpaperBakeException catch (error, stack) {
           // Step to the next candidate rather than leaving the slot empty.
           groupedWallpaperLog.w('bake failed entry=${entry.id} slot=$id attempt=$attempt', error, stack);
@@ -412,7 +505,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     final promotion = await _adoptPromotionDuringBake(store, state, byId, current, next, next2);
     if (promotion != null) {
       // The seed's current was on screen until that tap.
-      recent = GroupedWallpaperState.promoteRecent(recent, currentSlot);
+      recent = GroupedWallpaperState.promoteRecent(recent, currentSlot, groupId: plan.group.id);
       current = promotion.$1;
       next = promotion.$2;
       next2 = promotion.$3;
@@ -421,7 +514,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
     // Only the photo on screen is "recently shown"; the queued ones are excluded
     // through the queue itself.
-    recent = GroupedWallpaperState.promoteRecent(recent, currentSlot);
+    recent = GroupedWallpaperState.promoteRecent(recent, currentSlot, groupId: plan.group.id);
     if (currentSlot != null && currentSlot.entryId > newestEntryId) {
       newestEntryId = currentSlot.entryId;
     }
@@ -451,12 +544,50 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       newestEntryId: newestEntryId,
       ordering: plan.ordering,
       gestures: plan.gestures,
+      paused: plan.paused,
       bakedAt: now(),
     );
     await store.writeState(nextState);
     await platform.reload();
     groupedWallpaperLog.d('queue.baked current=$current next=$next next2=$next2 count=$total cursor=$cursor');
     return current < 0 ? GroupedWallpaperSyncResult.empty : GroupedWallpaperSyncResult.baked;
+  }
+
+  /// Bakes [entry] into slot [id], including the group's effect images.
+  ///
+  /// Shared by the forward queue and "previous photo", so both write exactly the
+  /// same file set and the renderer never sees a half-baked slot.
+  Future<GroupedWallpaperSlot> _bakeSlot(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, AvesEntry entry, int id) async {
+    final targetSize = await _resolveTargetSize();
+    final bake = await baker.bake(
+      entry: entry,
+      targetSize: targetSize,
+      home: plan.effects.home,
+      lock: plan.effects.effectiveLock,
+    );
+    final photo = await store.writeSlotPhoto(id, bake.sharpPng);
+    // An identity effect is byte-identical to the sharp photo: pointing at the
+    // same file avoids a second copy of a multi-megabyte PNG.
+    final effectHome = identical(bake.effectsHomePng, bake.sharpPng)
+        ? photo
+        : await store.writeSlotPhoto(id, bake.effectsHomePng, name: GroupedWallpaperStateStore.slotEffectHomeFileName);
+    final effectLock = identical(bake.effectsLockPng, bake.sharpPng)
+        ? photo
+        : identical(bake.effectsLockPng, bake.effectsHomePng)
+            ? effectHome
+            : await store.writeSlotPhoto(id, bake.effectsLockPng, name: GroupedWallpaperStateStore.slotEffectLockFileName);
+    return GroupedWallpaperSlot(
+      id: id,
+      entryId: entry.id,
+      uri: entry.uri,
+      title: entry.bestTitle ?? '',
+      photo: photo,
+      effectHome: effectHome,
+      effectLock: effectLock,
+      width: bake.size.width.round(),
+      height: bake.size.height.round(),
+      darkness: bake.darkness,
+    );
   }
 
   /// The smallest slot id not in use, so a freed slot is recycled instead of
@@ -579,7 +710,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   Future<void> _recordLocked(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, GroupedWallpaperState? previous) async {
     if (previous?.status == GroupedWallpaperStatus.locked && previous?.groupId == plan.group.id) return;
     final state = previous != null
-        ? previous.copyWith(generation: previous.generation + 1, status: GroupedWallpaperStatus.locked)
+        ? previous.copyWith(generation: previous.generation + 1, status: GroupedWallpaperStatus.locked, paused: plan.paused)
         : GroupedWallpaperState(
             generation: 1,
             status: GroupedWallpaperStatus.locked,
@@ -588,6 +719,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             groupName: _resolveName(plan.group),
             ordering: plan.ordering,
             gestures: plan.gestures,
+            paused: plan.paused,
             bakedAt: now(),
           );
     await store.writeState(state);
@@ -617,6 +749,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               groupNumber: plan.group.number,
               groupName: _resolveName(plan.group),
               gestures: plan.gestures,
+              paused: plan.paused,
               bakedAt: now(),
             )
           : GroupedWallpaperState(
@@ -626,6 +759,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               groupNumber: previous?.groupNumber ?? 0,
               groupName: previous?.groupName ?? '',
               gestures: previous?.gestures ?? const GroupedWallpaperGestures(),
+              paused: previous?.paused ?? false,
               bakedAt: now(),
             );
       await store.writeState(state);

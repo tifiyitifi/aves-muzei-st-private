@@ -36,12 +36,16 @@ class GroupedWallpaperPlan extends Equatable {
   /// How the next photo is chosen within the group.
   final GroupedWallpaperOrdering ordering;
 
+  /// Whether the wallpaper is frozen and keeps the current photo.
+  final bool paused;
+
   const new({
     required this.group,
     this.range,
     this.disabled = false,
     this.gestures = const GroupedWallpaperGestures(),
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
+    this.paused = false,
   });
 
   bool get isNone => group.isNone;
@@ -55,7 +59,7 @@ class GroupedWallpaperPlan extends Equatable {
   bool get enabled => !disabled && !group.isNone;
 
   @override
-  List<Object?> get props => [group, range, disabled, gestures, ordering];
+  List<Object?> get props => [group, range, disabled, gestures, ordering, paused];
 }
 
 /// Reads and updates [GroupedWallpaperPlan].
@@ -77,6 +81,16 @@ abstract interface class GroupedWallpaperPlanStore {
 
   /// Stores the ordering, which is global until each group owns one.
   Future<void> setOrdering(GroupedWallpaperOrdering ordering);
+
+  /// Freezes or resumes the wallpaper without changing the current group.
+  Future<void> setPaused(bool paused);
+
+  /// Makes the next (`delta > 0`) or previous enabled group current.
+  ///
+  /// Group 0 is not part of the rotation: from it, "next" starts at the first
+  /// enabled group and "previous" at the last. Switching also resumes a frozen
+  /// wallpaper, because the user is asking to see another group.
+  Future<GroupedWallpaperPlan> switchGroup(int delta);
 }
 
 /// Reads the plan from the app database.
@@ -99,10 +113,11 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final disabled = await store.readDisabled();
     final gestures = await store.readGestures();
     final ordering = await store.readOrdering();
+    final paused = await store.readPaused();
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? WallpaperGroup.none;
-    if (group.isNone) return GroupedWallpaperPlan(group: group, disabled: disabled, gestures: gestures, ordering: ordering);
+    if (group.isNone) return GroupedWallpaperPlan(group: group, disabled: disabled, gestures: gestures, ordering: ordering, paused: paused);
     final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
-    return GroupedWallpaperPlan(group: group, range: range, disabled: disabled, gestures: gestures, ordering: ordering);
+    return GroupedWallpaperPlan(group: group, range: range, disabled: disabled, gestures: gestures, ordering: ordering, paused: paused);
   }
 
   @override
@@ -125,6 +140,9 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       ]));
     }
     await store.writeDisabled(false);
+    // Activation is the user turning the wallpaper on, so a freeze from the
+    // previous session must not keep the new frame from appearing.
+    await store.writePaused(false);
     final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
     return GroupedWallpaperPlan(group: group.copyWith(current: true), range: range, gestures: gestures, ordering: ordering);
   }
@@ -137,4 +155,33 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
 
   @override
   Future<void> setOrdering(GroupedWallpaperOrdering ordering) async => WallpaperGroupStore(await _open()).writeOrdering(ordering);
+
+  @override
+  Future<void> setPaused(bool paused) async => WallpaperGroupStore(await _open()).writePaused(paused);
+
+  @override
+  Future<GroupedWallpaperPlan> switchGroup(int delta) async {
+    final db = await _open();
+    final store = WallpaperGroupStore(db);
+    final groups = normalizeWallpaperGroups(await store.loadGroups());
+    final enabled = enabledWallpaperGroups(groups);
+    if (enabled.isEmpty) return load();
+    final currentId = currentWallpaperGroupId(groups);
+    final index = enabled.indexWhere((group) => group.id == currentId);
+    // From group 0, "next" enters at the first group and "previous" at the last.
+    final start = index >= 0 ? index : (delta > 0 ? -1 : 0);
+    final target = enabled[((start + delta) % enabled.length + enabled.length) % enabled.length];
+    await store.saveGroups(normalizeWallpaperGroups([
+      for (final group in groups) group.copyWith(current: group.id == target.id),
+    ]));
+    await store.writePaused(false);
+    final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: target.id);
+    return GroupedWallpaperPlan(
+      group: target.copyWith(current: true),
+      range: range,
+      disabled: await store.readDisabled(),
+      gestures: await store.readGestures(),
+      ordering: await store.readOrdering(),
+    );
+  }
 }

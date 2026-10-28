@@ -32,11 +32,13 @@ class LiveWallpaperRefillWorker(context: Context, parameters: WorkerParameters) 
     companion object {
         const val KEY_TARGET = "target"
         const val KEY_ADVANCE = "advance"
+        const val KEY_COMMAND = "command"
     }
 
     override suspend fun doWork(): Result {
         val target = LiveWallpaperTarget.fromId(inputData.getString(KEY_TARGET))
         val advance = inputData.getBoolean(KEY_ADVANCE, true)
-        return LiveWallpaperRefillTargets.run(applicationContext, target, advance)
+        val command = inputData.getString(KEY_COMMAND)
+        return LiveWallpaperRefillTargets.run(applicationContext, target, advance, command)
     }
 }

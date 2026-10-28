@@ -10,11 +10,12 @@ of the Muzei-style live wallpaper mechanism.
   in v10), controller with the page's in-memory draft, the wallpaper-group page
   reachable from the visible-range page's More menu / the shared bottom-bar
   entry, the engine's closed loop (Dart baking + native slot queue), global
-  gestures, the immersive view page, and per-group home/lock effects with a
-  copy-to-other-groups grid.
-- **Not done yet**: auto-advance intervals, the notification, and the
-  availability label. Until then a sync happens when the service starts, on a
-  wallpaper tap, or when the user asks for it.
+  gestures, the immersive view page, per-group home/lock effects with a
+  copy-to-other-groups grid, and the four-layout notification with photo, group
+  and freeze actions.
+- **Not done yet**: auto-advance intervals and the availability label. Until
+  then a sync happens when the service starts, on a wallpaper tap, on a
+  notification action, or when the user asks for it.
 
 ## The engine
 
@@ -84,6 +85,52 @@ bypassing the range draft: effects are display preferences, and the live
 wallpaper should follow them without a separate "save". Its copy action opens a
 group grid with the app-wide XOR-range gesture and writes the same configuration
 to every selected group in one transaction.
+
+### The notification
+
+`GroupedWallpaperNotification` (Kotlin) posts an ongoing notification while the
+grouped service is the system wallpaper, styled after Aves-ST's foreground
+wallpaper bar: a coloured group-number badge, the group name and the photo title,
+plus borderless actions. The layout family follows the keyguard:
+
+| | Collapsed (4) | Expanded (5) |
+|---|---|---|
+| Unlocked | previous / next photo / copy\* / record\* | switch group / previous / next / copy\* / record\* |
+| Locked | previous / next group / freeze / next photo | switch group / previous / next group / freeze / next photo |
+
+`*` copy and usage history keep Aves-ST's icons but are disabled (dimmed, no
+action) until those features exist. The channel is `grouped_wallpaper`,
+`IMPORTANCE_HIGH`, no badge; the notification itself is silent, ongoing and only
+alerts once, so a reload never buzzes.
+
+The content intent and the expanded layout's first button open the wallpaper
+group page (`/wallpaper_groups`), which the app accepts as a shortcut route. The
+screen broadcasts (`ACTION_SCREEN_OFF`, `ACTION_SCREEN_ON`, `ACTION_USER_PRESENT`)
+switch the layout family and the home/lock effect image together.
+
+Actions are broadcasts to `GroupedWallpaperActionReceiver`, so they work without
+an Activity. "Next photo" first promotes the prefetched slot in the live renderer
+(instant, like a double tap); every other action goes to the mounted app when its
+engine listens and to the headless worker when it does not. The commands are the
+names of `GroupedWallpaperCommand` (`previousArtwork`, `nextGroup`, ...), so both
+sides share one vocabulary. Turning the grouped wallpaper off cancels the
+notification.
+
+"Previous photo" re-bakes the remembered entry instead of restoring its old file
+(slots are recycled), and re-checks it against the group's media set: locking a
+vault or hiding a filter between two photos can never bring the hidden photo
+back. A v3 state's history has no group id, so its entries are treated as
+belonging to the current group.
+
+### Freezing
+
+`groupedPaused` (AppMeta, `wallpaper.groupedPaused`) freezes the wallpaper on the
+current photo. It is separate from the group's visible-range lock and from the
+off switch: the frame stays, but the renderer refuses to promote on a tap and the
+notification shows the closed lock. The notification's freeze button toggles it;
+an explicit "next photo" resumes it, and switching group also resumes. The flag
+travels in `state.json` (`paused`, v4), so the native renderer knows about it
+without asking Flutter.
 
 ### The view page
 

@@ -52,6 +52,8 @@ object LiveWallpaperRefillScheduler {
 
     private fun autoWorkName(target: LiveWallpaperTarget) = "live_wallpaper_${target.id}_auto_advance"
 
+    private fun commandWorkName(target: LiveWallpaperTarget) = "live_wallpaper_${target.id}_command"
+
     private fun intervalKey(target: LiveWallpaperTarget) = "$PREF_AUTO_INTERVAL_PREFIX${target.id}"
 
     /** Persists the `vm:entry-point` callback handle the worker boots. */
@@ -89,6 +91,27 @@ object LiveWallpaperRefillScheduler {
         val policy = if (ensure) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.APPEND_OR_REPLACE
         WorkManager.getInstance(context).enqueueUniqueWork(tapWorkName(target), policy, request)
         Log.d(TAG, "refill.enqueue target=${target.id} ensure=$ensure")
+    }
+
+    /**
+     * Runs a notification command even when no app is alive.
+     *
+     * Commands change the saved group or the freeze flag, so they are queued
+     * (`APPEND_OR_REPLACE`) instead of replaced: "next group" followed by "freeze"
+     * must keep that order.
+     */
+    fun enqueueCommand(context: Context, target: LiveWallpaperTarget, command: String) {
+        val request = OneTimeWorkRequestBuilder<LiveWallpaperRefillWorker>()
+            .setInputData(
+                workDataOf(
+                    LiveWallpaperRefillWorker.KEY_TARGET to target.id,
+                    LiveWallpaperRefillWorker.KEY_ADVANCE to false,
+                    LiveWallpaperRefillWorker.KEY_COMMAND to command,
+                ),
+            )
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(commandWorkName(target), ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+        Log.d(TAG, "refill.command target=${target.id} command=$command")
     }
 
     /**

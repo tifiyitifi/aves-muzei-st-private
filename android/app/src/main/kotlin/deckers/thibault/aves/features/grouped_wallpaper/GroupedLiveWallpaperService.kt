@@ -61,6 +61,8 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         super.onCreate()
         Log.d(TAG, "service.create")
         isRunning = true
+        GroupedWallpaperNotification.ensureChannel(this)
+        updateNotification()
         // The app may already be running: ask it for a frame right away instead
         // of waiting for the next time the page is opened.
         GroupedWallpaperAppBridge.requestSync()
@@ -69,7 +71,33 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
     override fun onDestroy() {
         Log.d(TAG, "service.destroy")
         isRunning = false
+        GroupedWallpaperNotification.cancel(this)
         super.onDestroy()
+    }
+
+    /** The slot the renderer is drawing, reported so the notification matches. */
+    @Volatile
+    private var displayedSlotId = -1
+
+    /**
+     * Re-reads `state.json` and refreshes the notification.
+     *
+     * The service owns the notification: an engine can be recreated by the system
+     * at any time, and the preview engine must not cancel the real one's.
+     */
+    private fun updateNotification() {
+        val state = GroupedWallpaperStateFile.read(this)
+        if (state == null) {
+            GroupedWallpaperNotification.cancel(this)
+            return
+        }
+        val slot = if (displayedSlotId >= 0) state.slot(displayedSlotId) else state.currentSlot
+        GroupedWallpaperNotification.update(this, state, slot)
+    }
+
+    private fun onFrameLoaded(displayed: Int) {
+        displayedSlotId = displayed
+        updateNotification()
     }
 
     override fun onCreateEngine(): Engine = GroupedEngine()
@@ -127,6 +155,10 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
                 this@GroupedLiveWallpaperService,
                 requestRender = { requestRender() },
                 onAdvanced = ::notifyAdvance,
+                onFrameLoaded = {
+                    val displayed = renderer.displayedSlotId()
+                    gestureHandler.post { this@GroupedLiveWallpaperService.onFrameLoaded(displayed) }
+                },
             )
             setEGLContextClientVersion(2)
             setEGLConfigChooser(8, 8, 8, 0, 0, 0)
@@ -218,6 +250,10 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
          * advancing instead of stopping after the prefetched queue.
          */
         private fun advance() {
+            if (!renderer.canAdvance()) {
+                Log.d(TAG, "advance ignored: the wallpaper cannot move")
+                return
+            }
             if (renderer.promote()) {
                 notifyAdvance()
                 return
@@ -228,6 +264,10 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
         /** Tells a running app about a promotion, or schedules a background run. */
         private fun notifyAdvance() {
+            if (::renderer.isInitialized) {
+                val displayed = renderer.displayedSlotId()
+                gestureHandler.post { this@GroupedLiveWallpaperService.onFrameLoaded(displayed) }
+            }
             if (GroupedWallpaperAppBridge.requestSync()) return
             Log.d(TAG, "advance notification: no listening app, using the background refill")
             LiveWallpaperRefillScheduler.enqueueTapRefill(this@GroupedLiveWallpaperService, LiveWallpaperTarget.GROUPED)
@@ -275,6 +315,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             if (lockScreenVisible == visible) return
             lockScreenVisible = visible
             if (::renderer.isInitialized) renderer.setLockScreenVisible(visible)
+            this@GroupedLiveWallpaperService.updateNotification()
         }
     }
 }

@@ -98,6 +98,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
     ExplorerPage.routeName,
     MapPage.routeName,
     MuzeiWallpaperPage.routeName,
+    GroupedWallpaperPage.routeName,
     GroupedWallpaperViewPage.routeName,
     VisibleRangePage.routeName,
     SearchPage.routeName,

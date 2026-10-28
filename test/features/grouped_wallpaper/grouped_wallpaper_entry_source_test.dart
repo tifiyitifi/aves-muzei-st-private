@@ -164,6 +164,13 @@ void main() {
     expect(retried.entry, isNotNull);
     expect(retried.entry!.id, isNot(first.entry!.id));
   });
+
+  test('a remembered photo is reloaded only while it is still in the media set', () async {
+    final source = GroupedWallpaperDbEntrySource(database: db(3));
+
+    expect((await source.entryById(null, 49))?.id, 49);
+    expect(await source.entryById(null, 99), isNull);
+  });
 }
 
 /// A database stand-in that answers the three queries the source makes.
@@ -177,7 +184,23 @@ class _FakeDb extends FakeAvesDb {
   int get nextId => rows.fold<int>(0, (max, entry) => entry.id > max ? entry.id : max) + 1;
 
   @override
-  Future<int> countEntries([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) async => rows.length;
+  Future<int> countEntries([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) async {
+    // The source's `entryById` scopes the media set with an `e.id = ?` fragment;
+    // the fixture has no SQL engine, so honour just that one.
+    for (final fragment in predicate.conjunction) {
+      if (fragment.sql == 'e.id = ?' && fragment.variables.length == 1) {
+        final id = fragment.variables.first.value;
+        return rows.any((entry) => entry.id == id) ? 1 : 0;
+      }
+    }
+    return rows.length;
+  }
+
+  @override
+  Future<Set<AvesEntry>> loadEntriesById(Set<int> ids) async => {
+        for (final entry in rows)
+          if (ids.contains(entry.id)) entry,
+      };
 
   @override
   Future<List<AvesEntry>> loadEntryWindow({

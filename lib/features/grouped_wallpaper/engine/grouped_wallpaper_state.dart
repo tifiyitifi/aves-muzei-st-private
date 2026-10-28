@@ -161,16 +161,22 @@ class GroupedWallpaperRecentEntry extends Equatable {
   final String uri;
   final String title;
 
+  /// The group the photo belonged to, so "previous photo" never jumps into
+  /// another group's history.
+  final String groupId;
+
   const new({
     required this.entryId,
     this.uri = '',
     this.title = '',
+    this.groupId = '',
   });
 
   Map<String, Object?> toJsonMap() => {
         'entryId': entryId,
         'uri': uri,
         'title': title,
+        'groupId': groupId,
       };
 
   static GroupedWallpaperRecentEntry? tryFromJsonMap(Map<String, Object?> json) {
@@ -180,11 +186,12 @@ class GroupedWallpaperRecentEntry extends Equatable {
       entryId: entryId,
       uri: GroupedWallpaperSlot._slotString(json['uri']),
       title: GroupedWallpaperSlot._slotString(json['title']),
+      groupId: GroupedWallpaperSlot._slotString(json['groupId']),
     );
   }
 
   @override
-  List<Object?> get props => [entryId, uri, title];
+  List<Object?> get props => [entryId, uri, title, groupId];
 }
 
 /// Dart-owned `state.json` of the grouped wallpaper.
@@ -205,9 +212,10 @@ class GroupedWallpaperRecentEntry extends Equatable {
 @immutable
 class GroupedWallpaperState extends Equatable {
   /// v2 added the slot queue; v3 added the ordering metadata ([recent],
-  /// [cursor], [newestEntryId]). Older files are read with those at their
-  /// defaults, so an upgrade never loses the frame on screen.
-  static const int currentVersion = 3;
+  /// [cursor], [newestEntryId]); v4 added [paused] and the group id of a recent
+  /// entry. Older files are read with those at their defaults, so an upgrade
+  /// never loses the frame on screen.
+  static const int currentVersion = 4;
 
   /// How many recently shown photos are remembered.
   ///
@@ -254,6 +262,13 @@ class GroupedWallpaperState extends Equatable {
   /// Gestures the renderer acts on without asking Dart.
   final GroupedWallpaperGestures gestures;
 
+  /// Whether the wallpaper is frozen: it keeps the current photo and the
+  /// renderer refuses to promote, so neither a tap nor an interval advances it.
+  ///
+  /// This is deliberately separate from [GroupedWallpaperStatus.locked], which
+  /// is the visible range's own lock.
+  final bool paused;
+
   final int bakedAt;
 
   const new({
@@ -273,6 +288,7 @@ class GroupedWallpaperState extends Equatable {
     this.newestEntryId = 0,
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
     this.gestures = const GroupedWallpaperGestures(),
+    this.paused = false,
     this.bakedAt = 0,
   });
 
@@ -331,6 +347,7 @@ class GroupedWallpaperState extends Equatable {
     int? newestEntryId,
     GroupedWallpaperOrdering? ordering,
     GroupedWallpaperGestures? gestures,
+    bool? paused,
     int? bakedAt,
   }) => GroupedWallpaperState(
         version: version ?? this.version,
@@ -349,6 +366,7 @@ class GroupedWallpaperState extends Equatable {
         newestEntryId: newestEntryId ?? this.newestEntryId,
         ordering: ordering ?? this.ordering,
         gestures: gestures ?? this.gestures,
+        paused: paused ?? this.paused,
         bakedAt: bakedAt ?? this.bakedAt,
       );
 
@@ -357,9 +375,13 @@ class GroupedWallpaperState extends Equatable {
   ///
   /// Only the metadata is kept: the slot's photo path is reused by a later bake
   /// and would point at another image.
-  static List<GroupedWallpaperRecentEntry> promoteRecent(List<GroupedWallpaperRecentEntry> recent, GroupedWallpaperSlot? slot) {
+  static List<GroupedWallpaperRecentEntry> promoteRecent(
+    List<GroupedWallpaperRecentEntry> recent,
+    GroupedWallpaperSlot? slot, {
+    String groupId = '',
+  }) {
     if (slot == null) return recent;
-    final metadata = GroupedWallpaperRecentEntry(entryId: slot.entryId, uri: slot.uri, title: slot.title);
+    final metadata = GroupedWallpaperRecentEntry(entryId: slot.entryId, uri: slot.uri, title: slot.title, groupId: groupId);
     return [
       metadata,
       ...recent.where((existing) => existing.entryId != metadata.entryId),
@@ -383,6 +405,7 @@ class GroupedWallpaperState extends Equatable {
         'newestEntryId': newestEntryId,
         'ordering': ordering.name,
         'gestures': gestures.toJsonMap(),
+        'paused': paused,
         'bakedAt': bakedAt,
       };
 
@@ -392,7 +415,7 @@ class GroupedWallpaperState extends Equatable {
     if (status == null) return null;
     return switch (version) {
       1 => _fromV1(json, status),
-      2 || 3 => _fromQueued(json, status),
+      2 || 3 || 4 => _fromQueued(json, status),
       _ => null,
     };
   }
@@ -470,6 +493,7 @@ class GroupedWallpaperState extends Equatable {
       newestEntryId: _int(json['newestEntryId']) ?? 0,
       ordering: GroupedWallpaperOrdering.tryParse(json['ordering']),
       gestures: GroupedWallpaperGestures.fromJsonMap(_map(json['gestures']) ?? const {}),
+      paused: json['paused'] == true,
       bakedAt: _int(json['bakedAt']) ?? 0,
     );
     // `ready` without a frame is a contradiction: show the placeholder instead
@@ -491,7 +515,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, paused, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

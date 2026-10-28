@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Collapsed grouped-wallpaper notification, styled after Aves-ST's `fgw`
+  notification: a 40dp number badge, title and subtitle, and four borderless
+  actions on the right. The button icons are assigned by
+  `GroupedWallpaperNotification`, which also picks the unlocked or locked set.
+-->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="2dp"
+    android:paddingEnd="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_centerVertical="true"
+        android:layout_toStartOf="@+id/grouped_notification_buttons"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/grouped_notification_status"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@android:color/darker_gray"
+            android:gravity="center"
+            android:textColor="@android:color/black"
+            android:textSize="30dp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/grouped_notification_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/grouped_notification_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/grouped_notification_buttons"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentEnd="true"
+        android:layout_centerVertical="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/grouped_notification_button_1"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/grouped_wallpaper_action_previous" />
+
+        <ImageButton
+            android:id="@+id/grouped_notification_button_2"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/grouped_wallpaper_action_next" />
+
+        <ImageButton
+            android:id="@+id/grouped_notification_button_3"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/grouped_wallpaper_action_copy" />
+
+        <ImageButton
+            android:id="@+id/grouped_notification_button_4"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/grouped_wallpaper_action_used" />
+    </LinearLayout>
+</RelativeLayout>

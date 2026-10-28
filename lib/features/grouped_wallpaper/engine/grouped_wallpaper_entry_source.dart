@@ -11,6 +11,7 @@ import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/vaults/vaults.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
+import 'package:drift/drift.dart' show Variable;
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
@@ -71,6 +72,14 @@ abstract interface class GroupedWallpaperEntrySource {
     int newestEntryId = 0,
     Set<int> excludeEntryIds = const {},
   });
+
+  /// The entry with [id], or null when it was deleted or is no longer visible.
+  ///
+  /// "Previous photo" re-bakes an entry the state remembers, and that entry can
+  /// have left the library in the meantime. It is checked against [range] again,
+  /// so locking a vault or hiding a filter between two photos cannot make the
+  /// wallpaper show a photo the user just hid.
+  Future<AvesEntry?> entryById(VisibleRange? range, int id);
 }
 
 /// Queries the app database for a group's images.
@@ -176,6 +185,28 @@ class GroupedWallpaperDbEntrySource implements GroupedWallpaperEntrySource {
     );
     if (randomPick == null) return GroupedWallpaperPick(total: total);
     return GroupedWallpaperPick(entry: randomPick.entry, total: total, offset: randomPick.offset);
+  }
+
+  @override
+  Future<AvesEntry?> entryById(VisibleRange? range, int id) async {
+    final predicate = _predicateFor(range);
+    if (predicate == null) return null;
+    final db = _db;
+    await db.init();
+    // Re-apply the whole media set, not just "the row still exists": a locked
+    // vault or a hidden filter must win over a history entry.
+    final scoped = CollectionWindowPredicate(
+      conjunction: [
+        ...predicate.conjunction,
+        (sql: 'e.id = ?', variables: [Variable(id)], requires: const <WindowTable>{}),
+      ],
+      trashedOnly: predicate.trashedOnly,
+    );
+    if (await db.countEntries(scoped) <= 0) return null;
+    final entries = await db.loadEntriesById({id});
+    if (entries.isEmpty) return null;
+    final entry = entries.first;
+    return _isUsable(entry) ? entry : null;
   }
 
   /// One photo added after [newestEntryId], in id order.

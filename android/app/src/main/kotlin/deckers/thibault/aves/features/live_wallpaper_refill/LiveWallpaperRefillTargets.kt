@@ -42,15 +42,18 @@ object LiveWallpaperRefillTargets {
      * running the worker too would bake the same slot twice. Auto-advance always
      * runs, because the page does not own the interval.
      */
-    suspend fun run(context: Context, target: LiveWallpaperTarget, advance: Boolean): ListenableWorker.Result {
-        if (!advance && isAppListening(target)) {
+    suspend fun run(context: Context, target: LiveWallpaperTarget, advance: Boolean, command: String? = null): ListenableWorker.Result {
+        // A command must run even when the page is mounted: the page does not
+        // own group switching or freezing, and a tap is already being served by
+        // the mounted engine over the channel.
+        if (!advance && command == null && isAppListening(target)) {
             Log.d(TAG, "refill.skip target=${target.id}: the page is listening")
             return ListenableWorker.Result.success()
         }
-        Log.d(TAG, "refill.start target=${target.id} advance=$advance")
+        Log.d(TAG, "refill.start target=${target.id} advance=$advance command=$command")
         return try {
-            LiveWallpaperRefillEngine.refill(context, target, advance)
-            Log.d(TAG, "refill.done target=${target.id} advance=$advance")
+            LiveWallpaperRefillEngine.refill(context, target, advance, command)
+            Log.d(TAG, "refill.done target=${target.id} advance=$advance command=$command")
             onRefilled(context, target, advance)
             ListenableWorker.Result.success()
         } catch (e: CancellationException) {
@@ -60,7 +63,7 @@ object LiveWallpaperRefillTargets {
         } catch (t: Throwable) {
             // Retrying a bake that just failed would spin on the same artwork;
             // the next tap or interval starts a fresh run instead.
-            Log.w(TAG, "refill.failed target=${target.id} advance=$advance", t)
+            Log.w(TAG, "refill.failed target=${target.id} advance=$advance command=$command", t)
             if (advance) LiveWallpaperRefillScheduler.rescheduleAutoAdvance(context, target)
             ListenableWorker.Result.success()
         }

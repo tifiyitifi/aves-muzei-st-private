@@ -34,6 +34,13 @@ class WallpaperGroupStore {
   /// AppMeta key of the ordering, global until each group owns one.
   static const keyOrdering = 'wallpaper.groupedOrdering';
 
+  /// AppMeta key of the freeze switch.
+  ///
+  /// Freezing keeps the current photo and stops advancing it, without turning
+  /// the grouped wallpaper off (which is [keyDisabled]) and without locking the
+  /// group's visible range.
+  static const keyPaused = 'wallpaper.groupedPaused';
+
   final AppDatabase db;
 
   new(this.db);
@@ -112,6 +119,14 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeOrdering(GroupedWallpaperOrdering ordering) => AppMetaStore(db).write({keyOrdering: ordering.name});
+
+  /// Whether the wallpaper is frozen on its current photo.
+  Future<bool> readPaused() async {
+    final values = await AppMetaStore(db).read({keyPaused});
+    return values[keyPaused] == 'true';
+  }
+
+  Future<void> writePaused(bool paused) => AppMetaStore(db).write({keyPaused: paused ? 'true' : 'false'});
 
   /// Writes one group's effects and bumps its `updatedAt` so the next bake sees
   /// the change.

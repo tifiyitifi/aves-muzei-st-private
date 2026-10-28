@@ -619,6 +619,163 @@ void main() {
     final state = (await store.readState())!;
     expect(state.currentSlot?.entryId, 1);
   });
+
+  test('pausing writes the flag without baking and survives a refill', () async {
+    serve(entries(12));
+    await engine.prepare();
+    final bakes = baker.bakeCount;
+
+    await engine.setPaused(true);
+
+    final paused = (await store.readState())!;
+    expect(paused.paused, isTrue);
+    expect(baker.bakeCount, bakes);
+    expect(planStore.pausedWrites, [true]);
+
+    expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
+    expect((await store.readState())!.paused, isTrue);
+  });
+
+  test('resuming writes the flag back', () async {
+    serve(entries(12));
+    await engine.prepare();
+    await engine.setPaused(true);
+
+    await engine.setPaused(false);
+
+    expect((await store.readState())!.paused, isFalse);
+    expect(planStore.pausedWrites, [true, false]);
+  });
+
+  test('switching group makes the new group current and re-bakes', () async {
+    serve(entries(12));
+    await engine.prepare();
+    const nextGroup = WallpaperGroup(id: 'group.2', number: 2, name: '@wallpaperGroupDefaultPictures', current: true, updatedAt: 20);
+    planStore.switched = const GroupedWallpaperPlan(group: nextGroup);
+
+    expect(await engine.switchGroup(1), GroupedWallpaperSyncResult.baked);
+
+    final state = (await store.readState())!;
+    expect(state.groupId, 'group.2');
+    expect(state.status, GroupedWallpaperStatus.ready);
+    expect(planStore.switchDeltas, [1]);
+  });
+
+  test('switching to a locked group still displays it', () async {
+    serve(entries(4));
+    await engine.prepare();
+    const nextGroup = WallpaperGroup(id: 'group.2', number: 2, name: '@wallpaperGroupDefaultPictures', current: true, updatedAt: 20);
+    planStore.switched = const GroupedWallpaperPlan(
+      group: nextGroup,
+      range: VisibleRange(id: 'group.2.range', scope: VisibleRangeScope.wallpaper, ownerId: 'group.2', locked: true),
+    );
+
+    expect(await engine.switchGroup(1), GroupedWallpaperSyncResult.baked);
+
+    final state = (await store.readState())!;
+    expect(state.groupId, 'group.2');
+    expect(state.status, GroupedWallpaperStatus.ready);
+    expect(state.hasPhoto, isTrue);
+  });
+
+  test('previous photo re-bakes the last shown photo and queues the current after it', () async {
+    serve(entries(12));
+    await engine.prepare();
+    // One forward step: 50 → 49, so 50 becomes the previous photo.
+    await engine.syncNow();
+    final advanced = (await store.readState())!;
+    expect(advanced.currentSlot?.entryId, 49);
+
+    expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.baked);
+
+    final state = (await store.readState())!;
+    expect(state.currentSlot?.entryId, 50);
+    expect(state.nextSlot?.entryId, 49);
+    expect(state.next2Slot, isNotNull);
+    expect(state.queueLength, 3);
+    expect(state.recent.first.entryId, 50);
+    for (final slot in state.slots) {
+      expect(store.slotPhotoOf(slot)?.existsSync(), isTrue);
+    }
+  });
+
+  test('previous photo without history is a no-op', () async {
+    serve(entries(12));
+    await engine.prepare();
+    final before = (await store.readState())!;
+
+    expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.unchanged);
+
+    final after = (await store.readState())!;
+    expect(after.generation, before.generation);
+    expect(after.current, before.current);
+  });
+
+  test('previous photo skips a photo that left the media set', () async {
+    serve(entries(12));
+    await engine.prepare();
+    await engine.syncNow();
+    // The previous photo (50) is now hidden, e.g. by a locked vault.
+    entrySource.entries = entries(12).where((entry) => entry.id != 50).toList();
+
+    expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.unchanged);
+
+    expect((await store.readState())!.currentSlot?.entryId, 49);
+  });
+
+  test('previous photo does not cross into another group history', () async {
+    serve(entries(12));
+    await engine.prepare();
+    final state = (await store.readState())!;
+    await store.writeState(state.copyWith(
+      recent: [
+        const GroupedWallpaperRecentEntry(entryId: 50, groupId: 'group.1'),
+        const GroupedWallpaperRecentEntry(entryId: 49, groupId: 'group.2'),
+      ],
+    ));
+
+    expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.unchanged);
+  });
+
+  test('a v3 history entry with no group id still counts as this group', () async {
+    serve(entries(12));
+    await engine.prepare();
+    final state = (await store.readState())!;
+    await store.writeState(state.copyWith(
+      recent: [
+        GroupedWallpaperRecentEntry(entryId: state.entryId!),
+        const GroupedWallpaperRecentEntry(entryId: 49),
+      ],
+    ));
+
+    expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.baked);
+
+    expect((await store.readState())!.currentSlot?.entryId, 49);
+  });
+
+  test('a notification command pauses and resumes the wallpaper', () async {
+    serve(entries(2));
+    await engine.prepare();
+
+    await engine.handleCommand('pause');
+    expect((await store.readState())!.paused, isTrue);
+
+    await engine.handleCommand('resume');
+    expect((await store.readState())!.paused, isFalse);
+  });
+
+  test('an unknown notification command is ignored', () async {
+    serve(entries(2));
+    await engine.prepare();
+
+    await engine.handleCommand('deleteEverything');
+
+    expect((await store.readState())!.hasPhoto, isTrue);
+  });
+
+  test('attach wires the notification command handler', () {
+    expect(platform.commandHandler, isNotNull);
+  });
 }
 
 class _FakePlatform implements GroupedWallpaperPlatform {
@@ -627,6 +784,7 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   int reloadCount = 0;
   bool chooserOpened = false;
   void Function()? syncHandler;
+  void Function(String command)? commandHandler;
   VoidCallback? onReload;
 
   new(this.root);
@@ -653,8 +811,9 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   }
 
   @override
-  void setSyncRequestHandler({void Function()? onSyncRequested}) {
+  void setSyncRequestHandler({void Function()? onSyncRequested, void Function(String command)? onCommand}) {
     syncHandler = onSyncRequested;
+    commandHandler = onCommand;
   }
 }
 
@@ -702,9 +861,14 @@ class _FakeBaker extends GroupedWallpaperBaker {
 class _FakePlanStore implements GroupedWallpaperPlanStore {
   GroupedWallpaperPlan plan;
   GroupedWallpaperPlan adopted;
+
+  /// The plan returned by [switchGroup]; null keeps the current plan.
+  GroupedWallpaperPlan? switched;
   Object? error;
   int adoptCount = 0;
   final List<bool> disabledWrites = [];
+  final List<bool> pausedWrites = [];
+  final List<int> switchDeltas = [];
 
   new(this.plan) : adopted = plan;
 
@@ -725,17 +889,32 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setDisabled(bool disabled) async {
     disabledWrites.add(disabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, paused: plan.paused);
   }
 
   @override
   Future<void> setGestures(GroupedWallpaperGestures gestures) async {
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, paused: plan.paused);
   }
 
   @override
   Future<void> setOrdering(GroupedWallpaperOrdering ordering) async {
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: ordering);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: ordering, paused: plan.paused);
+  }
+
+  @override
+  Future<void> setPaused(bool paused) async {
+    pausedWrites.add(paused);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, paused: paused);
+  }
+
+  @override
+  Future<GroupedWallpaperPlan> switchGroup(int delta) async {
+    switchDeltas.add(delta);
+    final target = switched;
+    if (target == null) return plan;
+    plan = target;
+    return plan;
   }
 }
 
@@ -790,5 +969,13 @@ class _FakeEntrySource implements GroupedWallpaperEntrySource {
     if (candidates.isEmpty) return GroupedWallpaperPick(total: total);
     final pick = candidates[attempt % candidates.length];
     return GroupedWallpaperPick(entry: pick, total: total, offset: entries.indexOf(pick));
+  }
+
+  @override
+  Future<AvesEntry?> entryById(VisibleRange? range, int id) async {
+    for (final entry in entries) {
+      if (entry.id == id) return entry;
+    }
+    return null;
   }
 }

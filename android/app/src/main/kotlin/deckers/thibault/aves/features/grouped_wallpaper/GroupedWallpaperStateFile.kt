@@ -26,6 +26,8 @@ data class GroupedWallpaperSlotFile(
     val id: Int,
     val entryId: Int,
     val photo: String,
+    /** Display name of the photo, for the notification. */
+    val title: String = "",
     /** Baked home effect; empty means the sharp [photo] is used. */
     val effectHome: String = "",
     /** Baked lock effect; empty means the sharp [photo] is used. */
@@ -58,6 +60,8 @@ data class GroupedWallpaperFileState(
     val slots: List<GroupedWallpaperSlotFile>,
     val doubleTap: String,
     val threeFinger: String,
+    /** The wallpaper is frozen: the renderer must not promote a slot. */
+    val paused: Boolean,
 ) {
     fun slot(id: Int): GroupedWallpaperSlotFile? = slots.firstOrNull { it.id == id }
 
@@ -67,7 +71,7 @@ data class GroupedWallpaperFileState(
 
     /** Whether the wallpaper may follow its group, i.e. may promote a slot. */
     val canPromote: Boolean
-        get() = status == STATUS_READY && next >= 0
+        get() = status == STATUS_READY && next >= 0 && !paused
 
     companion object {
         const val STATUS_READY = "ready"
@@ -127,7 +131,7 @@ object GroupedWallpaperStateFile {
             if (status.isEmpty()) return null
             when (version) {
                 1 -> readV1(json, status)
-                2, 3 -> readQueued(json, status)
+                2, 3, 4 -> readQueued(json, status)
                 else -> {
                     Log.w(TAG, "ignoring state.json of another version")
                     null
@@ -144,7 +148,11 @@ object GroupedWallpaperStateFile {
     private fun readV1(json: JSONObject, status: String): GroupedWallpaperFileState {
         val entryId = if (json.has("entryId") && !json.isNull("entryId")) json.optInt("entryId", -1) else -1
         val photo = json.optString("photo", "")
-        val slots = if (entryId >= 0 && photo.isNotEmpty()) listOf(GroupedWallpaperSlotFile(0, entryId, photo)) else emptyList()
+        val slots = if (entryId >= 0 && photo.isNotEmpty()) {
+            listOf(GroupedWallpaperSlotFile(id = 0, entryId = entryId, photo = photo, title = json.optString("entryTitle", "")))
+        } else {
+            emptyList()
+        }
         return GroupedWallpaperFileState(
             generation = json.optInt("generation", 0),
             status = status,
@@ -158,6 +166,7 @@ object GroupedWallpaperStateFile {
             slots = slots,
             doubleTap = GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,
             threeFinger = GroupedWallpaperFileState.ACTION_VIEW_ARTWORK,
+            paused = false,
         )
     }
 
@@ -177,6 +186,7 @@ object GroupedWallpaperStateFile {
                         id = id,
                         entryId = entryId,
                         photo = photo,
+                        title = raw.optString("title", ""),
                         effectHome = raw.optString("effectHome", ""),
                         effectLock = raw.optString("effectLock", ""),
                     ),
@@ -199,6 +209,7 @@ object GroupedWallpaperStateFile {
                 ?: GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,
             threeFinger = gestures?.optString("threeFinger", GroupedWallpaperFileState.ACTION_VIEW_ARTWORK)
                 ?: GroupedWallpaperFileState.ACTION_VIEW_ARTWORK,
+            paused = json.optBoolean("paused", false),
         )
     }
 

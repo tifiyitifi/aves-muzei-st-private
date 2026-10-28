@@ -14,7 +14,7 @@ WallpaperController? _controller;
 /// A wallpaper tap promotes the prefetched slot natively, so something has to
 /// bake the freed slot again even when neither the page nor the app process is
 /// alive; auto-advance uses the same run with `advance: true`.
-Future<void> muzeiWallpaperRefill({required bool advance}) async {
+Future<void> muzeiWallpaperRefill({required bool advance, String? command}) async {
   WallpaperController? controller;
   try {
     // Kept for the engine's lifetime: the worker reuses a warm engine across a

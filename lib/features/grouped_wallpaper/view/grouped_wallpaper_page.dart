@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_sections.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
@@ -47,6 +48,7 @@ import 'package:aves/widgets/filter_grids/common/section_keys.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 /// The wallpaper-group page: the visible-range editor with a group switcher on
@@ -1227,6 +1229,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// before the chooser opens, so the picker shows a photo instead of the
   /// placeholder while the system commits the change.
   Future<void> _setCurrentAsWallpaper(WallpaperGroup group) async {
+    // The notification is the only way to control the wallpaper from the lock
+    // screen, so ask for the permission at the moment it first becomes useful.
+    try {
+      await Permission.notification.request();
+    } catch (error, stack) {
+      groupedWallpaperLog.w('failed to request the notification permission', error, stack);
+    }
     await _controller.selectCurrent(group.id);
     if (_controller.dirty) await _controller.saveDraft();
     await wallpaperEngineLink.setDisabled(false);

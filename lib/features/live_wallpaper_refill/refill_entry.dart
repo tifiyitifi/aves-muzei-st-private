@@ -24,7 +24,10 @@ const String liveWallpaperTargetMuzei = 'muzei';
 const String liveWallpaperTargetGrouped = 'grouped';
 
 /// One headless refill of one live wallpaper.
-typedef LiveWallpaperRefill = Future<void> Function({required bool advance});
+///
+/// [command] is the notification's request (`previousArtwork`, `nextGroup`,
+/// ...), already resolved by the target; a plain tap or interval leaves it null.
+typedef LiveWallpaperRefill = Future<void> Function({required bool advance, String? command});
 
 /// The wallpapers this entrypoint can serve.
 ///
@@ -71,9 +74,10 @@ Future<void> liveWallpaperRefillMain() async {
         if (arguments is! Map) throw ArgumentError.value(arguments, 'arguments', 'expected a map');
         final target = arguments['target'];
         final advance = arguments['advance'] == true;
+        final command = arguments['command'];
         final refill = _refills[target];
         if (refill == null) throw ArgumentError.value(target, 'target', 'unknown live wallpaper');
-        await refill(advance: advance);
+        await refill(advance: advance, command: command is String ? command : null);
         return true;
       default:
         throw MissingPluginException('unsupported refill method ${call.method}');

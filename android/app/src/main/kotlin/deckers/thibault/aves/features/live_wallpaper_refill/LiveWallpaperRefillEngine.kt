@@ -90,13 +90,13 @@ object LiveWallpaperRefillEngine {
     }
 
     /** Runs one refill, reusing the engine of the previous run when possible. */
-    suspend fun refill(context: Context, target: LiveWallpaperTarget, advance: Boolean): Boolean = mutex.withLock {
+    suspend fun refill(context: Context, target: LiveWallpaperTarget, advance: Boolean, command: String? = null): Boolean = mutex.withLock {
         inUse = true
         mainHandler.removeCallbacks(idleStop)
         try {
             ensureEngine(context)
             val current = engine ?: throw IllegalStateException("the refill engine is not initialized")
-            withTimeout(REFILL_TIMEOUT_MS) { invokeRefill(current, target, advance) }
+            withTimeout(REFILL_TIMEOUT_MS) { invokeRefill(current, target, advance, command) }
         } finally {
             inUse = false
             mainHandler.postDelayed(idleStop, IDLE_TIMEOUT_MS)
@@ -151,7 +151,7 @@ object LiveWallpaperRefillEngine {
         }
     }
 
-    private suspend fun invokeRefill(engine: FlutterEngine, target: LiveWallpaperTarget, advance: Boolean): Boolean =
+    private suspend fun invokeRefill(engine: FlutterEngine, target: LiveWallpaperTarget, advance: Boolean, command: String?): Boolean =
         suspendCancellableCoroutine { cont ->
             // Platform messages may only be sent from the main thread.
             val channel = MethodChannel(engine.dartExecutor, LiveWallpaperRefillScheduler.CHANNEL)
@@ -162,6 +162,7 @@ object LiveWallpaperRefillEngine {
                         mapOf(
                             LiveWallpaperRefillWorker.KEY_TARGET to target.id,
                             LiveWallpaperRefillWorker.KEY_ADVANCE to advance,
+                            LiveWallpaperRefillWorker.KEY_COMMAND to command,
                         ),
                         object : MethodChannel.Result {
                             override fun success(result: Any?) {

@@ -11,4 +11,18 @@
     <string name="analysis_notification_default_title">正在扫描媒体</string>
     <string name="analysis_notification_action_stop">停止</string>
     <string name="map_shortcut_short_label">地图</string>
+
+    <string name="grouped_wallpaper_channel_name">分组壁纸</string>
+    <string name="grouped_wallpaper_notification_fallback_title">分组壁纸</string>
+    <string name="grouped_wallpaper_notification_no_photo">无可用壁纸</string>
+    <string name="grouped_wallpaper_notification_badge_empty">–</string>
+    <string name="grouped_wallpaper_action_previous">上一张</string>
+    <string name="grouped_wallpaper_action_next">下一张</string>
+    <string name="grouped_wallpaper_action_previous_group">上一组</string>
+    <string name="grouped_wallpaper_action_next_group">下一组</string>
+    <string name="grouped_wallpaper_action_freeze">冻结当前壁纸</string>
+    <string name="grouped_wallpaper_action_resume">恢复轮换</string>
+    <string name="grouped_wallpaper_action_switch_group">打开壁纸组</string>
+    <string name="grouped_wallpaper_action_copy">复制分享（稍后提供）</string>
+    <string name="grouped_wallpaper_action_used">使用记录（稍后提供）</string>
 </resources>

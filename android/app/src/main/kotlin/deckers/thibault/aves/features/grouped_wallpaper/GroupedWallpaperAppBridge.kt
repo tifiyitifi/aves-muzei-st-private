@@ -39,6 +39,9 @@ object GroupedWallpaperAppBridge {
     /** The app route of the immersive wallpaper view. */
     private const val GroupedWallpaperViewRoute = "/grouped_wallpaper/view"
 
+    /** The app route of the wallpaper group page. */
+    private const val GroupedWallpaperPageRoute = "/wallpaper_groups"
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
     @Volatile
@@ -98,6 +101,27 @@ object GroupedWallpaperAppBridge {
     }
 
     /**
+     * Asks the app to run a notification command (previous photo, group switch,
+     * freeze); false when no app is listening.
+     *
+     * The app owns every change that needs a bake or a database write, so the
+     * receiver routes through it before falling back to the background worker.
+     */
+    fun requestCommand(command: String): Boolean {
+        val engineMessenger = messenger ?: return false
+        if (!requestHandlerAttached) return false
+        mainHandler.post {
+            try {
+                MethodChannel(engineMessenger, GroupedWallpaperHandler.CHANNEL)
+                    .invokeMethod("command", mapOf("command" to command))
+            } catch (t: Throwable) {
+                Log.w(TAG, "failed to send the wallpaper command $command", t)
+            }
+        }
+        return true
+    }
+
+    /**
      * Opens the grouped wallpaper's view page.
      *
      * A wallpaper gesture has no Activity, so this starts the app (cold start is
@@ -105,17 +129,26 @@ object GroupedWallpaperAppBridge {
      * of the app, so it is the same page the group page's menu opens.
      */
     fun requestView() {
+        requestPage(GroupedWallpaperViewRoute)
+    }
+
+    /** Opens the wallpaper group page, which is also the notification's target. */
+    fun requestGroupPage() {
+        requestPage(GroupedWallpaperPageRoute)
+    }
+
+    private fun requestPage(route: String) {
         val appContext = context ?: return
         try {
             appContext.startActivity(
                 Intent(appContext, MainActivity::class.java)
                     .setAction(Intent.ACTION_MAIN)
                     .addCategory(Intent.CATEGORY_LAUNCHER)
-                    .putExtra("page", GroupedWallpaperViewRoute)
+                    .putExtra("page", route)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         } catch (t: Throwable) {
-            Log.w(TAG, "failed to open the grouped wallpaper view", t)
+            Log.w(TAG, "failed to open the grouped wallpaper page $route", t)
         }
     }
 }

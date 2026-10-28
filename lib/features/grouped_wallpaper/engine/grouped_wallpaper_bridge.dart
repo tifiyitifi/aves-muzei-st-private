@@ -24,12 +24,13 @@ abstract interface class GroupedWallpaperPlatform {
   /// Opens the system live-wallpaper chooser for this service.
   Future<bool> openChooser();
 
-  /// Registers the native-to-Dart request that a fresh frame is needed.
+  /// Registers the native-to-Dart requests: a fresh frame is needed, or the
+  /// notification asked for a command (previous photo, group switch, freeze).
   ///
-  /// The service asks for it when it starts, when the app attaches and after a
-  /// tap. The renderer already wrote the promotion to `runtime.json`, so the
+  /// The service asks for a frame when it starts, when the app attaches and after
+  /// a tap. The renderer already wrote the promotion to `runtime.json`, so the
   /// signal carries no payload and the engine reads the file itself.
-  void setSyncRequestHandler({void Function()? onSyncRequested});
+  void setSyncRequestHandler({void Function()? onSyncRequested, void Function(String command)? onCommand});
 }
 
 /// Platform contract of the grouped live wallpaper.
@@ -74,16 +75,21 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
   }
 
   @override
-  void setSyncRequestHandler({void Function()? onSyncRequested}) {
-    final attached = onSyncRequested != null;
+  void setSyncRequestHandler({void Function()? onSyncRequested, void Function(String command)? onCommand}) {
+    final attached = onSyncRequested != null || onCommand != null;
     unawaited(_invoke<void>('setRequestHandler', {'attached': attached}));
     if (!attached) {
       _channel.setMethodCallHandler(null);
       return;
     }
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'syncRequested') {
-        onSyncRequested.call();
+      switch (call.method) {
+        case 'syncRequested':
+          onSyncRequested?.call();
+        case 'command':
+          final arguments = call.arguments;
+          final command = arguments is Map ? arguments['command'] : arguments;
+          if (command is String) onCommand?.call(command);
       }
       return null;
     });

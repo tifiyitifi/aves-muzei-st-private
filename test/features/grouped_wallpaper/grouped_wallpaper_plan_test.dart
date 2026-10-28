@@ -178,4 +178,71 @@ void main() {
 
     expect(plan.range?.baseFilters, {PathFilter('/dcim')});
   });
+
+  test('paused survives a reload without touching the current group', () async {
+    await groups.saveGroups([group('a', current: true)]);
+    expect((await planStore.load()).paused, isFalse);
+
+    await planStore.setPaused(true);
+
+    final paused = await planStore.load();
+    expect(paused.paused, isTrue);
+    expect(paused.group.id, 'a');
+  });
+
+  test('activation resumes a frozen wallpaper', () async {
+    await groups.saveGroups([group('a', current: true)]);
+    await planStore.setPaused(true);
+
+    final plan = await planStore.adoptFirstEnabledGroup();
+
+    expect(plan.paused, isFalse);
+    expect((await planStore.load()).paused, isFalse);
+  });
+
+  test('next group skips disabled groups and wraps around', () async {
+    await groups.saveGroups([group('a', current: true), group('b', enabled: false), group('c')]);
+
+    final next = await planStore.switchGroup(1);
+    expect(next.group.id, 'c');
+    expect((await planStore.load()).group.id, 'c');
+
+    final wrapped = await planStore.switchGroup(1);
+    expect(wrapped.group.id, 'a');
+  });
+
+  test('previous group wraps to the last enabled group', () async {
+    await groups.saveGroups([group('a', current: true), group('b', enabled: false), group('c')]);
+
+    final previous = await planStore.switchGroup(-1);
+
+    expect(previous.group.id, 'c');
+  });
+
+  test('from group 0 next enters at the first enabled and previous at the last', () async {
+    await groups.saveGroups([group('a'), group('b', enabled: false), group('c')]);
+    expect((await planStore.switchGroup(1)).group.id, 'a');
+
+    await groups.saveGroups([group('a'), group('b', enabled: false), group('c')]);
+    expect((await planStore.switchGroup(-1)).group.id, 'c');
+  });
+
+  test('switching group resumes a frozen wallpaper', () async {
+    await groups.saveGroups([group('a', current: true), group('b')]);
+    await planStore.setPaused(true);
+
+    final plan = await planStore.switchGroup(1);
+
+    expect(plan.group.id, 'b');
+    expect(plan.paused, isFalse);
+    expect((await planStore.load()).paused, isFalse);
+  });
+
+  test('switching with no enabled group keeps group 0', () async {
+    await groups.saveGroups([group('a', enabled: false), group('b', enabled: false)]);
+
+    final plan = await planStore.switchGroup(1);
+
+    expect(plan.isNone, isTrue);
+  });
 }

@@ -43,12 +43,13 @@ void main() {
       GroupedWallpaperSlot(id: 2, entryId: 9, uri: 'content://media/9', title: 'IMG_9', photo: 'slots/2/photo.png', width: 1080, height: 2400),
     ],
     recent: [
-      GroupedWallpaperRecentEntry(entryId: 7, uri: 'content://media/7', title: 'IMG_7'),
-      GroupedWallpaperRecentEntry(entryId: 6, uri: 'content://media/6', title: 'IMG_6'),
+      GroupedWallpaperRecentEntry(entryId: 7, uri: 'content://media/7', title: 'IMG_7', groupId: 'wallpaper.group.dcim'),
+      GroupedWallpaperRecentEntry(entryId: 6, uri: 'content://media/6', title: 'IMG_6', groupId: 'wallpaper.group.dcim'),
     ],
     cursor: 5,
     newestEntryId: 9,
     ordering: GroupedWallpaperOrdering.inOrder,
+    paused: true,
     bakedAt: 1234,
   );
 
@@ -63,9 +64,23 @@ void main() {
     expect(parsed.currentSlot?.effectHome, 'slots/0/home.png');
     expect(parsed.currentSlot?.effectLock, 'slots/0/lock.png');
     expect(parsed.recent.map((entry) => entry.entryId), [7, 6]);
+    expect(parsed.recent.first.groupId, 'wallpaper.group.dcim');
     expect(parsed.cursor, 5);
     expect(parsed.newestEntryId, 9);
     expect(parsed.ordering, GroupedWallpaperOrdering.inOrder);
+    expect(parsed.paused, isTrue);
+  });
+
+  test('a v3 file reads as playing, with no group on its history', () {
+    final json = state.toJsonMap()
+      ..['version'] = 3
+      ..remove('paused')
+      ..['recent'] = [
+        {'entryId': 7, 'uri': 'content://media/7', 'title': 'IMG_7'},
+      ];
+    final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
+    expect(parsed.paused, isFalse);
+    expect(parsed.recent.single.groupId, isEmpty);
   });
 
   test('a state from another version is ignored', () {

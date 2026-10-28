@@ -44,4 +44,12 @@ object GroupedWallpaperRenderBus {
     fun reload() {
         rendererRef?.get()?.requestReload()
     }
+
+    /**
+     * Promotes the next prefetched slot, like a wallpaper double tap.
+     *
+     * Returns false when no engine is alive or the queue cannot move (frozen,
+     * or no prefetched slot), so the caller can fall back to a background run.
+     */
+    fun advance(): Boolean = rendererRef?.get()?.promote() == true
 }

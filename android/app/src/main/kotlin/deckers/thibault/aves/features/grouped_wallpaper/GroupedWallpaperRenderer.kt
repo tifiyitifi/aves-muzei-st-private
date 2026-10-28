@@ -53,6 +53,7 @@ class GroupedWallpaperRenderer(
     private val context: Context,
     private val requestRender: () -> Unit,
     private val onAdvanced: () -> Unit,
+    private val onFrameLoaded: () -> Unit,
 ) : GLSurfaceView.Renderer {
     private companion object {
         const val TAG = "AvesGroupedWallpaper"
@@ -299,6 +300,17 @@ class GroupedWallpaperRenderer(
      */
     fun promote(): Boolean = synchronized(advanceLock) { promoteLocked() }
 
+    /**
+     * Whether the wallpaper may advance at all.
+     *
+     * A frozen or locked state has nothing to promote, and a tap must then do
+     * nothing instead of buffering a request that fires after the freeze ends.
+     */
+    fun canAdvance(): Boolean = state?.canPromote == true
+
+    /** The slot on screen, for the notification's title. */
+    fun displayedSlotId(): Int = displayed
+
     private fun promoteLocked(): Boolean {
         val current = state ?: return false
         if (!current.canPromote) return false
@@ -443,6 +455,7 @@ class GroupedWallpaperRenderer(
         }
         // A buffered tap may be servable now that the new slots are uploaded.
         drainPendingAdvance()
+        onFrameLoaded()
     }
 
     /**

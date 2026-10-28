@@ -58,6 +58,10 @@ object GroupedWallpaperAppBridge {
         Log.d(TAG, "app.handler attached=$attached")
     }
 
+    /** Whether a mounted app engine currently listens for `syncRequested`. */
+    val isRequestHandlerAttached: Boolean
+        get() = requestHandlerAttached
+
     /** Asks the app to bake a frame now; false when no app is listening. */
     fun requestSync(): Boolean {
         val engineMessenger = messenger ?: return false

@@ -23,6 +23,8 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safe
+import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillScheduler
+import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperTarget
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
@@ -53,7 +55,6 @@ class LiveWallpaperHandler(private val context: Context) : MethodCallHandler {
             "openChooser" -> safe(call, result, ::openChooser)
             "wallpaperSize" -> safe(call, result, ::wallpaperSize)
             "stateRoot" -> safe(call, result, ::stateRoot)
-            "registerCallback" -> safe(call, result, ::registerCallback)
             "scheduleAutoAdvance" -> safe(call, result, ::scheduleAutoAdvance)
             "setRequestHandler" -> safe(call, result, ::setRequestHandler)
             else -> result.notImplemented()
@@ -137,22 +138,10 @@ class LiveWallpaperHandler(private val context: Context) : MethodCallHandler {
         result.success(directory.absolutePath)
     }
 
-    /**
-     * Stores the callback handle of the headless refill entrypoint.
-     *
-     * Persisted in native preferences because the worker needs it before any
-     * Flutter isolate exists.
-     */
-    private fun registerCallback(call: MethodCall, result: MethodChannel.Result) {
-        val handle = call.argument<Number>("callbackHandle")?.toLong() ?: 0L
-        WallpaperRefillScheduler.registerCallback(context, handle)
-        result.success(handle > 0L)
-    }
-
     /** Applies the auto-advance interval; `0` cancels the pending run. */
     private fun scheduleAutoAdvance(call: MethodCall, result: MethodChannel.Result) {
         val seconds = call.argument<Number>("seconds")?.toInt() ?: 0
-        WallpaperRefillScheduler.scheduleAutoAdvance(context, seconds)
+        LiveWallpaperRefillScheduler.scheduleAutoAdvance(context, LiveWallpaperTarget.MUZEI, seconds)
         result.success(null)
     }
 

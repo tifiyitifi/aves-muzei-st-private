@@ -60,6 +60,7 @@ import deckers.thibault.aves.channel.streams.platformtodart.SettingsChangeStream
 import deckers.thibault.aves.channel.streams.platformtodart.WindowChangeStreamHandler
 import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperAppBridge
 import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperHandler
+import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillHandler
 import deckers.thibault.aves.features.muzei_wallpaper.LiveWallpaperHandler
 import deckers.thibault.aves.features.muzei_wallpaper.WallpaperAppBridge
 import deckers.thibault.aves.model.FieldMap
@@ -190,6 +191,8 @@ open class MainActivity : FlutterFragmentActivity() {
         MethodChannel(messenger, LiveWallpaperHandler.CHANNEL).setMethodCallHandler(LiveWallpaperHandler(this))
         // - grouped live wallpaper, state lives in `filesDir/grouped_wallpaper`
         MethodChannel(messenger, GroupedWallpaperHandler.CHANNEL).setMethodCallHandler(GroupedWallpaperHandler(this))
+        // - shared background refill: the callback handle both wallpapers' worker boots
+        MethodChannel(messenger, LiveWallpaperRefillHandler.CHANNEL).setMethodCallHandler(LiveWallpaperRefillHandler(this))
         // - need Activity
         MethodChannel(messenger, AppProfileHandler.CHANNEL).setMethodCallHandler(AppProfileHandler(this))
         MethodChannel(messenger, WindowHandler.CHANNEL).setMethodCallHandler(ActivityWindowHandler(this))

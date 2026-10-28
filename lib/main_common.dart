@@ -5,9 +5,10 @@ import 'package:aves/app_flavor.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_engine.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/live_wallpaper_refill/log.dart';
+import 'package:aves/features/live_wallpaper_refill/refill_entry.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
-import 'package:aves/features/muzei_wallpaper/entry/refill_entry.dart';
 import 'package:aves/features/muzei_wallpaper/log.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/services/common/services.dart';
@@ -20,7 +21,15 @@ import 'package:material_ui/material_ui.dart';
 void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
   debugProfilePlatformChannels = false;
 
-  Log.init(debugChannels: [...collectionPagingDebugLogKeys, ...muzeiWallpaperDebugLogKeys, ...visibleRangeDebugLogKeys, ...groupedWallpaperDebugLogKeys]);
+  Log.init(
+    debugChannels: [
+      ...collectionPagingDebugLogKeys,
+      ...muzeiWallpaperDebugLogKeys,
+      ...visibleRangeDebugLogKeys,
+      ...groupedWallpaperDebugLogKeys,
+      ...liveWallpaperRefillDebugLogKeys,
+    ],
+  );
   const appLog = AreaKeyLog(LogKeys.app);
   appLog.i('app start flavor=${flavor.name}');
 
@@ -54,7 +63,7 @@ void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
   // The callback handle is part of the AOT snapshot, so it changes with every
   // build: refresh it on each launch, not just when the wallpaper page is
   // opened, or a background refill after an update would fail.
-  unawaited(registerWallpaperRefillCallback());
+  unawaited(registerLiveWallpaperRefillCallback());
   // The grouped wallpaper service asks for a frame when it starts, so the engine
   // has to be listening even if the wallpaper page is never opened. The request
   // is what refreshes a stale frame after a reboot or a process restart, and it

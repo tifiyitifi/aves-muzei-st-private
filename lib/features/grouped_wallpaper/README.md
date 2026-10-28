@@ -82,6 +82,13 @@ The native side lives in
 and uses its own state root (`filesDir/grouped_wallpaper`), so it shares no files
 with Muzei. It never touches the database.
 
+The headless path is shared with Muzei instead: `features/live_wallpaper_refill/`
+owns the `vm:entry-point` isolate, the warm engine and the WorkManager chain, and
+dispatches by target (`muzei` / `grouped`) to
+`entry/background_refill.dart`. The grouped run attaches the engine and either
+prepares a frame or advances, so a tap or an interval still applies when no page
+is mounted. Files, renderers and intervals stay per wallpaper.
+
 ## Concepts
 
 - **Group 0** (`WallpaperGroup.none`, `wallpaperGroupNoneId = 'none'`) is a

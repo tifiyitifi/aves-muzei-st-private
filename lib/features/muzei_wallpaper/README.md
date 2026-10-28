@@ -47,14 +47,16 @@ Apache-2.0 headers. See the repository root `LICENSE` for Aves's own license.
   dropping them, keeping Muzei's "every double tap advances" behaviour. While the
   app process is alive it is also notified over the channel (`advanceRequested`)
   so the refill starts immediately rather than on the next page resume.
-- When no app engine is attached, the notification enqueues
-  `WallpaperRefillWorker` instead: it boots a short-lived Flutter engine, runs
-  `entry/refill_entry.dart` (adopt the promoted slot, bake the next one) and
-  destroys the engine. A WorkManager chain, not a long-lived process, so taps
-  keep advancing after the app is closed or killed. The tap run is a plain job,
-  deliberately not expedited: on Android 12+ expedited work becomes a foreground
-  service, which demands `getForegroundInfo()` and a notification for a
-  two-second bake.
+- When no app engine is attached, the notification enqueues a background refill
+  instead: `features/live_wallpaper_refill/` boots a short-lived Flutter engine,
+  runs `entry/background_refill.dart` for the `muzei` target (adopt the promoted
+  slot, bake the next one) and destroys the engine. A WorkManager chain, not a
+  long-lived process, so taps keep advancing after the app is closed or killed.
+  The tap run is a plain job, deliberately not expedited: on Android 12+ expedited
+  work becomes a foreground service, which demands `getForegroundInfo()` and a
+  notification for a two-second bake. The grouped wallpaper uses the same worker
+  and warm engine with its own target, so the two share the boot cost and the
+  callback handle while keeping their own files, renderers and intervals.
 - A tap that finds no prefetched slot also requests the refill (deduplicated
   with `KEEP`). Otherwise the promotion never happens, so nothing would ever ask
   for the missing slot and the buffered taps would expire.

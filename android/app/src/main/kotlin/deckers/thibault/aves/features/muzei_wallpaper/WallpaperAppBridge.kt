@@ -20,6 +20,8 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillScheduler
+import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperTarget
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 
@@ -68,7 +70,7 @@ object WallpaperAppBridge {
     fun notifyAdvanced(context: Context) {
         if (post("advanceRequested")) return
         Log.d(TAG, "advance notification: no listening page, using the background refill")
-        WallpaperRefillScheduler.enqueueTapRefill(context)
+        LiveWallpaperRefillScheduler.enqueueTapRefill(context, LiveWallpaperTarget.MUZEI)
     }
 
     /**
@@ -81,7 +83,7 @@ object WallpaperAppBridge {
     fun requestMissingSlot(context: Context) {
         if (requestHandlerAttached) return
         Log.d(TAG, "advance has no slot to promote, requesting a refill")
-        WallpaperRefillScheduler.enqueueTapRefill(context, ensure = true)
+        LiveWallpaperRefillScheduler.enqueueTapRefill(context, LiveWallpaperTarget.MUZEI, ensure = true)
     }
 
     /**

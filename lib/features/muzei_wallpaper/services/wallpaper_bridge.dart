@@ -48,14 +48,6 @@ class WallpaperBridge {
   /// Absolute path the renderer and Dart share for `state.json` and slots.
   Future<String?> stateRoot() => _invoke<String>('stateRoot');
 
-  /// Registers the headless entrypoint the background worker runs.
-  ///
-  /// The handle is a `vm:entry-point` callback, not a closure, because the
-  /// worker starts a fresh Flutter engine in another isolate.
-  Future<void> registerRefillCallback(int callbackHandle) => _invoke<void>('registerCallback', {
-    'callbackHandle': callbackHandle,
-  });
-
   /// Schedules (or cancels, with `0`) the native auto-advance run.
   ///
   /// Native owns the timer because the page and the app process may be gone for

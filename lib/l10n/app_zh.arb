@@ -1005,6 +1005,8 @@
     "groupedWallpaperViewMissing": "该照片已不在图库中。",
     "groupedWallpaperViewOpenGroups": "打开壁纸组",
     "groupedWallpaperViewOpenInGallery": "在相册中查看",
+    "groupedWallpaperViewShare": "分享",
+    "groupedWallpaperViewInfo": "{group} · {count} 张",
     "wallpaperGroupViewCurrent": "查看当前壁纸",
     "wallpaperGroupGestures": "手势",
     "wallpaperGroupGesturesHint": "手势对整个应用生效，不随分组变化。",

@@ -77,6 +77,13 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
   int? _widgetId;
   String? _initialRouteName, _initialSearchQuery;
   Set<CollectionFilter>? _initialFilters;
+
+  /// The wallpaper view route the intent asked for, pushed over the home page.
+  ///
+  /// A gesture opens the view from the wallpaper, which has no Activity of its
+  /// own: without a page below it, back would exit the app. The route is still
+  /// the app's own page, so the normal home is pushed first.
+  String? _intentOverlayRouteName;
   String? _restoredBaseRouteName;
   Set<CollectionFilter>? _restoredBaseFilters;
   String? _initialExplorerPath;
@@ -95,6 +102,16 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
     SearchPage.routeName,
     SettingsPage.routeName,
   ];
+
+  /// Routes a wallpaper gesture opens, which are pushed over the app's home.
+  ///
+  /// The gesture comes from a live wallpaper, so the intent is a cold start with
+  /// no page below it; keeping the home page underneath makes back return to the
+  /// app instead of closing it.
+  static const wallpaperOverlayRoutes = {
+    MuzeiWallpaperPage.routeName,
+    GroupedWallpaperViewPage.routeName,
+  };
 
   @override
   void initState() {
@@ -263,6 +280,9 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
             final extraRoute = intentData[IntentDataKeys.page] as String?;
             if (allowedShortcutRoutes.contains(extraRoute)) {
               _initialRouteName = extraRoute;
+              if (wallpaperOverlayRoutes.contains(extraRoute)) {
+                _intentOverlayRouteName = extraRoute;
+              }
             }
         }
         if (_initialFilters == null) {
@@ -382,6 +402,18 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           // first would hold the restore until the base page is left.
           unawaited(navigator.pushAndRemoveUntil(baseRoute, (route) => false));
           unawaited(navigator.push(topRoute));
+        } else if (_intentOverlayRouteName != null) {
+          // A wallpaper gesture cold-started a view, which has no page below it.
+          // Keep the normal home page underneath, so back returns to the app
+          // instead of closing it.
+          final baseRoute = await _getRedirectRoute(
+            appMode,
+            overrideRouteName: settings.homeNavItem.route,
+            useIntentFilters: false,
+          );
+          final topRoute = await _getRedirectRoute(appMode);
+          unawaited(navigator.pushAndRemoveUntil(baseRoute, (route) => false));
+          unawaited(navigator.push(topRoute));
         } else {
           unawaited(
             navigator.pushAndRemoveUntil(
@@ -462,6 +494,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
     AppMode appMode, {
     String? overrideRouteName,
     Set<CollectionFilter>? overrideFilters,
+    bool useIntentFilters = true,
   }) async {
     String routeName;
     Set<CollectionFilter?>? filters;
@@ -568,7 +601,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
       case .screenSaver:
       case .slideshow:
         routeName = overrideRouteName ?? _initialRouteName ?? settings.homeNavItem.route;
-        filters = overrideFilters ?? _initialFilters ?? (routeName == CollectionPage.routeName ? settings.homeCustomCollection : {});
+        filters = overrideFilters ?? (useIntentFilters ? _initialFilters : null) ?? (routeName == CollectionPage.routeName ? settings.homeCustomCollection : {});
     }
     Route buildRoute(WidgetBuilder builder) => DirectMaterialPageRoute(
       settings: RouteSettings(name: routeName),

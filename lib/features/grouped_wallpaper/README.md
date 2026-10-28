@@ -54,6 +54,15 @@ arrives before the slot is uploaded is buffered (capacity 5, 10 s expiry) and
 replayed as prefetched slots land, so a burst of taps keeps advancing instead of
 stopping after two.
 
+### The view page
+
+A three-finger tap opens an immersive view of the current photo, modelled on
+Muzei's artwork screen: pan and zoom, chrome on tap, the group · count · title at
+the bottom, and a menu with 「Open wallpaper groups」, 「Open in gallery」 and
+share. A wallpaper gesture has no Activity, so the view is pushed over the app's
+home page: back returns to the app instead of closing it. Opened from the group
+page, the same entry pops back to it.
+
 ### Ordering
 
 The next photo is chosen the way Muzei chooses its artwork, and the default is

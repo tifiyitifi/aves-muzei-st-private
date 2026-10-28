@@ -67,7 +67,6 @@ class GroupedWallpaperPage extends StatefulWidget {
 }
 
 enum _PageAction {
-  useCurrent,
   toggleEnabled,
   moveUp,
   moveDown,
@@ -85,7 +84,8 @@ enum _PageAction {
   saveChanges,
   discardChanges,
   syncNow,
-  setWallpaper,
+  setCurrentAsWallpaper,
+  disableWallpaper,
   engineStatus,
   cancelGalleryRange,
 }
@@ -160,12 +160,25 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     if (state == AppLifecycleState.resumed) unawaited(_refreshEngine());
   }
 
-  /// Re-reads whether the grouped wallpaper is active and what it is showing.
+  /// Re-reads whether the grouped wallpaper is active, whether it is turned on,
+  /// and what it is showing.
   Future<void> _refreshEngine() async {
     final active = await wallpaperEngineLink.refreshActive();
+    await wallpaperEngineLink.refreshDisabled();
     final state = active ? await wallpaperEngineLink.readState() : null;
     if (!mounted) return;
     setState(() => _engineState = state);
+  }
+
+  /// Re-bakes the saved frame when the group list or a range changed.
+  ///
+  /// The engine skips the bake when the frame already matches the saved group,
+  /// so this is cheap on an untouched page; when the wallpaper is running it is
+  /// also what makes a saved edit show up without a manual sync.
+  Future<void> _prepareWallpaper() async {
+    if (!wallpaperEngineLink.isAttached) return;
+    await wallpaperEngineLink.prepare();
+    await _refreshEngine();
   }
 
   /// Publishes the page's browsing scope: the group on screen joins the gallery
@@ -379,6 +392,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
               Padding(
                 padding: const EdgeInsetsDirectional.only(end: 8),
                 child: ChoiceChip(
+                  // The stopped indicator sits on group 0: the wallpaper is
+                  // either playing a group or not playing at all.
+                  avatar: wallpaperEngineLink.isPlaying ? null : Icon(AIcons.wallpaperStopped, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   label: Text(l10n.wallpaperGroupNone),
                   // Group 0 is a view choice, never part of a delete selection.
                   selected: !selecting && viewedId == null,
@@ -478,13 +494,14 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   }
 
   Widget? _groupStateIcon(BuildContext context, WallpaperGroup group) {
-    final selected = _controller.selectedGroupId == group.id;
-    if (!group.current && !selected) return null;
-    return Icon(
-      group.current ? AIcons.wallpaperPlaying : AIcons.visibleRangeActive,
-      size: 18,
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
-    );
+    final colors = Theme.of(context).colorScheme;
+    if (wallpaperEngineLink.isPlaying && group.current) {
+      return Icon(AIcons.wallpaperPlaying, size: 18, color: colors.tertiary);
+    }
+    if (_controller.selectedGroupId == group.id) {
+      return Icon(AIcons.visibleRangeActive, size: 18, color: colors.primary);
+    }
+    return null;
   }
 
   WallpaperGroupFilter _buildGroupFilter(String groupId) {
@@ -496,7 +513,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       name: group?.name ?? '@wallpaperGroupNone',
       description: group?.description ?? '',
       enabled: group?.enabled ?? true,
-      current: group == null ? _controller.current.isNone : group.current,
+      playing: group != null && group.current && wallpaperEngineLink.isPlaying,
+      stopped: group == null && !wallpaperEngineLink.isPlaying,
       selected: _controller.selectedGroupId == group?.id,
       count: filters == null ? null : _stats[filterFingerprint(filters)]?.count,
     );
@@ -911,8 +929,14 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     if (confirmed != true) return;
     _selection.browse();
     final deleted = await _controller.deleteGroups(ids);
-    if (!mounted || deleted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.wallpaperGroupKeepOne)));
+    if (!mounted) return;
+    if (!deleted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.wallpaperGroupKeepOne)));
+      return;
+    }
+    // Deleting the group that was playing turns the feature off and freezes the
+    // frame, so the engine has to re-read the saved state.
+    await _prepareWallpaper();
   }
 
   /// Renames one rule and edits its note. Filters are never edited here: a
@@ -953,18 +977,32 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         enabled: _controller.dirty,
         subtitle: _controller.dirty ? l10n.wallpaperGroupDraftUnsaved : null,
       ),
-      _menuItem(
-        _PageAction.setWallpaper,
-        AIcons.setAs,
-        l10n.wallpaperGroupSetWallpaper,
-        enabled: wallpaperEngineLink.isAttached,
-        subtitle: wallpaperEngineLink.isAttached ? null : l10n.wallpaperGroupEngineUnavailable,
-      ),
+      // One action, following the group the page is viewing: a real group
+      // becomes the wallpaper, group 0 turns the feature off. The system picker
+      // is only needed the first time, when the service is not the wallpaper yet.
+      if (group == null)
+        _menuItem(
+          _PageAction.disableWallpaper,
+          AIcons.wallpaperStopped,
+          l10n.wallpaperGroupDisableWallpaper,
+          enabled: wallpaperEngineLink.isAttached && !wallpaperEngineLink.isDisabled,
+          subtitle: wallpaperEngineLink.isAttached && wallpaperEngineLink.isDisabled ? l10n.wallpaperGroupAlreadyDisabled : null,
+        )
+      else
+        _menuItem(
+          _PageAction.setCurrentAsWallpaper,
+          AIcons.wallpaperPlaying,
+          l10n.wallpaperGroupSetCurrentAsWallpaper,
+          enabled: wallpaperEngineLink.isAttached && group.enabled,
+          subtitle: wallpaperEngineLink.isAttached
+              ? (group.current && wallpaperEngineLink.isPlaying ? l10n.wallpaperGroupAlreadyPlaying : null)
+              : l10n.wallpaperGroupEngineUnavailable,
+        ),
       _menuItem(
         _PageAction.syncNow,
         AIcons.sync,
         l10n.wallpaperGroupSyncNow,
-        enabled: engineActive,
+        enabled: engineActive && !wallpaperEngineLink.isDisabled,
         subtitle: engineActive ? null : l10n.wallpaperGroupSyncInactive,
       ),
       _menuItem(
@@ -993,11 +1031,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           subtitle: gallery.locked ? l10n.visibleRangeWhenLocked : null,
         ),
       const PopupMenuDivider(),
-      if (group == null)
-        // Group 0 is the explicit "no group effect" choice.
-        _menuItem(_PageAction.useCurrent, AIcons.current, l10n.wallpaperGroupNone)
-      else ...[
-        if (!group.current && group.enabled) _menuItem(_PageAction.useCurrent, AIcons.current, l10n.wallpaperGroupUseCurrent),
+      if (group != null) ...[
         _menuItem(
           _PageAction.toggleEnabled,
           group.enabled ? AIcons.unselected : AIcons.checked,
@@ -1062,16 +1096,19 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         await _discardDraft();
       case _PageAction.syncNow:
         await _syncNow();
-      case _PageAction.setWallpaper:
-        await _setWallpaper();
+      case _PageAction.setCurrentAsWallpaper:
+        if (group != null) await _setCurrentAsWallpaper(group);
+      case _PageAction.disableWallpaper:
+        await _disableWallpaper();
       case _PageAction.engineStatus:
         break;
       case _PageAction.cancelGalleryRange:
         _toggleGallerySuspension();
-      case _PageAction.useCurrent:
-        await _controller.selectCurrent(group?.id);
       case _PageAction.toggleEnabled:
-        if (group != null) await _controller.setEnabled(group.id, !group.enabled);
+        if (group != null) {
+          await _controller.setEnabled(group.id, !group.enabled);
+          await _prepareWallpaper();
+        }
       case _PageAction.moveUp:
         if (group != null) await _controller.moveGroup(group.id, -1);
       case _PageAction.moveDown:
@@ -1102,6 +1139,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   Future<void> _saveDraft() async {
     await _controller.saveDraft();
+    // Saving is what the wallpaper follows: re-bake now so the frame on screen
+    // matches what the user just saved instead of waiting for a manual sync.
+    await _prepareWallpaper();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.wallpaperGroupSaved)));
   }
@@ -1120,6 +1160,39 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     );
     if (confirmed != true) return;
     await _controller.discardDraft();
+    await _prepareWallpaper();
+  }
+
+  /// Makes [group] the wallpaper's group and turns the feature on.
+  ///
+  /// The system chooser is only needed the first time: once the grouped service
+  /// is the system wallpaper, this just switches content. The frame is prepared
+  /// before the chooser opens, so the picker shows a photo instead of the
+  /// placeholder while the system commits the change.
+  Future<void> _setCurrentAsWallpaper(WallpaperGroup group) async {
+    await _controller.selectCurrent(group.id);
+    if (_controller.dirty) await _controller.saveDraft();
+    await wallpaperEngineLink.setDisabled(false);
+    await wallpaperEngineLink.prepare();
+    await _refreshEngine();
+    if (!mounted) return;
+    if (!wallpaperEngineLink.isActive) {
+      await _setWallpaper();
+      return;
+    }
+    _showMessage(context.l10n.wallpaperGroupWallpaperSet(wallpaperGroupName(context, group)));
+  }
+
+  /// Turns the grouped wallpaper off without touching what is on screen.
+  ///
+  /// The last frame stays: disabling stops following the group, it does not
+  /// change the wallpaper the system is already showing.
+  Future<void> _disableWallpaper() async {
+    await wallpaperEngineLink.setDisabled(true);
+    await wallpaperEngineLink.prepare();
+    await _refreshEngine();
+    if (!mounted) return;
+    _showMessage(context.l10n.wallpaperGroupWallpaperDisabled);
   }
 
   /// Saves a pending draft first, then asks the running engine to apply it now
@@ -1131,6 +1204,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       _showMessage(context.l10n.wallpaperGroupSyncInactive);
       return;
     }
+    if (wallpaperEngineLink.isDisabled) {
+      _showMessage(context.l10n.wallpaperGroupSyncDisabled);
+      return;
+    }
     if (_controller.dirty) await _controller.saveDraft();
     final result = await wallpaperEngineLink.syncNow();
     await _refreshEngine();
@@ -1140,6 +1217,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         GroupedWallpaperSyncResult.baked => context.l10n.wallpaperGroupSyncDone,
         GroupedWallpaperSyncResult.empty => context.l10n.wallpaperGroupSyncEmpty,
         GroupedWallpaperSyncResult.locked => context.l10n.wallpaperGroupSyncLocked,
+        GroupedWallpaperSyncResult.disabled => context.l10n.wallpaperGroupSyncDisabled,
+        GroupedWallpaperSyncResult.unchanged => context.l10n.wallpaperGroupSyncDone,
         GroupedWallpaperSyncResult.notActive => context.l10n.wallpaperGroupSyncInactive,
         GroupedWallpaperSyncResult.failed => context.l10n.wallpaperGroupSyncFailed,
       },
@@ -1162,6 +1241,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     if (!wallpaperEngineLink.isAttached) return l10n.wallpaperGroupEngineUnavailable;
     if (!wallpaperEngineLink.isActive) return l10n.wallpaperGroupSyncInactive;
     final state = _engineState;
+    if (wallpaperEngineLink.isDisabled) {
+      return state == null || state.groupId.isEmpty
+          ? l10n.wallpaperGroupEngineDisabled
+          : l10n.wallpaperGroupEngineDisabledGroup(state.groupNumber, state.groupName);
+    }
     if (state == null) return l10n.wallpaperGroupEngineNeverSynced;
     return switch (state.status) {
       GroupedWallpaperStatus.ready =>
@@ -1169,6 +1253,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
             ? l10n.visibleRangeOwnerWithNumber(state.groupNumber, state.groupName)
             : l10n.wallpaperGroupEngineShowing(state.groupNumber, state.groupName, state.entryTitle),
       GroupedWallpaperStatus.locked => l10n.wallpaperGroupEngineLocked(state.groupNumber, state.groupName),
+      GroupedWallpaperStatus.disabled => l10n.wallpaperGroupEngineDisabledGroup(state.groupNumber, state.groupName),
       GroupedWallpaperStatus.emptyGroup => l10n.wallpaperGroupEngineEmpty(state.groupName),
       GroupedWallpaperStatus.unavailable => l10n.wallpaperGroupEngineFailed,
     };
@@ -1272,8 +1357,14 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     );
     if (confirmed != true) return;
     final deleted = await _controller.deleteGroup(group.id);
-    if (!mounted || deleted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.wallpaperGroupKeepOne)));
+    if (!mounted) return;
+    if (!deleted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.wallpaperGroupKeepOne)));
+      return;
+    }
+    // Deleting the group that was playing turns the feature off and freezes the
+    // frame, so the engine has to re-read the saved state.
+    await _prepareWallpaper();
   }
 
   Future<void> _pickOrder() async {

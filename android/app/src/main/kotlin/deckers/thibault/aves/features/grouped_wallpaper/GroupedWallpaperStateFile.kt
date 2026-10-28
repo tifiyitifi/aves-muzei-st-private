@@ -39,13 +39,14 @@ data class GroupedWallpaperFileState(
     val entryTitle: String,
     val photo: String,
 ) {
-    /** Whether there is a frame to draw. A locked group keeps showing its photo. */
+    /** Whether there is a frame to draw. A locked or turned-off group keeps its photo. */
     val hasPhoto: Boolean
-        get() = (status == STATUS_READY || status == STATUS_LOCKED) && photo.isNotEmpty()
+        get() = (status == STATUS_READY || status == STATUS_LOCKED || status == STATUS_DISABLED) && photo.isNotEmpty()
 
     companion object {
         const val STATUS_READY = "ready"
         const val STATUS_LOCKED = "locked"
+        const val STATUS_DISABLED = "disabled"
         const val STATUS_EMPTY_GROUP = "emptyGroup"
         const val STATUS_UNAVAILABLE = "unavailable"
     }

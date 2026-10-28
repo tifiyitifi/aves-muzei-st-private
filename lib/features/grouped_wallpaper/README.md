@@ -17,27 +17,65 @@ of the Muzei-style live wallpaper mechanism.
 ## The engine
 
 `lib/features/grouped_wallpaper/engine/` is the control plane; the native service
-only draws. One sync:
+only draws. Two entry points share one pipeline:
 
-1. reads the *saved* current group and its range (`SavedGroupedWallpaperPlanLoader`,
-   deliberately bypassing the page's draft);
-2. resolves the media set with `wallpaperMediaSetFilter`, skipping the image
+- `prepare()` keeps a frame ready for the saved group and **never requires the
+  service to be the system wallpaper yet**, because the system picker can take a
+  moment to hand it over; and
+- `syncNow()` is the user asking for the next photo, and only applies while the
+  service really is the system wallpaper.
+
+One run:
+
+1. reads the *saved* current group, its range and the off switch
+   (`SavedGroupedWallpaperPlanStore`, deliberately bypassing the page's draft);
+2. adopts the first enabled group when activation finds no group selected;
+3. resolves the media set with `wallpaperMediaSetFilter`, skipping the image
    already on screen and any file that disappeared since the last scan;
-3. bakes one cover-cropped PNG at `WallpaperManager.desiredMinimumWidth`;
-4. writes `state.json` and `current.png` atomically, then asks the renderer to
+4. bakes one cover-cropped PNG at `WallpaperManager.desiredMinimumWidth`;
+5. writes `state.json` and `current.png` atomically, then asks the renderer to
    reload.
+
+A plain `prepare` skips the bake when the state already shows the saved group and
+is newer than the group's and the range's `updatedAt`, so an app start on an
+untouched install costs a database read and a file stat, not a bake.
 
 `state.json` is Dart-owned and read-only for the native side, and it carries what
 the notification will need (group number, resolved group name, entry, count,
-lock). Every outcome is recorded instead of thrown: an empty group, a locked
+status). Every outcome is recorded instead of thrown: an empty group, a locked
 range, a missing photo or a failed bake all end in the grey placeholder, except a
-locked range, which keeps the frame it froze on.
+locked range or a turned-off feature, which keep the frame they stopped on.
 
 The service asks the app for a frame when it starts and when the app attaches, so
 the wallpaper gets its first photo without a background worker; if the app is not
 running, the renderer keeps showing its placeholder until the app is opened. The
-engine is attached at startup (`main_common`) for that reason, and the page
-re-probes `isActive` when it opens or resumes.
+engine is attached at startup (`main_common`) and prepares a frame right away, so
+the system picker finds a photo instead of the placeholder; the page re-probes
+`isActive` when it opens or resumes.
+
+## Turning it on and off
+
+`groupedDisabled` (AppMeta, `wallpaper.groupedDisabled`) is the explicit off
+switch, and it is deliberately separate from the `current` flag: turning the
+feature off keeps the group that was playing, so turning it back on returns to the
+same content, and the flag survives a reboot, where the service starting again
+would otherwise look like a fresh activation.
+
+- **Set this group as wallpaper** (a real group) makes it current, turns the
+  feature on and prepares the frame. The system chooser is only opened the first
+  time, when the grouped service is not the system wallpaper yet.
+- **Turn off grouped wallpaper** (group 0) sets the flag and freezes: the last
+  frame stays and nothing follows the group. Disabling never changes the wallpaper
+  the system is already showing.
+- **Deleting or disabling the group that was playing** freezes and turns the
+  feature off; it never switches to another group.
+- **Activation with no group current** (the service starting while nothing is
+  selected and the feature was not turned off) adopts the first enabled group, so
+  turning the wallpaper on never leaves the placeholder.
+
+The page shows one state icon per card: play on the group that is really playing,
+and stop on group 0 whenever the grouped wallpaper is not playing (not the system
+wallpaper, or turned off). A lamp marks the group whose range the page shows.
 
 The native side lives in
 `android/app/src/main/kotlin/deckers/thibault/aves/features/grouped_wallpaper/`
@@ -100,14 +138,15 @@ never be visited); from then on group edits — including pin targets, since the
 read the same aggregate — stay in memory. The database and the live wallpaper
 keep the saved state.
 
-- **Save changes** writes groups, ranges, rules and deletions in one transaction.
+- **Save changes** writes groups, ranges, rules and deletions in one transaction,
+  then re-bakes so the frame on screen matches what was saved.
 - **Discard changes** reloads the saved state.
-- **Set as wallpaper** opens the system live-wallpaper chooser for the grouped
-  service; it is disabled when the platform channel is unavailable.
+- **Set this group as wallpaper / Turn off grouped wallpaper** is one entry that
+  follows the viewed group (see *Turning it on and off*).
 - **Sync wallpaper now** saves a pending draft and asks the engine to apply it
   immediately instead of waiting for the wallpaper's interval. The entry is
-  disabled while the grouped wallpaper is not the system wallpaper, and the
-  status row under it reports what the renderer is showing.
+  disabled while the grouped wallpaper is not the system wallpaper or is turned
+  off, and the status row under it reports what the renderer is showing.
 
 Group cards take part in multi-selection in all three switcher styles: a tap
 toggles them while the page is selecting, and a long press starts a selection

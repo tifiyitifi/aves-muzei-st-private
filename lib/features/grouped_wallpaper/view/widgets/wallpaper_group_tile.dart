@@ -13,7 +13,8 @@ import 'package:provider/provider.dart';
 /// One wallpaper group on the page: a number, a name, a note and its state.
 ///
 /// The lamp marks the group whose range the page shows; the play icon marks the
-/// group the live wallpaper uses. Both can be on at once. A disabled group stays
+/// group the live wallpaper is actually playing, and the stop icon sits on group
+/// 0 while nothing is playing. Both can be on at once. A disabled group stays
 /// readable but dimmed, and the note falls back to the image count.
 class WallpaperGroupTile extends StatelessWidget {
   final WallpaperGroupFilter filter;
@@ -184,10 +185,15 @@ class WallpaperGroupTile extends StatelessWidget {
             message: context.l10n.wallpaperGroupViewing,
             child: Icon(AIcons.visibleRangeActive, size: size, color: colors.primary),
           ),
-        if (filter.current)
+        if (filter.playing)
           Tooltip(
             message: context.l10n.wallpaperGroupPlaying,
             child: Icon(AIcons.wallpaperPlaying, size: size, color: colors.tertiary),
+          ),
+        if (filter.stopped)
+          Tooltip(
+            message: context.l10n.wallpaperGroupStopped,
+            child: Icon(AIcons.wallpaperStopped, size: size, color: colors.onSurfaceVariant),
           ),
       ],
     );

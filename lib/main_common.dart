@@ -56,6 +56,9 @@ void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
   // opened, or a background refill after an update would fail.
   unawaited(registerWallpaperRefillCallback());
   // The grouped wallpaper service asks for a frame when it starts, so the engine
-  // has to be listening even if the wallpaper page is never opened.
+  // has to be listening even if the wallpaper page is never opened. The request
+  // is what refreshes a stale frame after a reboot or a process restart, and it
+  // runs without the `isActive` guard because the picker may not have committed
+  // the switch yet.
   unawaited(groupedWallpaperEngine.attach());
 }

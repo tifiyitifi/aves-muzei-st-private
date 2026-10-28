@@ -2,8 +2,8 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.d
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// `WallpaperEngineLink`: the page-facing contract, its cached active flag and
-/// the inert behaviour before the engine attaches.
+/// `WallpaperEngineLink`: the page-facing contract, its cached active/disabled
+/// flags and the inert behaviour before the engine attaches.
 void main() {
   late WallpaperEngineLink link;
   late _FakeConnection connection;
@@ -16,8 +16,11 @@ void main() {
   test('a detached link is inert', () async {
     expect(link.isAttached, isFalse);
     expect(link.isActive, isFalse);
+    expect(link.isDisabled, isFalse);
+    expect(link.isPlaying, isFalse);
     expect(await link.refreshActive(), isFalse);
     expect(await link.readState(), isNull);
+    expect(await link.prepare(), GroupedWallpaperSyncResult.notActive);
     expect(await link.syncNow(), GroupedWallpaperSyncResult.notActive);
     expect(await link.openChooser(), isFalse);
   });
@@ -44,32 +47,67 @@ void main() {
     expect(link.isActive, isFalse);
   });
 
+  test('playing needs both the service on screen and the feature on', () async {
+    link.attach(connection);
+    await link.refreshActive();
+    await link.refreshDisabled();
+    expect(link.isPlaying, isTrue);
+
+    // Turned off: the service keeps the last frame but the feature is not
+    // following its group any more.
+    await link.setDisabled(true);
+    expect(link.isDisabled, isTrue);
+    expect(link.isActive, isTrue);
+    expect(link.isPlaying, isFalse);
+
+    // The service is no longer the wallpaper: also not playing.
+    await link.setDisabled(false);
+    connection.active = false;
+    await link.refreshActive();
+    expect(link.isPlaying, isFalse);
+  });
+
+  test('refreshDisabled reads the saved switch', () async {
+    link.attach(connection);
+    connection.disabled = true;
+
+    await link.refreshDisabled();
+
+    expect(link.isDisabled, isTrue);
+  });
+
   test('delegates the engine actions', () async {
     link.attach(connection);
     connection.state = const GroupedWallpaperState(status: GroupedWallpaperStatus.ready, groupNumber: 2, groupName: 'DCIM', entryId: 7, photo: 'current.png');
 
     expect((await link.readState())?.groupNumber, 2);
+    expect(await link.prepare(), GroupedWallpaperSyncResult.unchanged);
+    expect(connection.prepares, 1);
     expect(await link.syncNow(), GroupedWallpaperSyncResult.baked);
     expect(connection.syncs, 1);
     expect(await link.openChooser(), isTrue);
   });
 
-  test('detaching forgets the engine and the cached flag', () async {
+  test('detaching forgets the engine and the cached flags', () async {
     link.attach(connection);
     await link.refreshActive();
+    await link.refreshDisabled();
     expect(link.isActive, isTrue);
 
     link.detach();
 
     expect(link.isAttached, isFalse);
     expect(link.isActive, isFalse);
+    expect(link.isDisabled, isFalse);
     expect(await link.syncNow(), GroupedWallpaperSyncResult.notActive);
   });
 }
 
 class _FakeConnection implements WallpaperEngineConnection {
   bool active = true;
+  bool disabled = false;
   Object? error;
+  int prepares = 0;
   int syncs = 0;
   GroupedWallpaperState? state;
 
@@ -81,13 +119,25 @@ class _FakeConnection implements WallpaperEngineConnection {
   }
 
   @override
+  Future<bool> isDisabled() async => disabled;
+
+  @override
   Future<GroupedWallpaperState?> readState() async => state;
+
+  @override
+  Future<GroupedWallpaperSyncResult> prepare({bool activation = false}) async {
+    prepares++;
+    return GroupedWallpaperSyncResult.unchanged;
+  }
 
   @override
   Future<GroupedWallpaperSyncResult> syncNow() async {
     syncs++;
     return GroupedWallpaperSyncResult.baked;
   }
+
+  @override
+  Future<void> setDisabled(bool disabled) async => this.disabled = disabled;
 
   @override
   Future<bool> openChooser() async => true;

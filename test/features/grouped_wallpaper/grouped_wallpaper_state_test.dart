@@ -50,6 +50,27 @@ void main() {
     expect(parsed.hasPhoto, isTrue);
   });
 
+  test('disabled keeps the frame the feature stopped on', () {
+    final json = state.toJsonMap()..['status'] = GroupedWallpaperStatus.disabled.name;
+    final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
+    expect(parsed.status, GroupedWallpaperStatus.disabled);
+    expect(parsed.status.keepsFrame, isTrue);
+    expect(parsed.entryId, 7);
+    expect(parsed.hasPhoto, isTrue);
+  });
+
+  test('disabled without a frame stays disabled instead of failing', () {
+    final json = state.toJsonMap()
+      ..['status'] = GroupedWallpaperStatus.disabled.name
+      ..['photo'] = '';
+    final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
+    // Nothing was ever baked, so there is nothing to freeze: the renderer shows
+    // the placeholder, but the feature is still off.
+    expect(parsed.status, GroupedWallpaperStatus.disabled);
+    expect(parsed.hasPhoto, isFalse);
+    expect(parsed.entryId, isNull);
+  });
+
   test('a state with no photo drops the entry of the previous frame', () {
     final json = state.toJsonMap()
       ..['status'] = GroupedWallpaperStatus.emptyGroup.name

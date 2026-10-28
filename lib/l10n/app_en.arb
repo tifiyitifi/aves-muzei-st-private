@@ -1847,7 +1847,20 @@
       }
     }
   },
-  "wallpaperGroupUseCurrent": "Use this group",
+  "wallpaperGroupSetCurrentAsWallpaper": "Set this group as wallpaper",
+  "wallpaperGroupDisableWallpaper": "Turn off grouped wallpaper",
+  "wallpaperGroupAlreadyPlaying": "This group is already the wallpaper",
+  "wallpaperGroupAlreadyDisabled": "Grouped wallpaper is already off",
+  "wallpaperGroupWallpaperSet": "Wallpaper set to {name}.",
+  "@wallpaperGroupWallpaperSet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "wallpaperGroupWallpaperDisabled": "Grouped wallpaper turned off; the current frame stays.",
+  "wallpaperGroupStopped": "Wallpaper stopped",
   "wallpaperGroupEnable": "Enable",
   "wallpaperGroupDisable": "Disable",
   "wallpaperGroupRename": "Rename group",
@@ -1875,11 +1888,23 @@
   "wallpaperGroupDiscardConfirm": "Discard the unsaved wallpaper group changes?",
   "wallpaperGroupSyncNow": "Sync wallpaper now",
   "wallpaperGroupSyncInactive": "Turn on grouped wallpaper to sync it now.",
+  "wallpaperGroupSyncDisabled": "Turn grouped wallpaper back on to sync it.",
   "wallpaperGroupSyncDone": "Wallpaper synced.",
-  "wallpaperGroupSetWallpaper": "Set as wallpaper",
   "wallpaperGroupEngineStatus": "Wallpaper engine",
   "wallpaperGroupEngineUnavailable": "Grouped wallpaper is not available on this device",
   "wallpaperGroupEngineNeverSynced": "Not synced yet",
+  "wallpaperGroupEngineDisabled": "Grouped wallpaper is off",
+  "wallpaperGroupEngineDisabledGroup": "#{number} {name} · off, the current frame stays",
+  "@wallpaperGroupEngineDisabledGroup": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "wallpaperGroupEngineShowing": "#{number} {name} · {entry}",
   "@wallpaperGroupEngineShowing": {
     "placeholders": {

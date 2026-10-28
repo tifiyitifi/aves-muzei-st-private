@@ -15,8 +15,8 @@ import 'package:path/path.dart' as p;
 
 import '../../helpers/sqlite3_loader.dart';
 
-/// `SavedGroupedWallpaperPlanLoader`: the wallpaper follows the committed group,
-/// never the page's draft.
+/// `SavedGroupedWallpaperPlanStore`: the wallpaper follows the committed group,
+/// never the page's draft, and remembers an explicit off switch.
 void main() {
   setUpAll(() {
     ensureSqlite3Loaded();
@@ -28,13 +28,13 @@ void main() {
   late AppDatabase db;
   late WallpaperGroupStore groups;
   late VisibleRangeStore ranges;
-  late SavedGroupedWallpaperPlanLoader loader;
+  late SavedGroupedWallpaperPlanStore planStore;
 
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
     groups = WallpaperGroupStore(db);
     ranges = VisibleRangeStore(db);
-    loader = SavedGroupedWallpaperPlanLoader(provider: AppDatabaseProvider(injected: db));
+    planStore = SavedGroupedWallpaperPlanStore(provider: AppDatabaseProvider(injected: db));
   });
 
   tearDown(() => db.close());
@@ -57,7 +57,7 @@ void main() {
     await groups.saveGroups([group('a'), group('b', current: true)]);
     await ranges.saveRange(range('b', base: {PathFilter('/dcim')}));
 
-    final plan = await loader.load();
+    final plan = await planStore.load();
 
     expect(plan.group.id, 'b');
     expect(plan.group.number, 2);
@@ -70,7 +70,7 @@ void main() {
     await groups.saveGroups([group('a'), group('b')]);
     await ranges.saveRange(range('a', base: {PathFilter('/dcim')}));
 
-    final plan = await loader.load();
+    final plan = await planStore.load();
 
     expect(plan.group.isNone, isTrue);
     expect(plan.group.number, 0);
@@ -80,13 +80,13 @@ void main() {
   test('a disabled current group falls back to group 0', () async {
     await groups.saveGroups([group('a', enabled: false, current: true), group('b')]);
 
-    expect((await loader.load()).group.isNone, isTrue);
+    expect((await planStore.load()).group.isNone, isTrue);
   });
 
   test('a missing range is an unrestricted group, not a failure', () async {
     await groups.saveGroups([group('a', current: true)]);
 
-    final plan = await loader.load();
+    final plan = await planStore.load();
 
     expect(plan.group.id, 'a');
     expect(plan.range, isNull);
@@ -97,7 +97,7 @@ void main() {
     await groups.saveGroups([group('a', current: true)]);
     await ranges.saveRange(range('a', locked: true));
 
-    expect((await loader.load()).locked, isTrue);
+    expect((await planStore.load()).locked, isTrue);
   });
 
   test('the page draft does not change what the wallpaper uses', () async {
@@ -109,8 +109,73 @@ void main() {
     expect(controller.current.id, 'b');
     expect(controller.dirty, isTrue);
 
-    final plan = await loader.load();
+    final plan = await planStore.load();
 
     expect(plan.group.id, 'a');
+  });
+
+  test('an install that was never switched off is enabled', () async {
+    await groups.saveGroups([group('a', current: true)]);
+
+    final plan = await planStore.load();
+
+    expect(plan.disabled, isFalse);
+    expect(plan.enabled, isTrue);
+  });
+
+  test('the off switch survives a reload without touching the current group', () async {
+    await groups.saveGroups([group('a', current: true), group('b')]);
+
+    await planStore.setDisabled(true);
+    final off = await planStore.load();
+    expect(off.disabled, isTrue);
+    expect(off.enabled, isFalse);
+    // Turning the feature off keeps the group, so turning it back on returns to
+    // the same content instead of guessing.
+    expect(off.group.id, 'a');
+
+    await planStore.setDisabled(false);
+    expect((await planStore.load()).disabled, isFalse);
+  });
+
+  test('adopting the first enabled group makes it current and turns the feature on', () async {
+    await groups.saveGroups([group('a', enabled: false), group('b'), group('c')]);
+    await planStore.setDisabled(true);
+
+    final plan = await planStore.adoptFirstEnabledGroup();
+
+    expect(plan.group.id, 'b');
+    expect(plan.group.current, isTrue);
+    expect(plan.disabled, isFalse);
+    expect((await planStore.load()).group.id, 'b');
+    expect((await planStore.load()).disabled, isFalse);
+  });
+
+  test('adopting keeps the group that is already current', () async {
+    await groups.saveGroups([group('a'), group('b', current: true)]);
+
+    final plan = await planStore.adoptFirstEnabledGroup();
+
+    expect(plan.group.id, 'b');
+    expect(plan.group.number, 2);
+  });
+
+  test('adopting with no enabled group leaves the feature off', () async {
+    await groups.saveGroups([group('a', enabled: false), group('b', enabled: false)]);
+
+    final plan = await planStore.adoptFirstEnabledGroup();
+
+    expect(plan.isNone, isTrue);
+    expect(plan.disabled, isTrue);
+    expect((await planStore.load()).disabled, isTrue);
+  });
+
+  test('the adopted plan carries the group range', () async {
+    await groups.saveGroups([group('a')]);
+    await ranges.saveRange(range('a', base: {PathFilter('/dcim')}));
+
+    final plan = await planStore.adoptFirstEnabledGroup();
+
+    expect(plan.range?.baseFilters, {PathFilter('/dcim')});
   });
 }

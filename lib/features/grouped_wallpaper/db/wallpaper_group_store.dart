@@ -15,6 +15,14 @@ class WallpaperGroupStore {
   /// its own just for one marker.
   static const keyDefaultsVersion = 'wallpaper.defaultsVersion';
 
+  /// AppMeta key of the explicit "the grouped wallpaper is off" switch.
+  ///
+  /// It is deliberately separate from the `current` flag: disabling keeps the
+  /// group that was playing so turning the feature back on returns to it, and it
+  /// has to survive a reboot, where the wallpaper service starts again and would
+  /// otherwise mistake the restart for a fresh activation.
+  static const keyDisabled = 'wallpaper.groupedDisabled';
+
   final AppDatabase db;
 
   new(this.db);
@@ -68,6 +76,14 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeDefaultsVersion(int version) => AppMetaStore(db).write({keyDefaultsVersion: '$version'});
+
+  /// Whether the grouped wallpaper was explicitly turned off.
+  Future<bool> readDisabled() async {
+    final values = await AppMetaStore(db).read({keyDisabled});
+    return values[keyDisabled] == 'true';
+  }
+
+  Future<void> writeDisabled(bool disabled) => AppMetaStore(db).write({keyDisabled: disabled ? 'true' : 'false'});
 
   static WallpaperGroup _toGroup(WallpaperGroupRow row, int number) => WallpaperGroup(
         id: row.id,

@@ -17,16 +17,16 @@ import 'package:aves/model/entry/origins.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// `GroupedWallpaperEngine`: which frame a sync bakes, what it writes, and how
+/// `GroupedWallpaperEngine`: which frame a run bakes, what it writes, and how
 /// every failure degrades to the placeholder instead of a stale image.
 void main() {
-  const dcimGroup = WallpaperGroup(id: 'group.1', number: 1, name: '@wallpaperGroupDefaultDcim', current: true);
+  const dcimGroup = WallpaperGroup(id: 'group.1', number: 1, name: '@wallpaperGroupDefaultDcim', current: true, updatedAt: 10);
   const plan = GroupedWallpaperPlan(group: dcimGroup);
 
   late Directory dir;
   late _FakePlatform platform;
   late _FakeBaker baker;
-  late _FakePlanLoader planLoader;
+  late _FakePlanStore planStore;
   late _FakeEntrySource entrySource;
   late GroupedWallpaperStateStore store;
   late WallpaperEngineLink link;
@@ -56,14 +56,14 @@ void main() {
     dir = await Directory.systemTemp.createTemp('aves_grouped_engine_');
     platform = _FakePlatform(dir.path);
     baker = _FakeBaker();
-    planLoader = _FakePlanLoader(plan);
+    planStore = _FakePlanStore(plan);
     entrySource = _FakeEntrySource();
     store = GroupedWallpaperStateStore(dir);
     link = WallpaperEngineLink();
     engine = GroupedWallpaperEngine(
       platform: platform,
       baker: baker,
-      planLoader: planLoader,
+      planStore: planStore,
       entrySource: entrySource,
       nameResolver: (group) => 'DCIM',
       link: link,
@@ -82,6 +82,8 @@ void main() {
     expect(engine.isAttached, isTrue);
     expect(link.isAttached, isTrue);
     expect(link.isActive, isTrue);
+    expect(link.isDisabled, isFalse);
+    expect(link.isPlaying, isTrue);
     expect(platform.syncHandler, isNotNull);
   });
 
@@ -97,13 +99,134 @@ void main() {
     expect(await hostlessEngine.syncNow(), GroupedWallpaperSyncResult.notActive);
   });
 
-  test('does nothing while the grouped wallpaper is not the system wallpaper', () async {
+  test('syncNow does nothing while the grouped wallpaper is not the system wallpaper', () async {
     platform.active = false;
 
     expect(await engine.syncNow(), GroupedWallpaperSyncResult.notActive);
     expect(await store.stateFile.exists(), isFalse);
     expect(baker.bakeCount, 0);
     expect(link.isActive, isFalse);
+  });
+
+  group('prepare', () {
+    test('bakes before the service is the system wallpaper', () async {
+      platform.active = false;
+      entrySource.window = GroupedWallpaperEntryWindow(count: 12, entries: [entry(2), entry(1)]);
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      final state = (await store.readState())!;
+      expect(state.status, GroupedWallpaperStatus.ready);
+      expect(state.entryId, 2);
+      expect(state.groupId, dcimGroup.id);
+      expect(await store.photoFile.exists(), isTrue);
+    });
+
+    test('keeps the frame it already shows instead of cycling on every start', () async {
+      entrySource.window = GroupedWallpaperEntryWindow(count: 12, entries: [entry(2), entry(1)]);
+      await engine.prepare();
+      final first = (await store.readState())!;
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
+
+      expect(baker.bakeCount, 1);
+      expect((await store.readState())!.entryId, first.entryId);
+    });
+
+    test('re-bakes when the group range was saved after the bake', () async {
+      entrySource.window = GroupedWallpaperEntryWindow(count: 12, entries: [entry(2), entry(1)]);
+      await engine.prepare();
+
+      planStore.plan = GroupedWallpaperPlan(
+        group: dcimGroup,
+        range: VisibleRange(id: 'group.1.range', scope: VisibleRangeScope.wallpaper, ownerId: dcimGroup.id, updatedAt: 2000),
+      );
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      expect(baker.bakeCount, 2);
+    });
+
+    test('re-bakes when the photo is gone from disk', () async {
+      entrySource.window = GroupedWallpaperEntryWindow(count: 12, entries: [entry(2), entry(1)]);
+      await engine.prepare();
+      await store.clearPhoto();
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      expect(baker.bakeCount, 2);
+    });
+
+    test('activation with no group adopts the first enabled group', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: WallpaperGroup.none);
+      planStore.adopted = const GroupedWallpaperPlan(group: dcimGroup);
+      entrySource.window = GroupedWallpaperEntryWindow(count: 3, entries: [entry(7)]);
+
+      expect(await engine.prepare(activation: true), GroupedWallpaperSyncResult.baked);
+
+      expect(planStore.adoptCount, 1);
+      expect((await store.readState())!.groupId, dcimGroup.id);
+    });
+
+    test('a plain prepare does not adopt a group', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: WallpaperGroup.none);
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
+
+      expect(planStore.adoptCount, 0);
+      expect(baker.bakeCount, 0);
+    });
+
+    test('activation does not override an explicit off switch', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: WallpaperGroup.none, disabled: true);
+
+      expect(await engine.prepare(activation: true), GroupedWallpaperSyncResult.disabled);
+
+      expect(planStore.adoptCount, 0);
+      expect(baker.bakeCount, 0);
+    });
+  });
+
+  group('disabled', () {
+    test('keeps the frame on screen and records the status', () async {
+      entrySource.window = GroupedWallpaperEntryWindow(count: 3, entries: [entry(2)]);
+      await engine.prepare();
+      final frozen = (await store.readState())!;
+
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, disabled: true);
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.disabled);
+
+      final state = (await store.readState())!;
+      expect(state.status, GroupedWallpaperStatus.disabled);
+      expect(state.entryId, frozen.entryId);
+      expect(state.photo, frozen.photo);
+      expect(state.hasPhoto, isTrue);
+      expect(state.generation, frozen.generation + 1);
+      expect(baker.bakeCount, 1);
+      expect(await store.photoFile.exists(), isTrue);
+    });
+
+    test('the link reports it is no longer playing', () async {
+      await link.setDisabled(true);
+
+      expect(link.isDisabled, isTrue);
+      expect(link.isPlaying, isFalse);
+      expect(planStore.disabledWrites, [true]);
+    });
+
+    test('freezes when the group that was playing disappeared', () async {
+      entrySource.window = GroupedWallpaperEntryWindow(count: 3, entries: [entry(2)]);
+      await engine.prepare();
+
+      // The group was deleted or disabled: normalize leaves no current group.
+      planStore.plan = const GroupedWallpaperPlan(group: WallpaperGroup.none);
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.disabled);
+
+      expect(planStore.disabledWrites, [true]);
+      final state = (await store.readState())!;
+      expect(state.status, GroupedWallpaperStatus.disabled);
+      expect(state.hasPhoto, isTrue);
+      expect(baker.bakeCount, 1);
+    });
   });
 
   test('bakes the newest image and records the group, entry and size', () async {
@@ -175,7 +298,7 @@ void main() {
     final bakes = baker.bakeCount;
     final reloads = platform.reloadCount;
 
-    planLoader.plan = GroupedWallpaperPlan(
+    planStore.plan = GroupedWallpaperPlan(
       group: dcimGroup,
       range: VisibleRange(id: 'group.1.range', scope: VisibleRangeScope.wallpaper, ownerId: dcimGroup.id, locked: true),
     );
@@ -192,7 +315,7 @@ void main() {
   });
 
   test('a locked group with no frame yet writes a placeholder state', () async {
-    planLoader.plan = GroupedWallpaperPlan(
+    planStore.plan = GroupedWallpaperPlan(
       group: dcimGroup,
       range: VisibleRange(id: 'group.1.range', scope: VisibleRangeScope.wallpaper, ownerId: dcimGroup.id, locked: true),
     );
@@ -224,7 +347,7 @@ void main() {
   test('a plan read failure still leaves the placeholder, not the old frame', () async {
     entrySource.window = GroupedWallpaperEntryWindow(count: 1, entries: [entry(2)]);
     await engine.syncNow();
-    planLoader.error = StateError('database is gone');
+    planStore.error = StateError('database is gone');
 
     expect(await engine.syncNow(), GroupedWallpaperSyncResult.failed);
 
@@ -233,17 +356,18 @@ void main() {
     expect(await store.photoFile.exists(), isFalse);
   });
 
-  test('concurrent syncs share one bake', () async {
+  test('concurrent runs are serialized instead of writing at the same time', () async {
     entrySource.window = GroupedWallpaperEntryWindow(count: 2, entries: [entry(2), entry(1)]);
 
-    final results = await Future.wait([engine.syncNow(), engine.syncNow()]);
+    final results = await Future.wait([engine.prepare(), engine.syncNow()]);
 
     expect(results, [GroupedWallpaperSyncResult.baked, GroupedWallpaperSyncResult.baked]);
-    expect(baker.bakeCount, 1);
-    expect(platform.reloadCount, 1);
+    expect(baker.bakeCount, 2);
+    // The last write wins, and the queue never leaves two runs overlapping.
+    expect((await store.readState())!.entryId, 1);
   });
 
-  test('the service request runs a sync', () async {
+  test('the service request runs a prepare', () async {
     entrySource.window = GroupedWallpaperEntryWindow(count: 1, entries: [entry(3)]);
     final reloaded = Completer<void>();
     platform.onReload = () {
@@ -259,7 +383,7 @@ void main() {
 
   test('the group range is what the media set is resolved from', () async {
     final range = VisibleRange(id: 'group.1.range', scope: VisibleRangeScope.wallpaper, ownerId: dcimGroup.id);
-    planLoader.plan = GroupedWallpaperPlan(group: dcimGroup, range: range);
+    planStore.plan = GroupedWallpaperPlan(group: dcimGroup, range: range);
     entrySource.window = GroupedWallpaperEntryWindow(count: 1, entries: [entry(4)]);
 
     await engine.syncNow();
@@ -342,17 +466,33 @@ class _FakeBaker extends GroupedWallpaperBaker {
   }
 }
 
-class _FakePlanLoader implements GroupedWallpaperPlanLoader {
+class _FakePlanStore implements GroupedWallpaperPlanStore {
   GroupedWallpaperPlan plan;
+  GroupedWallpaperPlan adopted;
   Object? error;
+  int adoptCount = 0;
+  final List<bool> disabledWrites = [];
 
-  new(this.plan);
+  new(this.plan) : adopted = plan;
 
   @override
   Future<GroupedWallpaperPlan> load() async {
     final failure = error;
     if (failure != null) throw failure;
     return plan;
+  }
+
+  @override
+  Future<GroupedWallpaperPlan> adoptFirstEnabledGroup() async {
+    adoptCount++;
+    plan = adopted;
+    return plan;
+  }
+
+  @override
+  Future<void> setDisabled(bool disabled) async {
+    disabledWrites.add(disabled);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled);
   }
 }
 

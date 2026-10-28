@@ -64,6 +64,9 @@ class AIcons {
 
   /// The group the live wallpaper currently uses.
   static const wallpaperPlaying = Symbols.play_circle;
+
+  /// The grouped wallpaper is not playing: shown on group 0.
+  static const wallpaperStopped = Symbols.stop_circle;
   static const rating = Symbols.star;
   static const ratingRejected = MdiIcons.starMinusOutline;
   static const ratingUnrated = MdiIcons.starOffOutline;

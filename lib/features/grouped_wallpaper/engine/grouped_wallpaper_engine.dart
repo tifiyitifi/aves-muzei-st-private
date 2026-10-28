@@ -20,12 +20,21 @@ import 'package:flutter/painting.dart';
 /// It owns the only writes to `state.json` and `current.png`: the current group's
 /// media set is resolved in Dart (Aves has the EXIF-aware decoders and the
 /// database), baked to one PNG, then the native renderer is asked to reload.
-/// There is no timer and no prefetch in this phase: a frame changes only when the
-/// service starts or the user asks for a sync.
+///
+/// Two entry points share the same pipeline:
+/// - [prepare] keeps a frame ready for the saved group and never requires the
+///   service to be the system wallpaper yet, because the system picker can take
+///   a moment to hand it over;
+/// - [syncNow] is the user asking for the next photo, and only applies while the
+///   service really is the system wallpaper.
+///
+/// There is no timer and no prefetch in this phase: a frame changes when the app
+/// prepares it after a save or a group switch, when the service starts, or when
+/// the user asks for a sync.
 class GroupedWallpaperEngine implements WallpaperEngineConnection {
   final GroupedWallpaperPlatform platform;
   final GroupedWallpaperBaker baker;
-  final GroupedWallpaperPlanLoader planLoader;
+  final GroupedWallpaperPlanStore planStore;
   final GroupedWallpaperEntrySource entrySource;
   final GroupedWallpaperNameResolver nameResolver;
   final WallpaperEngineLink link;
@@ -36,19 +45,22 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   final Future<Size?> Function() _targetSize;
 
   GroupedWallpaperStateStore? _store;
-  Future<GroupedWallpaperSyncResult>? _inFlight;
+
+  /// Runs one pipeline at a time: the service's start request and the page's
+  /// button must never bake two frames into the same file.
+  Future<void> _queue = Future.value();
 
   new({
     required this.platform,
     GroupedWallpaperBaker? baker,
-    GroupedWallpaperPlanLoader? planLoader,
+    GroupedWallpaperPlanStore? planStore,
     GroupedWallpaperEntrySource? entrySource,
     GroupedWallpaperNameResolver? nameResolver,
     WallpaperEngineLink? link,
     Future<Size?> Function()? targetSize,
     int Function()? now,
   })  : baker = baker ?? GroupedWallpaperBaker(),
-        planLoader = planLoader ?? SavedGroupedWallpaperPlanLoader(),
+        planStore = planStore ?? SavedGroupedWallpaperPlanStore(),
         entrySource = entrySource ?? GroupedWallpaperDbEntrySource(),
         nameResolver = nameResolver ?? resolveGroupedWallpaperName,
         link = link ?? wallpaperEngineLink,
@@ -57,10 +69,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   bool get isAttached => _store != null;
 
-  /// Wires the engine to the platform channel and to the page's sync entry.
+  /// Wires the engine to the platform channel and to the page's entries.
   ///
   /// Inert on a host without the service (desktop, tests): the page then keeps
-  /// its sync entry greyed out instead of failing.
+  /// its entries greyed out instead of failing.
   Future<void> attach() async {
     if (_store != null) return;
     final root = await platform.stateRoot();
@@ -68,11 +80,13 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     final store = GroupedWallpaperStateStore(Directory(root));
     await store.ensureLayout();
     _store = store;
-    // The service asks for a frame when it starts: that is what gives the
-    // wallpaper its first photo, with no background worker involved.
-    platform.setSyncRequestHandler(onSyncRequested: () => unawaited(syncNow()));
+    // The service asks for a frame when it starts, and that moment is also the
+    // activation: the system picker may not have committed the switch yet, so
+    // the request must not be filtered by `isActive`.
+    platform.setSyncRequestHandler(onSyncRequested: () => unawaited(prepare(activation: true)));
     link.attach(this);
     await link.refreshActive();
+    await link.refreshDisabled();
   }
 
   void detach() {
@@ -85,25 +99,53 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   Future<bool> isActive() => platform.isActive();
 
   @override
+  Future<bool> isDisabled() async => (await planStore.load()).disabled;
+
+  @override
   Future<bool> openChooser() => platform.openChooser();
 
   /// The state the renderer is showing, or null when nothing was ever baked.
   @override
   Future<GroupedWallpaperState?> readState() async => await _store?.readState();
 
-  /// Re-bakes the saved current group and applies it now.
-  ///
-  /// Concurrent callers share one run: the service's start request and the page's
-  /// button must not bake two frames into the same file.
+  /// Records the explicit off/on switch without touching the current group.
   @override
-  Future<GroupedWallpaperSyncResult> syncNow() {
-    return _inFlight ??= _sync().whenComplete(() => _inFlight = null);
+  Future<void> setDisabled(bool disabled) async {
+    await planStore.setDisabled(disabled);
+    await link.refreshDisabled();
   }
 
-  Future<GroupedWallpaperSyncResult> _sync() async {
+  /// Keeps a frame ready for the saved group, whether or not the grouped service
+  /// is the system wallpaper yet.
+  ///
+  /// [activation] is the service telling us it was just created. Only then does
+  /// "no group is current" fall back to the first enabled group: a restart of an
+  /// install the user turned off must stay off.
+  @override
+  Future<GroupedWallpaperSyncResult> prepare({bool activation = false}) {
+    return _enqueue(() => _run(advance: false, requireActive: false, activation: activation));
+  }
+
+  /// Re-bakes the saved current group and applies it now.
+  ///
+  /// Only meaningful while the grouped wallpaper is the system wallpaper: writing
+  /// a frame the renderer is not showing would claim a change that never happened.
+  @override
+  Future<GroupedWallpaperSyncResult> syncNow() {
+    return _enqueue(() => _run(advance: true, requireActive: true, activation: false));
+  }
+
+  Future<GroupedWallpaperSyncResult> _enqueue(Future<GroupedWallpaperSyncResult> Function() body) {
+    final result = _queue.then((_) => body());
+    // The queue must survive a failed run, or every later call would be skipped.
+    _queue = result.then((_) {}, onError: (Object _, StackTrace _) {});
+    return result;
+  }
+
+  Future<GroupedWallpaperSyncResult> _run({required bool advance, required bool requireActive, required bool activation}) async {
     final store = _store;
     if (store == null) return GroupedWallpaperSyncResult.notActive;
-    if (!await platform.isActive()) {
+    if (requireActive && !await platform.isActive()) {
       await link.refreshActive();
       return GroupedWallpaperSyncResult.notActive;
     }
@@ -112,14 +154,38 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     GroupedWallpaperPlan? plan;
     GroupedWallpaperState? previous;
     try {
-      plan = await planLoader.load();
+      plan = await planStore.load();
       previous = await store.readState();
+      // Turning the wallpaper on with no group selected must not leave the
+      // placeholder: land on the first enabled group instead.
+      if (activation && plan.isNone && !plan.disabled) {
+        plan = await planStore.adoptFirstEnabledGroup();
+      }
+      if (plan.disabled) {
+        await _recordDisabled(store, previous);
+        return GroupedWallpaperSyncResult.disabled;
+      }
+      if (plan.isNone) {
+        if (_wasPlayingAGroup(previous)) {
+          // The playing group was deleted or disabled: freeze its last frame and
+          // turn the feature off rather than silently switching content.
+          await planStore.setDisabled(true);
+          await _recordDisabled(store, previous);
+          return GroupedWallpaperSyncResult.disabled;
+        }
+        // No group was ever played: leave the frame alone until the wallpaper is
+        // activated, which is what adopts the first group.
+        return GroupedWallpaperSyncResult.unchanged;
+      }
       if (plan.locked) {
         await _recordLocked(store, plan, previous);
         return GroupedWallpaperSyncResult.locked;
       }
+      if (!advance && await _isFresh(store, plan, previous)) {
+        return GroupedWallpaperSyncResult.unchanged;
+      }
       final window = await entrySource.load(plan.range, limit: GroupedWallpaperDbEntrySource.scanLimit);
-      final entry = selectGroupedWallpaperEntry(window.entries, previousEntryId: previous?.entryId);
+      final entry = selectGroupedWallpaperEntry(window.entries, previousEntryId: advance ? previous?.entryId : null);
       if (entry == null) {
         await store.clearPhoto();
         await store.writeState(_buildState(plan: plan, previous: previous, status: GroupedWallpaperStatus.emptyGroup, count: window.count));
@@ -148,14 +214,44 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     }
   }
 
+  /// Whether [previous] is a frame of a real group, i.e. the wallpaper was
+  /// following something that has since disappeared.
+  static bool _wasPlayingAGroup(GroupedWallpaperState? previous) => previous != null && previous.hasPhoto && previous.groupId.isNotEmpty;
+
+  /// Whether [previous] already shows [plan]'s group with nothing newer to bake.
+  ///
+  /// Saving a draft or switching the group bumps `updatedAt`, so a changed group
+  /// always re-bakes; an unchanged one keeps the photo it already shows instead
+  /// of cycling through another image on every app start.
+  Future<bool> _isFresh(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, GroupedWallpaperState? previous) async {
+    if (previous == null || previous.status != GroupedWallpaperStatus.ready || !previous.hasPhoto) return false;
+    if (previous.groupId != plan.group.id) return false;
+    if (previous.bakedAt < plan.group.updatedAt) return false;
+    if (previous.bakedAt < (plan.range?.updatedAt ?? 0)) return false;
+    // The file can be gone while the state still points at it (cache cleanup,
+    // manual wipe): a frame that is not on disk is not fresh.
+    return await store.photoFile.exists();
+  }
+
   /// Freezes the frame on screen: a locked group is not re-baked, so the state
   /// keeps its photo and only records the lock for the notification.
   Future<void> _recordLocked(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, GroupedWallpaperState? previous) async {
     if (previous?.status == GroupedWallpaperStatus.locked && previous?.groupId == plan.group.id) return;
     final state = previous != null
-        ? previous.copyWith(status: GroupedWallpaperStatus.locked)
+        ? previous.copyWith(generation: previous.generation + 1, status: GroupedWallpaperStatus.locked)
         : _buildState(plan: plan, previous: previous, status: GroupedWallpaperStatus.locked, count: 0);
     await store.writeState(state);
+  }
+
+  /// Records that the grouped wallpaper is off without touching the frame.
+  ///
+  /// Disabling never changes what the system is showing: the photo stays, and
+  /// only the status tells the page and the notification that the group is no
+  /// longer being followed.
+  Future<void> _recordDisabled(GroupedWallpaperStateStore store, GroupedWallpaperState? previous) async {
+    if (previous == null || previous.status == GroupedWallpaperStatus.disabled) return;
+    await store.writeState(previous.copyWith(generation: previous.generation + 1, status: GroupedWallpaperStatus.disabled));
+    await platform.reload();
   }
 
   /// A failed sync leaves the placeholder, never the previous photo: a stale

@@ -4,9 +4,10 @@ import 'package:flutter/foundation.dart';
 
 /// What the grouped wallpaper is showing, and why.
 ///
-/// [locked] keeps the frame on screen: a locked group is not re-baked, exactly
-/// like a locked visible range is not edited. The other states all mean "no
-/// photo", so the native renderer draws its placeholder instead of a stale image.
+/// [locked] and [disabled] keep the frame on screen: the wallpaper is not
+/// following the group, so the last photo stays instead of blanking. The other
+/// states all mean "no photo", so the native renderer draws its placeholder
+/// instead of a stale image.
 enum GroupedWallpaperStatus {
   /// A baked photo is on screen.
   ready,
@@ -14,11 +15,18 @@ enum GroupedWallpaperStatus {
   /// The group is locked: the current frame stays, nothing new is baked.
   locked,
 
+  /// The grouped wallpaper is turned off: the last frame stays, nothing new is
+  /// baked, and the wallpaper the system shows is left untouched.
+  disabled,
+
   /// The group resolves to no image.
   emptyGroup,
 
   /// Reading, querying, baking or writing failed.
   unavailable;
+
+  /// Whether the renderer must keep showing the photo it already has.
+  bool get keepsFrame => this == locked || this == disabled;
 
   static GroupedWallpaperStatus? tryParse(Object? value) {
     for (final status in values) {
@@ -38,6 +46,12 @@ enum GroupedWallpaperSyncResult {
 
   /// The group is locked, so its current frame was kept.
   locked,
+
+  /// The grouped wallpaper is turned off: its last frame was kept.
+  disabled,
+
+  /// The frame already matched the saved group: nothing was written.
+  unchanged,
 
   /// The grouped wallpaper is not the system wallpaper: nothing was written.
   notActive,
@@ -171,8 +185,11 @@ class GroupedWallpaperState extends Equatable {
     final entryId = _int(json['entryId']);
     final photo = _string(json['photo']);
     // `ready` without a photo is a contradiction: show the placeholder instead
-    // of asking the renderer to load a file that is not there.
+    // of asking the renderer to load a file that is not there. `locked` and
+    // `disabled` legitimately keep no frame when nothing was ever baked.
     final normalized = status == GroupedWallpaperStatus.ready && (photo.isEmpty || entryId == null) ? GroupedWallpaperStatus.unavailable : status;
+    final drawsFrame = normalized == GroupedWallpaperStatus.ready || normalized.keepsFrame;
+    final hasFrame = drawsFrame && photo.isNotEmpty && entryId != null;
 
     return GroupedWallpaperState(
       generation: _int(json['generation']) ?? 0,
@@ -181,9 +198,9 @@ class GroupedWallpaperState extends Equatable {
       groupNumber: _int(json['groupNumber']) ?? 0,
       groupName: _string(json['groupName']),
       count: _int(json['count']) ?? 0,
-      entryId: normalized == GroupedWallpaperStatus.ready || normalized == GroupedWallpaperStatus.locked ? entryId : null,
+      entryId: hasFrame ? entryId : null,
       entryTitle: _string(json['entryTitle']),
-      photo: normalized == GroupedWallpaperStatus.ready || normalized == GroupedWallpaperStatus.locked ? photo : '',
+      photo: hasFrame ? photo : '',
       width: _int(json['width']) ?? 0,
       height: _int(json['height']) ?? 0,
       bakedAt: _int(json['bakedAt']) ?? 0,

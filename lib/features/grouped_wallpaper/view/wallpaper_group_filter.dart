@@ -24,8 +24,15 @@ class WallpaperGroupFilter extends CollectionFilter {
   final String description;
   final bool enabled;
 
-  /// The group the actual wallpaper uses.
-  final bool current;
+  /// Whether the grouped wallpaper is on screen and follows this group.
+  final bool playing;
+
+  /// Whether this is group 0 while the grouped wallpaper is not playing.
+  ///
+  /// The stopped indicator lives on group 0 so the page always says "nothing is
+  /// playing" in one place, instead of leaving the last current group looking
+  /// active after the feature was turned off.
+  final bool stopped;
 
   /// The group whose range this page shows.
   final bool selected;
@@ -39,7 +46,8 @@ class WallpaperGroupFilter extends CollectionFilter {
     required this.name,
     this.description = '',
     this.enabled = true,
-    this.current = false,
+    this.playing = false,
+    this.stopped = false,
     this.selected = false,
     this.count,
     super.reversed = false,
@@ -66,7 +74,7 @@ class WallpaperGroupFilter extends CollectionFilter {
   String get category => type;
 
   @override
-  String get key => '$type-${groupId ?? 'none'}-$selected-$current-$enabled';
+  String get key => '$type-${groupId ?? 'none'}-$selected-$playing-$stopped-$enabled';
 
   @override
   Map<String, Object?> toJsonMap() => {
@@ -77,5 +85,5 @@ class WallpaperGroupFilter extends CollectionFilter {
       };
 
   @override
-  List<Object?> get props => [groupId, number, name, description, enabled, current, selected, count, reversed];
+  List<Object?> get props => [groupId, number, name, description, enabled, playing, stopped, selected, count, reversed];
 }

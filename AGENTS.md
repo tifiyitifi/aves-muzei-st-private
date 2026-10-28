@@ -83,6 +83,19 @@ CI (`build-custom-apk.yml`) builds a signed `custom`-flavor release APK on pushe
 - `lib/features/**` is the fork-only layer for new features, isolated from upstream-owned trees.
 - Many files are deliberate adaptations of Flutter/package sources (`lib/widgets/common/basic/*`, `lib/services/common/output_buffer.dart`, etc.; the full list is in `pubspec.yaml` comments). Keep them close to upstream rather than refactoring them as ordinary app code.
 
+## Selection (XOR-range)
+
+Every surface that supports multi-select must support the XOR-range gesture. It is what makes picking a long run of rows one action instead of many.
+
+- **Rules.** A tap toggles one item and moves the anchor to it. A long press while already selecting flips every item between that anchor and the pressed item, then moves the anchor to the pressed item. The interval **excludes the anchor and includes the target**, so ranging back undoes exactly what ranging forward added (both endpoints survive), and repeated ranges compose.
+- **Guards.** No anchor, an endpoint missing from the visible ordered list (row filtered out or scrolled away), or a press on the anchor itself degrades to a single toggle. Unselectable rows take no part in an interval: they are skipped, never flipped through.
+- **Anchor ownership.** The anchor lives in `Selection` (`lib/model/selection.dart`): `toggleSelection` moves it, `browse`/`clearSelection`/`markAll` drop it. Do **not** keep a per-page anchor — call sites only pass the visible ordered items.
+- **Range logic** lives in `lib/features/selection_xor/` as an extension on `Selection`; call sites use `Selection.rangeXorTo(orderedItems, target)` and never re-implement the math.
+- **The one gesture seam** is `lib/widgets/common/grid/selector.dart` (`GridSelectionGestureDetector`). Collection grids and every `FilterGridPage` (albums, tags, places, countries, states, visible range, wallpaper groups) go through it, so a tap/long-press wired there reaches all of them. Tile-level tap handlers must call `toggleSelection` (which already moves the anchor), not mutate the selection directly.
+- **Paint-drag is a separate contribution, not a rival.** A long press that then moves keeps the existing additive/erase painting from the pressed row; the range flip settles only the rows between the anchor and that row. Do not "unify" the two.
+- **Out of scope:** single-item pick pages and the viewer's one-entry toggle have no ordered multi-select list. Section-wide picks stay all-or-nothing. TV focus and desktop `Shift+click` ranges are not wired yet.
+- **Tests** live in `test/features/selection_xor/` and must cover the interval, the degradation paths and the declared-mark path before the behaviour changes.
+
 ## Settings engine (v1 / v2)
 
 `lib/features/meta_settings/` is the fork-only settings engine; `lib/model/settings` and `lib/widgets/settings` stay upstream-owned (v1).

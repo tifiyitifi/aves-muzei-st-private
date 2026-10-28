@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:aves/features/selection_xor/selection_xor.dart';
 import 'package:aves/model/selection.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/widgets/common/basic/gestures/gesture_detector.dart';
@@ -101,7 +102,16 @@ class _GridSelectionGestureDetectorState<T> extends State<GridSelectionGestureDe
 
               Feedback.forLongPress(context);
               final selection = context.read<Selection<T>>();
-              selection.toggleSelection(fromItem);
+              if (selection.isSelecting) {
+                // A long press while selecting flips the interval from the
+                // anchor to the pressed row. This and the drag below stay two
+                // independent contributions: the flip settles the rows in
+                // between, then painting continues from the pressed row, where
+                // `_selecting` is again what decides between adding and erasing.
+                selection.rangeXorTo(items, fromItem);
+              } else {
+                selection.toggleSelection(fromItem);
+              }
               _selecting = selection.isSelected([fromItem]);
               _fromIndex = items.indexOf(fromItem);
               _lastToIndex = _fromIndex;

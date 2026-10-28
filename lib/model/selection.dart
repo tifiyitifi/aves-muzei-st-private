@@ -70,6 +70,26 @@ class Selection<T> extends ChangeNotifier {
 
   Set<T> get selectedItems => _mark != null ? const {} : Set.unmodifiable(_selectedItems.values);
 
+  /// The item the last single toggle acted on: the fixed end of a range gesture.
+  ///
+  /// Kept as an item rather than an index because the ordered list a gesture
+  /// reads is rebuilt from fresh instances, while the anchor has to survive it.
+  /// Compared through [_keyOf], never by identity.
+  T? _anchor;
+
+  /// The item a range selection starts from, or null when the selection was not
+  /// started by a single item.
+  T? get anchor => _anchor;
+
+  /// Whether [a] and [b] denote the same underlying item.
+  bool isSameItem(T a, T b) => _keyOf(a) == _keyOf(b);
+
+  /// Moves the range anchor without touching the selected items.
+  ///
+  /// A range gesture flips an interval and then continues from its target, so it
+  /// has to move the anchor without toggling the target a second time.
+  void moveAnchorTo(T item) => _anchor = item;
+
   new({required ToSelectableItems<T>? toSelectableItems, SelectionKeyOf<T>? keyOf}) : _keyOf = keyOf ?? ((item) => item) {
     if (kFlutterMemoryAllocationsEnabled) ChangeNotifier.maybeDispatchObjectCreation(this);
 
@@ -96,6 +116,7 @@ class Selection<T> extends ChangeNotifier {
   void browse() {
     if (!_isSelecting) return;
     _isSelecting = false;
+    _anchor = null;
     _mark?.clear();
     _detachMark();
     _selectedItems.clear();
@@ -115,6 +136,8 @@ class Selection<T> extends ChangeNotifier {
   void markAll(SelectionMark<T> mark) {
     _detachMark();
     _selectedItems.clear();
+    // A whole-scope mark has no item order, so no range can start from it.
+    _anchor = null;
     _mark = mark;
     if (mark is Listenable) (mark as Listenable).addListener(_onMarkChanged);
     _isSelecting = true;
@@ -194,6 +217,7 @@ class Selection<T> extends ChangeNotifier {
     _mark?.clear();
     _detachMark();
     _selectedItems.clear();
+    _anchor = null;
     notifyListeners();
   }
 
@@ -202,6 +226,8 @@ class Selection<T> extends ChangeNotifier {
 
     final mark = _mark;
     final selectableItems = _expandToSelectableItems({item});
+    // The toggled item becomes the fixed end of the next range gesture.
+    _anchor = item;
     if (mark != null) {
       if (isSelected(selectableItems)) {
         mark.unmark(selectableItems);

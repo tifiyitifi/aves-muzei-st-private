@@ -91,4 +91,54 @@ void main() {
     expect(selection.isSelected({1, 2}), isTrue);
     expect(selection.isSelected({1, 3}), isFalse);
   });
+
+  // The anchor is the fixed end of a range gesture: a tap moves it, a range or a
+  // section-wide pick must not, and anything that drops the selection drops it.
+  group('range anchor', () {
+    test('the last single toggle becomes the anchor', () {
+      final selection = Selection<int>(toSelectableItems: null);
+
+      selection.toggleSelection(2);
+      expect(selection.anchor, 2);
+
+      selection.toggleSelection(5);
+      expect(selection.anchor, 5);
+    });
+
+    test('an added range does not move the anchor', () {
+      final selection = Selection<int>(toSelectableItems: null);
+      selection.toggleSelection(2);
+
+      selection.addToSelection({7, 8});
+
+      expect(selection.anchor, 2);
+    });
+
+    test('leaving selection mode clears the anchor', () {
+      final selection = Selection<int>(toSelectableItems: null);
+      selection.toggleSelection(2);
+
+      selection.browse();
+
+      expect(selection.anchor, isNull);
+    });
+
+    test('clearing the selection clears the anchor', () {
+      final selection = Selection<int>(toSelectableItems: null);
+      selection.toggleSelection(2);
+
+      selection.clearSelection();
+
+      expect(selection.anchor, isNull);
+    });
+
+    test('a whole-scope mark has no anchor to range from', () {
+      final selection = Selection<int>(toSelectableItems: null);
+      selection.toggleSelection(2);
+
+      selection.markAll(_Mark());
+
+      expect(selection.anchor, isNull);
+    });
+  });
 }

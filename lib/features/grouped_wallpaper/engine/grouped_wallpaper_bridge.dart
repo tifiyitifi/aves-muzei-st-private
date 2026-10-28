@@ -1,56 +1,8 @@
 import 'dart:async';
 
-import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/services/common/channel.dart';
-import 'package:equatable/equatable.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-
-/// A slot the renderer promoted on its own, told to the app over the channel.
-///
-/// The renderer also records it in `runtime.json`, but that write is
-/// asynchronous and a running app can bake before it lands. The channel message
-/// is delivered after the promotion, so the app adopts it without racing the
-/// file; the file stays the fallback for the background worker, which has no
-/// channel.
-@immutable
-class GroupedWallpaperPromotion extends Equatable {
-  final int generation;
-  final int current;
-  final int next;
-
-  const new({
-    required this.generation,
-    required this.current,
-    required this.next,
-  });
-
-  static GroupedWallpaperPromotion? tryParse(Object? raw) {
-    if (raw is! Map) return null;
-    final generation = _int(raw['generation']);
-    final current = _int(raw['current']);
-    if (generation == null || current == null || current < 0) return null;
-    return GroupedWallpaperPromotion(
-      generation: generation,
-      current: current,
-      next: _int(raw['next']) ?? -1,
-    );
-  }
-
-  static int? _int(Object? value) => value is int ? value : (value is num ? value.toInt() : null);
-
-  /// The same promotion as the runtime record the renderer writes.
-  GroupedWallpaperRuntime toRuntime() => GroupedWallpaperRuntime(
-        generation: generation,
-        current: current,
-        next: next,
-        refillRequested: true,
-      );
-
-  @override
-  List<Object?> get props => [generation, current, next];
-}
 
 /// What the engine needs from the native grouped wallpaper service.
 ///
@@ -75,9 +27,9 @@ abstract interface class GroupedWallpaperPlatform {
   /// Registers the native-to-Dart request that a fresh frame is needed.
   ///
   /// The service asks for it when it starts, when the app attaches and after a
-  /// tap. [onSyncRequested] receives the slot the renderer promoted, or null for
-  /// a plain request.
-  void setSyncRequestHandler({void Function(GroupedWallpaperPromotion? promotion)? onSyncRequested});
+  /// tap. The renderer already wrote the promotion to `runtime.json`, so the
+  /// signal carries no payload and the engine reads the file itself.
+  void setSyncRequestHandler({void Function()? onSyncRequested});
 }
 
 /// Platform contract of the grouped live wallpaper.
@@ -122,7 +74,7 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
   }
 
   @override
-  void setSyncRequestHandler({void Function(GroupedWallpaperPromotion? promotion)? onSyncRequested}) {
+  void setSyncRequestHandler({void Function()? onSyncRequested}) {
     final attached = onSyncRequested != null;
     unawaited(_invoke<void>('setRequestHandler', {'attached': attached}));
     if (!attached) {
@@ -131,7 +83,7 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
     }
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'syncRequested') {
-        onSyncRequested.call(GroupedWallpaperPromotion.tryParse(call.arguments));
+        onSyncRequested.call();
       }
       return null;
     });

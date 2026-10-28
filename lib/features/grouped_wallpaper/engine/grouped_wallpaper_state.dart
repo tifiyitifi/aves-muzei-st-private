@@ -79,8 +79,19 @@ class GroupedWallpaperSlot extends Equatable {
   /// Photo path relative to the state root.
   final String photo;
 
+  /// Baked home/lock effect paths, relative to the state root.
+  ///
+  /// Empty when the effect is the identity: the renderer then falls back to
+  /// [photo], so an untouched group never writes a second copy of the same PNG.
+  final String effectHome;
+  final String effectLock;
+
   final int width;
   final int height;
+
+  /// Average luminance of the sharp frame, in `0..1`, used by the effects
+  /// preview to reproduce the baked dim.
+  final double darkness;
 
   const new({
     required this.id,
@@ -88,8 +99,11 @@ class GroupedWallpaperSlot extends Equatable {
     required this.uri,
     this.title = '',
     required this.photo,
+    this.effectHome = '',
+    this.effectLock = '',
     this.width = 0,
     this.height = 0,
+    this.darkness = .5,
   });
 
   double? get aspectRatio => width > 0 && height > 0 ? width / height : null;
@@ -100,8 +114,11 @@ class GroupedWallpaperSlot extends Equatable {
         'uri': uri,
         'title': title,
         'photo': photo,
+        'effectHome': effectHome,
+        'effectLock': effectLock,
         'width': width,
         'height': height,
+        'darkness': darkness,
       };
 
   static GroupedWallpaperSlot? tryFromJsonMap(Map<String, Object?> json) {
@@ -115,17 +132,22 @@ class GroupedWallpaperSlot extends Equatable {
       uri: _slotString(json['uri']),
       title: _slotString(json['title']),
       photo: photo,
+      effectHome: _slotString(json['effectHome']),
+      effectLock: _slotString(json['effectLock']),
       width: _slotInt(json['width']) ?? 0,
       height: _slotInt(json['height']) ?? 0,
+      darkness: _slotDouble(json['darkness']) ?? .5,
     );
   }
 
   static int? _slotInt(Object? value) => value is int ? value : (value is num ? value.toInt() : null);
 
+  static double? _slotDouble(Object? value) => value is num ? value.toDouble().clamp(0.0, 1.0) : null;
+
   static String _slotString(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [id, entryId, uri, title, photo, width, height];
+  List<Object?> get props => [id, entryId, uri, title, photo, effectHome, effectLock, width, height, darkness];
 }
 
 /// One photo the wallpaper has shown, for the "recently shown" exclusion and for

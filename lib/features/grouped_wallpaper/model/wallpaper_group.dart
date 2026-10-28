@@ -1,3 +1,4 @@
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
@@ -38,6 +39,13 @@ class WallpaperGroup extends Equatable {
   final int createdAt;
   final int updatedAt;
 
+  /// Home and lock effects applied when this group's photos are baked.
+  ///
+  /// Effects belong to the group, not the app: a private group can be blurred
+  /// while a public one stays sharp. The values are Muzei's, so the effects page
+  /// and the baker share one scale.
+  final WallpaperEffectsConfig effects;
+
   const new({
     required this.id,
     this.number = 0,
@@ -47,6 +55,7 @@ class WallpaperGroup extends Equatable {
     this.current = false,
     this.createdAt = 0,
     this.updatedAt = 0,
+    this.effects = const WallpaperEffectsConfig(),
   });
 
   /// The fixed group 0 entry: no row, no range, no wallpaper change.
@@ -70,6 +79,7 @@ class WallpaperGroup extends Equatable {
     bool? enabled,
     bool? current,
     int? updatedAt,
+    WallpaperEffectsConfig? effects,
   }) {
     return WallpaperGroup(
       id: id,
@@ -80,9 +90,10 @@ class WallpaperGroup extends Equatable {
       current: current ?? this.current,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      effects: effects ?? this.effects,
     );
   }
 
   @override
-  List<Object?> get props => [id, number, name, description, enabled, current, createdAt, updatedAt];
+  List<Object?> get props => [id, number, name, description, enabled, current, createdAt, updatedAt, effects];
 }

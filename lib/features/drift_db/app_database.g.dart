@@ -6929,6 +6929,18 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _effectsMeta = const VerificationMeta(
+    'effects',
+  );
+  @override
+  late final GeneratedColumn<String> effects = GeneratedColumn<String>(
+    'effects',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -6939,6 +6951,7 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
     position,
     createdAt,
     updatedAt,
+    effects,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7006,6 +7019,12 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('effects')) {
+      context.handle(
+        _effectsMeta,
+        effects.isAcceptableOrUnknown(data['effects']!, _effectsMeta),
+      );
+    }
     return context;
   }
 
@@ -7047,6 +7066,10 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
         DriftSqlType.int,
         data['${effectivePrefix}updatedAt'],
       )!,
+      effects: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}effects'],
+      )!,
     );
   }
 
@@ -7074,6 +7097,13 @@ class WallpaperGroupRow extends DataClass
   final int position;
   final int createdAt;
   final int updatedAt;
+
+  /// Home and lock effects as a [WallpaperEffectsConfig] JSON map.
+  ///
+  /// One column keeps the two surfaces and the link toggle atomic, exactly as the
+  /// effects page edits them. The default `{}` reads back as the identity
+  /// configuration, so an upgraded group keeps its sharp photos.
+  final String effects;
   const WallpaperGroupRow({
     required this.id,
     required this.name,
@@ -7083,6 +7113,7 @@ class WallpaperGroupRow extends DataClass
     required this.position,
     required this.createdAt,
     required this.updatedAt,
+    required this.effects,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7095,6 +7126,7 @@ class WallpaperGroupRow extends DataClass
     map['position'] = Variable<int>(position);
     map['createdAt'] = Variable<int>(createdAt);
     map['updatedAt'] = Variable<int>(updatedAt);
+    map['effects'] = Variable<String>(effects);
     return map;
   }
 
@@ -7108,6 +7140,7 @@ class WallpaperGroupRow extends DataClass
       position: Value(position),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      effects: Value(effects),
     );
   }
 
@@ -7125,6 +7158,7 @@ class WallpaperGroupRow extends DataClass
       position: serializer.fromJson<int>(json['position']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      effects: serializer.fromJson<String>(json['effects']),
     );
   }
   @override
@@ -7139,6 +7173,7 @@ class WallpaperGroupRow extends DataClass
       'position': serializer.toJson<int>(position),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
+      'effects': serializer.toJson<String>(effects),
     };
   }
 
@@ -7151,6 +7186,7 @@ class WallpaperGroupRow extends DataClass
     int? position,
     int? createdAt,
     int? updatedAt,
+    String? effects,
   }) => WallpaperGroupRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -7160,6 +7196,7 @@ class WallpaperGroupRow extends DataClass
     position: position ?? this.position,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    effects: effects ?? this.effects,
   );
   WallpaperGroupRow copyWithCompanion(WallpaperGroupRowsCompanion data) {
     return WallpaperGroupRow(
@@ -7173,6 +7210,7 @@ class WallpaperGroupRow extends DataClass
       position: data.position.present ? data.position.value : this.position,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      effects: data.effects.present ? data.effects.value : this.effects,
     );
   }
 
@@ -7186,7 +7224,8 @@ class WallpaperGroupRow extends DataClass
           ..write('current: $current, ')
           ..write('position: $position, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('effects: $effects')
           ..write(')'))
         .toString();
   }
@@ -7201,6 +7240,7 @@ class WallpaperGroupRow extends DataClass
     position,
     createdAt,
     updatedAt,
+    effects,
   );
   @override
   bool operator ==(Object other) =>
@@ -7213,7 +7253,8 @@ class WallpaperGroupRow extends DataClass
           other.current == this.current &&
           other.position == this.position &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.effects == this.effects);
 }
 
 class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
@@ -7225,6 +7266,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
   final Value<int> position;
   final Value<int> createdAt;
   final Value<int> updatedAt;
+  final Value<String> effects;
   final Value<int> rowid;
   const WallpaperGroupRowsCompanion({
     this.id = const Value.absent(),
@@ -7235,6 +7277,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     this.position = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.effects = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   WallpaperGroupRowsCompanion.insert({
@@ -7246,6 +7289,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     this.position = const Value.absent(),
     required int createdAt,
     required int updatedAt,
+    this.effects = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        createdAt = Value(createdAt),
@@ -7259,6 +7303,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     Expression<int>? position,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
+    Expression<String>? effects,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -7270,6 +7315,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
       if (position != null) 'position': position,
       if (createdAt != null) 'createdAt': createdAt,
       if (updatedAt != null) 'updatedAt': updatedAt,
+      if (effects != null) 'effects': effects,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -7283,6 +7329,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     Value<int>? position,
     Value<int>? createdAt,
     Value<int>? updatedAt,
+    Value<String>? effects,
     Value<int>? rowid,
   }) {
     return WallpaperGroupRowsCompanion(
@@ -7294,6 +7341,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
       position: position ?? this.position,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      effects: effects ?? this.effects,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -7325,6 +7373,9 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     if (updatedAt.present) {
       map['updatedAt'] = Variable<int>(updatedAt.value);
     }
+    if (effects.present) {
+      map['effects'] = Variable<String>(effects.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -7342,6 +7393,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
           ..write('position: $position, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('effects: $effects, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -11222,6 +11274,7 @@ typedef $$WallpaperGroupRowsTableCreateCompanionBuilder =
       Value<int> position,
       required int createdAt,
       required int updatedAt,
+      Value<String> effects,
       Value<int> rowid,
     });
 typedef $$WallpaperGroupRowsTableUpdateCompanionBuilder =
@@ -11234,6 +11287,7 @@ typedef $$WallpaperGroupRowsTableUpdateCompanionBuilder =
       Value<int> position,
       Value<int> createdAt,
       Value<int> updatedAt,
+      Value<String> effects,
       Value<int> rowid,
     });
 
@@ -11283,6 +11337,11 @@ class $$WallpaperGroupRowsTableFilterComposer
 
   ColumnFilters<int> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get effects => $composableBuilder(
+    column: $table.effects,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -11335,6 +11394,11 @@ class $$WallpaperGroupRowsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get effects => $composableBuilder(
+    column: $table.effects,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$WallpaperGroupRowsTableAnnotationComposer
@@ -11371,6 +11435,9 @@ class $$WallpaperGroupRowsTableAnnotationComposer
 
   GeneratedColumn<int> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get effects =>
+      $composableBuilder(column: $table.effects, builder: (column) => column);
 }
 
 class $$WallpaperGroupRowsTableTableManager
@@ -11421,6 +11488,7 @@ class $$WallpaperGroupRowsTableTableManager
                 Value<int> position = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
+                Value<String> effects = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WallpaperGroupRowsCompanion(
                 id: id,
@@ -11431,6 +11499,7 @@ class $$WallpaperGroupRowsTableTableManager
                 position: position,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                effects: effects,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -11443,6 +11512,7 @@ class $$WallpaperGroupRowsTableTableManager
                 Value<int> position = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
+                Value<String> effects = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WallpaperGroupRowsCompanion.insert(
                 id: id,
@@ -11453,6 +11523,7 @@ class $$WallpaperGroupRowsTableTableManager
                 position: position,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                effects: effects,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

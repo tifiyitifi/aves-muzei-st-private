@@ -16,8 +16,12 @@
 
 package deckers.thibault.aves.features.grouped_wallpaper
 
+import android.app.KeyguardManager
 import android.app.WallpaperManager
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -59,7 +63,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         isRunning = true
         // The app may already be running: ask it for a frame right away instead
         // of waiting for the next time the page is opened.
-        GroupedWallpaperAppBridge.requestSync(null)
+        GroupedWallpaperAppBridge.requestSync()
     }
 
     override fun onDestroy() {
@@ -83,6 +87,25 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         private val gestureHandler = Handler(Looper.getMainLooper())
         private val clearDoubleTap = Runnable { validDoubleTap = false }
 
+        /**
+         * The engine draws the same surface for home and lock, so the surface is
+         * inferred from the screen broadcasts and the keyguard state.
+         */
+        private var lockScreenVisible = false
+
+        private val lockScreenReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_USER_PRESENT -> updateLockScreen(false)
+                    Intent.ACTION_SCREEN_OFF -> updateLockScreen(true)
+                    Intent.ACTION_SCREEN_ON -> {
+                        val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+                        updateLockScreen(keyguard.isKeyguardLocked)
+                    }
+                }
+            }
+        }
+
         private val gestureDetector = GestureDetector(
             this@GroupedLiveWallpaperService,
             object : GestureDetector.SimpleOnGestureListener() {
@@ -99,6 +122,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
+            registerLockScreenReceiver()
             renderer = GroupedWallpaperRenderer(
                 this@GroupedLiveWallpaperService,
                 requestRender = { requestRender() },
@@ -109,11 +133,14 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             setRenderer(renderer)
             renderMode = RENDERMODE_WHEN_DIRTY
             requestRender()
+            // The engine may be created while the screen is off, so hand the
+            // initial keyguard state to the renderer before the first load.
+            renderer.setLockScreenVisible(lockScreenVisible)
             // The engine bakes at the launcher's desired width, so the surface
             // shows a window into it and pans with the launcher offset.
             setOffsetNotificationsEnabled(true)
             setTouchEventsEnabled(true)
-            Log.d(TAG, "engine.create preview=$isPreview")
+            Log.d(TAG, "engine.create preview=$isPreview lockScreen=$lockScreenVisible")
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -191,9 +218,8 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
          * advancing instead of stopping after the prefetched queue.
          */
         private fun advance() {
-            val promotion = renderer.promote()
-            if (promotion != null) {
-                notifyAdvance(promotion)
+            if (renderer.promote()) {
+                notifyAdvance()
                 return
             }
             renderer.enqueueAdvance()
@@ -201,15 +227,15 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         }
 
         /** Tells a running app about a promotion, or schedules a background run. */
-        private fun notifyAdvance(promotion: GroupedWallpaperPromotion) {
-            if (GroupedWallpaperAppBridge.requestSync(promotion)) return
+        private fun notifyAdvance() {
+            if (GroupedWallpaperAppBridge.requestSync()) return
             Log.d(TAG, "advance notification: no listening app, using the background refill")
             LiveWallpaperRefillScheduler.enqueueTapRefill(this@GroupedLiveWallpaperService, LiveWallpaperTarget.GROUPED)
         }
 
         /** Asks for a refill even though no slot was promoted. */
         private fun requestRefill() {
-            if (GroupedWallpaperAppBridge.requestSync(null)) return
+            if (GroupedWallpaperAppBridge.requestSync()) return
             Log.d(TAG, "refill notification: no listening app, using the background refill")
             LiveWallpaperRefillScheduler.enqueueTapRefill(this@GroupedLiveWallpaperService, LiveWallpaperTarget.GROUPED)
         }
@@ -222,10 +248,33 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         override fun onDestroy() {
             Log.d(TAG, "engine.destroy")
             gestureHandler.removeCallbacks(clearDoubleTap)
+            try {
+                applicationContext.unregisterReceiver(lockScreenReceiver)
+            } catch (e: IllegalArgumentException) {
+                // Already unregistered with the engine.
+                Log.d(TAG, "lock screen receiver was not registered", e)
+            }
             if (::renderer.isInitialized) {
                 queueEvent { renderer.destroy() }
             }
             super.onDestroy()
+        }
+
+        private fun registerLockScreenReceiver() {
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_USER_PRESENT)
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            }
+            applicationContext.registerReceiver(lockScreenReceiver, filter)
+            val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            lockScreenVisible = keyguard.isKeyguardLocked
+        }
+
+        private fun updateLockScreen(visible: Boolean) {
+            if (lockScreenVisible == visible) return
+            lockScreenVisible = visible
+            if (::renderer.isInitialized) renderer.setLockScreenVisible(visible)
         }
     }
 }

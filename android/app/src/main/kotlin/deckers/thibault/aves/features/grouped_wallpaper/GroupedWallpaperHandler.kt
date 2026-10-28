@@ -142,7 +142,7 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
         val attached = call.argument<Boolean>("attached") == true
         GroupedWallpaperAppBridge.setRequestHandlerAttached(attached)
         if (attached && GroupedLiveWallpaperService.isRunning) {
-            GroupedWallpaperAppBridge.requestSync(null)
+            GroupedWallpaperAppBridge.requestSync()
         }
         result.success(null)
     }

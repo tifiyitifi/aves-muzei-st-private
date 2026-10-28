@@ -34,6 +34,13 @@ class WallpaperGroupRows extends Table {
 
   IntColumn get updatedAt => integer().named('updatedAt')();
 
+  /// Home and lock effects as a [WallpaperEffectsConfig] JSON map.
+  ///
+  /// One column keeps the two surfaces and the link toggle atomic, exactly as the
+  /// effects page edits them. The default `{}` reads back as the identity
+  /// configuration, so an upgraded group keeps its sharp photos.
+  TextColumn get effects => text().withDefault(const Constant('{}'))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

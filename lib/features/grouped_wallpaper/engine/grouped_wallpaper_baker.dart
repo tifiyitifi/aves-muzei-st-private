@@ -4,17 +4,32 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/images.dart';
 import 'package:aves/model/entry/extensions/props.dart';
 import 'package:flutter/painting.dart';
 
-/// A baked wallpaper frame: one opaque PNG at the surface's aspect ratio.
+/// A baked wallpaper frame: one opaque PNG per surface plus the sharp original.
+///
+/// The effect PNGs are byte-identical to [sharpPng] when their configuration is
+/// the identity, so the state store can skip writing a second copy.
 class GroupedWallpaperBake {
-  final Uint8List png;
+  final Uint8List sharpPng;
+  final Uint8List effectsHomePng;
+  final Uint8List effectsLockPng;
   final Size size;
 
-  const new({required this.png, required this.size});
+  /// Average luminance of the sharp frame, in `0..1`.
+  final double darkness;
+
+  const new({
+    required this.sharpPng,
+    required this.effectsHomePng,
+    required this.effectsLockPng,
+    required this.size,
+    required this.darkness,
+  });
 }
 
 class GroupedWallpaperBakeException implements Exception {
@@ -27,17 +42,24 @@ class GroupedWallpaperBakeException implements Exception {
   String toString() => 'GroupedWallpaperBakeException: $message';
 }
 
-/// Renders one photo to the wallpaper's cover crop.
+/// Renders one photo to the wallpaper's cover crop, plus the home/lock effects.
 ///
-/// The grouped wallpaper shows a single sharp image (no blur, dim or greyscale),
-/// so this is the Muzei bake without the effect pipeline: decode at cover
-/// resolution, center-crop, encode PNG. Dart owns it because Aves already has the
-/// EXIF-aware decoders and the SVG rasterizer; the native renderer only uploads
-/// the resulting texture.
+/// The effect math follows Muzei's `MuzeiBlurRenderer`: blur at a quarter of the
+/// surface height, then upscale; grey via a desaturation matrix; dim via the
+/// artwork's own darkness. Dart owns it because Aves already has the EXIF-aware
+/// decoders and the SVG rasterizer; the native renderer only uploads the
+/// resulting textures.
 class GroupedWallpaperBaker {
   /// Conservative `GL_MAX_TEXTURE_SIZE` floor; scrollable wallpapers can be
   /// wider than the screen, so the target itself has to be bounded.
   static const int maxDimension = 4096;
+
+  /// Muzei blurs at a quarter of the surface height, then lets the GPU scale the
+  /// result back up. Keeping the bake at that size saves most of the blur cost
+  /// while looking the same after the final upscale.
+  static const int effectsDownscale = 4;
+
+  static const int darknessSampleSide = 64;
 
   /// Decode budget for cover-cropping, so an extreme aspect ratio cannot require
   /// a very large intermediate bitmap.
@@ -65,13 +87,37 @@ class GroupedWallpaperBaker {
     );
   }
 
-  Future<GroupedWallpaperBake> bake({required AvesEntry entry, required Size targetSize}) async {
+  /// Bakes the sharp crop and both effect images from [entry].
+  ///
+  /// [lock] must already be the effective lock effects: when the user links the
+  /// surfaces, the caller passes the home values for both, exactly as Muzei
+  /// shares one blurred layer.
+  Future<GroupedWallpaperBake> bake({
+    required AvesEntry entry,
+    required Size targetSize,
+    required WallpaperEffects home,
+    required WallpaperEffects lock,
+  }) async {
     final target = clampTargetSize(targetSize);
     ui.Image? decoded, sharp;
     try {
       decoded = await _decode(entry, target);
       sharp = await _coverCrop(decoded, target);
-      return GroupedWallpaperBake(png: await _encodePng(sharp), size: target);
+      final sharpPng = await _encodePng(sharp);
+      final darkness = await _measureDarkness(sharp);
+      final homePng = home.isIdentity ? sharpPng : await _renderEffects(sharp: sharp, effects: home, darkness: darkness);
+      final lockPng = lock == home
+          ? homePng
+          : lock.isIdentity
+              ? sharpPng
+              : await _renderEffects(sharp: sharp, effects: lock, darkness: darkness);
+      return GroupedWallpaperBake(
+        sharpPng: sharpPng,
+        effectsHomePng: homePng,
+        effectsLockPng: lockPng,
+        size: target,
+        darkness: darkness,
+      );
     } on GroupedWallpaperBakeException {
       rethrow;
     } catch (error, stack) {
@@ -181,6 +227,109 @@ class GroupedWallpaperBaker {
       return await picture.toImage(target.width.round(), target.height.round());
     } finally {
       picture.dispose();
+    }
+  }
+
+  Future<Uint8List> _renderEffects({
+    required ui.Image sharp,
+    required WallpaperEffects effects,
+    required double darkness,
+  }) async {
+    final targetWidth = sharp.width;
+    final targetHeight = sharp.height;
+    final blurWidth = math.max(2, (targetWidth / effectsDownscale).round());
+    final blurHeight = math.max(2, (targetHeight / effectsDownscale).round());
+    final bounds = ui.Rect.fromLTWH(0, 0, blurWidth.toDouble(), blurHeight.toDouble());
+    final source = ui.Rect.fromLTWH(0, 0, targetWidth.toDouble(), targetHeight.toDouble());
+    final sigma = effects.sigmaFor(targetHeight.toDouble(), downscale: targetHeight / blurHeight);
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    canvas.drawRect(bounds, ui.Paint()..color = const ui.Color(0xFF000000));
+
+    final layerPaint = ui.Paint();
+    if (sigma > 0) {
+      layerPaint.imageFilter = ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma, tileMode: ui.TileMode.clamp);
+    }
+    if (effects.grey > 0) {
+      layerPaint.colorFilter = ui.ColorFilter.matrix(effects.desaturationMatrix);
+    }
+    if (sigma > 0) {
+      canvas.saveLayer(bounds, layerPaint);
+      canvas.drawImageRect(sharp, source, bounds, ui.Paint()..filterQuality = ui.FilterQuality.medium);
+      canvas.restore();
+    } else {
+      canvas.drawImageRect(
+        sharp,
+        source,
+        bounds,
+        layerPaint..filterQuality = ui.FilterQuality.medium,
+      );
+    }
+
+    final dimAlpha = effects.dimAlpha(darkness);
+    if (dimAlpha > 0) {
+      canvas.drawRect(bounds, ui.Paint()..color = ui.Color.fromARGB(dimAlpha, 0, 0, 0));
+    }
+
+    final picture = recorder.endRecording();
+    ui.Image blurred;
+    try {
+      blurred = await picture.toImage(blurWidth, blurHeight);
+    } finally {
+      picture.dispose();
+    }
+    try {
+      final upRecorder = ui.PictureRecorder();
+      final upCanvas = ui.Canvas(upRecorder);
+      upCanvas.drawImageRect(
+        blurred,
+        ui.Rect.fromLTWH(0, 0, blurWidth.toDouble(), blurHeight.toDouble()),
+        ui.Rect.fromLTWH(0, 0, targetWidth.toDouble(), targetHeight.toDouble()),
+        ui.Paint()..filterQuality = ui.FilterQuality.medium,
+      );
+      final upPicture = upRecorder.endRecording();
+      try {
+        final output = await upPicture.toImage(targetWidth, targetHeight);
+        try {
+          return await _encodePng(output);
+        } finally {
+          output.dispose();
+        }
+      } finally {
+        upPicture.dispose();
+      }
+    } finally {
+      blurred.dispose();
+    }
+  }
+
+  /// Average luminance in `0..1`, using Muzei's channel weights so the dim
+  /// curve behaves like the original renderer.
+  Future<double> _measureDarkness(ui.Image image) async {
+    const side = darknessSampleSide;
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    canvas.drawImageRect(
+      image,
+      ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      ui.Rect.fromLTWH(0, 0, side.toDouble(), side.toDouble()),
+      ui.Paint()..filterQuality = ui.FilterQuality.low,
+    );
+    final picture = recorder.endRecording();
+    final thumbnail = await picture.toImage(side, side);
+    picture.dispose();
+    try {
+      final data = await thumbnail.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (data == null) throw const GroupedWallpaperBakeException('darkness sampling returned no data');
+      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      var total = 0.0;
+      for (var i = 0; i + 3 < bytes.length; i += 4) {
+        total += 0.21 * bytes[i] + 0.71 * bytes[i + 1] + 0.07 * bytes[i + 2];
+      }
+      return (total / (side * side) / 256).clamp(0.0, 1.0);
+    } finally {
+      thumbnail.dispose();
     }
   }
 

@@ -13,6 +13,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/props.dart';
@@ -182,6 +183,27 @@ void main() {
       expect((await store.readState())!.queueLength, 3);
     });
 
+    test('re-bakes when a slot effect file is gone from disk', () async {
+      baker.distinctEffects = true;
+      planStore.plan = GroupedWallpaperPlan(
+        group: dcimGroup.copyWith(
+          effects: const WallpaperEffectsConfig(
+            home: WallpaperEffects(blur: 1),
+            lock: WallpaperEffects(blur: 2),
+          ),
+        ),
+      );
+      serve(entries(12));
+      await engine.prepare();
+      final state = (await store.readState())!;
+      expect(state.slots.map((slot) => slot.effectHome).toList(), everyElement(isNotEmpty));
+      await store.slotPhoto(state.next, name: GroupedWallpaperStateStore.slotEffectHomeFileName).delete();
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      expect((await store.readState())!.queueLength, 3);
+    });
+
     test('a small group keeps fewer slots instead of repeating an image', () async {
       serve(entries(2));
 
@@ -229,6 +251,58 @@ void main() {
       await engine.syncNow();
 
       expect(entrySource.lastRange, range);
+    });
+
+    test('bakes the current group effects for both surfaces', () async {
+      planStore.plan = GroupedWallpaperPlan(
+        group: dcimGroup.copyWith(
+          effects: const WallpaperEffectsConfig(
+            home: WallpaperEffects(blur: 250),
+            lock: WallpaperEffects(grey: 500),
+          ),
+        ),
+      );
+      serve(entries(3));
+
+      await engine.prepare();
+
+      expect(baker.lastHome?.blur, 250);
+      expect(baker.lastLock?.grey, 500);
+    });
+
+    test('identity effects reuse the sharp photo instead of writing a copy', () async {
+      serve(entries(3));
+
+      await engine.prepare();
+
+      final state = (await store.readState())!;
+      for (final slot in state.slots) {
+        expect(slot.effectHome, slot.photo);
+        expect(slot.effectLock, slot.photo);
+      }
+    });
+
+    test('writes home and lock effect files when they differ from the sharp photo', () async {
+      baker.distinctEffects = true;
+      planStore.plan = GroupedWallpaperPlan(
+        group: dcimGroup.copyWith(
+          effects: const WallpaperEffectsConfig(
+            home: WallpaperEffects(blur: 1),
+            lock: WallpaperEffects(blur: 2),
+          ),
+        ),
+      );
+      serve(entries(3));
+
+      await engine.prepare();
+
+      final state = (await store.readState())!;
+      for (final slot in state.slots) {
+        expect(slot.effectHome, endsWith('/home.png'));
+        expect(slot.effectLock, endsWith('/lock.png'));
+        expect(store.slotEffectPhotoOf(slot, lock: false)?.existsSync(), isTrue);
+        expect(store.slotEffectPhotoOf(slot, lock: true)?.existsSync(), isTrue);
+      }
     });
   });
 
@@ -336,21 +410,38 @@ void main() {
       expect(state.queueLength, 3);
     });
 
-    test('adopts the promotion sent over the channel without reading runtime.json', () async {
+    test('adopts a promotion made while the queue was baking', () async {
       serve(entries(12));
       await engine.prepare();
       final first = (await store.readState())!;
-
-      expect(
-        await engine.prepare(promotion: GroupedWallpaperPromotion(generation: first.generation, current: first.next, next: first.next2)),
-        GroupedWallpaperSyncResult.baked,
+      // The renderer promoted once before this run...
+      await store.runtimeFile.writeAsString(
+        '{"generation":${first.generation},"current":${first.next},"next":${first.next2},"refillRequested":true}',
+      );
+      // ...and once more while Dart bakes the freed slot.
+      baker.onBake = () => store.runtimeFile.writeAsString(
+        '{"generation":${first.generation},"current":${first.next2},"next":-1,"refillRequested":true}',
       );
 
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
       final state = (await store.readState())!;
-      expect(state.currentSlot?.entryId, 49);
-      expect(state.nextSlot?.entryId, 48);
-      expect(state.queueLength, 3);
-      expect(await store.runtimeFile.exists(), isFalse);
+      expect(state.currentSlot?.entryId, 48);
+      expect(state.nextSlot?.entryId, 47);
+      expect(state.next2, -1);
+      // Both photos the renderer showed are kept out of the next picks.
+      expect(state.recent.map((entry) => entry.entryId), [48, 49, 50]);
+    });
+
+    test('a runtime pointing at the current slot is not a promotion', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final first = (await store.readState())!;
+      await store.runtimeFile.writeAsString('{"generation":${first.generation},"current":${first.current},"next":-1}');
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
+
+      expect((await store.readState())!.currentSlot?.entryId, 50);
     });
 
     test('a stale runtime is ignored', () async {
@@ -514,7 +605,7 @@ void main() {
       if (!reloaded.isCompleted) reloaded.complete();
     };
 
-    platform.syncHandler!(null);
+    platform.syncHandler!();
     await reloaded.future;
 
     expect((await store.readState())!.hasPhoto, isTrue);
@@ -535,7 +626,7 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   bool active = true;
   int reloadCount = 0;
   bool chooserOpened = false;
-  void Function(GroupedWallpaperPromotion? promotion)? syncHandler;
+  void Function()? syncHandler;
   VoidCallback? onReload;
 
   new(this.root);
@@ -562,7 +653,7 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   }
 
   @override
-  void setSyncRequestHandler({void Function(GroupedWallpaperPromotion? promotion)? onSyncRequested}) {
+  void setSyncRequestHandler({void Function()? onSyncRequested}) {
     syncHandler = onSyncRequested;
   }
 }
@@ -571,16 +662,40 @@ class _FakeBaker extends GroupedWallpaperBaker {
   int bakeCount = 0;
   AvesEntry? lastEntry;
   Size? lastTarget;
+  WallpaperEffects? lastHome;
+  WallpaperEffects? lastLock;
   Object? error;
 
+  /// Returns distinct bytes for each surface, so a test can assert the effect
+  /// files are written.
+  bool distinctEffects = false;
+
+  /// Runs during a bake, so a test can simulate a promotion mid-run.
+  Future<void> Function()? onBake;
+
   @override
-  Future<GroupedWallpaperBake> bake({required AvesEntry entry, required Size targetSize}) async {
+  Future<GroupedWallpaperBake> bake({
+    required AvesEntry entry,
+    required Size targetSize,
+    required WallpaperEffects home,
+    required WallpaperEffects lock,
+  }) async {
     bakeCount++;
     lastEntry = entry;
     lastTarget = targetSize;
+    lastHome = home;
+    lastLock = lock;
+    await onBake?.call();
     final failure = error;
     if (failure != null) throw failure;
-    return GroupedWallpaperBake(png: Uint8List.fromList([1, 2, 3]), size: targetSize);
+    final sharp = Uint8List.fromList([1, 2, 3]);
+    return GroupedWallpaperBake(
+      sharpPng: sharp,
+      effectsHomePng: distinctEffects ? Uint8List.fromList([4, 5, 6]) : sharp,
+      effectsLockPng: distinctEffects ? Uint8List.fromList([7, 8, 9]) : sharp,
+      size: targetSize,
+      darkness: .5,
+    );
   }
 }
 

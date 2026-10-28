@@ -1,4 +1,3 @@
-import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_bridge.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
@@ -29,7 +28,17 @@ void main() {
     next: 1,
     next2: 2,
     slots: [
-      GroupedWallpaperSlot(id: 0, entryId: 7, uri: 'content://media/7', title: 'IMG_7', photo: 'slots/0/photo.png', width: 1080, height: 2400),
+      GroupedWallpaperSlot(
+        id: 0,
+        entryId: 7,
+        uri: 'content://media/7',
+        title: 'IMG_7',
+        photo: 'slots/0/photo.png',
+        effectHome: 'slots/0/home.png',
+        effectLock: 'slots/0/lock.png',
+        width: 1080,
+        height: 2400,
+      ),
       GroupedWallpaperSlot(id: 1, entryId: 8, uri: 'content://media/8', title: 'IMG_8', photo: 'slots/1/photo.png', width: 1080, height: 2400),
       GroupedWallpaperSlot(id: 2, entryId: 9, uri: 'content://media/9', title: 'IMG_9', photo: 'slots/2/photo.png', width: 1080, height: 2400),
     ],
@@ -51,6 +60,8 @@ void main() {
     expect(parsed.next2Slot?.entryId, 9);
     expect(parsed.entryId, 7);
     expect(parsed.entryTitle, 'IMG_7');
+    expect(parsed.currentSlot?.effectHome, 'slots/0/home.png');
+    expect(parsed.currentSlot?.effectLock, 'slots/0/lock.png');
     expect(parsed.recent.map((entry) => entry.entryId), [7, 6]);
     expect(parsed.cursor, 5);
     expect(parsed.newestEntryId, 9);
@@ -209,14 +220,5 @@ void main() {
     const runtime = GroupedWallpaperRuntime(generation: 3, current: 1, next: 2, refillRequested: true);
     expect(GroupedWallpaperRuntime.tryFromJsonMap(runtime.toJsonMap()), runtime);
     expect(GroupedWallpaperRuntime.tryFromJsonMap({'current': 1}), isNull);
-  });
-
-  test('a channel promotion parses into a runtime record', () {
-    final promotion = GroupedWallpaperPromotion.tryParse({'generation': 3, 'current': 1, 'next': 2})!;
-    expect(promotion.generation, 3);
-    expect(promotion.current, 1);
-    expect(promotion.toRuntime(), const GroupedWallpaperRuntime(generation: 3, current: 1, next: 2, refillRequested: true));
-    expect(GroupedWallpaperPromotion.tryParse(null), isNull);
-    expect(GroupedWallpaperPromotion.tryParse({'generation': 3, 'current': -1}), isNull);
   });
 }

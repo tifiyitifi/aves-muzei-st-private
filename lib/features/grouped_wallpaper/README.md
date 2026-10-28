@@ -6,14 +6,15 @@ of the Muzei-style live wallpaper mechanism.
 ## Status
 
 - **Done**: group model, layout invariants, bundled defaults (JSON), storage
-  (`wallpaper_groups` table, schema v7; `baseActive` in v9), controller with the
-  page's in-memory draft, the wallpaper-group page reachable from the
-  visible-range page's More menu / the shared bottom-bar entry, the engine's
-  closed loop (Dart baking + native slot queue), global gestures, and the
-  immersive view page.
-- **Not done yet**: auto-advance intervals, per-group effects, the notification,
-  and the availability label. Until then a sync happens when the service starts,
-  on a wallpaper tap, or when the user asks for it.
+  (`wallpaper_groups` table, schema v7; `baseActive` in v9; per-group `effects`
+  in v10), controller with the page's in-memory draft, the wallpaper-group page
+  reachable from the visible-range page's More menu / the shared bottom-bar
+  entry, the engine's closed loop (Dart baking + native slot queue), global
+  gestures, the immersive view page, and per-group home/lock effects with a
+  copy-to-other-groups grid.
+- **Not done yet**: auto-advance intervals, the notification, and the
+  availability label. Until then a sync happens when the service starts, on a
+  wallpaper tap, or when the user asks for it.
 
 ## The engine
 
@@ -31,11 +32,13 @@ One run:
 1. reads the *saved* current group, its range, the off switch and the ordering
    (`SavedGroupedWallpaperPlanStore`, deliberately bypassing the page's draft);
 2. adopts the first enabled group when activation finds no group selected;
-3. adopts a slot the renderer promoted (over the channel when the app is
-   running, from `runtime.json` in a background run);
+3. adopts a slot the renderer promoted, from `runtime.json` (the renderer writes
+   it synchronously, so a running app and a background run read the same
+   record);
 4. resolves the media set with `wallpaperMediaSetFilter` and picks each missing
    slot through the saved ordering;
-5. bakes a cover-cropped PNG at `WallpaperManager.desiredMinimumWidth` per slot;
+5. bakes a cover-cropped PNG at `WallpaperManager.desiredMinimumWidth` per slot,
+   plus one effect PNG per surface when the group's effects are not identity;
 6. writes `state.json` and the slot photos atomically, then asks the renderer to
    reload.
 
@@ -48,20 +51,50 @@ bake.
 
 `state.json` carries `current → next → next2`, so the renderer can move to the
 next photo on a double tap without waiting for Flutter: it switches to the
-texture it already uploaded, records the promotion in `runtime.json`, and asks
-the app (or the shared background worker) to bake the freed slot. A tap that
-arrives before the slot is uploaded is buffered (capacity 5, 10 s expiry) and
-replayed as prefetched slots land, so a burst of taps keeps advancing instead of
-stopping after two.
+texture it already uploaded, writes the promotion to `runtime.json`
+synchronously, and asks the app (or the shared background worker) to bake the
+freed slot. A tap that arrives before the slot is uploaded is buffered (capacity
+5, 10 s expiry) and replayed as prefetched slots land, so a burst of taps keeps
+advancing instead of stopping after two.
+
+A promotion is forward-only on both sides. Dart adopts a runtime only when it
+points at a slot queued after the current one, and re-reads it just before
+writing `state.json` so a tap that landed during a bake is not rewound. The
+renderer does the same on reload: if the new state's queue still contains the
+slot on screen after its current, it keeps that slot, shifts the queue to it and
+rewrites the runtime with the new generation. Without that, a tap could show the
+next photo and then snap back to the one it just left.
+
+### Effects
+
+Effects belong to the group, with separate home and lock values and Muzei's
+optional link toggle. They are stored as one JSON column on the group row
+(`effects`, schema v10), so an upgraded group reads the identity configuration
+and keeps its photos sharp.
+
+The baker applies the same math as Muzei (blur at a quarter of the surface
+height then upscale, greyscale matrix, dim from the artwork's own darkness) and
+writes `slots/<id>/home.png` / `slots/<id>/lock.png` next to the sharp
+`photo.png`. An identity effect points at the sharp file instead of writing a
+second copy. The native renderer picks the file for the surface being drawn,
+using the keyguard state, so only one texture per slot is uploaded.
+
+The effects page is bound to the viewed group and applies as the sliders move,
+bypassing the range draft: effects are display preferences, and the live
+wallpaper should follow them without a separate "save". Its copy action opens a
+group grid with the app-wide XOR-range gesture and writes the same configuration
+to every selected group in one transaction.
 
 ### The view page
 
 A three-finger tap opens an immersive view of the current photo, modelled on
-Muzei's artwork screen: pan and zoom, chrome on tap, the group · count · title at
-the bottom, and a menu with 「Open wallpaper groups」, 「Open in gallery」 and
-share. A wallpaper gesture has no Activity, so the view is pushed over the app's
-home page: back returns to the app instead of closing it. Opened from the group
-page, the same entry pops back to it.
+Muzei's artwork screen: pan and zoom, chrome visible on open and toggled by a
+tap, the group · count · title at the bottom left and the menu at the bottom
+right. The menu has 「Open wallpaper groups」, 「Open in gallery」 and share. A
+wallpaper gesture has no Activity, so the view is pushed over the playing
+group's page, itself over the app's home page: back walks view → group page →
+home instead of closing the app, and the group page starts on the group being
+played. Opened from the group page, 「Open wallpaper groups」 pops back to it.
 
 ### Ordering
 

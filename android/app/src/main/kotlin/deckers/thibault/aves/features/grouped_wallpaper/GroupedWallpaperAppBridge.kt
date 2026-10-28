@@ -79,23 +79,17 @@ object GroupedWallpaperAppBridge {
     /**
      * Asks the app to bake a frame now; false when no app is listening.
      *
-     * [promotion] is the slot the renderer just promoted, so the app can adopt it
-     * without waiting for the asynchronous `runtime.json` write.
+     * The promotion is not passed along: the renderer already wrote
+     * `runtime.json` synchronously before asking, so the app reads the same
+     * record whether it was notified or is picking the work up later.
      */
-    fun requestSync(promotion: GroupedWallpaperPromotion?): Boolean {
+    fun requestSync(): Boolean {
         val engineMessenger = messenger ?: return false
         if (!requestHandlerAttached) return false
         mainHandler.post {
             try {
-                val arguments = promotion?.let {
-                    mapOf(
-                        "generation" to it.generation,
-                        "current" to it.current,
-                        "next" to it.next,
-                    )
-                }
                 MethodChannel(engineMessenger, GroupedWallpaperHandler.CHANNEL)
-                    .invokeMethod("syncRequested", arguments)
+                    .invokeMethod("syncRequested", null)
             } catch (t: Throwable) {
                 Log.w(TAG, "failed to ask the app for a frame", t)
             }

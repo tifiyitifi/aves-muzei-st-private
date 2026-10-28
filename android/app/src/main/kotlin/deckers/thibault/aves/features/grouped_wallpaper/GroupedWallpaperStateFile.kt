@@ -26,20 +26,17 @@ data class GroupedWallpaperSlotFile(
     val id: Int,
     val entryId: Int,
     val photo: String,
-)
-
-/**
- * A slot the renderer promoted, handed to the app so it can refill the queue.
- *
- * The renderer also writes it to `runtime.json`, but that write is asynchronous
- * and a running app can bake before it lands; the channel message arrives with
- * the refill request instead.
- */
-data class GroupedWallpaperPromotion(
-    val generation: Int,
-    val current: Int,
-    val next: Int,
-)
+    /** Baked home effect; empty means the sharp [photo] is used. */
+    val effectHome: String = "",
+    /** Baked lock effect; empty means the sharp [photo] is used. */
+    val effectLock: String = "",
+) {
+    /** The file this slot draws on a surface, falling back to the sharp photo. */
+    fun photoFor(lockScreen: Boolean): String {
+        val effect = if (lockScreen) effectLock else effectHome
+        return if (effect.isEmpty()) photo else effect
+    }
+}
 
 /**
  * What the native side needs from the Dart-owned `state.json`.
@@ -175,7 +172,15 @@ object GroupedWallpaperStateFile {
                 val entryId = raw.optInt("entryId", -1)
                 val photo = raw.optString("photo", "")
                 if (id < 0 || entryId < 0 || photo.isEmpty() || !seen.add(id)) continue
-                slots.add(GroupedWallpaperSlotFile(id, entryId, photo))
+                slots.add(
+                    GroupedWallpaperSlotFile(
+                        id = id,
+                        entryId = entryId,
+                        photo = photo,
+                        effectHome = raw.optString("effectHome", ""),
+                        effectLock = raw.optString("effectLock", ""),
+                    ),
+                );
             }
         }
         val gestures = json.optJSONObject("gestures")

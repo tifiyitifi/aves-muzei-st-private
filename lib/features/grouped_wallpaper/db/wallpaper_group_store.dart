@@ -5,6 +5,7 @@ import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:drift/drift.dart';
 
@@ -66,6 +67,7 @@ class WallpaperGroupStore {
                 enabled: Value(group.enabled),
                 current: Value(group.current),
                 position: Value(i),
+                effects: Value(jsonEncode(group.effects.toJsonMap())),
               ),
             );
       }
@@ -111,6 +113,29 @@ class WallpaperGroupStore {
 
   Future<void> writeOrdering(GroupedWallpaperOrdering ordering) => AppMetaStore(db).write({keyOrdering: ordering.name});
 
+  /// Writes one group's effects and bumps its `updatedAt` so the next bake sees
+  /// the change.
+  ///
+  /// This deliberately bypasses the page's draft: the effects page applies as the
+  /// sliders move, like Muzei, while range edits still wait for "save changes".
+  Future<void> writeEffects(String id, WallpaperEffectsConfig effects, {required int updatedAt}) => writeEffectsFor({id}, effects, updatedAt: updatedAt);
+
+  /// Copies [effects] to every group in [ids] in one transaction.
+  Future<void> writeEffectsFor(Set<String> ids, WallpaperEffectsConfig effects, {required int updatedAt}) async {
+    if (ids.isEmpty) return;
+    final encoded = jsonEncode(effects.toJsonMap());
+    await db.transaction(() async {
+      for (final id in ids) {
+        await (db.update(db.wallpaperGroupRows)..where((t) => t.id.equals(id))).write(
+          WallpaperGroupRowsCompanion(
+            effects: Value(encoded),
+            updatedAt: Value(updatedAt),
+          ),
+        );
+      }
+    });
+  }
+
   static WallpaperGroup _toGroup(WallpaperGroupRow row, int number) => WallpaperGroup(
         id: row.id,
         number: number,
@@ -120,5 +145,21 @@ class WallpaperGroupStore {
         current: row.current,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
+        effects: _effects(row.effects),
       );
+
+  /// Parses the stored effects, falling back to identity when the value is from a
+  /// newer build or was truncated.
+  static WallpaperEffectsConfig _effects(String raw) {
+    if (raw.isEmpty) return const WallpaperEffectsConfig();
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return WallpaperEffectsConfig.fromJsonMap(decoded.map((key, value) => MapEntry(key.toString(), value)));
+      }
+    } catch (_) {
+      // A corrupt value must not cost the user their wallpaper.
+    }
+    return const WallpaperEffectsConfig();
+  }
 }

@@ -16,21 +16,20 @@ import 'package:material_ui/material_ui.dart';
 /// Immersive view of the photo the grouped wallpaper is showing.
 ///
 /// Modelled on Muzei's artwork screen: a full-screen image with pan and zoom and
-/// chrome that appears on tap. Its menu opens the wallpaper group page instead of
-/// Muzei's "source" entry, because a group *is* the source here, and the bottom
-/// bar names the group, its size and the photo, which is what the wallpaper's
-/// notification will show too.
+/// chrome that appears on tap. Its menu sits at the bottom right, next to the
+/// group name and photo title, and opens the wallpaper group page instead of
+/// Muzei's "source" entry, because a group *is* the source here.
 class GroupedWallpaperViewPage extends StatefulWidget {
   static const routeName = '/grouped_wallpaper/view';
 
-  /// Whether the group page pushed this view.
+  /// Whether the playing group's page is already below this view.
   ///
-  /// Opening the group page from the view then pops back to it instead of
-  /// pushing a second one; a view opened by a wallpaper gesture (cold start)
-  /// replaces itself, so back returns to the app's home.
-  final bool openedFromGroups;
+  /// A wallpaper gesture pushes the view over the playing group's page, and the
+  /// group page's menu opens the view from itself, so "open wallpaper group"
+  /// pops back to that page. Only a view without one has to replace itself.
+  final bool groupPageBelow;
 
-  const new({super.key, this.openedFromGroups = false});
+  const new({super.key, this.groupPageBelow = false});
 
   @override
   State<GroupedWallpaperViewPage> createState() => _GroupedWallpaperViewPageState();
@@ -49,7 +48,10 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
   AvesEntry? _entry;
   String? _photo;
   bool _loading = true;
-  bool _chromeVisible = false;
+
+  /// The chrome is on when the page opens, so the back button and the photo's
+  /// context are visible without a first tap; a tap toggles it, like Muzei.
+  bool _chromeVisible = true;
 
   /// Geometry the viewport was last centered for.
   (Size, Size)? _geometry;
@@ -76,7 +78,9 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
 
   Future<void> _load() async {
     final state = await wallpaperEngineLink.readState();
-    final photo = await wallpaperEngineLink.currentPhotoPath();
+    // The view shows the wallpaper's own pixels, effects included; the entry
+    // still points at the original photo for "open in gallery" and share.
+    final photo = await wallpaperEngineLink.currentEffectPhotoPath();
     final uri = state?.currentSlot?.uri;
     AvesEntry? entry;
     if (uri != null && uri.isNotEmpty) {
@@ -131,14 +135,13 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
     switch (action) {
       case _ViewAction.openGroups:
         final navigator = Navigator.of(context);
-        if (widget.openedFromGroups) {
+        if (widget.groupPageBelow) {
           // The group page is the "source" of what is on screen and is already
           // below this view, so going back is what the user means.
           navigator.pop();
         } else {
-          // A wallpaper gesture cold-started the view on top of the app's home:
-          // replace it, so back from the group page returns home instead of
-          // showing a stale artwork.
+          // Defensive: a view without its group page below replaces itself, so
+          // back from the group page never returns to a stale artwork.
           await navigator.pushReplacement(
             MaterialPageRoute(
               settings: const RouteSettings(name: GroupedWallpaperPage.routeName),
@@ -227,33 +230,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
                     // The system bars are hidden here, so `SafeArea` would be
                     // zero; `viewPadding` keeps the chrome clear of a cutout.
                     padding: EdgeInsets.only(top: MediaQuery.viewPaddingOf(context).top),
-                    child: Row(
-                      children: [
-                        const BackButton(color: Colors.white),
-                        const Spacer(),
-                        PopupMenuButton<_ViewAction>(
-                          icon: const Icon(AIcons.more, color: Colors.white),
-                          tooltip: MaterialLocalizations.of(context).showMenuTooltip,
-                          onSelected: (action) => unawaited(_onAction(action)),
-                          itemBuilder: (context) => [
-                            PopupMenuItem(
-                              value: _ViewAction.openGroups,
-                              child: _menuRow(AIcons.wallpaper, l10n.groupedWallpaperViewOpenGroups),
-                            ),
-                            PopupMenuItem(
-                              value: _ViewAction.openInGallery,
-                              enabled: entry != null,
-                              child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
-                            ),
-                            PopupMenuItem(
-                              value: _ViewAction.share,
-                              enabled: entry != null,
-                              child: _menuRow(AIcons.share, l10n.groupedWallpaperViewShare),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                    child: const Row(children: [BackButton(color: Colors.white)]),
                   ),
                 ),
               ),
@@ -278,38 +255,64 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
                     ),
                   ),
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      24,
-                      16,
-                      16 + MediaQuery.viewPaddingOf(context).bottom,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
+                    // The menu sits at the bottom right, next to the info, as in
+                    // Muzei; the extra right inset keeps the touch target off the
+                    // screen edge.
+                    padding: EdgeInsets.fromLTRB(16, 24, 8, 8 + MediaQuery.viewPaddingOf(context).bottom),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          info,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: Colors.white70,
-                            shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                info,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                  color: Colors.white70,
+                                  shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
+                                ),
+                              ),
+                              if (state != null && state.entryTitle.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    state.entryTitle,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      color: Colors.white,
+                                      shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                        if (state != null && state.entryTitle.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              state.entryTitle,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                color: Colors.white,
-                                shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
-                              ),
+                        PopupMenuButton<_ViewAction>(
+                          icon: const Icon(AIcons.more, color: Colors.white),
+                          tooltip: MaterialLocalizations.of(context).showMenuTooltip,
+                          onSelected: (action) => unawaited(_onAction(action)),
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: _ViewAction.openGroups,
+                              child: _menuRow(AIcons.wallpaper, l10n.groupedWallpaperViewOpenGroups),
                             ),
-                          ),
+                            PopupMenuItem(
+                              value: _ViewAction.openInGallery,
+                              enabled: entry != null,
+                              child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
+                            ),
+                            PopupMenuItem(
+                              value: _ViewAction.share,
+                              enabled: entry != null,
+                              child: _menuRow(AIcons.share, l10n.groupedWallpaperViewShare),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),

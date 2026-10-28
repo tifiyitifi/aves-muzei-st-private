@@ -25,6 +25,10 @@ class GroupedWallpaperStateStore {
   static const String runtimeFileName = 'runtime.json';
   static const String slotsDirName = 'slots';
   static const String slotPhotoFileName = 'photo.png';
+
+  /// Baked effect images of a slot; absent when the effect is the identity.
+  static const String slotEffectHomeFileName = 'home.png';
+  static const String slotEffectLockFileName = 'lock.png';
   static const String tmpDirName = 'tmp';
 
   final Directory root;
@@ -42,8 +46,8 @@ class GroupedWallpaperStateStore {
 
   Directory get tmpDir => Directory(p.join(root.path, tmpDirName));
 
-  /// Photo file of slot [id].
-  File slotPhoto(int id) => File(p.join(slotsDir.path, '$id', slotPhotoFileName));
+  /// Photo file of slot [id], named [name].
+  File slotPhoto(int id, {String name = slotPhotoFileName}) => File(p.join(slotsDir.path, '$id', name));
 
   /// Photo file named by [slot], or null when it is not on disk.
   File? slotPhotoOf(GroupedWallpaperSlot slot) {
@@ -52,6 +56,22 @@ class GroupedWallpaperStateStore {
     // reads is identical on every platform.
     final file = File(p.joinAll([root.path, ...slot.photo.split('/')]));
     return file.existsSync() ? file : null;
+  }
+
+  /// The effect photo of [slot] for a surface, falling back to the sharp photo
+  /// when the effect is the identity or its file is gone.
+  File? slotEffectPhotoOf(GroupedWallpaperSlot slot, {required bool lock}) {
+    final photo = lock ? slot.effectLock : slot.effectHome;
+    if (photo.isEmpty) return slotPhotoOf(slot);
+    final file = File(p.joinAll([root.path, ...photo.split('/')]));
+    return file.existsSync() ? file : slotPhotoOf(slot);
+  }
+
+  /// Whether the stored effect path exists, without falling back to the sharp
+  /// photo: the queue is not ready when a baked effect was deleted.
+  bool effectPhotoExists(String photo) {
+    if (photo.isEmpty) return false;
+    return File(p.joinAll([root.path, ...photo.split('/')])).existsSync();
   }
 
   Future<void> ensureLayout() async {
@@ -72,17 +92,17 @@ class GroupedWallpaperStateStore {
   }
 
   /// Writes one slot's photo and returns its path relative to the root.
-  Future<String> writeSlotPhoto(int id, Uint8List bytes) async {
+  Future<String> writeSlotPhoto(int id, Uint8List bytes, {String name = slotPhotoFileName}) async {
     await ensureLayout();
-    final target = slotPhoto(id);
+    final target = slotPhoto(id, name: name);
     await target.parent.create(recursive: true);
-    final tmp = File(p.join(tmpDir.path, 'slot.$id.${DateTime.now().microsecondsSinceEpoch}.tmp'));
+    final tmp = File(p.join(tmpDir.path, 'slot.$id.$name.${DateTime.now().microsecondsSinceEpoch}.tmp'));
     try {
       await tmp.writeAsBytes(bytes, flush: true);
       await _replace(tmp, target);
       // POSIX separators: the native renderer resolves this against the root and
       // must not depend on the platform that wrote it.
-      return '$slotsDirName/$id/$slotPhotoFileName';
+      return '$slotsDirName/$id/$name';
     } catch (error, stack) {
       await _deleteQuietly(tmp);
       groupedWallpaperLog.e('failed to write the wallpaper photo of slot $id', error, stack);

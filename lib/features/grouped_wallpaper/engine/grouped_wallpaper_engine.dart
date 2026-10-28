@@ -97,7 +97,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     // activation: the system picker may not have committed the switch yet, so
     // the request must not be filtered by `isActive`.
     platform.setSyncRequestHandler(
-      onSyncRequested: (promotion) => unawaited(prepare(activation: true, promotion: promotion)),
+      onSyncRequested: () => unawaited(prepare(activation: true)),
     );
     link.attach(this);
     await link.refreshActive();
@@ -132,6 +132,15 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     return _store?.slotPhotoOf(slot)?.path;
   }
 
+  /// Absolute path of the home-effect image on screen, for the view page.
+  @override
+  Future<String?> currentEffectPhotoPath() async {
+    final state = await _store?.readState();
+    final slot = state?.currentSlot;
+    if (slot == null) return null;
+    return _store?.slotEffectPhotoOf(slot, lock: false)?.path;
+  }
+
   /// Records the explicit off/on switch without touching the current group.
   @override
   Future<void> setDisabled(bool disabled) async {
@@ -146,12 +155,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// "no group is current" fall back to the first enabled group: a restart of an
   /// install the user turned off must stay off.
   ///
-  /// [promotion] is the slot the renderer promoted just before asking for this
-  /// run. It is adopted directly, so the refill never races the renderer's
-  /// asynchronous `runtime.json` write and drop the bake.
+  /// The slot the renderer promoted is read from `runtime.json` inside the run,
+  /// so the refill never adopts a promotion the renderer did not write yet.
   @override
-  Future<GroupedWallpaperSyncResult> prepare({bool activation = false, GroupedWallpaperPromotion? promotion}) {
-    return _enqueue(() => _run(advance: false, requireActive: false, activation: activation, promotion: promotion));
+  Future<GroupedWallpaperSyncResult> prepare({bool activation = false}) {
+    return _enqueue(() => _run(advance: false, requireActive: false, activation: activation));
   }
 
   /// Re-bakes the saved current group and applies it now.
@@ -179,7 +187,6 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     required bool advance,
     required bool requireActive,
     required bool activation,
-    GroupedWallpaperPromotion? promotion,
   }) async {
     final store = _store;
     if (store == null) return GroupedWallpaperSyncResult.notActive;
@@ -222,9 +229,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
       // The renderer may have promoted a slot on its own; adopt it before
       // deciding what to bake, or the freed slot would never be refilled. The
-      // channel message wins over `runtime.json` because it arrives with the
-      // request instead of racing it.
-      final runtime = promotion?.toRuntime() ?? await store.readRuntime();
+      // renderer writes the runtime synchronously, so this read always sees the
+      // promotion that triggered this run.
+      final runtime = await store.readRuntime();
       final adopted = _adoptRuntime(previous, runtime);
       final promoted = !identical(adopted, previous);
       final stale = _isStale(plan, adopted);
@@ -269,8 +276,13 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     final slots = <GroupedWallpaperSlot>[
       for (final slot in state?.slots ?? const <GroupedWallpaperSlot>[])
         // A slot whose file disappeared is not part of the queue any more: it
-        // must be re-baked, not kept as an empty frame.
-        if ((slot.id == current || slot.id == next || slot.id == next2) && store.slotPhotoOf(slot) != null) slot,
+        // must be re-baked, not kept as an empty frame. The effect files are part
+        // of the frame too: a missing one would make the renderer skip the slot.
+        if ((slot.id == current || slot.id == next || slot.id == next2) &&
+            store.slotPhotoOf(slot) != null &&
+            (slot.effectHome.isEmpty || store.effectPhotoExists(slot.effectHome)) &&
+            (slot.effectLock.isEmpty || store.effectPhotoExists(slot.effectLock)))
+          slot,
     ];
     if (!slots.any((slot) => slot.id == current)) current = -1;
     if (!slots.any((slot) => slot.id == next)) next = -1;
@@ -314,8 +326,24 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         final id = _nextSlotId(usedIds);
         usedIds.add(id);
         try {
-          final bake = await baker.bake(entry: entry, targetSize: await _resolveTargetSize());
-          final photo = await store.writeSlotPhoto(id, bake.png);
+          final targetSize = await _resolveTargetSize();
+          final bake = await baker.bake(
+            entry: entry,
+            targetSize: targetSize,
+            home: plan.effects.home,
+            lock: plan.effects.effectiveLock,
+          );
+          final photo = await store.writeSlotPhoto(id, bake.sharpPng);
+          // An identity effect is byte-identical to the sharp photo: pointing at
+          // the same file avoids a second copy of a multi-megabyte PNG.
+          final effectHome = identical(bake.effectsHomePng, bake.sharpPng)
+              ? photo
+              : await store.writeSlotPhoto(id, bake.effectsHomePng, name: GroupedWallpaperStateStore.slotEffectHomeFileName);
+          final effectLock = identical(bake.effectsLockPng, bake.sharpPng)
+              ? photo
+              : identical(bake.effectsLockPng, bake.effectsHomePng)
+                  ? effectHome
+                  : await store.writeSlotPhoto(id, bake.effectsLockPng, name: GroupedWallpaperStateStore.slotEffectLockFileName);
           bakedAny = true;
           excluded.add(entry.id);
           return GroupedWallpaperSlot(
@@ -324,8 +352,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             uri: entry.uri,
             title: entry.bestTitle ?? '',
             photo: photo,
+            effectHome: effectHome,
+            effectLock: effectLock,
             width: bake.size.width.round(),
             height: bake.size.height.round(),
+            darkness: bake.darkness,
           );
         } on GroupedWallpaperBakeException catch (error, stack) {
           // Step to the next candidate rather than leaving the slot empty.
@@ -375,6 +406,19 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       next2 = -1;
     }
 
+    // A tap can promote while this run bakes. The renderer writes the runtime
+    // with the seed generation, so reading it again keeps the promoted photo
+    // instead of writing a state that rewinds to the seed's current.
+    final promotion = await _adoptPromotionDuringBake(store, state, byId, current, next, next2);
+    if (promotion != null) {
+      // The seed's current was on screen until that tap.
+      recent = GroupedWallpaperState.promoteRecent(recent, currentSlot);
+      current = promotion.$1;
+      next = promotion.$2;
+      next2 = promotion.$3;
+      currentSlot = byId[current];
+    }
+
     // Only the photo on screen is "recently shown"; the queued ones are excluded
     // through the queue itself.
     recent = GroupedWallpaperState.promoteRecent(recent, currentSlot);
@@ -385,7 +429,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     final ordered = [current, next, next2].where((id) => id >= 0).toList();
     // An empty group must still record its empty state, even though nothing was
     // baked.
-    if (!bakedAny && !mustWrite && current >= 0) return GroupedWallpaperSyncResult.unchanged;
+    if (!bakedAny && !mustWrite && promotion == null && current >= 0) return GroupedWallpaperSyncResult.unchanged;
     if (ordered.isEmpty) {
       await store.clearSlots();
     } else {
@@ -443,17 +487,51 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   /// Adopts the slot the native renderer promoted to, when the runtime still
   /// belongs to the state we know about.
+  ///
+  /// Forward only: a promotion can only target a slot queued after [state]'s
+  /// current. A runtime pointing at the current slot, or at a slot that left the
+  /// queue, is not a promotion of this state and is ignored.
   static GroupedWallpaperState? _adoptRuntime(GroupedWallpaperState? state, GroupedWallpaperRuntime? runtime) {
     if (state == null || runtime == null) return state;
     if (!runtime.matches(state)) return state;
-    if (runtime.current < 0 || runtime.current == state.current) return state;
-    if (state.slotById(runtime.current) == null) return state;
+    final queue = [state.current, state.next, state.next2].where((id) => id >= 0).toList();
+    final index = queue.indexOf(runtime.current);
+    if (index <= 0) return state;
+    final next = index + 1 < queue.length ? queue[index + 1] : -1;
     return state.copyWith(
-      current: runtime.current,
-      next: runtime.next,
+      current: queue[index],
+      next: next,
       next2: -1,
-      slots: [for (final slot in state.slots) if (slot.id == runtime.current || slot.id == runtime.next) slot],
+      slots: [for (final slot in state.slots) if (slot.id == queue[index] || slot.id == next) slot],
     );
+  }
+
+  /// Adopts a promotion the renderer made while [seed]'s queue was baking.
+  ///
+  /// Returns the queue after the promotion, or null when the runtime is not a
+  /// promotion of [seed] or targets a slot this run has not baked. The renderer
+  /// writes the runtime synchronously with the seed generation, so a matching
+  /// generation is exactly "promoted while this bake was running".
+  Future<(int, int, int)?> _adoptPromotionDuringBake(
+    GroupedWallpaperStateStore store,
+    GroupedWallpaperState? seed,
+    Map<int, GroupedWallpaperSlot> baked,
+    int current,
+    int next,
+    int next2,
+  ) async {
+    if (seed == null) return null;
+    final runtime = await store.readRuntime();
+    if (runtime == null || !runtime.matches(seed)) return null;
+    // A promotion always targets a slot of the seed queue, ahead of its current.
+    // Checking the seed queue (not the rebuilt one) also rejects a slot id that
+    // the bake recycled for another photo.
+    final seedQueue = [seed.current, seed.next, seed.next2].where((id) => id >= 0).toList();
+    if (seedQueue.indexOf(runtime.current) <= 0) return null;
+    final queue = [current, next, next2].where((id) => id >= 0).toList();
+    final index = queue.indexOf(runtime.current);
+    if (index <= 0 || !baked.containsKey(runtime.current)) return null;
+    return (queue[index], index + 1 < queue.length ? queue[index + 1] : -1, -1);
   }
 
   /// Whether [previous] is a frame of a real group, i.e. the wallpaper was
@@ -490,6 +568,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       // The files can be gone while the state still points at them (cache
       // cleanup, manual wipe): a frame that is not on disk is not ready.
       if (store.slotPhotoOf(slot) == null) return false;
+      if (slot.effectHome.isNotEmpty && !store.effectPhotoExists(slot.effectHome)) return false;
+      if (slot.effectLock.isNotEmpty && !store.effectPhotoExists(slot.effectLock)) return false;
     }
     return true;
   }

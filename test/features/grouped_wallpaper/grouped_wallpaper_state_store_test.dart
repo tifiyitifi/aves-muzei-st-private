@@ -70,6 +70,28 @@ void main() {
     expect(await store.slotPhoto(3).readAsBytes(), [1, 2, 3]);
   });
 
+  test('writes home and lock effect photos next to the sharp one', () async {
+    final sharp = await store.writeSlotPhoto(3, Uint8List.fromList([1]));
+    final home = await store.writeSlotPhoto(3, Uint8List.fromList([2]), name: GroupedWallpaperStateStore.slotEffectHomeFileName);
+    final lock = await store.writeSlotPhoto(3, Uint8List.fromList([3]), name: GroupedWallpaperStateStore.slotEffectLockFileName);
+
+    expect(home, 'slots/3/home.png');
+    expect(lock, 'slots/3/lock.png');
+    final slot = GroupedWallpaperSlot(id: 3, entryId: 1, uri: '', photo: sharp, effectHome: home, effectLock: lock);
+    expect(store.slotEffectPhotoOf(slot, lock: false)?.readAsBytesSync(), [2]);
+    expect(store.slotEffectPhotoOf(slot, lock: true)?.readAsBytesSync(), [3]);
+  });
+
+  test('an identity or missing effect falls back to the sharp photo', () async {
+    final sharp = await store.writeSlotPhoto(3, Uint8List.fromList([1]));
+    final identity = GroupedWallpaperSlot(id: 3, entryId: 1, uri: '', photo: sharp);
+    expect(store.slotEffectPhotoOf(identity, lock: false)?.path, store.slotPhoto(3).path);
+    expect(store.slotEffectPhotoOf(identity, lock: true)?.path, store.slotPhoto(3).path);
+
+    final missing = GroupedWallpaperSlot(id: 3, entryId: 1, uri: '', photo: sharp, effectHome: 'slots/3/gone.png');
+    expect(store.slotEffectPhotoOf(missing, lock: false)?.path, store.slotPhoto(3).path);
+  });
+
   test('pruning drops the slots that left the queue', () async {
     await store.writeSlotPhoto(0, Uint8List.fromList([1]));
     await store.writeSlotPhoto(1, Uint8List.fromList([2]));

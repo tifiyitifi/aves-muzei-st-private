@@ -7,6 +7,7 @@ import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/services/common/services.dart';
@@ -393,6 +394,32 @@ class WallpaperGroupController extends ChangeNotifier {
     final next = setWallpaperGroupEnabled(_groups, id, enabled);
     if (listEquals(next, _groups)) return;
     await _writeGroups(next);
+  }
+
+  /// The group's effects, or identity when the group is unknown.
+  WallpaperEffectsConfig effectsOf(String id) => _groups.firstWhereOrNull((group) => group.id == id)?.effects ?? const WallpaperEffectsConfig();
+
+  /// Applies [effects] to [id] immediately, bypassing the page's draft.
+  Future<void> setEffects(String id, WallpaperEffectsConfig effects) => setEffectsFor({id}, effects);
+
+  /// Applies [effects] to every group in [ids] in one write.
+  ///
+  /// Effects are display preferences, not range edits: the effects page applies
+  /// them as the sliders move, so they are written even while a range draft is
+  /// open. The in-memory list is updated too, so a later [saveDraft] writes the
+  /// same values instead of resurrecting the old ones.
+  Future<void> setEffectsFor(Set<String> ids, WallpaperEffectsConfig effects) async {
+    _requireInitialized();
+    final targets = ids.where((id) => _groups.any((group) => group.id == id)).toSet();
+    if (targets.isEmpty) return;
+    final now = _now;
+    final store = await _openStore();
+    await store.writeEffectsFor(targets, effects, updatedAt: now);
+    _groups = [
+      for (final group in _groups)
+        if (targets.contains(group.id)) group.copyWith(effects: effects, updatedAt: now) else group,
+    ];
+    notifyListeners();
   }
 
   Future<void> moveGroup(String id, int delta) async {

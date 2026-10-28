@@ -5,6 +5,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/services/common/services.dart';
@@ -46,6 +47,9 @@ class GroupedWallpaperPlan extends Equatable {
   bool get isNone => group.isNone;
 
   bool get locked => range?.locked ?? false;
+
+  /// The group's home/lock effects, applied to every slot this plan bakes.
+  WallpaperEffectsConfig get effects => group.effects;
 
   /// Whether a frame should follow [group] right now.
   bool get enabled => !disabled && !group.isNone;

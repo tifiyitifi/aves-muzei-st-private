@@ -12,10 +12,10 @@ import 'package:provider/provider.dart';
 
 /// One wallpaper group on the page: a number, a name, a note and its state.
 ///
-/// The lamp marks the group whose range the page shows; the play icon marks the
+/// The lamp sits on the number badge of an enabled group; the play icon marks the
 /// group the live wallpaper is actually playing, and the stop icon sits on group
 /// 0 while nothing is playing. Both can be on at once. A disabled group stays
-/// readable but dimmed, and the note falls back to the image count.
+/// readable but dimmed, shows no lamp, and the note falls back to the image count.
 class WallpaperGroupTile extends StatelessWidget {
   final WallpaperGroupFilter filter;
   final TileLayout tileLayout;
@@ -132,13 +132,19 @@ class WallpaperGroupTile extends StatelessWidget {
 
   /// The number, on the same neutral placeholder the range tiles use for a
   /// candidate without a cover.
+  ///
+  /// An enabled real group also shows the lamp on the lower part of the badge:
+  /// it is what "this group may be played" looks like, and group 0 (the off
+  /// switch) never has it.
   Widget _buildBadge(BuildContext context, double extent) {
     final brightness = Theme.of(context).brightness;
+    final colors = Theme.of(context).colorScheme;
     final color = Color.lerp(
-      Theme.of(context).colorScheme.surfaceContainerHighest,
-      Theme.of(context).colorScheme.primaryContainer,
+      colors.surfaceContainerHighest,
+      colors.primaryContainer,
       (selecting ? selected : filter.selected) ? .7 : .25,
     )!;
+    final showLamp = filter.enabled && !filter.isNone;
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -148,15 +154,32 @@ class WallpaperGroupTile extends StatelessWidget {
         ),
         borderRadius: const BorderRadius.all(Radius.circular(12)),
       ),
-      child: Center(
-        child: Text(
-          '${filter.number}',
-          style: TextStyle(
-            fontSize: min(extent * .36, 40),
-            fontWeight: FontWeight.w600,
-            color: brightness == Brightness.light ? Colors.black54 : Colors.white70,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(
+            child: Text(
+              '${filter.number}',
+              style: TextStyle(
+                fontSize: min(extent * .36, 40),
+                fontWeight: FontWeight.w600,
+                color: brightness == Brightness.light ? Colors.black54 : Colors.white70,
+              ),
+            ),
           ),
-        ),
+          if (showLamp)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: extent * .1,
+              child: Center(
+                child: Tooltip(
+                  message: context.l10n.wallpaperGroupEnabled,
+                  child: Icon(AIcons.visibleRangeActive, size: min(extent * .2, 18), color: colors.primary),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -180,11 +203,6 @@ class WallpaperGroupTile extends StatelessWidget {
       children: [
         if (selecting)
           Icon(selected ? AIcons.selected : AIcons.unselected, size: size, color: selected ? colors.primary : colors.onSurfaceVariant),
-        if (filter.selected)
-          Tooltip(
-            message: context.l10n.wallpaperGroupViewing,
-            child: Icon(AIcons.visibleRangeActive, size: size, color: colors.primary),
-          ),
         if (filter.playing)
           Tooltip(
             message: context.l10n.wallpaperGroupPlaying,

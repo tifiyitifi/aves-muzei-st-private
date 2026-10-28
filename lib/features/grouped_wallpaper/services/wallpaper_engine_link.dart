@@ -17,6 +17,13 @@ abstract interface class WallpaperEngineConnection {
   /// Absolute path of the photo on screen, or null when there is none.
   Future<String?> currentPhotoPath();
 
+  /// Absolute path of the home-effect image of the photo on screen.
+  ///
+  /// This is what the view page shows: the wallpaper's own pixels, effects
+  /// included. The effects editor uses [currentPhotoPath] instead, because it
+  /// applies the effect to the sharp image itself.
+  Future<String?> currentEffectPhotoPath();
+
   /// Keeps a frame ready for the saved group, without requiring the service to
   /// be the system wallpaper yet.
   Future<GroupedWallpaperSyncResult> prepare({bool activation = false});
@@ -105,6 +112,8 @@ class WallpaperEngineLink {
   Future<GroupedWallpaperState?> readState() async => await _connection?.readState();
 
   Future<String?> currentPhotoPath() async => await _connection?.currentPhotoPath();
+
+  Future<String?> currentEffectPhotoPath() async => await _connection?.currentEffectPhotoPath();
 
   Future<GroupedWallpaperSyncResult> prepare() async => await _connection?.prepare() ?? GroupedWallpaperSyncResult.notActive;
 

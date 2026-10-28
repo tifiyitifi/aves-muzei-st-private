@@ -8,6 +8,7 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.d
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_effects_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_action_delegate.dart';
@@ -62,7 +63,14 @@ import 'package:provider/provider.dart';
 class GroupedWallpaperPage extends StatefulWidget {
   static const routeName = '/wallpaper_groups';
 
-  const new({super.key});
+  /// Whether the page opens on the group the wallpaper is playing.
+  ///
+  /// A wallpaper gesture opens the view page over the playing group's page, so
+  /// that page must show what the view is showing rather than the last group the
+  /// user browsed. The bottom-bar destination keeps the browsing session instead.
+  final bool selectCurrent;
+
+  const new({super.key, this.selectCurrent = false});
 
   @override
   State<GroupedWallpaperPage> createState() => _GroupedWallpaperPageState();
@@ -89,6 +97,7 @@ enum _PageAction {
   setCurrentAsWallpaper,
   disableWallpaper,
   viewCurrent,
+  effects,
   gestures,
   engineStatus,
   cancelGalleryRange,
@@ -142,8 +151,23 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     _controller = WallpaperGroupRangeController();
     _controller.addListener(_onControllerChanged);
     _syncBrowsingOverlay();
-    unawaited(_controller.init());
+    unawaited(_initController());
     unawaited(_refreshEngine());
+  }
+
+  /// Loads the groups, then honours [GroupedWallpaperPage.selectCurrent].
+  ///
+  /// The controller resumes the browsing session or group 1 by default; a page
+  /// opened as the backdrop of the wallpaper view starts on the playing group
+  /// instead, so the two pages describe the same group.
+  Future<void> _initController() async {
+    await _controller.init();
+    if (!mounted || !widget.selectCurrent) return;
+    final current = _controller.current;
+    if (current.isNone || _controller.selectedGroupId == current.id) return;
+    if (_controller.groups.any((group) => group.id == current.id)) {
+      await _controller.selectGroup(current.id);
+    }
   }
 
   @override
@@ -503,11 +527,16 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   Widget? _groupStateIcon(BuildContext context, WallpaperGroup group) {
     final colors = Theme.of(context).colorScheme;
+    // The play icon wins: the chip must say what is playing before what is
+    // enabled, and both can be true.
     if (wallpaperEngineLink.isPlaying && group.current) {
       return Icon(AIcons.wallpaperPlaying, size: 18, color: colors.tertiary);
     }
-    if (_controller.selectedGroupId == group.id) {
-      return Icon(AIcons.visibleRangeActive, size: 18, color: colors.primary);
+    if (group.enabled) {
+      return Tooltip(
+        message: context.l10n.wallpaperGroupEnabled,
+        child: Icon(AIcons.visibleRangeActive, size: 18, color: colors.primary),
+      );
     }
     return null;
   }
@@ -1027,6 +1056,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         enabled: engineActive && !wallpaperEngineLink.isDisabled,
         subtitle: engineActive && !wallpaperEngineLink.isDisabled ? null : l10n.wallpaperGroupSyncInactive,
       ),
+      _menuItem(
+        _PageAction.effects,
+        AIcons.palette,
+        l10n.muzeiWallpaperEffects,
+        enabled: group != null,
+      ),
       _menuItem(_PageAction.gestures, AIcons.gestures, l10n.wallpaperGroupGestures),
       _menuItem(
         _PageAction.discardChanges,
@@ -1118,6 +1153,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         await _disableWallpaper();
       case _PageAction.viewCurrent:
         await _viewCurrent();
+      case _PageAction.effects:
+        if (group != null) await _openEffects(group);
       case _PageAction.gestures:
         await _openGestures();
       case _PageAction.engineStatus:
@@ -1260,9 +1297,24 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     await Navigator.of(context).push(
       MaterialPageRoute(
         settings: const RouteSettings(name: GroupedWallpaperViewPage.routeName),
-        builder: (_) => const GroupedWallpaperViewPage(openedFromGroups: true),
+        builder: (_) => const GroupedWallpaperViewPage(groupPageBelow: true),
       ),
     );
+  }
+
+  /// Opens the effects editor for [group], bound to that group's own values.
+  Future<void> _openEffects(WallpaperGroup group) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: GroupedWallpaperEffectsPage.routeName),
+        builder: (_) => GroupedWallpaperEffectsPage(
+          groupId: group.id,
+          controller: _controller,
+        ),
+      ),
+    );
+    // The page may have re-baked the frame, so the status row can have changed.
+    await _refreshEngine();
   }
 
   /// Opens the global gesture bindings.

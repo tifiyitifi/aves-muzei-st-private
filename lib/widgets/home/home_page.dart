@@ -9,6 +9,7 @@ import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart'
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/session_restore/session_restore_plan.dart';
@@ -413,6 +414,19 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           );
           final topRoute = await _getRedirectRoute(appMode);
           unawaited(navigator.pushAndRemoveUntil(baseRoute, (route) => false));
+          // The grouped view sits on the playing group's page, so backing out
+          // walks to that page and then home.
+          if (_intentOverlayRouteName == GroupedWallpaperViewPage.routeName) {
+            unawaited(
+              navigator.push(
+                await _getRedirectRoute(
+                  appMode,
+                  overrideRouteName: GroupedWallpaperPage.routeName,
+                  useIntentFilters: false,
+                ),
+              ),
+            );
+          }
           unawaited(navigator.push(topRoute));
         } else {
           unawaited(
@@ -640,8 +654,13 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
         return buildRoute((context) => HomeWidgetSettingsPage(widgetId: _widgetId!));
       case MuzeiWallpaperPage.routeName:
         return buildRoute((context) => const MuzeiWallpaperPage());
+      case GroupedWallpaperPage.routeName:
+        // Pushed as the backdrop of a gesture-opened view: start on the playing
+        // group so the page describes what the view shows.
+        return buildRoute((context) => const GroupedWallpaperPage(selectCurrent: true));
       case GroupedWallpaperViewPage.routeName:
-        return buildRoute((context) => const GroupedWallpaperViewPage());
+        // A gesture always pushes the playing group's page below the view.
+        return buildRoute((context) => const GroupedWallpaperViewPage(groupPageBelow: true));
       case VisibleRangePage.routeName:
         return buildRoute((context) => const VisibleRangeShellPage());
       case ScreenSaverPage.routeName:

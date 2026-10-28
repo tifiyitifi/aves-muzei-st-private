@@ -8,6 +8,7 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
 import 'package:aves/services/common/services.dart';
@@ -253,6 +254,15 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   }
 
   Future<void> setEnabled(String id, bool enabled) => groupController.setEnabled(id, enabled);
+
+  /// The viewed group's effects, or identity when the group is unknown.
+  WallpaperEffectsConfig effectsOf(String id) => groupController.effectsOf(id);
+
+  /// Applies effects immediately, even while the page's range draft is open.
+  Future<void> setEffects(String id, WallpaperEffectsConfig effects) => groupController.setEffects(id, effects);
+
+  /// Copies effects to other groups from the "sync to other groups" grid.
+  Future<void> setEffectsFor(Set<String> ids, WallpaperEffectsConfig effects) => groupController.setEffectsFor(ids, effects);
 
   /// Marks [id] as the group the wallpaper uses; null falls back to group 0.
   Future<void> selectCurrent(String? id) => groupController.selectCurrent(id);

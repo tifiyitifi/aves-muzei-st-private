@@ -32,7 +32,7 @@ class VisibleRangeStore {
   /// survive, at the cost of a second source of truth. User-created rules and
   /// presets are never touched, and an active or renamed default keeps its state.
   static const keyDefaultsVersion = 'defaults.version';
-  static const defaultsVersion = 3;
+  static const defaultsVersion = 4;
 
   /// Page view preferences, persisted with the range store so the feature does
   /// not add upstream settings keys.

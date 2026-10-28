@@ -1,11 +1,8 @@
 {
-  "version": 3,
+  "version": 4,
   "presets": [
     { "id": "builtin.image", "kind": "base", "nameKey": "visibleRangePresetImage", "filters": [{ "type": "mime", "mime": "image/*" }] },
     { "id": "builtin.video", "kind": "base", "nameKey": "visibleRangePresetVideo", "filters": [{ "type": "mime", "mime": "video/*" }] },
-    { "id": "builtin.favourite", "kind": "base", "nameKey": "visibleRangePresetFavourite", "filters": [{ "type": "favourite" }] },
-    { "id": "builtin.rating5", "kind": "base", "nameKey": "visibleRangePresetRating5", "filters": [{ "type": "rating", "rating": 5, "op": ">=" }] },
-    { "id": "builtin.rating3", "kind": "base", "nameKey": "visibleRangePresetRating3", "filters": [{ "type": "rating", "rating": 3, "op": ">=" }] },
     { "id": "builtin.camera", "kind": "base", "nameKey": "visibleRangePresetCamera", "filters": [{ "type": "path", "standard": "dcim" }] },
     { "id": "builtin.pictures", "kind": "base", "nameKey": "visibleRangePresetPictures", "filters": [{ "type": "path", "standard": "pictures" }] },
     { "id": "builtin.portrait", "kind": "base", "nameKey": "visibleRangePresetPortrait", "filters": [{ "type": "aspect_ratio", "threshold": 1.0, "op": "<" }] },
@@ -23,6 +20,9 @@
       "nameKey": "visibleRangePresetCameraRecent6h",
       "filters": [{ "type": "path", "standard": "dcim" }, { "type": "relative_time", "span": "6h" }]
     },
+    { "id": "builtin.favourite", "kind": "base", "nameKey": "visibleRangePresetFavourite", "filters": [{ "type": "favourite" }] },
+    { "id": "builtin.rating5", "kind": "base", "nameKey": "visibleRangePresetRating5", "filters": [{ "type": "rating", "rating": 5, "op": ">=" }] },
+    { "id": "builtin.rating3", "kind": "base", "nameKey": "visibleRangePresetRating3", "filters": [{ "type": "rating", "rating": 3, "op": ">=" }] },
 
     { "id": "builtin.restriction.image", "kind": "restriction", "nameKey": "visibleRangePresetImage", "filters": [{ "type": "mime", "mime": "image/*" }] },
     { "id": "builtin.restriction.video", "kind": "restriction", "nameKey": "visibleRangePresetVideo", "filters": [{ "type": "mime", "mime": "video/*" }] },

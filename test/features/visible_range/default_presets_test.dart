@@ -81,9 +81,6 @@ void main() {
     expect(idsOf(VisibleRangePresetKind.base), [
       'builtin.image',
       'builtin.video',
-      'builtin.favourite',
-      'builtin.rating5',
-      'builtin.rating3',
       'builtin.camera',
       'builtin.pictures',
       'builtin.portrait',
@@ -95,8 +92,13 @@ void main() {
       'builtin.recent6h',
       'builtin.recent12h',
       'builtin.recent7d',
-      // Deliberately last: a base range may combine conditions too.
+      // Deliberately before the last three: a base range may combine conditions too.
       'builtin.cameraRecent6h',
+      // Metadata predicates come last: they read as refinements of a shape or a
+      // folder, not as the first way into the library.
+      'builtin.favourite',
+      'builtin.rating5',
+      'builtin.rating3',
     ]);
 
     expect(idsOf(VisibleRangePresetKind.restriction), [

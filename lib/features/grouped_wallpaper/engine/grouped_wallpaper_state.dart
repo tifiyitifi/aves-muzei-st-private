@@ -1,3 +1,4 @@
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
@@ -60,26 +61,98 @@ enum GroupedWallpaperSyncResult {
   failed,
 }
 
+/// One baked photo the renderer can promote to.
+///
+/// Slots are the promotion queue: the native renderer moves to [GroupedWallpaperState.next]
+/// on a wallpaper tap without waiting for Flutter, and Dart bakes the slot it
+/// left behind. [id] is stable while the slot exists, so the renderer can keep
+/// the texture it already uploaded; [entryId] and [photo] tell it that the slot
+/// was re-baked with another image.
+@immutable
+class GroupedWallpaperSlot extends Equatable {
+  final int id;
+  final int entryId;
+  final String uri;
+  final String title;
+
+  /// Photo path relative to the state root.
+  final String photo;
+
+  final int width;
+  final int height;
+
+  const new({
+    required this.id,
+    required this.entryId,
+    required this.uri,
+    this.title = '',
+    required this.photo,
+    this.width = 0,
+    this.height = 0,
+  });
+
+  double? get aspectRatio => width > 0 && height > 0 ? width / height : null;
+
+  Map<String, Object?> toJsonMap() => {
+        'id': id,
+        'entryId': entryId,
+        'uri': uri,
+        'title': title,
+        'photo': photo,
+        'width': width,
+        'height': height,
+      };
+
+  static GroupedWallpaperSlot? tryFromJsonMap(Map<String, Object?> json) {
+    final id = _slotInt(json['id']);
+    final entryId = _slotInt(json['entryId']);
+    final photo = _slotString(json['photo']);
+    if (id == null || id < 0 || entryId == null || photo.isEmpty) return null;
+    return GroupedWallpaperSlot(
+      id: id,
+      entryId: entryId,
+      uri: _slotString(json['uri']),
+      title: _slotString(json['title']),
+      photo: photo,
+      width: _slotInt(json['width']) ?? 0,
+      height: _slotInt(json['height']) ?? 0,
+    );
+  }
+
+  static int? _slotInt(Object? value) => value is int ? value : (value is num ? value.toInt() : null);
+
+  static String _slotString(Object? value) => value is String ? value : '';
+
+  @override
+  List<Object?> get props => [id, entryId, uri, title, photo, width, height];
+}
+
 /// Dart-owned `state.json` of the grouped wallpaper.
 ///
 /// This is the contract between the Flutter engine and the native renderer: only
-/// Dart writes it, and the native side only reads it. It also carries what the
-/// notification shows (group number, group name, entry, count, lock), so the
-/// service never has to ask the app for text it cannot localize itself.
+/// Dart writes it, and the native side writes [GroupedWallpaperRuntime] instead.
+/// It also carries what the notification shows (group number, group name, entry,
+/// count, status), so the service never has to ask the app for text it cannot
+/// localize itself.
+///
+/// [current] → [next] → [next2] is the promotion queue. The renderer promotes
+/// [next] on a wallpaper tap and [next2] on the following one, so two consecutive
+/// taps need no bake; Dart refills the freed slots afterwards.
 ///
 /// Parsing is deliberately tolerant: a state file written by another version, or
 /// truncated by a crash, must leave the wallpaper on its placeholder instead of
 /// crashing the service.
 @immutable
 class GroupedWallpaperState extends Equatable {
-  static const int currentVersion = 1;
+  /// v2 added the slot queue; a v1 file is read as a single-slot queue.
+  static const int currentVersion = 2;
 
-  /// Relative path of the baked photo, resolved against the state root.
-  static const String photoFileName = 'current.png';
+  /// The single photo file a v1 state pointed at.
+  static const String photoFileNameV1 = 'current.png';
 
   final int version;
 
-  /// Bumped on every write, so the native side can tell a stale read apart.
+  /// Bumped on every write, so the native side can tell a stale runtime apart.
   final int generation;
 
   final GroupedWallpaperStatus status;
@@ -92,14 +165,14 @@ class GroupedWallpaperState extends Equatable {
   /// Number of images the group currently resolves to.
   final int count;
 
-  final int? entryId;
-  final String entryTitle;
+  final int current;
+  final int next;
+  final int next2;
+  final List<GroupedWallpaperSlot> slots;
 
-  /// Relative photo path, empty when there is nothing to draw.
-  final String photo;
+  /// Gestures the renderer acts on without asking Dart.
+  final GroupedWallpaperGestures gestures;
 
-  final int width;
-  final int height;
   final int bakedAt;
 
   const new({
@@ -110,17 +183,41 @@ class GroupedWallpaperState extends Equatable {
     this.groupNumber = 0,
     this.groupName = '',
     this.count = 0,
-    this.entryId,
-    this.entryTitle = '',
-    this.photo = '',
-    this.width = 0,
-    this.height = 0,
+    this.current = -1,
+    this.next = -1,
+    this.next2 = -1,
+    this.slots = const [],
+    this.gestures = const GroupedWallpaperGestures(),
     this.bakedAt = 0,
   });
 
-  /// Whether the state points at a baked frame, whatever the status: a locked
-  /// group keeps showing the photo it froze on.
-  bool get hasPhoto => entryId != null && photo.isNotEmpty;
+  GroupedWallpaperSlot? slotById(int id) {
+    for (final slot in slots) {
+      if (slot.id == id) return slot;
+    }
+    return null;
+  }
+
+  GroupedWallpaperSlot? get currentSlot => slotById(current);
+
+  GroupedWallpaperSlot? get nextSlot => slotById(next);
+
+  GroupedWallpaperSlot? get next2Slot => slotById(next2);
+
+  /// Whether the state points at a baked frame, whatever the status: a locked or
+  /// turned-off group keeps showing the photo it stopped on.
+  bool get hasPhoto => currentSlot != null;
+
+  /// How many slots are queued, current included.
+  int get queueLength => [current, next, next2].where((id) => id >= 0).length;
+
+  int? get entryId => currentSlot?.entryId;
+
+  String get entryTitle => currentSlot?.title ?? '';
+
+  int get width => currentSlot?.width ?? 0;
+
+  int get height => currentSlot?.height ?? 0;
 
   /// The state before anything was baked for [group]: the renderer shows its
   /// placeholder until the first sync.
@@ -133,31 +230,32 @@ class GroupedWallpaperState extends Equatable {
       );
 
   GroupedWallpaperState copyWith({
+    int? version,
     int? generation,
     GroupedWallpaperStatus? status,
     String? groupId,
     int? groupNumber,
     String? groupName,
     int? count,
-    int? entryId,
-    String? entryTitle,
-    String? photo,
-    int? width,
-    int? height,
+    int? current,
+    int? next,
+    int? next2,
+    List<GroupedWallpaperSlot>? slots,
+    GroupedWallpaperGestures? gestures,
     int? bakedAt,
   }) => GroupedWallpaperState(
-        version: version,
+        version: version ?? this.version,
         generation: generation ?? this.generation,
         status: status ?? this.status,
         groupId: groupId ?? this.groupId,
         groupNumber: groupNumber ?? this.groupNumber,
         groupName: groupName ?? this.groupName,
         count: count ?? this.count,
-        entryId: entryId ?? this.entryId,
-        entryTitle: entryTitle ?? this.entryTitle,
-        photo: photo ?? this.photo,
-        width: width ?? this.width,
-        height: height ?? this.height,
+        current: current ?? this.current,
+        next: next ?? this.next,
+        next2: next2 ?? this.next2,
+        slots: slots ?? this.slots,
+        gestures: gestures ?? this.gestures,
         bakedAt: bakedAt ?? this.bakedAt,
       );
 
@@ -169,48 +267,153 @@ class GroupedWallpaperState extends Equatable {
         'groupNumber': groupNumber,
         'groupName': groupName,
         'count': count,
-        'entryId': entryId,
-        'entryTitle': entryTitle,
-        'photo': photo,
-        'width': width,
-        'height': height,
+        'current': current,
+        'next': next,
+        'next2': next2,
+        'slots': slots.map((slot) => slot.toJsonMap()).toList(),
+        'gestures': gestures.toJsonMap(),
         'bakedAt': bakedAt,
       };
 
   static GroupedWallpaperState? tryFromJsonMap(Map<String, Object?> json) {
-    if (_int(json['version']) != currentVersion) return null;
+    final version = _int(json['version']);
     final status = GroupedWallpaperStatus.tryParse(json['status']);
     if (status == null) return null;
+    return switch (version) {
+      1 => _fromV1(json, status),
+      currentVersion => _fromV2(json, status),
+      _ => null,
+    };
+  }
 
+  /// v1 stored one baked photo (`current.png`) and no queue.
+  static GroupedWallpaperState? _fromV1(Map<String, Object?> json, GroupedWallpaperStatus status) {
     final entryId = _int(json['entryId']);
     final photo = _string(json['photo']);
-    // `ready` without a photo is a contradiction: show the placeholder instead
-    // of asking the renderer to load a file that is not there. `locked` and
-    // `disabled` legitimately keep no frame when nothing was ever baked.
-    final normalized = status == GroupedWallpaperStatus.ready && (photo.isEmpty || entryId == null) ? GroupedWallpaperStatus.unavailable : status;
-    final drawsFrame = normalized == GroupedWallpaperStatus.ready || normalized.keepsFrame;
+    final drawsFrame = status == GroupedWallpaperStatus.ready || status.keepsFrame;
     final hasFrame = drawsFrame && photo.isNotEmpty && entryId != null;
-
     return GroupedWallpaperState(
       generation: _int(json['generation']) ?? 0,
-      status: normalized,
+      status: status == GroupedWallpaperStatus.ready && !hasFrame ? GroupedWallpaperStatus.unavailable : status,
       groupId: _string(json['groupId']),
       groupNumber: _int(json['groupNumber']) ?? 0,
       groupName: _string(json['groupName']),
       count: _int(json['count']) ?? 0,
-      entryId: hasFrame ? entryId : null,
-      entryTitle: _string(json['entryTitle']),
-      photo: hasFrame ? photo : '',
-      width: _int(json['width']) ?? 0,
-      height: _int(json['height']) ?? 0,
+      current: hasFrame ? 0 : -1,
+      slots: hasFrame
+          ? [
+              GroupedWallpaperSlot(
+                id: 0,
+                entryId: entryId,
+                uri: '',
+                title: _string(json['entryTitle']),
+                photo: photo,
+                width: _int(json['width']) ?? 0,
+                height: _int(json['height']) ?? 0,
+              ),
+            ]
+          : const [],
       bakedAt: _int(json['bakedAt']) ?? 0,
     );
   }
 
+  static GroupedWallpaperState _fromV2(Map<String, Object?> json, GroupedWallpaperStatus status) {
+    final slots = <GroupedWallpaperSlot>[];
+    final seenIds = <int>{};
+    final rawSlots = json['slots'];
+    if (rawSlots is List) {
+      for (final rawSlot in rawSlots) {
+        if (rawSlot is! Map) continue;
+        final slot = GroupedWallpaperSlot.tryFromJsonMap(rawSlot.map((key, value) => MapEntry(key.toString(), value)));
+        if (slot != null && seenIds.add(slot.id)) slots.add(slot);
+      }
+    }
+    int readSlotId(Object? value) {
+      final id = _int(value);
+      return id != null && id >= 0 ? id : -1;
+    }
+
+    final state = GroupedWallpaperState(
+      generation: _int(json['generation']) ?? 0,
+      status: status,
+      groupId: _string(json['groupId']),
+      groupNumber: _int(json['groupNumber']) ?? 0,
+      groupName: _string(json['groupName']),
+      count: _int(json['count']) ?? 0,
+      current: readSlotId(json['current']),
+      next: readSlotId(json['next']),
+      next2: readSlotId(json['next2']),
+      slots: List.unmodifiable(slots),
+      gestures: GroupedWallpaperGestures.fromJsonMap(_map(json['gestures']) ?? const {}),
+      bakedAt: _int(json['bakedAt']) ?? 0,
+    );
+    // `ready` without a frame is a contradiction: show the placeholder instead
+    // of claiming an image that is not there. `locked` and `disabled`
+    // legitimately keep no frame when nothing was ever baked.
+    if (state.status == GroupedWallpaperStatus.ready && !state.hasPhoto) {
+      return state.copyWith(status: GroupedWallpaperStatus.unavailable);
+    }
+    return state;
+  }
+
   static int? _int(Object? value) => value is int ? value : (value is num ? value.toInt() : null);
+
+  static Map<String, Object?>? _map(Object? value) {
+    if (value is! Map) return null;
+    return value.map((key, value) => MapEntry(key.toString(), value));
+  }
 
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, entryId, entryTitle, photo, width, height, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, gestures, bakedAt];
+}
+
+/// Native-owned `runtime.json`.
+///
+/// The renderer may promote a slot before Dart has baked the freed one, so it
+/// records what it is showing. A generation mismatch means the file predates the
+/// latest [GroupedWallpaperState] and must be ignored.
+@immutable
+class GroupedWallpaperRuntime extends Equatable {
+  final int generation;
+  final int current;
+  final int next;
+
+  /// Whether the renderer promoted a slot and needs the freed one baked again.
+  final bool refillRequested;
+
+  const new({
+    required this.generation,
+    required this.current,
+    required this.next,
+    this.refillRequested = false,
+  });
+
+  static const empty = GroupedWallpaperRuntime(generation: -1, current: -1, next: -1);
+
+  bool get hasCurrent => current >= 0;
+
+  bool matches(GroupedWallpaperState state) => generation == state.generation;
+
+  Map<String, Object?> toJsonMap() => {
+        'generation': generation,
+        'current': current,
+        'next': next,
+        'refillRequested': refillRequested,
+      };
+
+  static GroupedWallpaperRuntime? tryFromJsonMap(Map<String, Object?> json) {
+    final generation = GroupedWallpaperState._int(json['generation']);
+    if (generation == null) return null;
+    return GroupedWallpaperRuntime(
+      generation: generation,
+      current: GroupedWallpaperState._int(json['current']) ?? -1,
+      next: GroupedWallpaperState._int(json['next']) ?? -1,
+      refillRequested: json['refillRequested'] == true,
+    );
+  }
+
+  @override
+  List<Object?> get props => [generation, current, next, refillRequested];
 }

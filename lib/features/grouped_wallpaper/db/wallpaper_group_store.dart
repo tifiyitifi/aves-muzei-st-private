@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:drift/drift.dart';
@@ -22,6 +25,9 @@ class WallpaperGroupStore {
   /// has to survive a reboot, where the wallpaper service starts again and would
   /// otherwise mistake the restart for a fresh activation.
   static const keyDisabled = 'wallpaper.groupedDisabled';
+
+  /// AppMeta key of the gesture bindings, which are global to both wallpapers.
+  static const keyGestures = 'wallpaper.groupedGestures';
 
   final AppDatabase db;
 
@@ -84,6 +90,14 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeDisabled(bool disabled) => AppMetaStore(db).write({keyDisabled: disabled ? 'true' : 'false'});
+
+  /// The gestures the wallpaper recognises, global to both wallpapers.
+  Future<GroupedWallpaperGestures> readGestures() async {
+    final values = await AppMetaStore(db).read({keyGestures});
+    return GroupedWallpaperGestures.fromJsonString(values[keyGestures]);
+  }
+
+  Future<void> writeGestures(GroupedWallpaperGestures gestures) => AppMetaStore(db).write({keyGestures: jsonEncode(gestures.toJsonMap())});
 
   static WallpaperGroup _toGroup(WallpaperGroupRow row, int number) => WallpaperGroup(
         id: row.id,

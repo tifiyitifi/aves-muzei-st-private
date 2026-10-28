@@ -16,8 +16,19 @@
 
 package deckers.thibault.aves.features.grouped_wallpaper
 
+import android.app.WallpaperManager
+import android.content.Context
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.SurfaceHolder
+import android.view.ViewConfiguration
+import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillScheduler
+import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperTarget
 import net.rbgrn.android.glwallpaperservice.GLWallpaperService
 
 /**
@@ -32,6 +43,9 @@ import net.rbgrn.android.glwallpaperservice.GLWallpaperService
 class GroupedLiveWallpaperService : GLWallpaperService() {
     companion object {
         private const val TAG = "AvesGroupedWallpaper"
+
+        /** A three-finger tap fires once per gesture, not once per pointer event. */
+        private const val THREE_FINGER_TAP_INTERVAL_MS = 500L
 
         /** Whether the system currently keeps this service alive. */
         @Volatile
@@ -59,6 +73,30 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
     inner class GroupedEngine : GLEngine() {
         private lateinit var renderer: GroupedWallpaperRenderer
 
+        /**
+         * A wallpaper tap arrives as `COMMAND_TAP` after the gesture detector has
+         * already seen the double tap, so the command only fires the gesture when
+         * a double tap just happened. A single tap does nothing, like Muzei.
+         */
+        private var validDoubleTap = false
+        private var lastThreeFingerTap = 0L
+        private val gestureHandler = Handler(Looper.getMainLooper())
+        private val clearDoubleTap = Runnable { validDoubleTap = false }
+
+        private val gestureDetector = GestureDetector(
+            this@GroupedLiveWallpaperService,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: MotionEvent): Boolean = true
+
+                override fun onDoubleTap(e: MotionEvent): Boolean {
+                    validDoubleTap = true
+                    gestureHandler.removeCallbacks(clearDoubleTap)
+                    gestureHandler.postDelayed(clearDoubleTap, ViewConfiguration.getDoubleTapTimeout().toLong())
+                    return true
+                }
+            },
+        )
+
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
             renderer = GroupedWallpaperRenderer(this@GroupedLiveWallpaperService) { requestRender() }
@@ -70,6 +108,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             // The engine bakes at the launcher's desired width, so the surface
             // shows a window into it and pans with the launcher offset.
             setOffsetNotificationsEnabled(true)
+            setTouchEventsEnabled(true)
             Log.d(TAG, "engine.create preview=$isPreview")
         }
 
@@ -102,8 +141,67 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             renderer.setOffsetX(if (xOffsetStep > 0f) xOffset else 0.5f)
         }
 
+        override fun onCommand(
+            action: String?,
+            x: Int,
+            y: Int,
+            z: Int,
+            extras: Bundle?,
+            resultRequested: Boolean,
+        ): Bundle? {
+            if (WallpaperManager.COMMAND_TAP == action && validDoubleTap) {
+                validDoubleTap = false
+                performGesture(threeFinger = false)
+            }
+            return super.onCommand(action, x, y, z, extras, resultRequested)
+        }
+
+        override fun onTouchEvent(event: MotionEvent) {
+            super.onTouchEvent(event)
+            gestureDetector.onTouchEvent(event)
+            if (event.pointerCount == 3) {
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastThreeFingerTap > THREE_FINGER_TAP_INTERVAL_MS) {
+                    lastThreeFingerTap = now
+                    performGesture(threeFinger = true)
+                }
+            }
+        }
+
+        private fun performGesture(threeFinger: Boolean) {
+            if (!::renderer.isInitialized) return
+            val action = renderer.actionFor(threeFinger)
+            Log.d(TAG, "gesture threeFinger=$threeFinger action=$action")
+            when (action) {
+                GroupedWallpaperFileState.ACTION_NEXT_ARTWORK -> advance()
+                GroupedWallpaperFileState.ACTION_VIEW_ARTWORK -> openViewPage()
+                else -> Log.d(TAG, "gesture action ignored action=$action")
+            }
+        }
+
+        /**
+         * Promotes the prefetched slot, then asks someone to bake the freed one.
+         *
+         * A running app does it over the channel; otherwise a WorkManager run
+         * boots a short-lived Flutter engine, so repeated taps keep advancing
+         * instead of stopping after the prefetched queue.
+         */
+        private fun advance() {
+            if (!renderer.promote()) return
+            if (!GroupedWallpaperAppBridge.requestSync()) {
+                Log.d(TAG, "advance notification: no listening app, using the background refill")
+                LiveWallpaperRefillScheduler.enqueueTapRefill(this@GroupedLiveWallpaperService, LiveWallpaperTarget.GROUPED)
+            }
+        }
+
+        /** Opens the grouped wallpaper's view page, like Muzei's artwork view. */
+        private fun openViewPage() {
+            GroupedWallpaperAppBridge.requestView()
+        }
+
         override fun onDestroy() {
             Log.d(TAG, "engine.destroy")
+            gestureHandler.removeCallbacks(clearDoubleTap)
             if (::renderer.isInitialized) {
                 queueEvent { renderer.destroy() }
             }

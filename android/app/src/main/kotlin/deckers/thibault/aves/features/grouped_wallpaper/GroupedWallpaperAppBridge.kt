@@ -16,24 +16,33 @@
 
 package deckers.thibault.aves.features.grouped_wallpaper
 
+import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import deckers.thibault.aves.MainActivity
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 
 /**
  * Bridge from the wallpaper service back to the running app.
  *
- * The service asks for a frame when it starts or when the app attaches, which is
- * how the wallpaper gets its first photo: there is no background worker in this
- * phase, so without a listening app the renderer keeps its placeholder until the
- * app is opened.
+ * The service asks for a frame when it starts, after a promoted slot, and when the
+ * app attaches, which is how the wallpaper gets its first photo and how a tap
+ * refills the queue. A gesture that opens a page has no Activity of its own, so
+ * it starts the app like Muzei does.
  */
 object GroupedWallpaperAppBridge {
     private const val TAG = "AvesGroupedWallpaper"
 
+    /** The app route of the immersive wallpaper view. */
+    private const val GroupedWallpaperViewRoute = "/grouped_wallpaper/view"
+
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    @Volatile
+    private var context: Context? = null
 
     @Volatile
     private var messenger: BinaryMessenger? = null
@@ -44,6 +53,11 @@ object GroupedWallpaperAppBridge {
 
     fun attach(engineMessenger: BinaryMessenger) {
         messenger = engineMessenger
+    }
+
+    /** Keeps the application context so a gesture can start the app. */
+    fun attachContext(appContext: Context) {
+        context = appContext.applicationContext
     }
 
     fun detach(engineMessenger: BinaryMessenger) {
@@ -75,5 +89,27 @@ object GroupedWallpaperAppBridge {
             }
         }
         return true
+    }
+
+    /**
+     * Opens the grouped wallpaper's view page.
+     *
+     * A wallpaper gesture has no Activity, so this starts the app (cold start is
+     * expected, exactly like Muzei's artwork gesture). The page is a normal route
+     * of the app, so it is the same page the group page's menu opens.
+     */
+    fun requestView() {
+        val appContext = context ?: return
+        try {
+            appContext.startActivity(
+                Intent(appContext, MainActivity::class.java)
+                    .setAction(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+                    .putExtra("page", GroupedWallpaperViewRoute)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "failed to open the grouped wallpaper view", t)
+        }
     }
 }

@@ -14,6 +14,9 @@ abstract interface class WallpaperEngineConnection {
   /// The state the renderer is showing, or null when nothing was ever baked.
   Future<GroupedWallpaperState?> readState();
 
+  /// Absolute path of the photo on screen, or null when there is none.
+  Future<String?> currentPhotoPath();
+
   /// Keeps a frame ready for the saved group, without requiring the service to
   /// be the system wallpaper yet.
   Future<GroupedWallpaperSyncResult> prepare({bool activation = false});
@@ -100,6 +103,8 @@ class WallpaperEngineLink {
   }
 
   Future<GroupedWallpaperState?> readState() async => await _connection?.readState();
+
+  Future<String?> currentPhotoPath() async => await _connection?.currentPhotoPath();
 
   Future<GroupedWallpaperSyncResult> prepare() async => await _connection?.prepare() ?? GroupedWallpaperSyncResult.notActive;
 

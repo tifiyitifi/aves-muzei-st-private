@@ -9,6 +9,7 @@ import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart'
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/session_restore/session_restore_plan.dart';
 import 'package:aves/features/session_restore/session_restore_store.dart';
@@ -89,6 +90,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
     ExplorerPage.routeName,
     MapPage.routeName,
     MuzeiWallpaperPage.routeName,
+    GroupedWallpaperViewPage.routeName,
     VisibleRangePage.routeName,
     SearchPage.routeName,
     SettingsPage.routeName,
@@ -605,6 +607,8 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
         return buildRoute((context) => HomeWidgetSettingsPage(widgetId: _widgetId!));
       case MuzeiWallpaperPage.routeName:
         return buildRoute((context) => const MuzeiWallpaperPage());
+      case GroupedWallpaperViewPage.routeName:
+        return buildRoute((context) => const GroupedWallpaperViewPage());
       case VisibleRangePage.routeName:
         return buildRoute((context) => const VisibleRangeShellPage());
       case ScreenSaverPage.routeName:

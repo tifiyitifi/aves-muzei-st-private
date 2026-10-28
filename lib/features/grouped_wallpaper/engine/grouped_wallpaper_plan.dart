@@ -1,6 +1,7 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
@@ -27,7 +28,15 @@ class GroupedWallpaperPlan extends Equatable {
   /// never changes the wallpaper the system is showing.
   final bool disabled;
 
-  const new({required this.group, this.range, this.disabled = false});
+  /// The gestures the renderer acts on, global to both wallpapers.
+  final GroupedWallpaperGestures gestures;
+
+  const new({
+    required this.group,
+    this.range,
+    this.disabled = false,
+    this.gestures = const GroupedWallpaperGestures(),
+  });
 
   bool get isNone => group.isNone;
 
@@ -37,7 +46,7 @@ class GroupedWallpaperPlan extends Equatable {
   bool get enabled => !disabled && !group.isNone;
 
   @override
-  List<Object?> get props => [group, range, disabled];
+  List<Object?> get props => [group, range, disabled, gestures];
 }
 
 /// Reads and updates [GroupedWallpaperPlan].
@@ -53,6 +62,9 @@ abstract interface class GroupedWallpaperPlanStore {
 
   /// Records the explicit off/on switch without touching the current group.
   Future<void> setDisabled(bool disabled);
+
+  /// Stores the gesture bindings, which are global to both wallpapers.
+  Future<void> setGestures(GroupedWallpaperGestures gestures);
 }
 
 /// Reads the plan from the app database.
@@ -73,10 +85,11 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final store = WallpaperGroupStore(db);
     final groups = normalizeWallpaperGroups(await store.loadGroups());
     final disabled = await store.readDisabled();
+    final gestures = await store.readGestures();
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? WallpaperGroup.none;
-    if (group.isNone) return GroupedWallpaperPlan(group: group, disabled: disabled);
+    if (group.isNone) return GroupedWallpaperPlan(group: group, disabled: disabled, gestures: gestures);
     final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
-    return GroupedWallpaperPlan(group: group, range: range, disabled: disabled);
+    return GroupedWallpaperPlan(group: group, range: range, disabled: disabled, gestures: gestures);
   }
 
   @override
@@ -84,12 +97,13 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final db = await _open();
     final store = WallpaperGroupStore(db);
     final groups = normalizeWallpaperGroups(await store.loadGroups());
+    final gestures = await store.readGestures();
     // A group that is already current is the answer: adopting is idempotent, so
     // a repeated activation never moves the wallpaper to another group.
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? enabledWallpaperGroups(groups).firstOrNull;
     if (group == null) {
       await store.writeDisabled(true);
-      return const GroupedWallpaperPlan(group: WallpaperGroup.none, disabled: true);
+      return GroupedWallpaperPlan(group: WallpaperGroup.none, disabled: true, gestures: gestures);
     }
     if (!group.current) {
       await store.saveGroups(normalizeWallpaperGroups([
@@ -98,9 +112,12 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     }
     await store.writeDisabled(false);
     final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
-    return GroupedWallpaperPlan(group: group.copyWith(current: true), range: range);
+    return GroupedWallpaperPlan(group: group.copyWith(current: true), range: range, gestures: gestures);
   }
 
   @override
   Future<void> setDisabled(bool disabled) async => WallpaperGroupStore(await _open()).writeDisabled(disabled);
+
+  @override
+  Future<void> setGestures(GroupedWallpaperGestures gestures) async => WallpaperGroupStore(await _open()).writeGestures(gestures);
 }

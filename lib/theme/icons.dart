@@ -67,6 +67,9 @@ class AIcons {
 
   /// The grouped wallpaper is not playing: shown on group 0.
   static const wallpaperStopped = Symbols.stop_circle;
+
+  /// The wallpaper gesture bindings.
+  static const gestures = Symbols.gesture;
   static const rating = Symbols.star;
   static const ratingRejected = MdiIcons.starMinusOutline;
   static const ratingUnrated = MdiIcons.starOffOutline;

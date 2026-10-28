@@ -38,13 +38,15 @@ import javax.microedition.khronos.opengles.GL10
 import kotlin.math.min
 
 /**
- * Draws one baked photo, or a grey placeholder when there is none.
+ * Draws the baked queue and promotes slots on a wallpaper tap.
  *
- * The engine bakes a single cover-cropped PNG per frame, so there is no slot
- * queue, no crossfade and no effect texture here: the renderer uploads
- * `current.png`, pans it with the launcher offset and otherwise stays idle. All
- * file reads and PNG decodes happen on a loader thread; the GL thread only
- * uploads the decoded bitmap, so a slow disk never stalls a frame.
+ * The engine bakes a small queue (`current → next → next2`), so a tap can move
+ * to the next photo without waiting for Flutter: the renderer switches to the
+ * texture it already uploaded, records what it did in `runtime.json`, and asks
+ * the app (or the background worker) to bake the slot it left behind.
+ *
+ * File reads and PNG decodes happen on a loader thread; the GL thread only
+ * uploads the decoded bitmaps, so a slow disk never stalls a frame.
  */
 class GroupedWallpaperRenderer(
     private val context: Context,
@@ -83,7 +85,13 @@ class GroupedWallpaperRenderer(
         """
     }
 
-    private class LoadedFrame(val generation: Int, val photo: String, val bitmap: Bitmap?)
+    /** What the loader thread decoded for one reload. */
+    private class LoadedFrame(
+        val state: GroupedWallpaperFileState,
+        val bitmaps: Map<Int, Bitmap>,
+    )
+
+    private class UploadedSlot(val entryId: Int, val photo: String, val texture: Int, val aspect: Float)
 
     /** Disk reads and PNG decodes never run on the GL thread. */
     private val loader = Executors.newSingleThreadExecutor()
@@ -98,6 +106,18 @@ class GroupedWallpaperRenderer(
     @Volatile
     private var pending: LoadedFrame? = null
 
+    /** The last state read from disk, used for gestures and the runtime. */
+    @Volatile
+    private var state: GroupedWallpaperFileState? = null
+
+    /** The slot on screen; a local promotion moves it before Dart writes. */
+    @Volatile
+    private var displayed: Int = -1
+
+    /** Slot ids whose texture is uploaded, so a promotion never targets a hole. */
+    @Volatile
+    private var readySlots: Set<Int> = emptySet()
+
     @Volatile
     private var offsetX = 0.5f
 
@@ -109,11 +129,7 @@ class GroupedWallpaperRenderer(
     private var viewWidth = 1
     private var viewHeight = 1
 
-    private var photoTexture = 0
-    private var photoAspect = 1f
-    private var hasPhoto = false
-    private var currentGeneration = Int.MIN_VALUE
-    private var currentPhoto = ""
+    private val textures = mutableMapOf<Int, UploadedSlot>()
 
     private var placeholderTexture = 0
 
@@ -152,11 +168,9 @@ class GroupedWallpaperRenderer(
         Log.d(TAG, "surface.created")
         destroyed = false
         // A new EGL context invalidates every texture id from the previous one.
-        photoTexture = 0
+        textures.clear()
+        readySlots = emptySet()
         placeholderTexture = 0
-        hasPhoto = false
-        currentGeneration = Int.MIN_VALUE
-        currentPhoto = ""
         try {
             program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
             aPosition = GLES20.glGetAttribLocation(program, "aPosition")
@@ -177,7 +191,6 @@ class GroupedWallpaperRenderer(
             // instead of a black or frozen surface.
             Log.e(TAG, "renderer init failed, falling back to the background color", t)
             program = 0
-            photoTexture = 0
             placeholderTexture = 0
         }
     }
@@ -197,10 +210,11 @@ class GroupedWallpaperRenderer(
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         if (program == 0) return
 
-        if (hasPhoto && photoTexture != 0) {
-            GroupedWallpaperViewport.texCoords(texCoords, photoAspect, viewWidth.toFloat() / viewHeight.toFloat(), offsetX)
+        val slot = textures[displayed]
+        if (slot != null) {
+            GroupedWallpaperViewport.texCoords(texCoords, slot.aspect, viewWidth.toFloat() / viewHeight.toFloat(), offsetX)
             texCoordBuffer.put(texCoords).position(0)
-            drawQuad(fullVertexBuffer, texCoordBuffer, photoTexture)
+            drawQuad(fullVertexBuffer, texCoordBuffer, slot.texture)
         } else if (placeholderTexture != 0) {
             drawQuad(placeholderVertexBuffer, placeholderTexCoords, placeholderTexture)
         }
@@ -217,7 +231,7 @@ class GroupedWallpaperRenderer(
             loader.execute {
                 val loaded = loadFrame()
                 if (destroyed) {
-                    loaded?.bitmap?.recycle()
+                    loaded?.bitmaps?.values?.forEach { it.recycle() }
                     reloadInFlight.set(false)
                     return@execute
                 }
@@ -241,18 +255,58 @@ class GroupedWallpaperRenderer(
         requestRender()
     }
 
+    /** The action bound to a gesture, from the latest `state.json`. */
+    fun actionFor(threeFinger: Boolean): String {
+        val current = state ?: return if (threeFinger) GroupedWallpaperFileState.ACTION_VIEW_ARTWORK else GroupedWallpaperFileState.ACTION_NEXT_ARTWORK
+        return if (threeFinger) current.threeFinger else current.doubleTap
+    }
+
+    /**
+     * Moves to the prefetched slot, as a wallpaper tap does.
+     *
+     * Returns false when there is nothing to promote: the group is locked or
+     * turned off, the queue is exhausted, or the texture of the next slot has
+     * not been uploaded yet.
+     */
+    fun promote(): Boolean {
+        val current = state ?: return false
+        if (!current.canPromote) return false
+        val nextId = current.next
+        if (!readySlots.contains(nextId)) {
+            Log.d(TAG, "promote skipped: slot $nextId is not uploaded yet")
+            return false
+        }
+        val nextNext = current.next2
+        displayed = nextId
+        state = current.copy(current = nextId, next = nextNext, next2 = -1)
+        requestRender()
+        // The runtime is what lets Dart learn about the promotion even when no
+        // app is listening; a stale generation makes it ignored.
+        try {
+            loader.execute {
+                GroupedWallpaperStateFile.writeRuntime(context, current.generation, nextId, nextNext, refillRequested = true)
+            }
+        } catch (e: RejectedExecutionException) {
+            Log.d(TAG, "runtime write ignored after renderer shutdown")
+        }
+        Log.d(TAG, "promote generation=${current.generation} current=$nextId next=$nextNext")
+        return true
+    }
+
     fun destroy() {
         destroyed = true
         GroupedWallpaperRenderBus.detach(this)
         loader.shutdownNow()
     }
 
-    private fun loadFrame(): LoadedFrame {
-        val state = GroupedWallpaperStateFile.read(context)
-        val photo = GroupedWallpaperStateFile.photoFile(context, state)
-        if (photo == null) return LoadedFrame(state?.generation ?: -1, "", null)
-        val bitmap = decode(photo)
-        return LoadedFrame(state?.generation ?: -1, state?.photo ?: "", bitmap)
+    private fun loadFrame(): LoadedFrame? {
+        val state = GroupedWallpaperStateFile.read(context) ?: return null
+        val bitmaps = mutableMapOf<Int, Bitmap>()
+        for (slot in state.slots) {
+            val file = GroupedWallpaperStateFile.photoFile(context, slot.photo) ?: continue
+            decode(file)?.let { bitmaps[slot.id] = it }
+        }
+        return LoadedFrame(state, bitmaps)
     }
 
     private fun decode(file: File): Bitmap? = try {
@@ -276,25 +330,47 @@ class GroupedWallpaperRenderer(
     private fun consumePending() {
         val loaded = pending ?: return
         pending = null
-        if (loaded.generation == currentGeneration && loaded.photo == currentPhoto) {
-            loaded.bitmap?.recycle()
-            return
+        val previousGeneration = state?.generation ?: Int.MIN_VALUE
+        state = loaded.state
+
+        val seen = mutableSetOf<Int>()
+        for ((id, bitmap) in loaded.bitmaps) {
+            seen.add(id)
+            val slot = loaded.state.slot(id)
+            val existing = textures[id]
+            // A slot keeps its id while it stays in the queue, so an unchanged
+            // file must not be uploaded again.
+            if (existing != null && slot != null && existing.entryId == slot.entryId && existing.photo == slot.photo) {
+                bitmap.recycle()
+                continue
+            }
+            try {
+                val aspect = bitmap.width.toFloat() / bitmap.height.toFloat().coerceAtLeast(1f)
+                if (existing == null) {
+                    textures[id] = UploadedSlot(slot?.entryId ?: -1, slot?.photo ?: "", createTexture(bitmap), aspect)
+                } else {
+                    upload(existing.texture, bitmap)
+                    textures[id] = UploadedSlot(slot?.entryId ?: -1, slot?.photo ?: "", existing.texture, aspect)
+                }
+            } finally {
+                bitmap.recycle()
+            }
         }
-        currentGeneration = loaded.generation
-        currentPhoto = loaded.photo
-        val bitmap = loaded.bitmap
-        if (bitmap == null) {
-            hasPhoto = false
-            return
+
+        // Drop the textures of slots that left the queue.
+        val stale = textures.keys.filter { !seen.contains(it) }
+        for (id in stale) {
+            textures.remove(id)?.let { deleteTexture(it.texture) }
         }
-        try {
-            if (photoTexture == 0) photoTexture = createTexture(bitmap)
-            else upload(photoTexture, bitmap)
-            photoAspect = bitmap.width.toFloat() / bitmap.height.toFloat().coerceAtLeast(1f)
-            hasPhoto = true
-        } finally {
-            bitmap.recycle()
+        readySlots = textures.keys.toSet()
+
+        // A newer state wins; an unchanged one must not undo a local promotion.
+        if (loaded.state.generation > previousGeneration) {
+            displayed = loaded.state.current
+        } else if (!textures.containsKey(displayed)) {
+            displayed = loaded.state.current
         }
+        if (!textures.containsKey(displayed)) displayed = -1
     }
 
     private fun drawQuad(vertices: FloatBuffer, coords: FloatBuffer, texture: Int) {
@@ -362,6 +438,10 @@ class GroupedWallpaperRenderer(
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
         GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+    }
+
+    private fun deleteTexture(texture: Int) {
+        GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
     }
 
     private fun createProgram(vertexSource: String, fragmentSource: String): Int {

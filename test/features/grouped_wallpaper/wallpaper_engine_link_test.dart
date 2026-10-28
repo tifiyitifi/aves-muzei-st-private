@@ -78,7 +78,15 @@ void main() {
 
   test('delegates the engine actions', () async {
     link.attach(connection);
-    connection.state = const GroupedWallpaperState(status: GroupedWallpaperStatus.ready, groupNumber: 2, groupName: 'DCIM', entryId: 7, photo: 'current.png');
+    connection.state = const GroupedWallpaperState(
+      status: GroupedWallpaperStatus.ready,
+      groupNumber: 2,
+      groupName: 'DCIM',
+      current: 0,
+      slots: [
+        GroupedWallpaperSlot(id: 0, entryId: 7, uri: 'content://7', title: 'IMG_7', photo: 'slots/0/photo.png'),
+      ],
+    );
 
     expect((await link.readState())?.groupNumber, 2);
     expect(await link.prepare(), GroupedWallpaperSyncResult.unchanged);
@@ -123,6 +131,9 @@ class _FakeConnection implements WallpaperEngineConnection {
 
   @override
   Future<GroupedWallpaperState?> readState() async => state;
+
+  @override
+  Future<String?> currentPhotoPath() async => null;
 
   @override
   Future<GroupedWallpaperSyncResult> prepare({bool activation = false}) async {

@@ -143,6 +143,7 @@ open class MainActivity : FlutterFragmentActivity() {
         liveWallpaperAppMessenger = messenger
         WallpaperAppBridge.attach(messenger)
         GroupedWallpaperAppBridge.attach(messenger)
+        GroupedWallpaperAppBridge.attachContext(this)
 
         // notification: platform -> dart
         analysisStreamHandler = AnalysisStreamHandler().apply {

@@ -8,6 +8,8 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.d
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_page.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_action_delegate.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_filter.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
@@ -86,6 +88,8 @@ enum _PageAction {
   syncNow,
   setCurrentAsWallpaper,
   disableWallpaper,
+  viewCurrent,
+  gestures,
   engineStatus,
   cancelGalleryRange,
 }
@@ -1013,6 +1017,14 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         subtitle: _engineStatusText(context),
       ),
       _menuItem(
+        _PageAction.viewCurrent,
+        AIcons.wallpaperPlaying,
+        l10n.wallpaperGroupViewCurrent,
+        enabled: engineActive && !wallpaperEngineLink.isDisabled,
+        subtitle: engineActive && !wallpaperEngineLink.isDisabled ? null : l10n.wallpaperGroupSyncInactive,
+      ),
+      _menuItem(_PageAction.gestures, AIcons.gestures, l10n.wallpaperGroupGestures),
+      _menuItem(
         _PageAction.discardChanges,
         AIcons.discard,
         l10n.wallpaperGroupDiscardChanges,
@@ -1100,6 +1112,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         if (group != null) await _setCurrentAsWallpaper(group);
       case _PageAction.disableWallpaper:
         await _disableWallpaper();
+      case _PageAction.viewCurrent:
+        await _viewCurrent();
+      case _PageAction.gestures:
+        await _openGestures();
       case _PageAction.engineStatus:
         break;
       case _PageAction.cancelGalleryRange:
@@ -1233,6 +1249,28 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final opened = await wallpaperEngineLink.openChooser();
     if (!mounted || opened) return;
     _showMessage(context.l10n.wallpaperGroupChooserUnavailable);
+  }
+
+  /// Opens the immersive view of the photo the wallpaper is showing.
+  Future<void> _viewCurrent() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: GroupedWallpaperViewPage.routeName),
+        builder: (_) => const GroupedWallpaperViewPage(),
+      ),
+    );
+  }
+
+  /// Opens the global gesture bindings.
+  Future<void> _openGestures() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: GroupedWallpaperGesturesPage.routeName),
+        builder: (_) => const GroupedWallpaperGesturesPage(),
+      ),
+    );
+    // A binding change re-bakes the state, so the status row may have changed.
+    await _refreshEngine();
   }
 
   /// One line describing what the live wallpaper is doing, for the menu.

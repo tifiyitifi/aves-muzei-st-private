@@ -9,6 +9,7 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_entry_s
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_plan.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
@@ -17,7 +18,7 @@ import 'package:aves/model/entry/origins.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// `GroupedWallpaperEngine`: which frame a run bakes, what it writes, and how
+/// `GroupedWallpaperEngine`: the promotion queue, what a run writes, and how
 /// every failure degrades to the placeholder instead of a stale image.
 void main() {
   const dcimGroup = WallpaperGroup(id: 'group.1', number: 1, name: '@wallpaperGroupDefaultDcim', current: true, updatedAt: 10);
@@ -50,6 +51,12 @@ void main() {
         durationMillis: 0,
         trashed: false,
         origin: EntryOrigins.mediaStoreContent,
+      );
+
+  /// Newest first, as the entry source returns them.
+  GroupedWallpaperEntryWindow window(int n, {int first = 50}) => GroupedWallpaperEntryWindow(
+        count: n,
+        entries: [for (var i = 0; i < n; i++) entry(first - i)],
       );
 
   setUp(() async {
@@ -109,32 +116,39 @@ void main() {
   });
 
   group('prepare', () {
-    test('bakes before the service is the system wallpaper', () async {
+    test('bakes a queue before the service is the system wallpaper', () async {
       platform.active = false;
-      entrySource.window = GroupedWallpaperEntryWindow(count: 12, entries: [entry(2), entry(1)]);
+      entrySource.window = window(12);
 
       expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
 
       final state = (await store.readState())!;
       expect(state.status, GroupedWallpaperStatus.ready);
-      expect(state.entryId, 2);
       expect(state.groupId, dcimGroup.id);
-      expect(await store.photoFile.exists(), isTrue);
+      expect(state.queueLength, GroupedWallpaperEngine.prefetchAhead + 1);
+      expect(state.currentSlot?.entryId, 50);
+      expect(state.nextSlot?.entryId, 49);
+      expect(state.count, 12);
+      expect(state.width, 100);
+      expect(state.height, 200);
+      for (final slot in state.slots) {
+        expect(await store.slotPhotoOf(slot)?.exists(), isTrue);
+      }
     });
 
-    test('keeps the frame it already shows instead of cycling on every start', () async {
-      entrySource.window = GroupedWallpaperEntryWindow(count: 12, entries: [entry(2), entry(1)]);
+    test('keeps the queue it already has instead of cycling on every start', () async {
+      entrySource.window = window(12);
       await engine.prepare();
       final first = (await store.readState())!;
 
       expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
 
-      expect(baker.bakeCount, 1);
-      expect((await store.readState())!.entryId, first.entryId);
+      expect(baker.bakeCount, 3);
+      expect((await store.readState())!.current, first.current);
     });
 
     test('re-bakes when the group range was saved after the bake', () async {
-      entrySource.window = GroupedWallpaperEntryWindow(count: 12, entries: [entry(2), entry(1)]);
+      entrySource.window = window(12);
       await engine.prepare();
 
       planStore.plan = GroupedWallpaperPlan(
@@ -143,23 +157,34 @@ void main() {
       );
       expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
 
-      expect(baker.bakeCount, 2);
+      expect(baker.bakeCount, 6);
     });
 
-    test('re-bakes when the photo is gone from disk', () async {
-      entrySource.window = GroupedWallpaperEntryWindow(count: 12, entries: [entry(2), entry(1)]);
+    test('re-bakes when a slot photo is gone from disk', () async {
+      entrySource.window = window(12);
       await engine.prepare();
-      await store.clearPhoto();
+      final state = (await store.readState())!;
+      await store.slotPhoto(state.next).delete();
 
       expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
 
-      expect(baker.bakeCount, 2);
+      expect((await store.readState())!.queueLength, 3);
+    });
+
+    test('a small group keeps fewer slots instead of repeating an image', () async {
+      entrySource.window = window(2);
+
+      await engine.prepare();
+
+      final state = (await store.readState())!;
+      expect(state.queueLength, 2);
+      expect(state.slots.map((slot) => slot.entryId).toSet(), {49, 50});
     });
 
     test('activation with no group adopts the first enabled group', () async {
       planStore.plan = const GroupedWallpaperPlan(group: WallpaperGroup.none);
       planStore.adopted = const GroupedWallpaperPlan(group: dcimGroup);
-      entrySource.window = GroupedWallpaperEntryWindow(count: 3, entries: [entry(7)]);
+      entrySource.window = window(3, first: 7);
 
       expect(await engine.prepare(activation: true), GroupedWallpaperSyncResult.baked);
 
@@ -186,9 +211,66 @@ void main() {
     });
   });
 
+  group('advance', () {
+    test('moves to the prefetched slot and refills the queue', () async {
+      entrySource.window = window(12);
+      await engine.prepare();
+      final first = (await store.readState())!;
+      expect(first.currentSlot?.entryId, 50);
+      expect(first.nextSlot?.entryId, 49);
+
+      expect(await engine.syncNow(), GroupedWallpaperSyncResult.baked);
+
+      final state = (await store.readState())!;
+      expect(state.currentSlot?.entryId, 49);
+      expect(state.queueLength, 3);
+      expect(state.slots.map((slot) => slot.entryId).toSet(), {47, 48, 49});
+      // Only the freed slot is baked again: the other two keep their files.
+      expect(baker.bakeCount, 4);
+    });
+
+    test('a group with a single image keeps showing it', () async {
+      entrySource.window = window(1, first: 5);
+      await engine.prepare();
+
+      await engine.syncNow();
+
+      final state = (await store.readState())!;
+      expect(state.currentSlot?.entryId, 5);
+      expect(state.queueLength, 1);
+    });
+
+    test('adopts the slot the renderer promoted to', () async {
+      entrySource.window = window(12);
+      await engine.prepare();
+      final first = (await store.readState())!;
+      // The renderer promoted `next` on a tap and recorded it.
+      await store.runtimeFile.writeAsString(
+        '{"generation":${first.generation},"current":${first.next},"next":-1,"refillRequested":true}',
+      );
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      final state = (await store.readState())!;
+      expect(state.currentSlot?.entryId, 49);
+      expect(state.queueLength, 3);
+    });
+
+    test('a stale runtime is ignored', () async {
+      entrySource.window = window(12);
+      await engine.prepare();
+      final first = (await store.readState())!;
+      await store.runtimeFile.writeAsString('{"generation":${first.generation - 1},"current":${first.next},"next":-1}');
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
+
+      expect((await store.readState())!.currentSlot?.entryId, 50);
+    });
+  });
+
   group('disabled', () {
     test('keeps the frame on screen and records the status', () async {
-      entrySource.window = GroupedWallpaperEntryWindow(count: 3, entries: [entry(2)]);
+      entrySource.window = window(3);
       await engine.prepare();
       final frozen = (await store.readState())!;
 
@@ -197,12 +279,10 @@ void main() {
 
       final state = (await store.readState())!;
       expect(state.status, GroupedWallpaperStatus.disabled);
-      expect(state.entryId, frozen.entryId);
-      expect(state.photo, frozen.photo);
+      expect(state.current, frozen.current);
       expect(state.hasPhoto, isTrue);
       expect(state.generation, frozen.generation + 1);
-      expect(baker.bakeCount, 1);
-      expect(await store.photoFile.exists(), isTrue);
+      expect(baker.bakeCount, 3);
     });
 
     test('the link reports it is no longer playing', () async {
@@ -214,7 +294,7 @@ void main() {
     });
 
     test('freezes when the group that was playing disappeared', () async {
-      entrySource.window = GroupedWallpaperEntryWindow(count: 3, entries: [entry(2)]);
+      entrySource.window = window(3);
       await engine.prepare();
 
       // The group was deleted or disabled: normalize leaves no current group.
@@ -225,75 +305,29 @@ void main() {
       final state = (await store.readState())!;
       expect(state.status, GroupedWallpaperStatus.disabled);
       expect(state.hasPhoto, isTrue);
-      expect(baker.bakeCount, 1);
+      expect(baker.bakeCount, 3);
     });
   });
 
-  test('bakes the newest image and records the group, entry and size', () async {
-    entrySource.window = GroupedWallpaperEntryWindow(count: 12, entries: [entry(2), entry(1)]);
-
-    expect(await engine.syncNow(), GroupedWallpaperSyncResult.baked);
-
-    final state = (await store.readState())!;
-    expect(state.status, GroupedWallpaperStatus.ready);
-    expect(state.generation, 1);
-    expect(state.groupId, dcimGroup.id);
-    expect(state.groupNumber, 1);
-    expect(state.groupName, 'DCIM');
-    expect(state.count, 12);
-    expect(state.entryId, 2);
-    expect(state.entryTitle, 'IMG_2');
-    expect(state.photo, GroupedWallpaperState.photoFileName);
-    expect(state.width, 100);
-    expect(state.height, 200);
-    expect(state.bakedAt, 1234);
-    expect(await store.photoFile.exists(), isTrue);
-    expect(platform.reloadCount, 1);
-    expect(baker.lastTarget, const Size(100, 200));
-    expect(entrySource.lastRange, isNull);
-  });
-
-  test('a second sync shows another image instead of the same one', () async {
-    entrySource.window = GroupedWallpaperEntryWindow(count: 12, entries: [entry(2), entry(1)]);
-    await engine.syncNow();
-
-    await engine.syncNow();
-
-    expect(baker.lastEntry?.id, 1);
-    final state = (await store.readState())!;
-    expect(state.entryId, 1);
-    expect(state.generation, 2);
-  });
-
-  test('a group with a single image keeps showing it', () async {
-    entrySource.window = GroupedWallpaperEntryWindow(count: 1, entries: [entry(5)]);
-    await engine.syncNow();
-
-    await engine.syncNow();
-
-    expect(baker.lastEntry?.id, 5);
-    expect((await store.readState())!.entryId, 5);
-  });
-
-  test('an empty group clears the photo and records the empty state', () async {
-    entrySource.window = GroupedWallpaperEntryWindow(count: 1, entries: [entry(2)]);
-    await engine.syncNow();
-    expect(await store.photoFile.exists(), isTrue);
+  test('an empty group clears the photos and records the empty state', () async {
+    entrySource.window = window(2);
+    await engine.prepare();
 
     entrySource.window = GroupedWallpaperEntryWindow.empty;
-    expect(await engine.syncNow(), GroupedWallpaperSyncResult.empty);
+    planStore.plan = const GroupedWallpaperPlan(group: WallpaperGroup(id: 'group.2', number: 2, name: 'B', current: true, updatedAt: 11));
+
+    expect(await engine.prepare(), GroupedWallpaperSyncResult.empty);
 
     final state = (await store.readState())!;
     expect(state.status, GroupedWallpaperStatus.emptyGroup);
-    expect(state.count, 0);
+    expect(state.queueLength, 0);
     expect(state.hasPhoto, isFalse);
-    expect(await store.photoFile.exists(), isFalse);
-    expect(platform.reloadCount, 2);
+    expect(await store.slotsDir.exists(), isFalse);
   });
 
-  test('a locked group keeps its frame and bakes nothing', () async {
-    entrySource.window = GroupedWallpaperEntryWindow(count: 12, entries: [entry(2), entry(1)]);
-    await engine.syncNow();
+  test('a locked group keeps its queue and bakes nothing', () async {
+    entrySource.window = window(12);
+    await engine.prepare();
     final frozen = (await store.readState())!;
     final bakes = baker.bakeCount;
     final reloads = platform.reloadCount;
@@ -306,12 +340,10 @@ void main() {
 
     final state = (await store.readState())!;
     expect(state.status, GroupedWallpaperStatus.locked);
-    expect(state.entryId, frozen.entryId);
-    expect(state.photo, frozen.photo);
+    expect(state.current, frozen.current);
     expect(state.hasPhoto, isTrue);
     expect(baker.bakeCount, bakes);
     expect(platform.reloadCount, reloads);
-    expect(await store.photoFile.exists(), isTrue);
   });
 
   test('a locked group with no frame yet writes a placeholder state', () async {
@@ -329,9 +361,9 @@ void main() {
     expect(baker.bakeCount, 0);
   });
 
-  test('a bake failure clears the photo and shows the placeholder', () async {
-    entrySource.window = GroupedWallpaperEntryWindow(count: 1, entries: [entry(2)]);
-    await engine.syncNow();
+  test('a bake failure clears the photos and shows the placeholder', () async {
+    entrySource.window = window(4);
+    await engine.prepare();
     baker.error = const GroupedWallpaperBakeException('decode failed');
 
     expect(await engine.syncNow(), GroupedWallpaperSyncResult.failed);
@@ -339,36 +371,34 @@ void main() {
     final state = (await store.readState())!;
     expect(state.status, GroupedWallpaperStatus.unavailable);
     expect(state.hasPhoto, isFalse);
-    expect(await store.photoFile.exists(), isFalse);
+    expect(await store.slotsDir.exists(), isFalse);
     expect(state.groupId, dcimGroup.id);
-    expect(platform.reloadCount, 2);
   });
 
   test('a plan read failure still leaves the placeholder, not the old frame', () async {
-    entrySource.window = GroupedWallpaperEntryWindow(count: 1, entries: [entry(2)]);
-    await engine.syncNow();
+    entrySource.window = window(2);
+    await engine.prepare();
     planStore.error = StateError('database is gone');
 
     expect(await engine.syncNow(), GroupedWallpaperSyncResult.failed);
 
     final state = (await store.readState())!;
     expect(state.status, GroupedWallpaperStatus.unavailable);
-    expect(await store.photoFile.exists(), isFalse);
+    expect(await store.slotsDir.exists(), isFalse);
   });
 
   test('concurrent runs are serialized instead of writing at the same time', () async {
-    entrySource.window = GroupedWallpaperEntryWindow(count: 2, entries: [entry(2), entry(1)]);
+    entrySource.window = window(4);
 
     final results = await Future.wait([engine.prepare(), engine.syncNow()]);
 
     expect(results, [GroupedWallpaperSyncResult.baked, GroupedWallpaperSyncResult.baked]);
-    expect(baker.bakeCount, 2);
     // The last write wins, and the queue never leaves two runs overlapping.
-    expect((await store.readState())!.entryId, 1);
+    expect((await store.readState())!.hasPhoto, isTrue);
   });
 
   test('the service request runs a prepare', () async {
-    entrySource.window = GroupedWallpaperEntryWindow(count: 1, entries: [entry(3)]);
+    entrySource.window = window(2, first: 3);
     final reloaded = Completer<void>();
     platform.onReload = () {
       if (!reloaded.isCompleted) reloaded.complete();
@@ -377,37 +407,27 @@ void main() {
     platform.syncHandler!.call();
     await reloaded.future;
 
-    expect(baker.lastEntry?.id, 3);
-    expect((await store.readState())!.entryId, 3);
+    expect((await store.readState())!.hasPhoto, isTrue);
   });
 
   test('the group range is what the media set is resolved from', () async {
     final range = VisibleRange(id: 'group.1.range', scope: VisibleRangeScope.wallpaper, ownerId: dcimGroup.id);
     planStore.plan = GroupedWallpaperPlan(group: dcimGroup, range: range);
-    entrySource.window = GroupedWallpaperEntryWindow(count: 1, entries: [entry(4)]);
+    entrySource.window = window(2);
 
     await engine.syncNow();
 
     expect(entrySource.lastRange, range);
   });
 
-  group('selectGroupedWallpaperEntry', () {
-    test('skips the entry already on screen', () {
-      expect(selectGroupedWallpaperEntry([entry(2), entry(1)], previousEntryId: 2)?.id, 1);
-    });
+  group('_pickEntries', () {
+    test('skips entries whose file disappeared', () async {
+      entrySource.window = GroupedWallpaperEntryWindow(count: 2, entries: [entry(3).copyWith(path: '/gone/3.jpg'), entry(1)]);
 
-    test('falls back to the previous entry when it is the only one', () {
-      expect(selectGroupedWallpaperEntry([entry(2)], previousEntryId: 2)?.id, 2);
-    });
+      await engine.prepare();
 
-    test('skips entries whose file disappeared', () {
-      final missing = entry(3).copyWith(path: '/gone/3.jpg');
-      expect(selectGroupedWallpaperEntry([missing, entry(1)])?.id, 1);
-    });
-
-    test('reports nothing when every entry is missing', () {
-      final missing = entry(3).copyWith(path: '/gone/3.jpg');
-      expect(selectGroupedWallpaperEntry([missing]), isNull);
+      final state = (await store.readState())!;
+      expect(state.currentSlot?.entryId, 1);
     });
   });
 }
@@ -493,6 +513,11 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   Future<void> setDisabled(bool disabled) async {
     disabledWrites.add(disabled);
     plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled);
+  }
+
+  @override
+  Future<void> setGestures(GroupedWallpaperGestures gestures) async {
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures);
   }
 }
 

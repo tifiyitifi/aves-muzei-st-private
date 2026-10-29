@@ -20,6 +20,14 @@ class VisibleRangeBrowsingOverlay {
   final bool gallerySuspended;
 
   const new({this.groupFilter, this.gallerySuspended = false});
+
+  /// Value equality keeps a page re-publishing the same scope from invalidating
+  /// every browsing cache.
+  @override
+  bool operator ==(Object other) => other is VisibleRangeBrowsingOverlay && other.groupFilter == groupFilter && other.gallerySuspended == gallerySuspended;
+
+  @override
+  int get hashCode => Object.hash(groupFilter, gallerySuspended);
 }
 
 /// The single seam between the current gallery visible range and every browsing
@@ -45,7 +53,19 @@ abstract final class VisibleRangeGate {
   /// The live wallpaper never reads this gate: it uses the saved group range
   /// through `wallpaperMediaSetFilter`, so gallery browsing can never narrow the
   /// wallpaper result.
-  static VisibleRangeBrowsingOverlay? overlay;
+  static final ValueNotifier<VisibleRangeBrowsingOverlay?> _overlay = ValueNotifier(null);
+
+  /// Notifies when [overlay] changes.
+  ///
+  /// The paged and summary paths re-resolve on `FilterVisibilityChangedEvent`,
+  /// but the legacy in-memory path caches `visibleEntries` and every filter
+  /// summary derived from it. A source subscribes here to drop those caches, the
+  /// same way it listens to the gallery controller.
+  static ValueListenable<VisibleRangeBrowsingOverlay?> get overlayListenable => _overlay;
+
+  static VisibleRangeBrowsingOverlay? get overlay => _overlay.value;
+
+  static set overlay(VisibleRangeBrowsingOverlay? value) => _overlay.value = value;
 
   /// Replaces the overlay with the group scope alone, dropping the page-local
   /// gallery suspension.

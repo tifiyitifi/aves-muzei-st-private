@@ -169,6 +169,32 @@ void main() {
     expect(VisibleRangeGate.filter, PathFilter('/a'));
   });
 
+  test('the overlay notifies only when its value changes', () {
+    var notifications = 0;
+    void listener() => notifications++;
+    VisibleRangeGate.overlayListenable.addListener(listener);
+    addTearDown(() => VisibleRangeGate.overlayListenable.removeListener(listener));
+
+    VisibleRangeGate.overlay = VisibleRangeBrowsingOverlay(groupFilter: PathFilter('/b'));
+    expect(notifications, 1);
+
+    // The page re-publishes on every sync; an equal value must not invalidate
+    // every browsing cache again.
+    VisibleRangeGate.overlay = VisibleRangeBrowsingOverlay(groupFilter: PathFilter('/b'));
+    expect(notifications, 1);
+
+    // The page-local suspension is part of the value.
+    VisibleRangeGate.overlay = VisibleRangeBrowsingOverlay(groupFilter: PathFilter('/b'), gallerySuspended: true);
+    expect(notifications, 2);
+
+    // Group 0 clears the scope, which is a change too.
+    VisibleRangeGate.overlay = null;
+    expect(notifications, 3);
+
+    VisibleRangeGate.overlay = null;
+    expect(notifications, 3);
+  });
+
   test('leaving the wallpaper page keeps the group scope but restores the gallery range', () async {
     final controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const <VisibleRangePresetDefinition>[]);
     await controller.init();

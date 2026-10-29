@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
+import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/catalog.dart';
@@ -109,6 +110,7 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
     });
     vaults.lockStateChangeNotifier.addListener(_onVaultsChanged);
     visibleRangeController.addListener(_onVisibleRangeChanged);
+    VisibleRangeGate.overlayListenable.addListener(_onVisibleRangeChanged);
   }
 
   @mustCallSuper
@@ -120,6 +122,7 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
     progressNotifier.dispose();
     vaults.lockStateChangeNotifier.removeListener(_onVaultsChanged);
     visibleRangeController.removeListener(_onVisibleRangeChanged);
+    VisibleRangeGate.overlayListenable.removeListener(_onVisibleRangeChanged);
     _disposeAllEntries();
   }
 
@@ -189,13 +192,18 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
     };
     // The visible range is a browsing constraint, not a hidden filter: an entry
     // outside it is kept in the database and must reappear as soon as the range
-    // widens, without any source reload.
-    final visibleRange = visibleRangeController.galleryFilter;
+    // widens, without any source reload. The gate joins the gallery range with
+    // the wallpaper page's group scope, so this in-memory path agrees with the
+    // paged and summary paths.
+    final visibleRange = VisibleRangeGate.filter;
     return entries.where((entry) => !hiddenFilters.any((filter) => filter.test(entry)) && (visibleRange == null || visibleRange.test(entry)));
   }
 
   void _onVisibleRangeChanged() {
-    _invalidate();
+    // A range change hides or reveals entries, so the legacy album/tag/place
+    // lists derived from them have to be recomputed, not just the caches behind
+    // them. The paged path answers from its own summaries.
+    updateDerivedFilters();
     eventBus.fire(const FilterVisibilityChangedEvent());
   }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/l10n/l10n.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/entry/extensions/favourites.dart';
@@ -44,6 +45,12 @@ void main() {
 
   setUp(() async {
     await setUpServices();
+  });
+
+  tearDown(() {
+    // The gate's overlay is process-wide; a leaked scope would narrow every
+    // later test's library.
+    VisibleRangeGate.overlay = null;
   });
 
   tearDownAll(() async {
@@ -132,6 +139,27 @@ void main() {
     expect(source.rawAlbums.length, 0);
     expect(source.sortedCountries.length, 0);
     expect(source.sortedTags.length, 0);
+  });
+
+  test('the wallpaper group scope narrows the legacy library and restores it', () async {
+    final image1 = FakeMediaStoreService.newImage(testAlbum, 'image1');
+    final image2 = FakeMediaStoreService.newImage(sourceAlbum, 'image2');
+    (mediaStoreService as FakeMediaStoreService).entries = {image1, image2};
+
+    final source = await _initSource();
+    expect(source.visibleEntries.length, 2);
+    expect(source.rawAlbums.toSet(), {testAlbum, sourceAlbum});
+
+    // The wallpaper page publishes the viewed group's range: the in-memory path
+    // has to apply it like the paged and summary paths do.
+    VisibleRangeGate.overlay = VisibleRangeBrowsingOverlay(groupFilter: StoredAlbumFilter(testAlbum, null));
+    expect(source.visibleEntries.map((entry) => entry.id).toSet(), {image1.id});
+    expect(source.rawAlbums.toSet(), {testAlbum});
+
+    // Selecting group 0 clears the scope, so the whole library comes back.
+    VisibleRangeGate.overlay = null;
+    expect(source.visibleEntries.length, 2);
+    expect(source.rawAlbums.toSet(), {testAlbum, sourceAlbum});
   });
 
   test('add/remove favourite entry', () async {

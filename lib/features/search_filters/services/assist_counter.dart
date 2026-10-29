@@ -1,4 +1,5 @@
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
+import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/services/common/services.dart';
@@ -12,7 +13,7 @@ abstract final class AssistCounter {
   static Future<int?> count(Set<CollectionFilter> filters) async {
     if (filters.isEmpty) return null;
     try {
-      final predicate = predicateForFilters(filters, hidden: settings.hiddenFilters);
+      final predicate = predicateForFilters(VisibleRangeGate.apply(filters), hidden: settings.hiddenFilters);
       if (predicate == null) return null;
       await localMediaDb.init();
       return await localMediaDb.countEntries(predicate);

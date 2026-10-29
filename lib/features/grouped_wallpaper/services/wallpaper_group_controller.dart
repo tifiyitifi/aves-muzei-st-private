@@ -565,6 +565,35 @@ class WallpaperGroupController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether the page should warn that another wallpaper replaced this one.
+  ///
+  /// The system keeps a single wallpaper, so another wallpaper, or an app that
+  /// changes it on a schedule, silently turns this one off. That looks exactly
+  /// like a wallpaper the user never set, so the controller records "this one has
+  /// been the system wallpaper" while it is active: only then is its disappearance
+  /// someone else's doing. The marker is cleared when the warning is taken, so one
+  /// replacement warns once.
+  Future<bool> takeOverwriteWarning({required bool active, required bool disabled, required bool hasFrame}) async {
+    final store = await _openStore();
+    if (active) {
+      // Written on the transition only, so opening the page does not touch the
+      // database every time.
+      if (!await store.readWasActive()) await store.writeWasActive(true);
+      return false;
+    }
+    if (disabled || !hasFrame) {
+      // A user who turned the feature off is not being surprised by anything.
+      if (await store.readWasActive()) await store.writeWasActive(false);
+      return false;
+    }
+    if (!await store.readWasActive()) return false;
+    await store.writeWasActive(false);
+    return !await store.readOverwriteDismissed();
+  }
+
+  /// Records that the user does not want the replacement warning again.
+  Future<void> dismissOverwriteWarning() async => (await _openStore()).writeOverwriteDismissed(true);
+
   Future<WallpaperGroupStore> _openStore() async {
     final existing = _store;
     if (existing != null) return existing;

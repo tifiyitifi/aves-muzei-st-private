@@ -391,4 +391,27 @@ void main() {
     // The dirty draft owns the list until it is saved or discarded.
     expect(controller.groups.firstWhere((group) => group.id == 'wallpaper.group.dcim').name, 'Draft name');
   });
+
+  test('the replacement warning needs a wallpaper that was really on', () async {
+    // Never set: the page prepares frames for the picker preview too, so a frame
+    // alone must not look like a replaced wallpaper.
+    expect(await controller.takeOverwriteWarning(active: false, disabled: false, hasFrame: true), isFalse);
+
+    // Seen on screen once, then gone: that is the replacement.
+    expect(await controller.takeOverwriteWarning(active: true, disabled: false, hasFrame: true), isFalse);
+    expect(await controller.takeOverwriteWarning(active: false, disabled: false, hasFrame: true), isTrue);
+    // One warning per replacement, even without the dialog being dismissed.
+    expect(await controller.takeOverwriteWarning(active: false, disabled: false, hasFrame: true), isFalse);
+  });
+
+  test('the replacement warning respects the off switch and the opt-out', () async {
+    await controller.takeOverwriteWarning(active: true, disabled: false, hasFrame: true);
+    // Turned off by the user: nothing surprising happened.
+    expect(await controller.takeOverwriteWarning(active: false, disabled: true, hasFrame: true), isFalse);
+    expect(await controller.takeOverwriteWarning(active: false, disabled: false, hasFrame: true), isFalse);
+
+    await controller.takeOverwriteWarning(active: true, disabled: false, hasFrame: true);
+    await controller.dismissOverwriteWarning();
+    expect(await controller.takeOverwriteWarning(active: false, disabled: false, hasFrame: true), isFalse);
+  });
 }

@@ -214,7 +214,8 @@ class GroupedWallpaperState extends Equatable {
   /// v2 added the slot queue; v3 added the ordering metadata ([recent],
   /// [cursor], [newestEntryId]); v4 added [paused] and the group id of a recent
   /// entry. Older files are read with those at their defaults, so an upgrade
-  /// never loses the frame on screen.
+  /// never loses the frame on screen. [notification] was added afterwards without
+  /// a version bump: a file without it means "on", which is what those builds did.
   static const int currentVersion = 4;
 
   /// How many recently shown photos are remembered.
@@ -269,6 +270,12 @@ class GroupedWallpaperState extends Equatable {
   /// is the visible range's own lock.
   final bool paused;
 
+  /// Whether the user lets the wallpaper show its notification bar.
+  ///
+  /// It travels with the state because the service owns the bar: with this off it
+  /// posts nothing and never promotes itself to a foreground service.
+  final bool notification;
+
   final int bakedAt;
 
   const new({
@@ -289,6 +296,7 @@ class GroupedWallpaperState extends Equatable {
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
     this.gestures = const GroupedWallpaperGestures(),
     this.paused = false,
+    this.notification = true,
     this.bakedAt = 0,
   });
 
@@ -348,6 +356,7 @@ class GroupedWallpaperState extends Equatable {
     GroupedWallpaperOrdering? ordering,
     GroupedWallpaperGestures? gestures,
     bool? paused,
+    bool? notification,
     int? bakedAt,
   }) => GroupedWallpaperState(
         version: version ?? this.version,
@@ -367,6 +376,7 @@ class GroupedWallpaperState extends Equatable {
         ordering: ordering ?? this.ordering,
         gestures: gestures ?? this.gestures,
         paused: paused ?? this.paused,
+        notification: notification ?? this.notification,
         bakedAt: bakedAt ?? this.bakedAt,
       );
 
@@ -406,6 +416,7 @@ class GroupedWallpaperState extends Equatable {
         'ordering': ordering.name,
         'gestures': gestures.toJsonMap(),
         'paused': paused,
+        'notification': notification,
         'bakedAt': bakedAt,
       };
 
@@ -494,6 +505,9 @@ class GroupedWallpaperState extends Equatable {
       ordering: GroupedWallpaperOrdering.tryParse(json['ordering']),
       gestures: GroupedWallpaperGestures.fromJsonMap(_map(json['gestures']) ?? const {}),
       paused: json['paused'] == true,
+      // Files written before the setting existed kept the bar on, which is what
+      // those builds did.
+      notification: json['notification'] != false,
       bakedAt: _int(json['bakedAt']) ?? 0,
     );
     // `ready` without a frame is a contradiction: show the placeholder instead
@@ -515,7 +529,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, paused, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, paused, notification, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

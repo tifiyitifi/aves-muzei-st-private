@@ -76,6 +76,25 @@ void main() {
     expect(link.isDisabled, isTrue);
   });
 
+  test('the notification switch is cached and written through', () async {
+    link.attach(connection);
+    connection.notification = false;
+
+    expect(link.notificationEnabled, isTrue);
+    await link.refreshNotification();
+    expect(link.notificationEnabled, isFalse);
+
+    await link.setNotification(true);
+    expect(link.notificationEnabled, isTrue);
+    expect(connection.notification, isTrue);
+  });
+
+  test('a detached link reports the notification as on', () async {
+    expect(link.notificationEnabled, isTrue);
+    await link.refreshNotification();
+    expect(link.notificationEnabled, isTrue);
+  });
+
   test('delegates the engine actions', () async {
     link.attach(connection);
     connection.state = const GroupedWallpaperState(
@@ -157,6 +176,14 @@ class _FakeConnection implements WallpaperEngineConnection {
 
   @override
   Future<void> setDisabled(bool disabled) async => this.disabled = disabled;
+
+  @override
+  Future<bool> isNotificationEnabled() async => notification;
+
+  @override
+  Future<void> setNotification(bool enabled) async => notification = enabled;
+
+  bool notification = true;
 
   @override
   Future<bool> openChooser() async => true;

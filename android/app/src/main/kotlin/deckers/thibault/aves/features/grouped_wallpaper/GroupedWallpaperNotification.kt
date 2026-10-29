@@ -56,6 +56,11 @@ object GroupedWallpaperNotification {
      * notification itself is `setOnlyAlertOnce`, so a frame update never beeps:
      * only the first post after the service starts does. A channel's sound cannot
      * be changed after creation, hence the version suffix.
+     *
+     * The id must never change again. Some devices only show a channel on the lock
+     * screen after the user marks it as important, and that choice is stored per
+     * channel id: a new id would silently drop it and bring back the "no bar on
+     * the lock screen" report.
      */
     const val CHANNEL_ID = "grouped_wallpaper_v3"
 
@@ -64,8 +69,8 @@ object GroupedWallpaperNotification {
 
     const val NOTIFICATION_ID = 3
 
-    /** The app route of the wallpaper group page. */
-    private const val GROUP_PAGE_ROUTE = "/wallpaper_groups"
+    /** The app route of the immersive wallpaper view. */
+    private const val VIEW_ROUTE = "/grouped_wallpaper/view"
 
     // Broadcast actions handled by GroupedWallpaperActionReceiver.
     const val ACTION_PREVIOUS_ARTWORK = "deckers.thibault.aves.grouped_wallpaper.PREVIOUS_ARTWORK"
@@ -124,13 +129,37 @@ object GroupedWallpaperNotification {
 
     /** Switches between the photo actions and the group actions. */
     fun toggleGroupActions(context: Context) {
-        val lockScreen = (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
-        groupActionsOverride = !(groupActionsOverride ?: lockScreen)
+        groupActionsOverride = !usesGroupActions(context)
     }
 
     /** Returns to the keyguard's default set, after locking or unlocking. */
     fun resetGroupActionsOverride() {
         groupActionsOverride = null
+    }
+
+    private fun isKeyguardLocked(context: Context): Boolean = (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
+
+    /** The button set on screen: the user's switch, or the keyguard's default. */
+    private fun usesGroupActions(context: Context): Boolean = groupActionsOverride ?: isKeyguardLocked(context)
+
+    /**
+     * Everything the bar shows, as one string.
+     *
+     * The service re-reads `state.json` on every frame load, and re-posting an
+     * unchanged bar hundreds of times a day is what made MIUI rate-limit the
+     * app's notifications (and then hide them on the lock screen). Posting only
+     * when this key changes keeps the bar identical on screen while the counter
+     * stays quiet.
+     */
+    fun contentKey(context: Context, state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?): String = buildString {
+        append(state.status).append('|')
+        append(state.groupNumber).append('|')
+        append(state.groupName).append('|')
+        append(state.paused).append('|')
+        append(usesGroupActions(context)).append('|')
+        append(slot?.id ?: -1).append('|')
+        append(slot?.entryId ?: -1).append('|')
+        append(slot?.title ?: "")
     }
 
     /**
@@ -167,8 +196,7 @@ object GroupedWallpaperNotification {
         if (state.status == GroupedWallpaperFileState.STATUS_DISABLED) return null
         ensureChannel(context)
 
-        val lockScreen = (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
-        val groupActions = groupActionsOverride ?: lockScreen
+        val groupActions = usesGroupActions(context)
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(contentIntent(context))
@@ -201,13 +229,18 @@ object GroupedWallpaperNotification {
         }
     }
 
+    /**
+     * Opens the immersive view of the photo on screen, like the three-finger
+     * gesture does: the app puts the playing group's page below the view, so back
+     * walks to the wallpaper page instead of closing the app.
+     */
     private fun contentIntent(context: Context): PendingIntent = PendingIntent.getActivity(
         context,
         0,
         Intent(context, MainActivity::class.java)
             .setAction(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
-            .putExtra(MainActivity.EXTRA_KEY_PAGE, GROUP_PAGE_ROUTE)
+            .putExtra(MainActivity.EXTRA_KEY_PAGE, VIEW_ROUTE)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )

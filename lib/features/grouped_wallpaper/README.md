@@ -111,6 +111,26 @@ frame update never beeps and only the first post after the service starts alerts
 It is also `VISIBILITY_PUBLIC`, so the group and photo names stay readable on the
 lock screen, and ongoing, so it cannot be swiped away.
 
+The channel id is frozen. Some devices only show a channel on the lock screen
+after the user marks it as important, and that choice is stored per channel id:
+bumping the id would silently drop it and bring back the "no bar on the lock
+screen" report. The sound could only change through an id bump, so it is settled
+too.
+
+The bar is re-read from `state.json` on every frame load, so the service posts
+only when `contentKey` changes: status, group number/name, freeze state, button
+set and the photo on screen. Re-posting an unchanged bar (hundreds of times a day)
+is what made MIUI rate-limit the app and then hide its notifications on the lock
+screen (`post_frequency` demoted every post).
+
+`wallpaper.groupedNotification` (AppMeta, default on) is the user's switch. It
+travels to the service in `state.json` as `notification`: off means no bar **and no
+foreground service**, not a hidden one. The page's More menu toggles it, rewrites
+the state and calls the `refreshNotification` channel method, so it applies
+without waiting for the next bake. The About page documents that a device may
+reclaim a wallpaper with no notification more eagerly, and offers to set the
+wallpaper again while it is off.
+
 While a real (non-preview) engine is attached, the service promotes the bar to
 its own foreground-service notification (`specialUse`, Android 14+), because MIUI
 also hides a silent *non-foreground* notification on the lock screen. Promoting
@@ -118,13 +138,17 @@ the already-running wallpaper service is the only form Android 12+ allows:
 starting a second foreground service from the background is rejected. The
 notification is otherwise posted normally, and dropping the foreground state
 (`stopForeground`) is what removes it; turning the grouped wallpaper off does
-that before cancelling.
+that before cancelling. With the bar off, the wallpaper is a plain
+`WallpaperService` like Muzei's, which has no notification either.
 
-Tapping the body opens the wallpaper group page (`/wallpaper_groups`), which the
-app accepts as a shortcut route; the expanded first button only switches the
-button set. The screen broadcasts (`ACTION_SCREEN_OFF`, `ACTION_SCREEN_ON`,
-`ACTION_USER_PRESENT`) switch the layout family and the home/lock effect image
-together, and return the button set to the keyguard's default.
+Tapping the body opens the immersive view of the photo on screen, exactly like
+the three-finger gesture: the app pushes the shared bottom-bar destination
+(`/visible_range`, rendering the wallpaper page on the playing group) below the
+view, so backing out lands on the wallpaper page with its entry highlighted. The
+expanded first button only switches the button set. The screen broadcasts
+(`ACTION_SCREEN_OFF`, `ACTION_SCREEN_ON`, `ACTION_USER_PRESENT`) switch the layout
+family and the home/lock effect image together, and return the button set to the
+keyguard's default.
 
 Actions are broadcasts to `GroupedWallpaperActionReceiver`, so they work without
 an Activity. "Next photo" first promotes the prefetched slot in the live renderer
@@ -160,6 +184,13 @@ wallpaper gesture has no Activity, so the view is pushed over the playing
 group's page, itself over the app's home page: back walks view → group page →
 home instead of closing the app, and the group page starts on the group being
 played. Opened from the group page, 「Open wallpaper groups」 pops back to it.
+
+The page below the view is the shared bottom-bar destination
+(`VisibleRangeShellPage` with `visibleRangeDestination` set to the wallpaper
+page), not the standalone `/wallpaper_groups` route: that way the bar highlights
+the entry the user is on instead of falling back to its first item, and the
+page's own menu keeps working the same way it does from the bar. The
+notification's body opens the same view, so both entry points land identically.
 
 ### Ordering
 
@@ -233,6 +264,23 @@ would otherwise look like a fresh activation.
 The page shows one state icon per card: play on the group that is really playing,
 and stop on group 0 whenever the grouped wallpaper is not playing (not the system
 wallpaper, or turned off). A lamp marks the group whose range the page shows.
+
+### Another wallpaper replacing this one
+
+The system keeps a single wallpaper, so setting another one (live or static), or
+an app that changes the wallpaper on a schedule, silently replaces the grouped
+wallpaper: the service is destroyed, the bar goes away with it, and the gestures
+stop working. That is not the feature being killed in the background, and the
+log shows it as an external `WALLPAPER_CHANGED` right before `service.destroy`.
+
+`groupedWasActive` (AppMeta) records that this wallpaper really has been the
+system wallpaper, because a `state.json` alone cannot tell a replaced wallpaper
+apart from one that was never set (the page prepares frames for the picker's
+preview too). When the page opens and the wallpaper is no longer active, has a
+frame, is not turned off and that marker is set, it warns once and clears the
+marker. The warning's checkbox starts checked and writes
+`groupedOverwriteDismissed`, so the default answer is "do not tell me again".
+Setting the wallpaper again from the page is the fix, and the About page says so.
 
 The native side lives in
 `android/app/src/main/kotlin/deckers/thibault/aves/features/grouped_wallpaper/`

@@ -415,15 +415,18 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           );
           final topRoute = await _getRedirectRoute(appMode);
           unawaited(navigator.pushAndRemoveUntil(baseRoute, (route) => false));
-          // The grouped view sits on the playing group's page, so backing out
-          // walks to that page and then home.
+          // The grouped view sits on the shared bottom-bar destination, showing
+          // the playing group, so backing out lands on the wallpaper page with
+          // its entry highlighted instead of on a route the bar does not know.
           if (_intentOverlayRouteName == GroupedWallpaperViewPage.routeName) {
+            visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
             unawaited(
               navigator.push(
                 await _getRedirectRoute(
                   appMode,
-                  overrideRouteName: GroupedWallpaperPage.routeName,
+                  overrideRouteName: VisibleRangePage.routeName,
                   useIntentFilters: false,
+                  selectCurrentWallpaperGroup: true,
                 ),
               ),
             );
@@ -510,6 +513,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
     String? overrideRouteName,
     Set<CollectionFilter>? overrideFilters,
     bool useIntentFilters = true,
+    bool selectCurrentWallpaperGroup = false,
   }) async {
     String routeName;
     Set<CollectionFilter?>? filters;
@@ -663,7 +667,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
         // A gesture always pushes the playing group's page below the view.
         return buildRoute((context) => const GroupedWallpaperViewPage(groupPageBelow: true));
       case VisibleRangePage.routeName:
-        return buildRoute((context) => const VisibleRangeShellPage());
+        return buildRoute((context) => VisibleRangeShellPage(selectCurrentWallpaperGroup: selectCurrentWallpaperGroup));
       case ScreenSaverPage.routeName:
         return buildRoute((context) => ScreenSaverPage(source: source));
       case ScreenSaverSettingsPage.routeName:

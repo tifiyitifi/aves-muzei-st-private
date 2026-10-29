@@ -105,6 +105,7 @@ enum _PageAction {
   autoAdvance,
   gestures,
   engineStatus,
+  toggleNotification,
   cancelGalleryRange,
 }
 
@@ -202,13 +203,64 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   }
 
   /// Re-reads whether the grouped wallpaper is active, whether it is turned on,
-  /// and what it is showing.
+  /// whether it may show its bar, and what it is showing.
   Future<void> _refreshEngine() async {
     final active = await wallpaperEngineLink.refreshActive();
     await wallpaperEngineLink.refreshDisabled();
-    final state = active ? await wallpaperEngineLink.readState() : null;
+    await wallpaperEngineLink.refreshNotification();
+    final state = await wallpaperEngineLink.readState();
     if (!mounted) return;
-    setState(() => _engineState = state);
+    setState(() => _engineState = active ? state : null);
+    await _warnIfOverwritten(state, active: active);
+  }
+
+  /// Warns once when another wallpaper replaced this one.
+  ///
+  /// The controller keeps the "was the system wallpaper" marker, because a state
+  /// file alone cannot tell a replaced wallpaper apart from one that was never
+  /// set. The dialog can silence the warning for good; the checkbox starts
+  /// checked, so the default answer is "do not nag me again".
+  Future<void> _warnIfOverwritten(GroupedWallpaperState? state, {required bool active}) async {
+    if (!wallpaperEngineLink.isAttached) return;
+    final warn = await _controller.groupController.takeOverwriteWarning(
+      active: active,
+      disabled: wallpaperEngineLink.isDisabled,
+      hasFrame: state?.hasPhoto ?? false,
+    );
+    if (!warn || !mounted) return;
+    final choice = await showDialog<_OverwriteChoice>(
+      context: context,
+      builder: (context) => const _OverwriteDialog(),
+    );
+    if (choice == null) return;
+    if (choice.dismissForever) {
+      await _controller.groupController.dismissOverwriteWarning();
+    }
+    if (!mounted) return;
+    if (choice.reapply) {
+      await _setWallpaper();
+    }
+  }
+
+  /// Turns the wallpaper's notification bar on or off.
+  ///
+  /// Off drops the foreground service too, so the wallpaper can be reclaimed more
+  /// eagerly on some devices: the snackbar offers the documented re-apply instead
+  /// of leaving the user with a stopped wallpaper and no hint.
+  Future<void> _toggleNotification() async {
+    final enabled = !wallpaperEngineLink.notificationEnabled;
+    await wallpaperEngineLink.setNotification(enabled);
+    await _refreshEngine();
+    if (!mounted || enabled) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.l10n.wallpaperNotificationOffHint),
+        action: SnackBarAction(
+          label: context.l10n.wallpaperGroupReapply,
+          onPressed: () => unawaited(_setWallpaper()),
+        ),
+      ),
+    );
   }
 
   /// Re-bakes the saved frame when the group list or a range changed.
@@ -1096,6 +1148,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         subtitle: group == null ? null : groupedWallpaperAutoAdvanceSummary(context, group),
       ),
       _menuItem(_PageAction.gestures, AIcons.gestures, l10n.wallpaperGroupGestures),
+      _menuItemChecked(
+        _PageAction.toggleNotification,
+        l10n.wallpaperGroupNotification,
+        checked: wallpaperEngineLink.notificationEnabled,
+      ),
       _menuItem(
         _PageAction.discardChanges,
         AIcons.discard,
@@ -1144,11 +1201,20 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         child: _menuRow(icon, text, subtitle: subtitle),
       );
 
-  Widget _menuRow(IconData icon, String text, {String? subtitle}) {
+  /// A menu entry whose checkmark is the setting's state, not an action icon.
+  PopupMenuItem<_PageAction> _menuItemChecked(_PageAction value, String text, {required bool checked}) => CheckedPopupMenuItem<_PageAction>(
+        value: value,
+        checked: checked,
+        child: _menuRow(null, text),
+      );
+
+  Widget _menuRow(IconData? icon, String text, {String? subtitle}) {
     return Row(
       children: [
-        Icon(icon, size: 20),
-        const SizedBox(width: 12),
+        if (icon != null) ...[
+          Icon(icon, size: 20),
+          const SizedBox(width: 12),
+        ],
         Flexible(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1192,6 +1258,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         if (group != null) await _openAutoAdvance(group);
       case _PageAction.gestures:
         await _openGestures();
+      case _PageAction.toggleNotification:
+        await _toggleNotification();
       case _PageAction.engineStatus:
         break;
       case _PageAction.cancelGalleryRange:
@@ -1560,5 +1628,64 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   void _showBlocked() {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.visibleRangeManagementBlocked)));
+  }
+}
+
+/// What the user answered to the replacement warning.
+class _OverwriteChoice {
+  /// Whether to open the wallpaper chooser again right away.
+  final bool reapply;
+
+  /// Whether to stop warning about replacements.
+  final bool dismissForever;
+
+  const new({required this.reapply, required this.dismissForever});
+}
+
+/// Tells the user that another wallpaper replaced this one.
+///
+/// The checkbox starts checked: a wallpaper the user keeps is worth one warning,
+/// and the default answer should not nag them every time they open the page.
+class _OverwriteDialog extends StatefulWidget {
+  const new();
+
+  @override
+  State<_OverwriteDialog> createState() => _OverwriteDialogState();
+}
+
+class _OverwriteDialogState extends State<_OverwriteDialog> {
+  bool _dismissForever = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return AlertDialog(
+      title: Text(l10n.wallpaperOverwriteTitle),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.wallpaperOverwriteBody),
+          const SizedBox(height: 12),
+          CheckboxListTile(
+            value: _dismissForever,
+            onChanged: (value) => setState(() => _dismissForever = value ?? false),
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: Text(l10n.wallpaperOverwriteDontAsk),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, _OverwriteChoice(reapply: false, dismissForever: _dismissForever)),
+          child: Text(MaterialLocalizations.of(context).okButtonLabel),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _OverwriteChoice(reapply: true, dismissForever: _dismissForever)),
+          child: Text(l10n.wallpaperGroupReapply),
+        ),
+      ],
+    );
   }
 }

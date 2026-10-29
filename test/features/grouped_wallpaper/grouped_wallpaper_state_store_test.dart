@@ -127,6 +127,21 @@ void main() {
     expect((await store.readState())!.generation, 3);
   });
 
+  test('the notification switch travels with the state', () async {
+    await store.writeState(state.copyWith(notification: false));
+    expect((await store.readState())!.notification, isFalse);
+
+    await store.writeState(state.copyWith(notification: true));
+    expect((await store.readState())!.notification, isTrue);
+  });
+
+  test('a state written before the switch existed reads as notification on', () async {
+    await store.ensureLayout();
+    // The field is absent, which is what every build before the switch wrote.
+    await store.stateFile.writeAsString('{"version": 4, "status": "ready", "groupId": "g", "current": -1}');
+    expect((await store.readState())!.notification, isTrue);
+  });
+
   test('reads the runtime the renderer wrote', () async {
     await store.ensureLayout();
     await store.runtimeFile.writeAsString('{"generation":2,"current":1,"next":-1,"refillRequested":true}');

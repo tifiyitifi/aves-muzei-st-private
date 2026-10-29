@@ -56,6 +56,7 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
             "stateRoot" -> safe(call, result, ::stateRoot)
             "setRequestHandler" -> safe(call, result, ::setRequestHandler)
             "scheduleAutoAdvance" -> safe(call, result, ::scheduleAutoAdvance)
+            "refreshNotification" -> safe(call, result, ::refreshNotification)
             else -> result.notImplemented()
         }
     }
@@ -159,6 +160,18 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
     private fun scheduleAutoAdvance(call: MethodCall, result: MethodChannel.Result) {
         val seconds = call.argument<Int>("seconds") ?: 0
         LiveWallpaperRefillScheduler.scheduleAutoAdvance(context, LiveWallpaperTarget.GROUPED, seconds)
+        result.success(null)
+    }
+
+    /**
+     * Re-posts or drops the bar from the state the app just wrote.
+     *
+     * Turning the notification off has to take effect without waiting for the next
+     * frame: the app rewrites `state.json` with the new flag, then asks the running
+     * service to read it again.
+     */
+    private fun refreshNotification(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        GroupedLiveWallpaperService.refreshNotification()
         result.success(null)
     }
 }

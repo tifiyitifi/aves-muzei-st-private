@@ -19,13 +19,22 @@ final ValueNotifier<VisibleRangeDestination> visibleRangeDestination = ValueNoti
 
 /// The page the shared entry renders.
 class VisibleRangeShellPage extends StatelessWidget {
-  const new({super.key});
+  /// Whether the wallpaper page opens on the group the wallpaper is playing.
+  ///
+  /// The bottom-bar entry keeps the user's browsing session; a page opened as the
+  /// backdrop of the wallpaper view must describe the group that is on screen
+  /// instead, exactly like the view it sits under.
+  final bool selectCurrentWallpaperGroup;
+
+  const new({super.key, this.selectCurrentWallpaperGroup = false});
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<VisibleRangeDestination>(
       valueListenable: visibleRangeDestination,
-      builder: (context, destination, _) => destination == VisibleRangeDestination.wallpaper ? const GroupedWallpaperPage() : const VisibleRangePage(),
+      builder: (context, destination, _) => destination == VisibleRangeDestination.wallpaper
+          ? GroupedWallpaperPage(selectCurrent: selectCurrentWallpaperGroup)
+          : const VisibleRangePage(),
     );
   }
 }

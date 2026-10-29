@@ -89,8 +89,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         instance = null
         // A foreground notification cannot be cancelled directly: drop the
         // foreground state first.
-        demoteFromForeground()
-        GroupedWallpaperNotification.cancel(this)
+        clearNotification()
         super.onDestroy()
     }
 
@@ -105,6 +104,18 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
     private var isForeground = false
 
     /**
+     * Content key of the bar this service last posted, and whether it was posted
+     * as this service's foreground notification.
+     *
+     * A frame load asks for a refresh every time, and the bar used to be re-posted
+     * even when nothing it shows had changed: hundreds of posts a day, which made
+     * MIUI rate-limit the app and then hide its notifications on the lock screen.
+     * Only a changed bar, or a change of foreground state, is posted now.
+     */
+    private var postedKey: String? = null
+    private var postedAsForeground = false
+
+    /**
      * Re-reads `state.json` and refreshes the notification.
      *
      * The service owns the notification: an engine can be recreated by the system
@@ -112,16 +123,38 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
      */
     private fun updateNotification() {
         val state = GroupedWallpaperStateFile.read(this)
-        if (state == null || state.status == GroupedWallpaperFileState.STATUS_DISABLED) {
-            demoteFromForeground()
-            GroupedWallpaperNotification.cancel(this)
+        // Off means no bar at all, and no foreground service either: the user
+        // turned the notification off, so posting a hidden one would still keep
+        // the process in the foreground against that choice.
+        if (state == null || state.status == GroupedWallpaperFileState.STATUS_DISABLED || !state.notification) {
+            // Cheap on every frame: only touch the manager when something is posted.
+            if (postedKey != null || isForeground) {
+                clearNotification()
+            }
             return
         }
         val slot = if (displayedSlotId >= 0) state.slot(displayedSlotId) else state.currentSlot
+        val key = GroupedWallpaperNotification.contentKey(this, state, slot)
+        val foreground = realEngines > 0
+        if (key == postedKey && foreground == postedAsForeground) return
         // With a real engine attached the bar has to be this service's foreground
         // notification: MIUI hides a silent, non-foreground one on the lock screen.
-        if (realEngines > 0 && promoteToForeground(state, slot)) return
+        if (foreground && promoteToForeground(state, slot)) {
+            postedKey = key
+            postedAsForeground = true
+            return
+        }
         GroupedWallpaperNotification.update(this, state, slot)
+        postedKey = key
+        postedAsForeground = false
+    }
+
+    /** Drops the bar and forgets what was posted, so a re-enable posts again. */
+    private fun clearNotification() {
+        demoteFromForeground()
+        GroupedWallpaperNotification.cancel(this)
+        postedKey = null
+        postedAsForeground = false
     }
 
     /**
@@ -129,7 +162,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
      *
      * Promoting this already-running service is the only form Android 12+ allows:
      * starting a second foreground service from the background is rejected. The
-     * channel stays silent, so the bar does not beep.
+     * notification is `setOnlyAlertOnce`, so promoting it does not beep again.
      */
     private fun promoteToForeground(state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?): Boolean {
         val notification = GroupedWallpaperNotification.build(this, state, slot) ?: return false
@@ -168,7 +201,11 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
     private fun onRealEngineDestroyed() {
         realEngines = (realEngines - 1).coerceAtLeast(0)
-        if (realEngines == 0) demoteFromForeground()
+        if (realEngines != 0) return
+        // The bar outlives the engine that drew it: demote, then post it as a
+        // normal notification so it does not vanish with the foreground state.
+        demoteFromForeground()
+        updateNotification()
     }
 
     private fun onFrameLoaded(displayed: Int) {

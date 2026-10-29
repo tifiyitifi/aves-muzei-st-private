@@ -62,6 +62,14 @@ data class GroupedWallpaperFileState(
     val threeFinger: String,
     /** The wallpaper is frozen: the renderer must not promote a slot. */
     val paused: Boolean,
+    /**
+     * Whether the user lets the wallpaper show its notification bar.
+     *
+     * Off means no bar and no foreground service at all, not a hidden one: the
+     * setting answers "may this wallpaper keep a notification around", so the
+     * service must post nothing.
+     */
+    val notification: Boolean = true,
 ) {
     fun slot(id: Int): GroupedWallpaperSlotFile? = slots.firstOrNull { it.id == id }
 
@@ -210,6 +218,9 @@ object GroupedWallpaperStateFile {
             threeFinger = gestures?.optString("threeFinger", GroupedWallpaperFileState.ACTION_VIEW_ARTWORK)
                 ?: GroupedWallpaperFileState.ACTION_VIEW_ARTWORK,
             paused = json.optBoolean("paused", false),
+            // A file written before the setting existed means "on", which is
+            // what those builds did.
+            notification = json.optBoolean("notification", true),
         )
     }
 

@@ -37,6 +37,12 @@ abstract interface class WallpaperEngineConnection {
   /// Records the explicit off/on switch without touching the current group.
   Future<void> setDisabled(bool disabled);
 
+  /// Whether the wallpaper may show its notification bar.
+  Future<bool> isNotificationEnabled();
+
+  /// Records the notification bar switch and applies it now.
+  Future<void> setNotification(bool enabled);
+
   /// Opens the system live-wallpaper chooser for this service.
   Future<bool> openChooser();
 }
@@ -51,6 +57,7 @@ class WallpaperEngineLink {
   WallpaperEngineConnection? _connection;
   bool _active = false;
   bool _disabled = false;
+  bool _notification = true;
 
   /// Whether the engine is wired to the platform channel.
   bool get isAttached => _connection != null;
@@ -61,6 +68,10 @@ class WallpaperEngineLink {
 
   /// Whether the grouped wallpaper is explicitly turned off.
   bool get isDisabled => _disabled;
+
+  /// Whether the wallpaper may show its notification bar, as of the last
+  /// [refreshNotification].
+  bool get notificationEnabled => _notification;
 
   /// Whether the grouped wallpaper is on screen and following its group.
   ///
@@ -112,6 +123,21 @@ class WallpaperEngineLink {
     }
   }
 
+  /// Re-reads the notification bar switch.
+  Future<void> refreshNotification() async {
+    final connection = _connection;
+    if (connection == null) {
+      _notification = true;
+      return;
+    }
+    try {
+      _notification = await connection.isNotificationEnabled();
+    } catch (_) {
+      // An unreadable flag is "on", like the off switch above.
+      _notification = true;
+    }
+  }
+
   Future<GroupedWallpaperState?> readState() async => await _connection?.readState();
 
   Future<String?> currentPhotoPath() async => await _connection?.currentPhotoPath();
@@ -127,6 +153,11 @@ class WallpaperEngineLink {
   Future<void> setDisabled(bool disabled) async {
     await _connection?.setDisabled(disabled);
     _disabled = disabled;
+  }
+
+  Future<void> setNotification(bool enabled) async {
+    await _connection?.setNotification(enabled);
+    _notification = enabled;
   }
 
   Future<bool> openChooser() async => await _connection?.openChooser() ?? false;

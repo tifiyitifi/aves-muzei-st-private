@@ -45,6 +45,23 @@ class WallpaperGroupStore {
   /// group's visible range.
   static const keyPaused = 'wallpaper.groupedPaused';
 
+  /// AppMeta key of the notification bar switch.
+  ///
+  /// It is the user's answer to "may this wallpaper keep a notification around":
+  /// off means the service posts nothing and never promotes itself to a
+  /// foreground service, not a hidden bar.
+  static const keyNotification = 'wallpaper.groupedNotification';
+
+  /// AppMeta key of "the grouped wallpaper has been the system wallpaper".
+  ///
+  /// Another wallpaper replacing it looks exactly like a wallpaper the user never
+  /// set, so this marker is what tells the two apart when the page warns about an
+  /// external replacement. It is cleared once the warning is shown.
+  static const keyWasActive = 'wallpaper.groupedWasActive';
+
+  /// AppMeta key of "do not warn about another wallpaper replacing this one".
+  static const keyOverwriteDismissed = 'wallpaper.groupedOverwriteDismissed';
+
   final AppDatabase db;
 
   new(this.db);
@@ -141,6 +158,30 @@ class WallpaperGroupStore {
   }
 
   Future<void> writePaused(bool paused) => AppMetaStore(db).write({keyPaused: paused ? 'true' : 'false'});
+
+  /// Whether the wallpaper may show its notification bar.
+  Future<bool> readNotification() async {
+    final values = await AppMetaStore(db).read({keyNotification});
+    return values[keyNotification] != 'false';
+  }
+
+  Future<void> writeNotification(bool enabled) => AppMetaStore(db).write({keyNotification: enabled ? 'true' : 'false'});
+
+  /// Whether the grouped wallpaper has already been the system wallpaper.
+  Future<bool> readWasActive() async {
+    final values = await AppMetaStore(db).read({keyWasActive});
+    return values[keyWasActive] == 'true';
+  }
+
+  Future<void> writeWasActive(bool active) => AppMetaStore(db).write({keyWasActive: active ? 'true' : 'false'});
+
+  /// Whether the user asked not to be warned about an external replacement.
+  Future<bool> readOverwriteDismissed() async {
+    final values = await AppMetaStore(db).read({keyOverwriteDismissed});
+    return values[keyOverwriteDismissed] == 'true';
+  }
+
+  Future<void> writeOverwriteDismissed(bool dismissed) => AppMetaStore(db).write({keyOverwriteDismissed: dismissed ? 'true' : 'false'});
 
   /// Writes one group's effects and bumps its `updatedAt` so the next bake sees
   /// the change.

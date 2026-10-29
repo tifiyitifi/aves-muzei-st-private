@@ -152,6 +152,29 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     await link.refreshDisabled();
   }
 
+  @override
+  Future<bool> isNotificationEnabled() async => (await planStore.load()).notification;
+
+  /// Records whether the wallpaper may show its notification bar.
+  ///
+  /// The bar belongs to the service, so the flag has to reach `state.json` even
+  /// when no frame is baked: the app rewrites the state the service is reading and
+  /// then asks it to refresh, which is what makes the toggle immediate.
+  @override
+  Future<void> setNotification(bool enabled) async {
+    await planStore.setNotification(enabled);
+    final store = _store;
+    if (store != null) {
+      final state = await store.readState();
+      if (state != null && state.notification != enabled) {
+        // No generation bump: the frame on screen does not change, and a bump
+        // would make the renderer's runtime stale and cost a re-bake.
+        await store.writeState(state.copyWith(notification: enabled));
+      }
+    }
+    await platform.refreshNotification();
+  }
+
   /// Keeps the queue ready for the saved group, whether or not the grouped
   /// service is the system wallpaper yet.
   ///
@@ -562,6 +585,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       ordering: plan.ordering,
       gestures: plan.gestures,
       paused: plan.paused,
+      notification: plan.notification,
       bakedAt: now(),
     );
     await store.writeState(nextState);
@@ -737,6 +761,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             ordering: plan.ordering,
             gestures: plan.gestures,
             paused: plan.paused,
+            notification: plan.notification,
             bakedAt: now(),
           );
     await store.writeState(state);
@@ -767,6 +792,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               groupName: _resolveName(plan.group),
               gestures: plan.gestures,
               paused: plan.paused,
+              notification: plan.notification,
               bakedAt: now(),
             )
           : GroupedWallpaperState(
@@ -777,6 +803,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               groupName: previous?.groupName ?? '',
               gestures: previous?.gestures ?? const GroupedWallpaperGestures(),
               paused: previous?.paused ?? false,
+              notification: previous?.notification ?? true,
               bakedAt: now(),
             );
       await store.writeState(state);

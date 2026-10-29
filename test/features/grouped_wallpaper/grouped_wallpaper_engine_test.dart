@@ -648,6 +648,34 @@ void main() {
     expect(planStore.pausedWrites, [true, false]);
   });
 
+  test('turning the notification off reaches the state and refreshes the bar', () async {
+    serve(entries(12));
+    await engine.prepare();
+    final bakes = baker.bakeCount;
+
+    await engine.setNotification(false);
+
+    expect((await store.readState())!.notification, isFalse);
+    expect(planStore.notificationWrites, [false]);
+    expect(platform.notificationRefreshes, 1);
+    // The frame on screen does not change, so nothing is re-baked.
+    expect(baker.bakeCount, bakes);
+
+    await engine.setNotification(true);
+
+    expect((await store.readState())!.notification, isTrue);
+    expect(platform.notificationRefreshes, 2);
+  });
+
+  test('a bake keeps the notification switch of the plan', () async {
+    serve(entries(12));
+    planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, notification: false);
+
+    await engine.prepare();
+
+    expect((await store.readState())!.notification, isFalse);
+  });
+
   test('switching group makes the new group current and re-bakes', () async {
     serve(entries(12));
     await engine.prepare();
@@ -870,6 +898,13 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   }
 
   @override
+  Future<void> refreshNotification() async {
+    notificationRefreshes++;
+  }
+
+  int notificationRefreshes = 0;
+
+  @override
   Future<bool> openChooser() async {
     chooserOpened = true;
     return true;
@@ -954,19 +989,27 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setDisabled(bool disabled) async {
     disabledWrites.add(disabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification);
   }
 
   @override
   Future<void> setGestures(GroupedWallpaperGestures gestures) async {
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification);
   }
 
   @override
   Future<void> setPaused(bool paused) async {
     pausedWrites.add(paused);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: paused);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: paused, notification: plan.notification);
   }
+
+  @override
+  Future<void> setNotification(bool enabled) async {
+    notificationWrites.add(enabled);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: enabled);
+  }
+
+  final List<bool> notificationWrites = [];
 
   @override
   Future<GroupedWallpaperPlan> switchGroup(int delta) async {

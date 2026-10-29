@@ -43,6 +43,9 @@ class GroupedWallpaperPlan extends Equatable {
   /// Whether the wallpaper is frozen and keeps the current photo.
   final bool paused;
 
+  /// Whether the wallpaper may show its notification bar.
+  final bool notification;
+
   const new({
     required this.group,
     this.range,
@@ -51,6 +54,7 @@ class GroupedWallpaperPlan extends Equatable {
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
     this.interval = WallpaperInterval.never,
     this.paused = false,
+    this.notification = true,
   });
 
   bool get isNone => group.isNone;
@@ -64,7 +68,7 @@ class GroupedWallpaperPlan extends Equatable {
   bool get enabled => !disabled && !group.isNone;
 
   @override
-  List<Object?> get props => [group, range, disabled, gestures, ordering, interval, paused];
+  List<Object?> get props => [group, range, disabled, gestures, ordering, interval, paused, notification];
 }
 
 /// Reads and updates [GroupedWallpaperPlan].
@@ -86,6 +90,9 @@ abstract interface class GroupedWallpaperPlanStore {
 
   /// Freezes or resumes the wallpaper without changing the current group.
   Future<void> setPaused(bool paused);
+
+  /// Records whether the wallpaper may show its notification bar.
+  Future<void> setNotification(bool enabled);
 
   /// Makes the next (`delta > 0`) or previous enabled group current.
   ///
@@ -115,6 +122,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final disabled = await store.readDisabled();
     final gestures = await store.readGestures();
     final paused = await store.readPaused();
+    final notification = await store.readNotification();
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? WallpaperGroup.none;
     if (group.isNone) {
       return GroupedWallpaperPlan(
@@ -124,6 +132,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
         ordering: group.ordering,
         interval: group.interval,
         paused: paused,
+        notification: notification,
       );
     }
     final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
@@ -135,6 +144,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       ordering: group.ordering,
       interval: group.interval,
       paused: paused,
+      notification: notification,
     );
   }
 
@@ -144,12 +154,13 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final store = WallpaperGroupStore(db);
     final groups = normalizeWallpaperGroups(await store.loadGroups());
     final gestures = await store.readGestures();
+    final notification = await store.readNotification();
     // A group that is already current is the answer: adopting is idempotent, so
     // a repeated activation never moves the wallpaper to another group.
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? enabledWallpaperGroups(groups).firstOrNull;
     if (group == null) {
       await store.writeDisabled(true);
-      return GroupedWallpaperPlan(group: WallpaperGroup.none, disabled: true, gestures: gestures);
+      return GroupedWallpaperPlan(group: WallpaperGroup.none, disabled: true, gestures: gestures, notification: notification);
     }
     if (!group.current) {
       await store.saveGroups(normalizeWallpaperGroups([
@@ -167,6 +178,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       gestures: gestures,
       ordering: group.ordering,
       interval: group.interval,
+      notification: notification,
     );
   }
 
@@ -178,6 +190,9 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
 
   @override
   Future<void> setPaused(bool paused) async => WallpaperGroupStore(await _open()).writePaused(paused);
+
+  @override
+  Future<void> setNotification(bool enabled) async => WallpaperGroupStore(await _open()).writeNotification(enabled);
 
   @override
   Future<GroupedWallpaperPlan> switchGroup(int delta) async {
@@ -203,6 +218,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       gestures: await store.readGestures(),
       ordering: target.ordering,
       interval: target.interval,
+      notification: await store.readNotification(),
     );
   }
 }

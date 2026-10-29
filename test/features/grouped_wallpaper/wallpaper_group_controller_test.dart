@@ -1,7 +1,9 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/filters/mime.dart';
@@ -251,8 +253,7 @@ void main() {
     expect(restarted.groups.map((group) => group.id), ['wallpaper.group.dcim', 'wallpaper.group.all', 'wallpaper.group.pictures']);
   });
 
-  test('a new group is appended, unrestricted and independent', () async {
-    await controller.addGroup(name: 'Trips', description: 'created today');
+  test('a new group is appended, unrestricted and independent', () async {    await controller.addGroup(name: 'Trips', description: 'created today');
     final added = controller.groups.last;
 
     expect(added.id, isNot(startsWith('wallpaper.group.')));
@@ -344,5 +345,50 @@ void main() {
     final restored = await controller.groupRange('wallpaper.group.dcim');
     expect(restored.baseFilters, {PathFilter('/dcim')});
     expect(restored.baseActive, isTrue);
+  });
+
+  test('setAutoAdvance writes one group without bumping its timestamp', () async {
+    const id = 'wallpaper.group.dcim';
+    final before = controller.groups.firstWhere((group) => group.id == id);
+
+    await controller.setAutoAdvance(id, interval: WallpaperInterval.h3, ordering: GroupedWallpaperOrdering.inOrder);
+
+    final after = controller.groups.firstWhere((group) => group.id == id);
+    expect(after.interval, WallpaperInterval.h3);
+    expect(after.ordering, GroupedWallpaperOrdering.inOrder);
+    // The contract only affects future picks, so the frame on screen survives.
+    expect(after.updatedAt, before.updatedAt);
+    final stored = (await WallpaperGroupStore(db).loadGroups()).firstWhere((group) => group.id == id);
+    expect(stored.interval, WallpaperInterval.h3);
+    expect(stored.ordering, GroupedWallpaperOrdering.inOrder);
+    // The other groups keep their own contract.
+    expect(controller.groups.firstWhere((group) => group.id != id).interval, WallpaperInterval.never);
+  });
+
+  test('reloadSaved picks up a group switched by another surface', () async {
+    final stored = await WallpaperGroupStore(db).loadGroups();
+    final target = stored.last;
+    expect(controller.current.id, isNot(target.id));
+    await WallpaperGroupStore(db).saveGroups([
+      for (final group in stored) group.copyWith(current: group.id == target.id),
+    ]);
+
+    await controller.reloadSaved();
+
+    expect(controller.current.id, target.id);
+  });
+
+  test('reloadSaved leaves an unsaved draft alone', () async {
+    await controller.beginDraft();
+    await controller.updateGroup('wallpaper.group.dcim', name: 'Draft name');
+    final stored = await WallpaperGroupStore(db).loadGroups();
+    await WallpaperGroupStore(db).saveGroups([
+      for (final group in stored) group.copyWith(current: group.id == 'wallpaper.group.pictures'),
+    ]);
+
+    await controller.reloadSaved();
+
+    // The dirty draft owns the list until it is saved or discarded.
+    expect(controller.groups.firstWhere((group) => group.id == 'wallpaper.group.dcim').name, 'Draft name');
   });
 }

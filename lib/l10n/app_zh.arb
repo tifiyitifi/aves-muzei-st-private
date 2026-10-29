@@ -1017,6 +1017,7 @@
     "wallpaperGroupViewCurrent": "查看当前壁纸",
     "wallpaperGroupGestures": "手势",
     "wallpaperGroupGesturesHint": "手势对整个应用生效，不随分组变化。",
+    "wallpaperGroupAutoAdvanceHint": "时间间隔和排序方式属于当前分组；其它分组保留各自的值。只有在分组壁纸开启且未冻结时才会自动前进。",
     "wallpaperGroupGesturesDoubleTap": "双击",
     "wallpaperGroupGesturesThreeFinger": "三指轻触",
     "wallpaperGroupTapNone": "不做任何事",

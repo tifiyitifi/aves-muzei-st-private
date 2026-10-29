@@ -5,8 +5,10 @@ import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
@@ -88,9 +90,34 @@ class WallpaperGroupController extends ChangeNotifier {
   /// The group the wallpaper uses, or [WallpaperGroup.none] (group 0).
   WallpaperGroup get current => _groups.firstWhereOrNull((group) => group.current && group.enabled) ?? WallpaperGroup.none;
 
-  Future<void> init() {
-    if (_initialized) return Future.value();
-    return _initFuture ??= _init();
+  Future<void> init() async {
+    if (!_initialized) {
+      await (_initFuture ??= _init());
+      return;
+    }
+    // Another surface can move the current group without this process (the
+    // notification switches it natively), so every open re-reads the saved list
+    // instead of trusting the first load.
+    await reloadSaved();
+  }
+
+  /// Re-reads the saved groups, unless an unsaved draft would be lost.
+  ///
+  /// The page calls this when it opens or resumes: a notification switch writes
+  /// `current` in the database, and the page's cached list would otherwise show
+  /// the previous group until the app restarts.
+  Future<void> reloadSaved() async {
+    if (!_initialized || (_draftActive && _dirty)) return;
+    try {
+      final store = await _openStore();
+      final groups = normalizeWallpaperGroups(await store.loadGroups());
+      if (listEquals(groups, _groups)) return;
+      _groups = groups;
+      notifyListeners();
+    } catch (error, stack) {
+      // Keep the list already on screen: a failed re-read must not empty the page.
+      groupedWallpaperLog.w('failed to reload wallpaper groups', error, stack);
+    }
   }
 
   Future<void> _init() async {
@@ -418,6 +445,26 @@ class WallpaperGroupController extends ChangeNotifier {
     _groups = [
       for (final group in _groups)
         if (targets.contains(group.id)) group.copyWith(effects: effects, updatedAt: now) else group,
+    ];
+    notifyListeners();
+  }
+
+  /// Applies [id]'s interval and/or ordering immediately, bypassing the draft.
+  ///
+  /// Like effects, they are preferences rather than range edits, and they only
+  /// affect future picks: `updatedAt` is deliberately left alone so the frame on
+  /// screen is not re-baked just because the interval changed.
+  Future<void> setAutoAdvance(String id, {WallpaperInterval? interval, GroupedWallpaperOrdering? ordering}) async {
+    _requireInitialized();
+    if (interval == null && ordering == null) return;
+    final group = _groups.firstWhereOrNull((candidate) => candidate.id == id);
+    if (group == null) return;
+    if (group.interval == interval && group.ordering == ordering) return;
+    final store = await _openStore();
+    await store.writeAutoAdvance(id, interval: interval, ordering: ordering);
+    _groups = [
+      for (final candidate in _groups)
+        if (candidate.id == id) candidate.copyWith(interval: interval, ordering: ordering) else candidate,
     ];
     notifyListeners();
   }

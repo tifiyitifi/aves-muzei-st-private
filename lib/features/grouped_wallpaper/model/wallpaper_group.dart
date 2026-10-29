@@ -1,3 +1,5 @@
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
@@ -46,6 +48,15 @@ class WallpaperGroup extends Equatable {
   /// and the baker share one scale.
   final WallpaperEffectsConfig effects;
 
+  /// How often this group moves to its next photo.
+  ///
+  /// [WallpaperInterval.never] is the default, like Muzei: a group keeps its
+  /// photo until the user, the notification or a tap asks for another one.
+  final WallpaperInterval interval;
+
+  /// How the next photo is chosen within this group.
+  final GroupedWallpaperOrdering ordering;
+
   const new({
     required this.id,
     this.number = 0,
@@ -56,6 +67,8 @@ class WallpaperGroup extends Equatable {
     this.createdAt = 0,
     this.updatedAt = 0,
     this.effects = const WallpaperEffectsConfig(),
+    this.interval = WallpaperInterval.never,
+    this.ordering = GroupedWallpaperOrdering.defaultOrdering,
   });
 
   /// The fixed group 0 entry: no row, no range, no wallpaper change.
@@ -80,6 +93,8 @@ class WallpaperGroup extends Equatable {
     bool? current,
     int? updatedAt,
     WallpaperEffectsConfig? effects,
+    WallpaperInterval? interval,
+    GroupedWallpaperOrdering? ordering,
   }) {
     return WallpaperGroup(
       id: id,
@@ -91,9 +106,11 @@ class WallpaperGroup extends Equatable {
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       effects: effects ?? this.effects,
+      interval: interval ?? this.interval,
+      ordering: ordering ?? this.ordering,
     );
   }
 
   @override
-  List<Object?> get props => [id, number, name, description, enabled, current, createdAt, updatedAt, effects];
+  List<Object?> get props => [id, number, name, description, enabled, current, createdAt, updatedAt, effects, interval, ordering];
 }

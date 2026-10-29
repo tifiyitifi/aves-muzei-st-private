@@ -2,8 +2,10 @@ import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_plan.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -244,5 +246,39 @@ void main() {
     final plan = await planStore.switchGroup(1);
 
     expect(plan.isNone, isTrue);
+  });
+
+  test('the plan carries the current group\'s own interval and ordering', () async {
+    await groups.saveGroups([
+      group('a', current: true).copyWith(interval: WallpaperInterval.h1, ordering: GroupedWallpaperOrdering.random),
+      group('b').copyWith(interval: WallpaperInterval.m15, ordering: GroupedWallpaperOrdering.inOrder),
+    ]);
+
+    final plan = await planStore.load();
+
+    expect(plan.interval, WallpaperInterval.h1);
+    expect(plan.ordering, GroupedWallpaperOrdering.random);
+  });
+
+  test('switching groups carries the target group\'s interval and ordering', () async {
+    await groups.saveGroups([
+      group('a', current: true).copyWith(interval: WallpaperInterval.h1),
+      group('b').copyWith(interval: WallpaperInterval.m15, ordering: GroupedWallpaperOrdering.inOrder),
+    ]);
+
+    final plan = await planStore.switchGroup(1);
+
+    expect(plan.interval, WallpaperInterval.m15);
+    expect(plan.ordering, GroupedWallpaperOrdering.inOrder);
+  });
+
+  test('group 0 has auto-advance off and the default ordering', () async {
+    await groups.saveGroups([group('a')]);
+
+    final plan = await planStore.load();
+
+    expect(plan.isNone, isTrue);
+    expect(plan.interval, WallpaperInterval.never);
+    expect(plan.ordering, GroupedWallpaperOrdering.newThenRandom);
   });
 }

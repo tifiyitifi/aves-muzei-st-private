@@ -1970,6 +1970,7 @@
   "wallpaperGroupViewCurrent": "View current wallpaper",
   "wallpaperGroupGestures": "Gestures",
   "wallpaperGroupGesturesHint": "Gestures are shared by the whole app, not by one group.",
+  "wallpaperGroupAutoAdvanceHint": "The interval and ordering belong to this group. Another group keeps its own values, and the wallpaper only rotates while grouped wallpaper is on and not frozen.",
   "wallpaperGroupGesturesDoubleTap": "Double tap",
   "wallpaperGroupGesturesThreeFinger": "Three-finger tap",
   "wallpaperGroupTapNone": "Do nothing",

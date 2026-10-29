@@ -28,9 +28,9 @@ import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperTarget
  *
  * A live wallpaper has no Activity and may not be running when the notification
  * is tapped, so actions are broadcasts rather than direct calls. "Next photo"
- * first tries the live renderer (instant, like a double tap); everything else
- * goes to the mounted app when it is listening and to the headless worker when
- * it is not.
+ * first tries the live renderer (instant, like a double tap); the button-set
+ * switch is applied to the bar in place; everything else goes to the mounted app
+ * when it is listening and to the headless worker when it is not.
  */
 class GroupedWallpaperActionReceiver : BroadcastReceiver() {
     private companion object {
@@ -51,8 +51,25 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
             GroupedWallpaperNotification.ACTION_PREVIOUS_GROUP -> command(context, COMMAND_PREVIOUS_GROUP)
             GroupedWallpaperNotification.ACTION_NEXT_GROUP -> command(context, COMMAND_NEXT_GROUP)
             GroupedWallpaperNotification.ACTION_TOGGLE_PAUSE -> togglePause(context)
-            GroupedWallpaperNotification.ACTION_SWITCH_GROUP -> GroupedWallpaperAppBridge.requestGroupPage()
+            GroupedWallpaperNotification.ACTION_SWITCH_ACTIONS -> switchActions(context)
         }
+    }
+
+    /**
+     * Switches the notification between photo actions and group actions.
+     *
+     * The bar belongs to the running service, so the toggle is applied there and
+     * the notification re-posted from the state it already holds. Without a
+     * running service there is no bar to switch, and opening the group page keeps
+     * the tap useful instead of dropping it.
+     */
+    private fun switchActions(context: Context) {
+        if (!GroupedLiveWallpaperService.isRunning) {
+            GroupedWallpaperAppBridge.requestGroupPage()
+            return
+        }
+        GroupedWallpaperNotification.toggleGroupActions(context)
+        GroupedLiveWallpaperService.refreshNotification()
     }
 
     /**

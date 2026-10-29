@@ -21,6 +21,9 @@ abstract interface class GroupedWallpaperPlatform {
   /// Asks the renderer to re-read `state.json`.
   Future<void> reload();
 
+  /// Applies the current group's auto-advance interval; `0` turns it off.
+  Future<void> scheduleAutoAdvance(int seconds);
+
   /// Opens the system live-wallpaper chooser for this service.
   Future<bool> openChooser();
 
@@ -67,6 +70,9 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
 
   @override
   Future<void> reload() => _invoke<void>('reload');
+
+  @override
+  Future<void> scheduleAutoAdvance(int seconds) => _invoke<void>('scheduleAutoAdvance', {'seconds': seconds});
 
   @override
   Future<bool> openChooser() async {

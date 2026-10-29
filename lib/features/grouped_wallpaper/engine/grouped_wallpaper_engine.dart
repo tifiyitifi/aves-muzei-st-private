@@ -184,10 +184,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   ///
   /// Only the flag and the generation change, so the renderer keeps the frame it
   /// already uploaded and simply stops promoting. The notification reads the new
-  /// flag on the reload it gets from the same write.
+  /// flag on the reload it gets from the same write. A frozen wallpaper also stops
+  /// waking up for auto-advance; resuming starts a fresh countdown.
   Future<void> setPaused(bool paused) {
     return _serialize(() async {
       await planStore.setPaused(paused);
+      await _scheduleAutoAdvance(await planStore.load());
       final store = _store;
       if (store == null) return;
       final previous = await store.readState();
@@ -195,6 +197,15 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       await store.writeState(previous.copyWith(generation: previous.generation + 1, paused: paused));
       await platform.reload();
     });
+  }
+
+  /// Re-applies the current group's auto-advance interval to the scheduler.
+  ///
+  /// The page calls this after editing a group's interval or ordering: the values
+  /// only affect the schedule, so no frame is re-baked.
+  @override
+  Future<void> refreshSchedule() {
+    return _serialize(() async => _scheduleAutoAdvance(await planStore.load()));
   }
 
   /// Makes the next (`delta > 0`) or previous enabled group current and bakes it.
@@ -274,6 +285,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       if (activation && plan.isNone && !plan.disabled) {
         plan = await planStore.adoptFirstEnabledGroup();
       }
+      // An interval run is already on the countdown, so only the runs the page or
+      // the service start schedule it, and an unchanged interval keeps its
+      // pending run instead of restarting.
+      if (!advance) await _scheduleAutoAdvance(plan);
       if (plan.disabled) {
         await _recordDisabled(store, previous);
         return GroupedWallpaperSyncResult.disabled;
@@ -303,7 +318,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final adopted = _adoptRuntime(previous, runtime);
       final promoted = !identical(adopted, previous);
       final stale = _isStale(plan, adopted);
-      final (seed, advanced) = advance && !stale ? _promote(adopted) : (adopted, false);
+      // A frozen wallpaper keeps the photo on screen, even when the interval or a
+      // sync asks for the next one.
+      final (seed, advanced) = advance && !stale && !plan.paused ? _promote(adopted) : (adopted, false);
       final total = await entrySource.count(plan.range);
       // A promoted slot must be recorded even when nothing is baked, so the
       // runtime stops matching and the next run starts from the new current.
@@ -769,6 +786,16 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       // placeholder: a second failure must not escape either.
       groupedWallpaperLog.e('failed to record the sync failure', error, stack);
     }
+  }
+
+  /// Keeps the native interval in step with the group that is playing.
+  ///
+  /// A frozen, disabled or group-0 wallpaper schedules nothing, so it does not
+  /// wake up for a frame it would refuse to show. The scheduler keeps an
+  /// unchanged interval's pending run, so this is safe to call on every run.
+  Future<void> _scheduleAutoAdvance(GroupedWallpaperPlan plan) async {
+    final seconds = plan.disabled || plan.paused || plan.isNone ? 0 : plan.interval.seconds;
+    await platform.scheduleAutoAdvance(seconds);
   }
 
   String _resolveName(WallpaperGroup group) {

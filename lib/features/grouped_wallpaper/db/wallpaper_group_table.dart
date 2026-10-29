@@ -41,6 +41,19 @@ class WallpaperGroupRows extends Table {
   /// configuration, so an upgraded group keeps its sharp photos.
   TextColumn get effects => text().withDefault(const Constant('{}'))();
 
+  /// How often this group moves to its next photo, in seconds.
+  ///
+  /// `0` is Muzei's "off" and the default: a group stays on its photo until the
+  /// user, the notification or a tap asks for another one. Storing seconds keeps
+  /// the interval choices growable without a migration.
+  IntColumn get interval => integer().withDefault(const Constant(0))();
+
+  /// How the next photo is chosen within this group, persisted by enum name.
+  ///
+  /// The default matches Muzei and the previous global setting: photos added
+  /// after the wallpaper moved are shown first, in order, then random.
+  TextColumn get ordering => text().withDefault(const Constant('newThenRandom'))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

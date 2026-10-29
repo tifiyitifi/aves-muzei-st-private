@@ -9,6 +9,7 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.d
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_effects_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_page.dart';
@@ -100,6 +101,7 @@ enum _PageAction {
   disableWallpaper,
   viewCurrent,
   effects,
+  autoAdvance,
   gestures,
   engineStatus,
   cancelGalleryRange,
@@ -191,7 +193,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // The wallpaper is set from the system chooser, which takes the app to the
     // background: re-probe on return so the menu reflects the new state.
-    if (state == AppLifecycleState.resumed) unawaited(_refreshEngine());
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(_refreshEngine());
+    // A notification action can switch the current group while the app is in the
+    // background, so the page's list is re-read too.
+    unawaited(_controller.reloadGroups());
   }
 
   /// Re-reads whether the grouped wallpaper is active, whether it is turned on,
@@ -1064,6 +1070,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         l10n.muzeiWallpaperEffects,
         enabled: group != null,
       ),
+      _menuItem(
+        _PageAction.autoAdvance,
+        AIcons.autoAdvance,
+        l10n.muzeiWallpaperAutoAdvance,
+        enabled: group != null,
+        subtitle: group == null ? null : groupedWallpaperAutoAdvanceSummary(context, group),
+      ),
       _menuItem(_PageAction.gestures, AIcons.gestures, l10n.wallpaperGroupGestures),
       _menuItem(
         _PageAction.discardChanges,
@@ -1157,6 +1170,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         await _viewCurrent();
       case _PageAction.effects:
         if (group != null) await _openEffects(group);
+      case _PageAction.autoAdvance:
+        if (group != null) await _openAutoAdvance(group);
       case _PageAction.gestures:
         await _openGestures();
       case _PageAction.engineStatus:
@@ -1323,6 +1338,21 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       ),
     );
     // The page may have re-baked the frame, so the status row can have changed.
+    await _refreshEngine();
+  }
+
+  /// Opens the auto-advance editor for [group], bound to that group's own values.
+  Future<void> _openAutoAdvance(WallpaperGroup group) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: GroupedWallpaperAutoAdvancePage.routeName),
+        builder: (_) => GroupedWallpaperAutoAdvancePage(
+          groupId: group.id,
+          controller: _controller,
+        ),
+      ),
+    );
+    // The schedule changed, so the engine status row can have changed too.
     await _refreshEngine();
   }
 

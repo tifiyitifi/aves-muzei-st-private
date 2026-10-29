@@ -151,6 +151,11 @@ class _FakeConnection implements WallpaperEngineConnection {
   }
 
   @override
+  Future<void> refreshSchedule() async => schedules++;
+
+  int schedules = 0;
+
+  @override
   Future<void> setDisabled(bool disabled) async => this.disabled = disabled;
 
   @override

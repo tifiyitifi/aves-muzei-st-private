@@ -5,6 +5,7 @@ import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:drift/drift.dart';
@@ -31,8 +32,11 @@ class WallpaperGroupStore {
   /// AppMeta key of the gesture bindings, which are global to both wallpapers.
   static const keyGestures = 'wallpaper.groupedGestures';
 
-  /// AppMeta key of the ordering, global until each group owns one.
-  static const keyOrdering = 'wallpaper.groupedOrdering';
+  /// AppMeta key of the ordering before each group owned one.
+  ///
+  /// Only the v11 migration reads it, to seed the per-group column; nothing writes
+  /// it any more.
+  static const keyLegacyOrdering = 'wallpaper.groupedOrdering';
 
   /// AppMeta key of the freeze switch.
   ///
@@ -75,6 +79,8 @@ class WallpaperGroupStore {
                 current: Value(group.current),
                 position: Value(i),
                 effects: Value(jsonEncode(group.effects.toJsonMap())),
+                interval: Value(group.interval.seconds),
+                ordering: Value(group.ordering.name),
               ),
             );
       }
@@ -112,13 +118,21 @@ class WallpaperGroupStore {
 
   Future<void> writeGestures(GroupedWallpaperGestures gestures) => AppMetaStore(db).write({keyGestures: jsonEncode(gestures.toJsonMap())});
 
-  /// The ordering the next photo is chosen with.
-  Future<GroupedWallpaperOrdering> readOrdering() async {
-    final values = await AppMetaStore(db).read({keyOrdering});
-    return GroupedWallpaperOrdering.tryParse(values[keyOrdering]);
+  /// Writes one group's auto-advance contract.
+  ///
+  /// The contract belongs to the group, not the app: each group keeps its own
+  /// interval and ordering, so a private group can stay still while a public one
+  /// rotates. The values only affect future picks, so writing them does not bump
+  /// `updatedAt` (which would re-bake the frame on screen).
+  Future<void> writeAutoAdvance(String id, {WallpaperInterval? interval, GroupedWallpaperOrdering? ordering}) async {
+    if (interval == null && ordering == null) return;
+    await (db.update(db.wallpaperGroupRows)..where((t) => t.id.equals(id))).write(
+      WallpaperGroupRowsCompanion(
+        interval: interval == null ? const Value.absent() : Value(interval.seconds),
+        ordering: ordering == null ? const Value.absent() : Value(ordering.name),
+      ),
+    );
   }
-
-  Future<void> writeOrdering(GroupedWallpaperOrdering ordering) => AppMetaStore(db).write({keyOrdering: ordering.name});
 
   /// Whether the wallpaper is frozen on its current photo.
   Future<bool> readPaused() async {
@@ -161,6 +175,8 @@ class WallpaperGroupStore {
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         effects: _effects(row.effects),
+        interval: WallpaperInterval.tryFromSeconds(row.interval) ?? WallpaperInterval.never,
+        ordering: GroupedWallpaperOrdering.tryParse(row.ordering),
       );
 
   /// Parses the stored effects, falling back to identity when the value is from a

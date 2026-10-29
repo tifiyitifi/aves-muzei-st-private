@@ -34,9 +34,11 @@ import deckers.thibault.aves.R
  *
  * The layout family follows the keyguard: unlocked shows photo actions
  * (previous/next photo, plus the two copy/record placeholders), locked shows
- * group actions (previous/next group, freeze, next photo). The badge carries the
- * group number, the title the group name and the subtitle the photo on screen,
- * so the notification is useful without opening the app.
+ * group actions (previous/next group, freeze, next photo). The expanded bar's
+ * first button switches between the two sets, like the reference bar, so group
+ * actions are reachable while unlocked too. The badge carries the group number,
+ * the title the group name and the subtitle the photo on screen, so the
+ * notification is useful without opening the app.
  *
  * The notification is posted by [GroupedLiveWallpaperService] only while it is
  * the system wallpaper; turning the grouped wallpaper off cancels it.
@@ -44,7 +46,18 @@ import deckers.thibault.aves.R
 object GroupedWallpaperNotification {
     private const val TAG = "AvesGroupedWallpaper"
 
-    const val CHANNEL_ID = "grouped_wallpaper"
+    const val CHANNEL_ID = "grouped_wallpaper_v2"
+
+    /**
+     * The channel the first build created with the system's default sound.
+     *
+     * A notification is silenced at the channel level instead, because a
+     * notification-level silence puts the bar in the system's "silent" group and
+     * MIUI hides that group on the lock screen. The old channel is deleted so an
+     * upgraded install does not keep a channel that beeps.
+     */
+    private const val LEGACY_CHANNEL_ID = "grouped_wallpaper"
+
     const val NOTIFICATION_ID = 3
 
     /** The app route of the wallpaper group page. */
@@ -56,7 +69,9 @@ object GroupedWallpaperNotification {
     const val ACTION_PREVIOUS_GROUP = "deckers.thibault.aves.grouped_wallpaper.PREVIOUS_GROUP"
     const val ACTION_NEXT_GROUP = "deckers.thibault.aves.grouped_wallpaper.NEXT_GROUP"
     const val ACTION_TOGGLE_PAUSE = "deckers.thibault.aves.grouped_wallpaper.TOGGLE_PAUSE"
-    const val ACTION_SWITCH_GROUP = "deckers.thibault.aves.grouped_wallpaper.SWITCH_GROUP"
+
+    /** Switches the button set; it no longer opens the group page. */
+    const val ACTION_SWITCH_ACTIONS = "deckers.thibault.aves.grouped_wallpaper.SWITCH_ACTIONS"
 
     /** Badge colours; the group number picks one, so a group keeps its colour. */
     private val badgeColors = intArrayOf(
@@ -82,8 +97,33 @@ object GroupedWallpaperNotification {
         val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_HIGH)
             .setName(context.getString(R.string.grouped_wallpaper_channel_name))
             .setShowBadge(false)
+            .setSound(null, null)
+            .setVibrationEnabled(false)
             .build()
-        NotificationManagerCompat.from(context).createNotificationChannel(channel)
+        val manager = NotificationManagerCompat.from(context)
+        manager.createNotificationChannel(channel)
+        manager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+    }
+
+    /**
+     * A user toggle that switches the button set, or null to follow the keyguard.
+     *
+     * It mirrors the reference bar's "switch" action: the same five buttons are
+     * reachable on the lock screen and while unlocked, instead of group actions
+     * being locked to the keyguard.
+     */
+    @Volatile
+    private var groupActionsOverride: Boolean? = null
+
+    /** Switches between the photo actions and the group actions. */
+    fun toggleGroupActions(context: Context) {
+        val lockScreen = (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
+        groupActionsOverride = !(groupActionsOverride ?: lockScreen)
+    }
+
+    /** Returns to the keyguard's default set, after locking or unlocking. */
+    fun resetGroupActionsOverride() {
+        groupActionsOverride = null
     }
 
     /**
@@ -102,16 +142,19 @@ object GroupedWallpaperNotification {
         ensureChannel(context)
 
         val lockScreen = (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
+        val groupActions = groupActionsOverride ?: lockScreen
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(contentIntent(context))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setSilent(true)
             .setShowWhen(false)
-            .setCustomContentView(buildViews(context, big = false, lockScreen = lockScreen, state = state, slot = slot))
-            .setCustomBigContentView(buildViews(context, big = true, lockScreen = lockScreen, state = state, slot = slot))
+            // The content is the wallpaper's own group and photo name, so it can
+            // stay readable on the lock screen instead of being redacted.
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCustomContentView(buildViews(context, big = false, groupActions = groupActions, state = state, slot = slot))
+            .setCustomBigContentView(buildViews(context, big = true, groupActions = groupActions, state = state, slot = slot))
 
         try {
             manager.notify(NOTIFICATION_ID, builder.build())
@@ -151,7 +194,7 @@ object GroupedWallpaperNotification {
     private fun buildViews(
         context: Context,
         big: Boolean,
-        lockScreen: Boolean,
+        groupActions: Boolean,
         state: GroupedWallpaperFileState,
         slot: GroupedWallpaperSlotFile?,
     ): RemoteViews {
@@ -178,7 +221,7 @@ object GroupedWallpaperNotification {
             },
         )
 
-        val buttons = if (lockScreen) {
+        val buttons = if (groupActions) {
             levelButtons(context, big, state, ready)
         } else {
             entryButtons(context, big, ready)
@@ -237,8 +280,8 @@ object GroupedWallpaperNotification {
             NotificationButton(
                 R.id.grouped_notification_button_1,
                 R.drawable.baseline_menu_open_24,
-                ACTION_SWITCH_GROUP,
-                context.getString(R.string.grouped_wallpaper_action_switch_group),
+                ACTION_SWITCH_ACTIONS,
+                context.getString(R.string.grouped_wallpaper_action_switch_actions),
             ),
             NotificationButton(
                 R.id.grouped_notification_button_2,
@@ -310,8 +353,8 @@ object GroupedWallpaperNotification {
             NotificationButton(
                 R.id.grouped_notification_button_1,
                 R.drawable.baseline_menu_open_24,
-                ACTION_SWITCH_GROUP,
-                context.getString(R.string.grouped_wallpaper_action_switch_group),
+                ACTION_SWITCH_ACTIONS,
+                context.getString(R.string.grouped_wallpaper_action_switch_actions),
             ),
             NotificationButton(
                 R.id.grouped_notification_button_2,

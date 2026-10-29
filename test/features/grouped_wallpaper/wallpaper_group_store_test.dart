@@ -1,6 +1,8 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_usage.dart';
@@ -56,6 +58,27 @@ void main() {
     await store.saveGroups([group('c'), group('a'), group('b')]);
 
     expect((await store.loadGroups()).map((g) => g.id), ['c', 'a', 'b']);
+  });
+
+  test('a group keeps its own interval and ordering', () async {
+    await store.saveGroups([
+      group('a').copyWith(interval: WallpaperInterval.h1, ordering: GroupedWallpaperOrdering.random),
+      group('b'),
+    ]);
+
+    var loaded = await store.loadGroups();
+    expect(loaded.first.interval, WallpaperInterval.h1);
+    expect(loaded.first.ordering, GroupedWallpaperOrdering.random);
+    expect(loaded.last.interval, WallpaperInterval.never);
+    expect(loaded.last.ordering, GroupedWallpaperOrdering.newThenRandom);
+
+    await store.writeAutoAdvance('a', interval: WallpaperInterval.m15);
+
+    loaded = await store.loadGroups();
+    expect(loaded.first.interval, WallpaperInterval.m15);
+    expect(loaded.first.ordering, GroupedWallpaperOrdering.random);
+    // The contract only affects future picks, so it must not re-bake the frame.
+    expect(loaded.first.updatedAt, 2);
   });
 
   test('deleting a group also deletes its range, rules and applied targets', () async {

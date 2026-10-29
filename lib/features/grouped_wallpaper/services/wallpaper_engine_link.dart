@@ -31,6 +31,9 @@ abstract interface class WallpaperEngineConnection {
   /// Re-bakes the saved current group and applies it now.
   Future<GroupedWallpaperSyncResult> syncNow();
 
+  /// Re-applies the current group's auto-advance interval to the scheduler.
+  Future<void> refreshSchedule();
+
   /// Records the explicit off/on switch without touching the current group.
   Future<void> setDisabled(bool disabled);
 
@@ -118,6 +121,8 @@ class WallpaperEngineLink {
   Future<GroupedWallpaperSyncResult> prepare() async => await _connection?.prepare() ?? GroupedWallpaperSyncResult.notActive;
 
   Future<GroupedWallpaperSyncResult> syncNow() async => await _connection?.syncNow() ?? GroupedWallpaperSyncResult.notActive;
+
+  Future<void> refreshSchedule() async => await _connection?.refreshSchedule();
 
   Future<void> setDisabled(bool disabled) async {
     await _connection?.setDisabled(disabled);

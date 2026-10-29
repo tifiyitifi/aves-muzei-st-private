@@ -69,7 +69,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:contentDescription="@string/grouped_wallpaper_action_switch_group" />
+            android:contentDescription="@string/grouped_wallpaper_action_switch_actions" />
 
         <ImageButton
             android:id="@+id/grouped_notification_button_2"

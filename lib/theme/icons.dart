@@ -70,6 +70,9 @@ class AIcons {
 
   /// The wallpaper gesture bindings.
   static const gestures = Symbols.gesture;
+
+  /// A wallpaper group's auto-advance interval and ordering.
+  static const autoAdvance = Symbols.schedule;
   static const rating = Symbols.star;
   static const ratingRejected = MdiIcons.starMinusOutline;
   static const ratingUnrated = MdiIcons.starOffOutline;

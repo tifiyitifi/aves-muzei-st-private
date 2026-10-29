@@ -7,15 +7,14 @@ of the Muzei-style live wallpaper mechanism.
 
 - **Done**: group model, layout invariants, bundled defaults (JSON), storage
   (`wallpaper_groups` table, schema v7; `baseActive` in v9; per-group `effects`
-  in v10), controller with the page's in-memory draft, the wallpaper-group page
-  reachable from the visible-range page's More menu / the shared bottom-bar
-  entry, the engine's closed loop (Dart baking + native slot queue), global
-  gestures, the immersive view page, per-group home/lock effects with a
-  copy-to-other-groups grid, and the four-layout notification with photo, group
-  and freeze actions.
-- **Not done yet**: auto-advance intervals and the availability label. Until
-  then a sync happens when the service starts, on a wallpaper tap, on a
-  notification action, or when the user asks for it.
+  in v10; per-group `interval`/`ordering` in v11), controller with the page's
+  in-memory draft, the wallpaper-group page reachable from the visible-range
+  page's More menu / the shared bottom-bar entry, the engine's closed loop (Dart
+  baking + native slot queue), global gestures, the immersive view page, per-group
+  home/lock effects with a copy-to-other-groups grid, per-group auto-advance
+  (interval + ordering, scheduled through the shared WorkManager chain), and the
+  four-layout notification with photo, group and freeze actions.
+- **Not done yet**: the availability label.
 
 ## The engine
 
@@ -91,22 +90,27 @@ to every selected group in one transaction.
 `GroupedWallpaperNotification` (Kotlin) posts an ongoing notification while the
 grouped service is the system wallpaper, styled after Aves-ST's foreground
 wallpaper bar: a coloured group-number badge, the group name and the photo title,
-plus borderless actions. The layout family follows the keyguard:
+plus borderless actions. The button set follows the keyguard, and the expanded
+layout's first button switches between the two sets:
 
 | | Collapsed (4) | Expanded (5) |
 |---|---|---|
-| Unlocked | previous / next photo / copy\* / record\* | switch group / previous / next / copy\* / record\* |
-| Locked | previous / next group / freeze / next photo | switch group / previous / next group / freeze / next photo |
+| Photo actions (unlocked default) | previous / next photo / copy\* / record\* | switch / previous / next / copy\* / record\* |
+| Group actions (locked default) | previous / next group / freeze / next photo | switch / previous / next group / freeze / next photo |
 
 `*` copy and usage history keep Aves-ST's icons but are disabled (dimmed, no
-action) until those features exist. The channel is `grouped_wallpaper`,
-`IMPORTANCE_HIGH`, no badge; the notification itself is silent, ongoing and only
-alerts once, so a reload never buzzes.
+action) until those features exist. The channel is `grouped_wallpaper_v2`,
+`IMPORTANCE_HIGH`, no badge, silent and vibration-free **at the channel level**:
+silencing the notification itself put the bar in the system's "silent" group,
+which MIUI hides on the lock screen. The notification is also
+`VISIBILITY_PUBLIC`, so the group and photo names stay readable on the lock
+screen, is ongoing and only alerts once, so a reload never buzzes.
 
-The content intent and the expanded layout's first button open the wallpaper
-group page (`/wallpaper_groups`), which the app accepts as a shortcut route. The
-screen broadcasts (`ACTION_SCREEN_OFF`, `ACTION_SCREEN_ON`, `ACTION_USER_PRESENT`)
-switch the layout family and the home/lock effect image together.
+Tapping the body opens the wallpaper group page (`/wallpaper_groups`), which the
+app accepts as a shortcut route; the expanded first button only switches the
+button set. The screen broadcasts (`ACTION_SCREEN_OFF`, `ACTION_SCREEN_ON`,
+`ACTION_USER_PRESENT`) switch the layout family and the home/lock effect image
+together, and return the button set to the keyguard's default.
 
 Actions are broadcasts to `GroupedWallpaperActionReceiver`, so they work without
 an Activity. "Next photo" first promotes the prefetched slot in the live renderer
@@ -146,7 +150,9 @@ played. Opened from the group page, 「Open wallpaper groups」 pops back to it.
 ### Ordering
 
 The next photo is chosen the way Muzei chooses its artwork, and the default is
-the same:
+the same. The ordering **belongs to the group** (`wallpaper_groups.ordering`,
+persisted by enum name; schema v11 migrated the old global value into every
+group):
 
 - `newThenRandom` (default): photos added after the wallpaper was set up are
   served in id order, then the group falls back to random;
@@ -172,6 +178,23 @@ the wallpaper gets its first photo without a background worker; if the app is no
 running, the renderer keeps its placeholder until the app is opened. The engine
 is attached at startup (`main_common`), and the page re-probes `isActive` when it
 opens or resumes.
+
+### Auto-advance
+
+Each group also owns its interval (`wallpaper_groups.interval`, seconds; `0` is
+off, the default). The values are Muzei's (`15 min` … `3 days`), edited from the
+group page's More → 「Auto-advance」, which writes immediately like effects and
+does not bump `updatedAt`: the contract only affects future picks, so the frame
+on screen is never re-baked just because the interval changed.
+
+Scheduling reuses the shared native WorkManager chain
+(`LiveWallpaperRefillScheduler`, per target) through the grouped channel's
+`scheduleAutoAdvance`; a finished interval run reschedules itself. The engine
+applies the interval on every non-advance run, on freeze/resume and when the page
+edits it, and schedules **nothing** while the wallpaper is frozen, turned off or
+on group 0, so a frozen wallpaper does not wake up for a frame it would refuse to
+show. A frozen wallpaper also ignores an interval run (`refill(advance: true)`
+does not promote), while an explicit "next photo" resumes it.
 
 ## Turning it on and off
 

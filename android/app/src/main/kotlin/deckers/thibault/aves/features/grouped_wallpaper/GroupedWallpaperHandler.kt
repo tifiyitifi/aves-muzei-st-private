@@ -23,6 +23,8 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safe
+import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillScheduler
+import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperTarget
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
@@ -53,6 +55,7 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
             "wallpaperSize" -> safe(call, result, ::wallpaperSize)
             "stateRoot" -> safe(call, result, ::stateRoot)
             "setRequestHandler" -> safe(call, result, ::setRequestHandler)
+            "scheduleAutoAdvance" -> safe(call, result, ::scheduleAutoAdvance)
             else -> result.notImplemented()
         }
     }
@@ -144,6 +147,18 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
         if (attached && GroupedLiveWallpaperService.isRunning) {
             GroupedWallpaperAppBridge.requestSync()
         }
+        result.success(null)
+    }
+
+    /**
+     * Applies the current group's interval to the shared auto-advance scheduler.
+     *
+     * The scheduler and the worker are shared with Muzei, so the interval is
+     * stored per target; `0` cancels the pending run.
+     */
+    private fun scheduleAutoAdvance(call: MethodCall, result: MethodChannel.Result) {
+        val seconds = call.argument<Int>("seconds") ?: 0
+        LiveWallpaperRefillScheduler.scheduleAutoAdvance(context, LiveWallpaperTarget.GROUPED, seconds)
         result.success(null)
     }
 }

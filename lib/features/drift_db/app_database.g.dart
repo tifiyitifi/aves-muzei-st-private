@@ -6941,6 +6941,30 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
     requiredDuringInsert: false,
     defaultValue: const Constant('{}'),
   );
+  static const VerificationMeta _intervalMeta = const VerificationMeta(
+    'interval',
+  );
+  @override
+  late final GeneratedColumn<int> interval = GeneratedColumn<int>(
+    'interval',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _orderingMeta = const VerificationMeta(
+    'ordering',
+  );
+  @override
+  late final GeneratedColumn<String> ordering = GeneratedColumn<String>(
+    'ordering',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('newThenRandom'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -6952,6 +6976,8 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
     createdAt,
     updatedAt,
     effects,
+    interval,
+    ordering,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7025,6 +7051,18 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
         effects.isAcceptableOrUnknown(data['effects']!, _effectsMeta),
       );
     }
+    if (data.containsKey('interval')) {
+      context.handle(
+        _intervalMeta,
+        interval.isAcceptableOrUnknown(data['interval']!, _intervalMeta),
+      );
+    }
+    if (data.containsKey('ordering')) {
+      context.handle(
+        _orderingMeta,
+        ordering.isAcceptableOrUnknown(data['ordering']!, _orderingMeta),
+      );
+    }
     return context;
   }
 
@@ -7070,6 +7108,14 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
         DriftSqlType.string,
         data['${effectivePrefix}effects'],
       )!,
+      interval: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}interval'],
+      )!,
+      ordering: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ordering'],
+      )!,
     );
   }
 
@@ -7104,6 +7150,19 @@ class WallpaperGroupRow extends DataClass
   /// effects page edits them. The default `{}` reads back as the identity
   /// configuration, so an upgraded group keeps its sharp photos.
   final String effects;
+
+  /// How often this group moves to its next photo, in seconds.
+  ///
+  /// `0` is Muzei's "off" and the default: a group stays on its photo until the
+  /// user, the notification or a tap asks for another one. Storing seconds keeps
+  /// the interval choices growable without a migration.
+  final int interval;
+
+  /// How the next photo is chosen within this group, persisted by enum name.
+  ///
+  /// The default matches Muzei and the previous global setting: photos added
+  /// after the wallpaper moved are shown first, in order, then random.
+  final String ordering;
   const WallpaperGroupRow({
     required this.id,
     required this.name,
@@ -7114,6 +7173,8 @@ class WallpaperGroupRow extends DataClass
     required this.createdAt,
     required this.updatedAt,
     required this.effects,
+    required this.interval,
+    required this.ordering,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7127,6 +7188,8 @@ class WallpaperGroupRow extends DataClass
     map['createdAt'] = Variable<int>(createdAt);
     map['updatedAt'] = Variable<int>(updatedAt);
     map['effects'] = Variable<String>(effects);
+    map['interval'] = Variable<int>(interval);
+    map['ordering'] = Variable<String>(ordering);
     return map;
   }
 
@@ -7141,6 +7204,8 @@ class WallpaperGroupRow extends DataClass
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       effects: Value(effects),
+      interval: Value(interval),
+      ordering: Value(ordering),
     );
   }
 
@@ -7159,6 +7224,8 @@ class WallpaperGroupRow extends DataClass
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       effects: serializer.fromJson<String>(json['effects']),
+      interval: serializer.fromJson<int>(json['interval']),
+      ordering: serializer.fromJson<String>(json['ordering']),
     );
   }
   @override
@@ -7174,6 +7241,8 @@ class WallpaperGroupRow extends DataClass
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'effects': serializer.toJson<String>(effects),
+      'interval': serializer.toJson<int>(interval),
+      'ordering': serializer.toJson<String>(ordering),
     };
   }
 
@@ -7187,6 +7256,8 @@ class WallpaperGroupRow extends DataClass
     int? createdAt,
     int? updatedAt,
     String? effects,
+    int? interval,
+    String? ordering,
   }) => WallpaperGroupRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -7197,6 +7268,8 @@ class WallpaperGroupRow extends DataClass
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     effects: effects ?? this.effects,
+    interval: interval ?? this.interval,
+    ordering: ordering ?? this.ordering,
   );
   WallpaperGroupRow copyWithCompanion(WallpaperGroupRowsCompanion data) {
     return WallpaperGroupRow(
@@ -7211,6 +7284,8 @@ class WallpaperGroupRow extends DataClass
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       effects: data.effects.present ? data.effects.value : this.effects,
+      interval: data.interval.present ? data.interval.value : this.interval,
+      ordering: data.ordering.present ? data.ordering.value : this.ordering,
     );
   }
 
@@ -7225,7 +7300,9 @@ class WallpaperGroupRow extends DataClass
           ..write('position: $position, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('effects: $effects')
+          ..write('effects: $effects, ')
+          ..write('interval: $interval, ')
+          ..write('ordering: $ordering')
           ..write(')'))
         .toString();
   }
@@ -7241,6 +7318,8 @@ class WallpaperGroupRow extends DataClass
     createdAt,
     updatedAt,
     effects,
+    interval,
+    ordering,
   );
   @override
   bool operator ==(Object other) =>
@@ -7254,7 +7333,9 @@ class WallpaperGroupRow extends DataClass
           other.position == this.position &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.effects == this.effects);
+          other.effects == this.effects &&
+          other.interval == this.interval &&
+          other.ordering == this.ordering);
 }
 
 class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
@@ -7267,6 +7348,8 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String> effects;
+  final Value<int> interval;
+  final Value<String> ordering;
   final Value<int> rowid;
   const WallpaperGroupRowsCompanion({
     this.id = const Value.absent(),
@@ -7278,6 +7361,8 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.effects = const Value.absent(),
+    this.interval = const Value.absent(),
+    this.ordering = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   WallpaperGroupRowsCompanion.insert({
@@ -7290,6 +7375,8 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     required int createdAt,
     required int updatedAt,
     this.effects = const Value.absent(),
+    this.interval = const Value.absent(),
+    this.ordering = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        createdAt = Value(createdAt),
@@ -7304,6 +7391,8 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? effects,
+    Expression<int>? interval,
+    Expression<String>? ordering,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -7316,6 +7405,8 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
       if (createdAt != null) 'createdAt': createdAt,
       if (updatedAt != null) 'updatedAt': updatedAt,
       if (effects != null) 'effects': effects,
+      if (interval != null) 'interval': interval,
+      if (ordering != null) 'ordering': ordering,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -7330,6 +7421,8 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String>? effects,
+    Value<int>? interval,
+    Value<String>? ordering,
     Value<int>? rowid,
   }) {
     return WallpaperGroupRowsCompanion(
@@ -7342,6 +7435,8 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       effects: effects ?? this.effects,
+      interval: interval ?? this.interval,
+      ordering: ordering ?? this.ordering,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -7376,6 +7471,12 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     if (effects.present) {
       map['effects'] = Variable<String>(effects.value);
     }
+    if (interval.present) {
+      map['interval'] = Variable<int>(interval.value);
+    }
+    if (ordering.present) {
+      map['ordering'] = Variable<String>(ordering.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -7394,6 +7495,8 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('effects: $effects, ')
+          ..write('interval: $interval, ')
+          ..write('ordering: $ordering, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -11275,6 +11378,8 @@ typedef $$WallpaperGroupRowsTableCreateCompanionBuilder =
       required int createdAt,
       required int updatedAt,
       Value<String> effects,
+      Value<int> interval,
+      Value<String> ordering,
       Value<int> rowid,
     });
 typedef $$WallpaperGroupRowsTableUpdateCompanionBuilder =
@@ -11288,6 +11393,8 @@ typedef $$WallpaperGroupRowsTableUpdateCompanionBuilder =
       Value<int> createdAt,
       Value<int> updatedAt,
       Value<String> effects,
+      Value<int> interval,
+      Value<String> ordering,
       Value<int> rowid,
     });
 
@@ -11342,6 +11449,16 @@ class $$WallpaperGroupRowsTableFilterComposer
 
   ColumnFilters<String> get effects => $composableBuilder(
     column: $table.effects,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get interval => $composableBuilder(
+    column: $table.interval,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ordering => $composableBuilder(
+    column: $table.ordering,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -11399,6 +11516,16 @@ class $$WallpaperGroupRowsTableOrderingComposer
     column: $table.effects,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get interval => $composableBuilder(
+    column: $table.interval,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ordering => $composableBuilder(
+    column: $table.ordering,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$WallpaperGroupRowsTableAnnotationComposer
@@ -11438,6 +11565,12 @@ class $$WallpaperGroupRowsTableAnnotationComposer
 
   GeneratedColumn<String> get effects =>
       $composableBuilder(column: $table.effects, builder: (column) => column);
+
+  GeneratedColumn<int> get interval =>
+      $composableBuilder(column: $table.interval, builder: (column) => column);
+
+  GeneratedColumn<String> get ordering =>
+      $composableBuilder(column: $table.ordering, builder: (column) => column);
 }
 
 class $$WallpaperGroupRowsTableTableManager
@@ -11489,6 +11622,8 @@ class $$WallpaperGroupRowsTableTableManager
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
                 Value<String> effects = const Value.absent(),
+                Value<int> interval = const Value.absent(),
+                Value<String> ordering = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WallpaperGroupRowsCompanion(
                 id: id,
@@ -11500,6 +11635,8 @@ class $$WallpaperGroupRowsTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 effects: effects,
+                interval: interval,
+                ordering: ordering,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -11513,6 +11650,8 @@ class $$WallpaperGroupRowsTableTableManager
                 required int createdAt,
                 required int updatedAt,
                 Value<String> effects = const Value.absent(),
+                Value<int> interval = const Value.absent(),
+                Value<String> ordering = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WallpaperGroupRowsCompanion.insert(
                 id: id,
@@ -11524,6 +11663,8 @@ class $$WallpaperGroupRowsTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 effects: effects,
+                interval: interval,
+                ordering: ordering,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

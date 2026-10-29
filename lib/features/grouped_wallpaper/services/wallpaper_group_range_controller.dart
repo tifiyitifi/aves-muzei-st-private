@@ -108,6 +108,9 @@ class WallpaperGroupRangeController extends ChangeNotifier {
     super.dispose();
   }
 
+  /// Re-reads the saved groups after another surface moved the current one.
+  Future<void> reloadGroups() => groupController.reloadSaved();
+
   /// Re-reads the selected range when the group aggregate changed elsewhere
   /// (a draft edit from the pin sheet, a group rename, discard).
   void _onGroupControllerChanged() {

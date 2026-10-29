@@ -55,12 +55,24 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         @Volatile
         var isRunning = false
             private set
+
+        /** The live instance, so the notification's actions can refresh the bar. */
+        @Volatile
+        private var instance: GroupedLiveWallpaperService? = null
+
+        /** Re-posts the notification from the state the service is drawing. */
+        fun refreshNotification() {
+            instance?.updateNotification()
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "service.create")
         isRunning = true
+        instance = this
+        // A restart rebuilds the bar from scratch: the keyguard picks the set.
+        GroupedWallpaperNotification.resetGroupActionsOverride()
         GroupedWallpaperNotification.ensureChannel(this)
         updateNotification()
         // The app may already be running: ask it for a frame right away instead
@@ -71,6 +83,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
     override fun onDestroy() {
         Log.d(TAG, "service.destroy")
         isRunning = false
+        instance = null
         GroupedWallpaperNotification.cancel(this)
         super.onDestroy()
     }
@@ -315,6 +328,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             if (lockScreenVisible == visible) return
             lockScreenVisible = visible
             if (::renderer.isInitialized) renderer.setLockScreenVisible(visible)
+            // Locking or unlocking returns the bar to its default button set; the
+            // user's switch applies until the keyguard changes.
+            GroupedWallpaperNotification.resetGroupActionsOverride()
             this@GroupedLiveWallpaperService.updateNotification()
         }
     }

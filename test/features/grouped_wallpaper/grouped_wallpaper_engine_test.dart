@@ -13,6 +13,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -776,6 +777,64 @@ void main() {
   test('attach wires the notification command handler', () {
     expect(platform.commandHandler, isNotNull);
   });
+
+  group('auto-advance', () {
+    test('prepare applies the current group interval to the scheduler', () async {
+      serve(entries(12));
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperInterval.m15);
+
+      await engine.prepare();
+
+      expect(platform.scheduledSeconds.last, WallpaperInterval.m15.seconds);
+    });
+
+    test('a frozen wallpaper schedules no auto-advance', () async {
+      serve(entries(12));
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperInterval.h1, paused: true);
+
+      await engine.prepare();
+
+      expect(platform.scheduledSeconds.last, 0);
+    });
+
+    test('freezing cancels the interval and resuming restarts it', () async {
+      serve(entries(12));
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperInterval.m30);
+      await engine.prepare();
+      expect(platform.scheduledSeconds.last, WallpaperInterval.m30.seconds);
+
+      await engine.handleCommand('pause');
+      expect(platform.scheduledSeconds.last, 0);
+
+      await engine.handleCommand('resume');
+      expect(platform.scheduledSeconds.last, WallpaperInterval.m30.seconds);
+    });
+
+    test('an interval run keeps the photo while the wallpaper is frozen', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final before = (await store.readState())!;
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, paused: true);
+
+      expect(await engine.refill(advance: true), GroupedWallpaperSyncResult.unchanged);
+
+      final after = (await store.readState())!;
+      expect(after.entryId, before.entryId);
+      expect(after.current, before.current);
+    });
+
+    test('refreshSchedule re-applies an edited interval without baking', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final bakeCount = baker.bakeCount;
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperInterval.h6);
+
+      await engine.refreshSchedule();
+
+      expect(platform.scheduledSeconds.last, WallpaperInterval.h6.seconds);
+      expect(baker.bakeCount, bakeCount);
+    });
+  });
 }
 
 class _FakePlatform implements GroupedWallpaperPlatform {
@@ -783,6 +842,7 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   bool active = true;
   int reloadCount = 0;
   bool chooserOpened = false;
+  final List<int> scheduledSeconds = [];
   void Function()? syncHandler;
   void Function(String command)? commandHandler;
   VoidCallback? onReload;
@@ -802,6 +862,11 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   Future<void> reload() async {
     reloadCount++;
     onReload?.call();
+  }
+
+  @override
+  Future<void> scheduleAutoAdvance(int seconds) async {
+    scheduledSeconds.add(seconds);
   }
 
   @override
@@ -889,23 +954,18 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setDisabled(bool disabled) async {
     disabledWrites.add(disabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, paused: plan.paused);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused);
   }
 
   @override
   Future<void> setGestures(GroupedWallpaperGestures gestures) async {
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, paused: plan.paused);
-  }
-
-  @override
-  Future<void> setOrdering(GroupedWallpaperOrdering ordering) async {
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: ordering, paused: plan.paused);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused);
   }
 
   @override
   Future<void> setPaused(bool paused) async {
     pausedWrites.add(paused);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, paused: paused);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: paused);
   }
 
   @override

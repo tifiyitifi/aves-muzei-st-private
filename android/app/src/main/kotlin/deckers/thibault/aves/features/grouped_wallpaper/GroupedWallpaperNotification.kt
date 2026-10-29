@@ -21,6 +21,7 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.RingtoneManager
 import android.util.Log
 import android.view.View
 import android.widget.RemoteViews
@@ -47,17 +48,19 @@ import deckers.thibault.aves.R
 object GroupedWallpaperNotification {
     private const val TAG = "AvesGroupedWallpaper"
 
-    const val CHANNEL_ID = "grouped_wallpaper_v2"
-
     /**
-     * The channel the first build created with the system's default sound.
+     * Channel of the wallpaper bar.
      *
-     * A notification is silenced at the channel level instead, because a
-     * notification-level silence puts the bar in the system's "silent" group and
-     * MIUI hides that group on the lock screen. The old channel is deleted so an
-     * upgraded install does not keep a channel that beeps.
+     * MIUI hides a silent notification on the lock screen even when it belongs to
+     * a foreground service, so this channel keeps the system's default sound. The
+     * notification itself is `setOnlyAlertOnce`, so a frame update never beeps:
+     * only the first post after the service starts does. A channel's sound cannot
+     * be changed after creation, hence the version suffix.
      */
-    private const val LEGACY_CHANNEL_ID = "grouped_wallpaper"
+    const val CHANNEL_ID = "grouped_wallpaper_v3"
+
+    /** Older channels, deleted so an upgraded install does not keep a silent one. */
+    private val LEGACY_CHANNEL_IDS = listOf("grouped_wallpaper", "grouped_wallpaper_v2")
 
     const val NOTIFICATION_ID = 3
 
@@ -98,12 +101,15 @@ object GroupedWallpaperNotification {
         val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_HIGH)
             .setName(context.getString(R.string.grouped_wallpaper_channel_name))
             .setShowBadge(false)
-            .setSound(null, null)
+            // MIUI's lock screen filters silent notifications out, even foreground
+            // ones. The notification is `setOnlyAlertOnce`, so frame updates stay
+            // quiet and only the first post after the service starts alerts.
+            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), null)
             .setVibrationEnabled(false)
             .build()
         val manager = NotificationManagerCompat.from(context)
         manager.createNotificationChannel(channel)
-        manager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+        LEGACY_CHANNEL_IDS.forEach { manager.deleteNotificationChannel(it) }
     }
 
     /**

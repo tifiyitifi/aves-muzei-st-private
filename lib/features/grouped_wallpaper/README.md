@@ -103,12 +103,13 @@ layout's first button switches between the two sets:
 | Group actions (locked default) | previous / next group / freeze / next photo | switch / previous / next group / freeze / next photo |
 
 `*` copy and usage history keep Aves-ST's icons but are disabled (dimmed, no
-action) until those features exist. The channel is `grouped_wallpaper_v2`,
-`IMPORTANCE_HIGH`, no badge, silent and vibration-free **at the channel level**:
-silencing the notification itself put the bar in the system's "silent" group,
-which MIUI hides on the lock screen. The notification is also
-`VISIBILITY_PUBLIC`, so the group and photo names stay readable on the lock
-screen, is ongoing and only alerts once, so a reload never buzzes.
+action) until those features exist. The channel is `grouped_wallpaper_v3`,
+`IMPORTANCE_HIGH`, no badge, with the system's default sound and no vibration,
+like Aves-ST's bar: MIUI hides a silent notification on the lock screen even when
+it belongs to a foreground service. The notification is `setOnlyAlertOnce`, so a
+frame update never beeps and only the first post after the service starts alerts.
+It is also `VISIBILITY_PUBLIC`, so the group and photo names stay readable on the
+lock screen, and ongoing, so it cannot be swiped away.
 
 While a real (non-preview) engine is attached, the service promotes the bar to
 its own foreground-service notification (`specialUse`, Android 14+), because MIUI

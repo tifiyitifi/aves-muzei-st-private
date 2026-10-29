@@ -17,6 +17,7 @@
 package deckers.thibault.aves.features.grouped_wallpaper
 
 import android.app.KeyguardManager
+import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -139,11 +140,30 @@ object GroupedWallpaperNotification {
         }
         val manager = NotificationManagerCompat.from(context)
         if (!manager.areNotificationsEnabled()) return
+
+        val notification = build(context, state, slot) ?: return
+        try {
+            manager.notify(NOTIFICATION_ID, notification)
+        } catch (t: Throwable) {
+            // A missing POST_NOTIFICATIONS grant or a disabled channel must never
+            // take the wallpaper service down.
+            Log.w(TAG, "failed to post the grouped wallpaper notification", t)
+        }
+    }
+
+    /**
+     * Builds the notification for [state], or null when the wallpaper is off.
+     *
+     * [GroupedLiveWallpaperService] passes it to `startForeground`; [update] posts
+     * the same notification outside the foreground-service path.
+     */
+    fun build(context: Context, state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?): Notification? {
+        if (state.status == GroupedWallpaperFileState.STATUS_DISABLED) return null
         ensureChannel(context)
 
         val lockScreen = (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
         val groupActions = groupActionsOverride ?: lockScreen
-        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+        return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(contentIntent(context))
             .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -153,18 +173,20 @@ object GroupedWallpaperNotification {
             // The content is the wallpaper's own group and photo name, so it can
             // stay readable on the lock screen instead of being redacted.
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            // Android 12+ otherwise holds a foreground-service notification back
+            // for about ten seconds, which reads as "the lock screen has no bar".
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setCustomContentView(buildViews(context, big = false, groupActions = groupActions, state = state, slot = slot))
             .setCustomBigContentView(buildViews(context, big = true, groupActions = groupActions, state = state, slot = slot))
-
-        try {
-            manager.notify(NOTIFICATION_ID, builder.build())
-        } catch (t: Throwable) {
-            // A missing POST_NOTIFICATIONS grant or a disabled channel must never
-            // take the wallpaper service down.
-            Log.w(TAG, "failed to post the grouped wallpaper notification", t)
-        }
+            .build()
     }
 
+    /**
+     * Cancels the notification.
+     *
+     * This cannot remove a foreground-service notification: the service has to
+     * call `stopForeground` first, which it does when the wallpaper is turned off.
+     */
     fun cancel(context: Context) {
         try {
             NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)

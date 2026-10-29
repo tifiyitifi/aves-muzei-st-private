@@ -22,6 +22,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -31,6 +33,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.ViewConfiguration
+import androidx.core.app.ServiceCompat
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillScheduler
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperTarget
 import net.rbgrn.android.glwallpaperservice.GLWallpaperService
@@ -84,6 +87,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         Log.d(TAG, "service.destroy")
         isRunning = false
         instance = null
+        // A foreground notification cannot be cancelled directly: drop the
+        // foreground state first.
+        demoteFromForeground()
         GroupedWallpaperNotification.cancel(this)
         super.onDestroy()
     }
@@ -91,6 +97,12 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
     /** The slot the renderer is drawing, reported so the notification matches. */
     @Volatile
     private var displayedSlotId = -1
+
+    /** Non-preview engines currently drawing the wallpaper. */
+    private var realEngines = 0
+
+    /** Whether this instance holds the foreground-service notification. */
+    private var isForeground = false
 
     /**
      * Re-reads `state.json` and refreshes the notification.
@@ -100,12 +112,63 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
      */
     private fun updateNotification() {
         val state = GroupedWallpaperStateFile.read(this)
-        if (state == null) {
+        if (state == null || state.status == GroupedWallpaperFileState.STATUS_DISABLED) {
+            demoteFromForeground()
             GroupedWallpaperNotification.cancel(this)
             return
         }
         val slot = if (displayedSlotId >= 0) state.slot(displayedSlotId) else state.currentSlot
+        // With a real engine attached the bar has to be this service's foreground
+        // notification: MIUI hides a silent, non-foreground one on the lock screen.
+        if (realEngines > 0 && promoteToForeground(state, slot)) return
         GroupedWallpaperNotification.update(this, state, slot)
+    }
+
+    /**
+     * Promotes the bar to a foreground-service notification.
+     *
+     * Promoting this already-running service is the only form Android 12+ allows:
+     * starting a second foreground service from the background is rejected. The
+     * channel stays silent, so the bar does not beep.
+     */
+    private fun promoteToForeground(state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?): Boolean {
+        val notification = GroupedWallpaperNotification.build(this, state, slot) ?: return false
+        // `specialUse` is only a known type from Android 14; older releases accept
+        // the call without one.
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
+        return try {
+            ServiceCompat.startForeground(this, GroupedWallpaperNotification.NOTIFICATION_ID, notification, type)
+            if (!isForeground) Log.d(TAG, "notification.foreground=true")
+            isForeground = true
+            true
+        } catch (t: Throwable) {
+            // Promotion is only for the lock screen, never a reason to take the
+            // wallpaper down: fall back to a normal notification.
+            Log.w(TAG, "failed to promote the grouped wallpaper notification", t)
+            false
+        }
+    }
+
+    private fun demoteFromForeground() {
+        if (!isForeground) return
+        try {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            Log.d(TAG, "notification.foreground=false")
+        } catch (t: Throwable) {
+            Log.w(TAG, "failed to drop the grouped wallpaper foreground notification", t)
+        } finally {
+            isForeground = false
+        }
+    }
+
+    private fun onRealEngineCreated() {
+        realEngines++
+        if (realEngines == 1) updateNotification()
+    }
+
+    private fun onRealEngineDestroyed() {
+        realEngines = (realEngines - 1).coerceAtLeast(0)
+        if (realEngines == 0) demoteFromForeground()
     }
 
     private fun onFrameLoaded(displayed: Int) {
@@ -186,6 +249,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             setOffsetNotificationsEnabled(true)
             setTouchEventsEnabled(true)
             Log.d(TAG, "engine.create preview=$isPreview lockScreen=$lockScreenVisible")
+            // Only the engine drawing the real wallpaper promotes the bar: a
+            // picker preview must not claim the foreground service.
+            if (!isPreview) this@GroupedLiveWallpaperService.onRealEngineCreated()
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -310,6 +376,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             if (::renderer.isInitialized) {
                 queueEvent { renderer.destroy() }
             }
+            if (!isPreview) this@GroupedLiveWallpaperService.onRealEngineDestroyed()
             super.onDestroy()
         }
 

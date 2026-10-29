@@ -46,6 +46,10 @@
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING"
         tools:ignore="SystemPermissionTypo" />
+    <!-- to keep the grouped wallpaper notification on the lock screen as a foreground service -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+        tools:ignore="SystemPermissionTypo" />
     <!-- TODO TLAD still needed to fetch map tiles / reverse geocoding / else ? check in release mode -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- from Android 12 (API 31), users can optionally grant access to the media management permission -->
@@ -336,6 +340,7 @@
             android:name=".features.grouped_wallpaper.GroupedLiveWallpaperService"
             android:directBootAware="true"
             android:exported="true"
+            android:foregroundServiceType="specialUse"
             android:label="@string/grouped_live_wallpaper_label"
             android:permission="android.permission.BIND_WALLPAPER">
             <intent-filter>
@@ -345,6 +350,10 @@
             <meta-data
                 android:name="android.service.wallpaper"
                 android:resource="@xml/live_wallpaper_grouped" />
+
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="live_wallpaper" />
         </service>
 
         <!-- runs the grouped wallpaper notification's actions; not exported -->

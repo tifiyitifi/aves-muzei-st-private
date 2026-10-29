@@ -12,9 +12,13 @@ of the Muzei-style live wallpaper mechanism.
   page's More menu / the shared bottom-bar entry, the engine's closed loop (Dart
   baking + native slot queue), global gestures, the immersive view page, per-group
   home/lock effects with a copy-to-other-groups grid, per-group auto-advance
-  (interval + ordering, scheduled through the shared WorkManager chain), and the
-  four-layout notification with photo, group and freeze actions.
-- **Not done yet**: the availability label.
+  (interval + ordering, scheduled through the shared WorkManager chain), the
+  four-layout notification with photo, group and freeze actions, and the
+  availability label under the group switcher.
+- **Not done yet**: the notification's copy/usage-history buttons (shown but
+  disabled), filtering the management surfaces (settings, explorer, vaults,
+  recycle bin) while a range is locked, temporary/permanent selection ranges,
+  Aves Copy, and import/export.
 
 ## The engine
 
@@ -105,6 +109,15 @@ silencing the notification itself put the bar in the system's "silent" group,
 which MIUI hides on the lock screen. The notification is also
 `VISIBILITY_PUBLIC`, so the group and photo names stay readable on the lock
 screen, is ongoing and only alerts once, so a reload never buzzes.
+
+While a real (non-preview) engine is attached, the service promotes the bar to
+its own foreground-service notification (`specialUse`, Android 14+), because MIUI
+also hides a silent *non-foreground* notification on the lock screen. Promoting
+the already-running wallpaper service is the only form Android 12+ allows:
+starting a second foreground service from the background is rejected. The
+notification is otherwise posted normally, and dropping the foreground state
+(`stopForeground`) is what removes it; turning the grouped wallpaper off does
+that before cancelling.
 
 Tapping the body opens the wallpaper group page (`/wallpaper_groups`), which the
 app accepts as a shortcut route; the expanded first button only switches the
@@ -318,6 +331,15 @@ until the user selects group 0, which clears it. It is in-memory only, so a
 process restart returns to the gallery range alone. The live wallpaper never reads
 the gate: it uses the saved group range through `wallpaperMediaSetFilter`, so
 gallery browsing can never narrow the wallpaper result.
+
+All three browsing paths ask the same gate — the paged predicate, the summary
+query and the legacy in-memory scan — so the album list, the album counts and a
+media set opened from either path agree. The gate notifies its overlay, so the
+legacy source drops its cached entries and derived album/tag/place lists when the
+page publishes another group. The switcher shows the availability label under it:
+「Available wallpaper」, or 「Available wallpaper (browsing restricted)」 while the
+gallery range narrows browsing; temporarily ignoring the gallery range forces the
+first, because browsing is then unrestricted.
 
 ## Media set
 

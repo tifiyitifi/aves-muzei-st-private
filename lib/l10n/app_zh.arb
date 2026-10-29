@@ -1025,6 +1025,8 @@
     "wallpaperGroupTapView": "打开当前壁纸",
     "wallpaperGroupCancelGalleryRange": "临时忽略相册可见范围",
     "wallpaperGroupRestoreGalleryRange": "恢复相册可见范围",
+    "wallpaperGroupAvailable": "可用壁纸",
+    "wallpaperGroupAvailableBrowsingRestricted": "可用壁纸（浏览功能受限中）",
     "wallpaperGroupDraftHint": "壁纸组改动会先保留为草稿，保存后才写入。",
     "aboutVisibleRangeTitle": "关于可见范围",
     "aboutWallpaperTitle": "关于分组壁纸",

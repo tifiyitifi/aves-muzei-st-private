@@ -1978,6 +1978,8 @@
   "wallpaperGroupTapView": "Open the current wallpaper",
   "wallpaperGroupCancelGalleryRange": "Temporarily ignore the gallery range",
   "wallpaperGroupRestoreGalleryRange": "Restore the gallery range",
+  "wallpaperGroupAvailable": "Available wallpaper",
+  "wallpaperGroupAvailableBrowsingRestricted": "Available wallpaper (browsing restricted)",
   "wallpaperGroupDraftHint": "Wallpaper group changes stay a draft until you save them.",
 
   "explorerUseCurrentPath": "Use current folder",

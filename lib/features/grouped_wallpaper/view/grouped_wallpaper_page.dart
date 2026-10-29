@@ -17,6 +17,7 @@ import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_action_dele
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_filter.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_section_key.dart';
+import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_availability_label.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_tile.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
@@ -424,48 +425,58 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         final selecting = _selection.isSelecting;
         final viewedId = _controller.selectedGroupId;
         final selectedIds = _selectedGroupIds();
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            children: [
-              Padding(
-                padding: const EdgeInsetsDirectional.only(end: 8),
-                child: ChoiceChip(
-                  // The stopped indicator sits on group 0: the wallpaper is
-                  // either playing a group or not playing at all.
-                  avatar: wallpaperEngineLink.isPlaying ? null : Icon(AIcons.wallpaperStopped, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  label: Text(l10n.wallpaperGroupNone),
-                  // Group 0 is a view choice, never part of a delete selection.
-                  selected: !selecting && viewedId == null,
-                  onSelected: selecting ? null : (_) => unawaited(_controller.selectGroup(null)),
-                  showCheckmark: false,
-                ),
-              ),
-              for (final group in _controller.groups)
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 8),
-                  child: GestureDetector(
-                    onLongPress: () => _onGroupCardLongPress(group.id),
-                    child: Tooltip(
-                      // The chips mode has no room for a subtitle, so the note
-                      // reads as a tooltip instead.
-                      message: group.description,
-                      child: ChoiceChip(
-                        avatar: selecting
-                            ? Icon(selectedIds.contains(group.id) ? AIcons.selected : AIcons.unselected, size: 18)
-                            : _groupStateIcon(context, group),
-                        label: Text('${group.number}  ${wallpaperGroupName(context, group)}'),
-                        selected: selecting ? selectedIds.contains(group.id) : viewedId == group.id,
-                        labelStyle: group.enabled ? null : TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                        showCheckmark: false,
-                        onSelected: (_) => _onGroupCardTap(group.id),
-                      ),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 8),
+                    child: ChoiceChip(
+                      // The stopped indicator sits on group 0: the wallpaper is
+                      // either playing a group or not playing at all.
+                      avatar: wallpaperEngineLink.isPlaying ? null : Icon(AIcons.wallpaperStopped, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      label: Text(l10n.wallpaperGroupNone),
+                      // Group 0 is a view choice, never part of a delete selection.
+                      selected: !selecting && viewedId == null,
+                      onSelected: selecting ? null : (_) => unawaited(_controller.selectGroup(null)),
+                      showCheckmark: false,
                     ),
                   ),
-                ),
-            ],
-          ),
+                  for (final group in _controller.groups)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 8),
+                      child: GestureDetector(
+                        onLongPress: () => _onGroupCardLongPress(group.id),
+                        child: Tooltip(
+                          // The chips mode has no room for a subtitle, so the note
+                          // reads as a tooltip instead.
+                          message: group.description,
+                          child: ChoiceChip(
+                            avatar: selecting
+                                ? Icon(selectedIds.contains(group.id) ? AIcons.selected : AIcons.unselected, size: 18)
+                                : _groupStateIcon(context, group),
+                            label: Text('${group.number}  ${wallpaperGroupName(context, group)}'),
+                            selected: selecting ? selectedIds.contains(group.id) : viewedId == group.id,
+                            labelStyle: group.enabled ? null : TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            showCheckmark: false,
+                            onSelected: (_) => _onGroupCardTap(group.id),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(12, 0, 12, 8),
+              child: WallpaperGroupAvailabilityLabel(gallerySuspended: _gallerySuspended),
+            ),
+          ],
         );
       },
     );
@@ -485,26 +496,33 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
             final height = width * 1.25;
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: padding, vertical: 8),
-              child: Wrap(
-                spacing: spacing,
-                runSpacing: spacing,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final groupId in _groupFilters.keys)
-                    SizedBox(
-                      width: width,
-                      height: height,
-                      child: WallpaperGroupTile(
-                        filter: _buildGroupFilter(groupId),
-                        tileLayout: TileLayout.grid,
-                        tileSize: Size(width, height),
-                        selecting: selecting,
-                        selected: selectedIds.contains(groupId),
-                        onTap: () => _onGroupCardTap(groupId == wallpaperGroupNoneId ? null : groupId),
-                        // Always provide a handler so a group card consumes the
-                        // long press instead of the grid's range selection.
-                        onLongPress: () => _onGroupCardLongPress(groupId == wallpaperGroupNoneId ? null : groupId),
-                      ),
-                    ),
+                  Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+                    children: [
+                      for (final groupId in _groupFilters.keys)
+                        SizedBox(
+                          width: width,
+                          height: height,
+                          child: WallpaperGroupTile(
+                            filter: _buildGroupFilter(groupId),
+                            tileLayout: TileLayout.grid,
+                            tileSize: Size(width, height),
+                            selecting: selecting,
+                            selected: selectedIds.contains(groupId),
+                            onTap: () => _onGroupCardTap(groupId == wallpaperGroupNoneId ? null : groupId),
+                            // Always provide a handler so a group card consumes the
+                            // long press instead of the grid's range selection.
+                            onLongPress: () => _onGroupCardLongPress(groupId == wallpaperGroupNoneId ? null : groupId),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: spacing),
+                  WallpaperGroupAvailabilityLabel(gallerySuspended: _gallerySuspended),
                 ],
               ),
             );
@@ -570,7 +588,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   Map<ChipSectionKey, List<FilterGridItem<CollectionFilter>>> _buildSections(BuildContext context) {
     final result = <ChipSectionKey, List<FilterGridItem<CollectionFilter>>>{};
     if (_controller.switcherStyle == WallpaperGroupSwitcherStyle.sections) {
-      result[WallpaperGroupSectionKey(context)] = [
+      result[WallpaperGroupSectionKey(context, gallerySuspended: _gallerySuspended)] = [
         for (final groupId in _groupFilters.keys) _groupItem(groupId),
       ];
     }

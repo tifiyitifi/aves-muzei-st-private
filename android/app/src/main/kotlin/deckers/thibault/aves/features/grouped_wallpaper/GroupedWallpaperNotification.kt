@@ -72,6 +72,9 @@ object GroupedWallpaperNotification {
     /** The app route of the immersive wallpaper view. */
     private const val VIEW_ROUTE = "/grouped_wallpaper/view"
 
+    /** The app route of the usage history. */
+    private const val HISTORY_ROUTE = "/grouped_wallpaper/history"
+
     // Broadcast actions handled by GroupedWallpaperActionReceiver.
     const val ACTION_PREVIOUS_ARTWORK = "deckers.thibault.aves.grouped_wallpaper.PREVIOUS_ARTWORK"
     const val ACTION_NEXT_ARTWORK = "deckers.thibault.aves.grouped_wallpaper.NEXT_ARTWORK"
@@ -100,6 +103,8 @@ object GroupedWallpaperNotification {
         val action: String?,
         val contentDescription: CharSequence,
         val enabled: Boolean = true,
+        /** An app route to open instead of broadcasting [action]. */
+        val page: String? = null,
     )
 
     fun ensureChannel(context: Context) {
@@ -156,6 +161,9 @@ object GroupedWallpaperNotification {
         append(state.groupNumber).append('|')
         append(state.groupName).append('|')
         append(state.paused).append('|')
+        // The limit greys the "previous" button, so it is part of what the bar
+        // shows: without it a changed limit would not re-post the bar.
+        append(state.historyLimit).append('|')
         append(usesGroupActions(context)).append('|')
         append(slot?.id ?: -1).append('|')
         append(slot?.entryId ?: -1).append('|')
@@ -252,6 +260,23 @@ object GroupedWallpaperNotification {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
+    /**
+     * Opens an app page from a button.
+     *
+     * The bar cannot broadcast this: the page has to be pushed over the app, so
+     * the intent is the same cold-start route the notification's content uses.
+     */
+    private fun pageIntent(context: Context, page: String, requestCode: Int): PendingIntent = PendingIntent.getActivity(
+        context,
+        requestCode,
+        Intent(context, MainActivity::class.java)
+            .setAction(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .putExtra(MainActivity.EXTRA_KEY_PAGE, page)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
     private fun buildViews(
         context: Context,
         big: Boolean,
@@ -285,18 +310,22 @@ object GroupedWallpaperNotification {
         val buttons = if (groupActions) {
             levelButtons(context, big, state, ready)
         } else {
-            entryButtons(context, big, ready)
+            // With recording off the engine refuses "previous", so the bar greys
+            // the button instead of offering an action that does nothing.
+            entryButtons(context, big, ready, canPrevious = ready && state.historyLimit > 0)
         }
         for (button in buttons) {
             views.setImageViewResource(button.viewId, button.iconRes)
             views.setContentDescription(button.viewId, button.contentDescription)
             views.setViewVisibility(button.viewId, View.VISIBLE)
             views.setInt(button.viewId, "setAlpha", if (button.enabled) 255 else 100)
-            val action = button.action
-            views.setOnClickPendingIntent(
-                button.viewId,
-                if (button.enabled && action != null) actionIntent(context, action, requestCode(action)) else null,
-            )
+            val pendingIntent = when {
+                !button.enabled -> null
+                button.page != null -> pageIntent(context, button.page, pageRequestCode(button.page))
+                button.action != null -> actionIntent(context, button.action, requestCode(button.action))
+                else -> null
+            }
+            views.setOnClickPendingIntent(button.viewId, pendingIntent)
         }
         return views
     }
@@ -307,13 +336,13 @@ object GroupedWallpaperNotification {
      * The placeholders keep Aves-ST's icons but stay disabled until the feature
      * exists, exactly as the batch plan requires.
      */
-    private fun entryButtons(context: Context, big: Boolean, ready: Boolean): List<NotificationButton> {
+    private fun entryButtons(context: Context, big: Boolean, ready: Boolean, canPrevious: Boolean): List<NotificationButton> {
         val previous = NotificationButton(
             R.id.grouped_notification_button_1,
             R.drawable.baseline_pre_24,
             ACTION_PREVIOUS_ARTWORK,
             context.getString(R.string.grouped_wallpaper_action_previous),
-            enabled = ready,
+            enabled = canPrevious,
         )
         val next = NotificationButton(
             R.id.grouped_notification_button_2,
@@ -334,7 +363,7 @@ object GroupedWallpaperNotification {
             R.drawable.baseline_auto_stories_24,
             null,
             context.getString(R.string.grouped_wallpaper_action_used),
-            enabled = false,
+            page = HISTORY_ROUTE,
         )
         if (!big) return listOf(previous, next, copy, used)
         return listOf(
@@ -349,7 +378,7 @@ object GroupedWallpaperNotification {
                 R.drawable.baseline_pre_24,
                 ACTION_PREVIOUS_ARTWORK,
                 context.getString(R.string.grouped_wallpaper_action_previous),
-                enabled = ready,
+                enabled = canPrevious,
             ),
             NotificationButton(
                 R.id.grouped_notification_button_3,
@@ -370,7 +399,7 @@ object GroupedWallpaperNotification {
                 R.drawable.baseline_auto_stories_24,
                 null,
                 context.getString(R.string.grouped_wallpaper_action_used),
-                enabled = false,
+                page = HISTORY_ROUTE,
             ),
         )
     }
@@ -453,6 +482,16 @@ object GroupedWallpaperNotification {
         ACTION_NEXT_GROUP -> 4
         ACTION_TOGGLE_PAUSE -> 5
         else -> 6
+    }
+
+    /**
+     * A stable request code per page, so two page buttons never share one
+     * `PendingIntent` and overwrite each other's route.
+     */
+    private fun pageRequestCode(page: String): Int = when (page) {
+        HISTORY_ROUTE -> 7
+        VIEW_ROUTE -> 8
+        else -> 9
     }
 
     private fun badgeColor(number: Int): Int = badgeColors[(number.coerceAtLeast(0)) % badgeColors.size]

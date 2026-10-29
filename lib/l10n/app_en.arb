@@ -1990,6 +1990,22 @@
   "wallpaperGroupAvailable": "Available wallpaper",
   "wallpaperGroupAvailableBrowsingRestricted": "Available wallpaper (browsing restricted)",
   "wallpaperGroupDraftHint": "Wallpaper group changes stay a draft until you save them.",
+  "wallpaperGroupHistoryTitle": "Usage history",
+  "wallpaperGroupHistoryEmpty": "No wallpaper has been shown yet.",
+  "wallpaperGroupHistoryEmptyDisabled": "History is off (limit 0). Set a limit to start recording.",
+  "wallpaperGroupHistoryClear": "Clear history",
+  "wallpaperGroupHistoryClearConfirm": "Clear the whole usage history? This cannot be undone.",
+  "wallpaperGroupHistoryLimit": "History limit",
+  "wallpaperGroupHistoryLimitHint": "0–1000. Changing this does not clear old records; it only affects new ones.",
+  "wallpaperGroupDuplicate": "Duplicate group",
+  "wallpaperGroupCopyName": "{name} copy",
+  "@wallpaperGroupCopyName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
 
   "explorerUseCurrentPath": "Use current folder",
 

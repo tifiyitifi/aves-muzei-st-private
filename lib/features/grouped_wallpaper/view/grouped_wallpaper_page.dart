@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
+import 'package:aves/features/drift_db/app_database_provider.dart';
+import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
@@ -13,12 +15,14 @@ import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_c
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_effects_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_page.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_action_delegate.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_filter.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_section_key.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_availability_label.dart';
+import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_history_limit_dialog.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_tile.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
@@ -40,6 +44,7 @@ import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/selection.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
+import 'package:aves/services/common/services.dart';
 import 'package:aves/theme/format.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
@@ -112,6 +117,9 @@ enum _PageAction {
   effects,
   autoAdvance,
   gestures,
+  history,
+  historyLimit,
+  duplicateGroup,
   engineStatus,
   toggleNotification,
   toggleScrollEffect,
@@ -1242,6 +1250,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         subtitle: group == null ? null : groupedWallpaperAutoAdvanceSummary(context, group),
       ),
       _menuItem(_PageAction.gestures, AIcons.gestures, l10n.wallpaperGroupGestures),
+      _menuItem(_PageAction.history, AIcons.history, l10n.wallpaperGroupHistoryTitle),
+      _menuItem(_PageAction.historyLimit, AIcons.count, l10n.wallpaperGroupHistoryLimit),
       _menuItemChecked(
         _PageAction.toggleScrollEffect,
         l10n.wallpaperUseScrollEffect,
@@ -1281,6 +1291,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         _menuItem(_PageAction.moveDown, AIcons.down, l10n.wallpaperGroupMoveDown),
         const PopupMenuDivider(),
         _menuItem(_PageAction.rename, AIcons.edit, l10n.wallpaperGroupRename),
+        _menuItem(
+          _PageAction.duplicateGroup,
+          AIcons.copy,
+          l10n.wallpaperGroupDuplicate,
+          enabled: !locked,
+          subtitle: locked ? l10n.visibleRangeManagementBlocked : null,
+        ),
       ],
       _menuItem(_PageAction.add, AIcons.add, l10n.wallpaperGroupAdd),
       if (group != null) _menuItem(_PageAction.delete, AIcons.delete, l10n.wallpaperGroupDelete, enabled: canDelete),
@@ -1358,6 +1375,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         if (group != null) await _openAutoAdvance(group);
       case _PageAction.gestures:
         await _openGestures();
+      case _PageAction.history:
+        await _openHistory();
+      case _PageAction.historyLimit:
+        await _editHistoryLimit();
+      case _PageAction.duplicateGroup:
+        if (group != null) await _duplicateGroup(group);
       case _PageAction.toggleNotification:
         await _toggleNotification();
       case _PageAction.toggleScrollEffect:
@@ -1559,6 +1582,48 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     );
     // A binding change re-bakes the state, so the status row may have changed.
     await _refreshEngine();
+  }
+
+  /// Opens the photos the wallpaper has shown, newest first.
+  Future<void> _openHistory() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: GroupedWallpaperHistoryPage.routeName),
+        builder: (_) => const GroupedWallpaperHistoryPage(),
+      ),
+    );
+  }
+
+  /// Changes how many photos the usage history keeps.
+  ///
+  /// The store is the source of truth; the engine call only carries the value
+  /// into `state.json`, so the notification greys "previous" without waiting for
+  /// the next photo.
+  Future<void> _editHistoryLimit() async {
+    final store = WallpaperGroupStore(await getIt<AppDatabaseProvider>().open());
+    final limit = await store.readHistoryLimit();
+    if (!mounted) return;
+    final value = await showGroupedWallpaperHistoryLimitDialog(context, limit: limit);
+    if (value == null) return;
+    await store.writeHistoryLimit(value);
+    await wallpaperEngineLink.setHistoryLimit(value);
+  }
+
+  /// Copies [group] into a new group and opens the copy.
+  ///
+  /// A locked group is refused here and again in the controller: its range is
+  /// read-only, so a copy would clone content the user froze.
+  Future<void> _duplicateGroup(WallpaperGroup group) async {
+    if (!_controller.canEdit) {
+      _showMessage(context.l10n.visibleRangeManagementBlocked);
+      return;
+    }
+    final name = context.l10n.wallpaperGroupCopyName(wallpaperGroupName(context, group));
+    // The controller switches the page to the copy, and a draft stays a draft:
+    // the unsaved banner is what tells the user that saving writes it.
+    final copy = await _controller.duplicateGroup(group.id, name: name);
+    if (!mounted) return;
+    if (copy == null) _showMessage(context.l10n.visibleRangeManagementBlocked);
   }
 
   /// One line describing what the live wallpaper is doing, for the menu.

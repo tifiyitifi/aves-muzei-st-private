@@ -9,6 +9,7 @@ import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart'
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
@@ -100,6 +101,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
     MuzeiWallpaperPage.routeName,
     GroupedWallpaperPage.routeName,
     GroupedWallpaperViewPage.routeName,
+    GroupedWallpaperHistoryPage.routeName,
     VisibleRangePage.routeName,
     SearchPage.routeName,
     SettingsPage.routeName,
@@ -666,6 +668,10 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
       case GroupedWallpaperViewPage.routeName:
         // A gesture always pushes the playing group's page below the view.
         return buildRoute((context) => const GroupedWallpaperViewPage(groupPageBelow: true));
+      case GroupedWallpaperHistoryPage.routeName:
+        // Opened from the notification bar's "used" button, which is a cold-start
+        // route: without this case it would fall through to the collection page.
+        return buildRoute((context) => const GroupedWallpaperHistoryPage());
       case VisibleRangePage.routeName:
         return buildRoute((context) => VisibleRangeShellPage(selectCurrentWallpaperGroup: selectCurrentWallpaperGroup));
       case ScreenSaverPage.routeName:

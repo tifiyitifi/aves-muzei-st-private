@@ -1,4 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:equatable/equatable.dart';
@@ -293,6 +294,12 @@ class GroupedWallpaperState extends Equatable {
   /// re-bakes once, exactly like a surface change.
   final bool scrollEffect;
 
+  /// How many photos the usage history keeps; `0` turns recording off.
+  ///
+  /// It travels with the state because the notification owns the "previous"
+  /// button: with recording off the bar greys it out instead of asking the app.
+  final int historyLimit;
+
   final int bakedAt;
 
   const new({
@@ -317,6 +324,7 @@ class GroupedWallpaperState extends Equatable {
     this.surfaceWidth = 0,
     this.surfaceHeight = 0,
     this.scrollEffect = false,
+    this.historyLimit = GroupedWallpaperHistoryLimit.defaultLimit,
     this.bakedAt = 0,
   });
 
@@ -380,6 +388,7 @@ class GroupedWallpaperState extends Equatable {
     int? surfaceWidth,
     int? surfaceHeight,
     bool? scrollEffect,
+    int? historyLimit,
     int? bakedAt,
   }) => GroupedWallpaperState(
         version: version ?? this.version,
@@ -403,6 +412,7 @@ class GroupedWallpaperState extends Equatable {
         surfaceWidth: surfaceWidth ?? this.surfaceWidth,
         surfaceHeight: surfaceHeight ?? this.surfaceHeight,
         scrollEffect: scrollEffect ?? this.scrollEffect,
+        historyLimit: historyLimit ?? this.historyLimit,
         bakedAt: bakedAt ?? this.bakedAt,
       );
 
@@ -446,6 +456,7 @@ class GroupedWallpaperState extends Equatable {
         'surfaceWidth': surfaceWidth,
         'surfaceHeight': surfaceHeight,
         'scrollEffect': scrollEffect,
+        'historyLimit': historyLimit,
         'bakedAt': bakedAt,
       };
 
@@ -541,6 +552,9 @@ class GroupedWallpaperState extends Equatable {
       surfaceWidth: _int(json['surfaceWidth']) ?? 0,
       surfaceHeight: _int(json['surfaceHeight']) ?? 0,
       scrollEffect: json['scrollEffect'] == true,
+      // Files written before the limit existed recorded everything, which is what
+      // the store's default still does.
+      historyLimit: GroupedWallpaperHistoryLimit.sanitize(_int(json['historyLimit']) ?? GroupedWallpaperHistoryLimit.defaultLimit),
       bakedAt: _int(json['bakedAt']) ?? 0,
     );
     // `ready` without a frame is a contradiction: show the placeholder instead
@@ -562,7 +576,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, paused, notification, surfaceWidth, surfaceHeight, scrollEffect, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, paused, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

@@ -270,6 +270,17 @@ class WallpaperGroupRangeController extends ChangeNotifier {
 
   Future<void> updateGroup(String id, {required String name, String? description}) => groupController.updateGroup(id, name: name, description: description);
 
+  /// Copies [id] into a new group and opens the copy.
+  ///
+  /// Returns null when the group is unknown or locked, so the page can explain
+  /// why nothing happened instead of silently doing nothing.
+  Future<WallpaperGroup?> duplicateGroup(String id, {required String name}) async {
+    final copy = await groupController.duplicateGroup(id, name: name);
+    if (copy == null) return null;
+    await selectGroup(copy.id);
+    return copy;
+  }
+
   /// Deletes a group, moving the page to another one when it was selected.
   Future<bool> deleteGroup(String id) => deleteGroups({id});
 

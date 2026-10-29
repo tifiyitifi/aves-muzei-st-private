@@ -7503,6 +7503,422 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
   }
 }
 
+class $GroupedWallpaperHistoryRowsTable extends GroupedWallpaperHistoryRows
+    with
+        TableInfo<
+          $GroupedWallpaperHistoryRowsTable,
+          GroupedWallpaperHistoryRow
+        > {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $GroupedWallpaperHistoryRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _entryIdMeta = const VerificationMeta(
+    'entryId',
+  );
+  @override
+  late final GeneratedColumn<int> entryId = GeneratedColumn<int>(
+    'entryId',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<String> groupId = GeneratedColumn<String>(
+    'groupId',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _groupNameMeta = const VerificationMeta(
+    'groupName',
+  );
+  @override
+  late final GeneratedColumn<String> groupName = GeneratedColumn<String>(
+    'groupName',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _groupNumberMeta = const VerificationMeta(
+    'groupNumber',
+  );
+  @override
+  late final GeneratedColumn<int> groupNumber = GeneratedColumn<int>(
+    'groupNumber',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _usedAtMeta = const VerificationMeta('usedAt');
+  @override
+  late final GeneratedColumn<int> usedAt = GeneratedColumn<int>(
+    'usedAt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    entryId,
+    groupId,
+    groupName,
+    groupNumber,
+    usedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'grouped_wallpaper_history';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<GroupedWallpaperHistoryRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('entryId')) {
+      context.handle(
+        _entryIdMeta,
+        entryId.isAcceptableOrUnknown(data['entryId']!, _entryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entryIdMeta);
+    }
+    if (data.containsKey('groupId')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['groupId']!, _groupIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_groupIdMeta);
+    }
+    if (data.containsKey('groupName')) {
+      context.handle(
+        _groupNameMeta,
+        groupName.isAcceptableOrUnknown(data['groupName']!, _groupNameMeta),
+      );
+    }
+    if (data.containsKey('groupNumber')) {
+      context.handle(
+        _groupNumberMeta,
+        groupNumber.isAcceptableOrUnknown(
+          data['groupNumber']!,
+          _groupNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('usedAt')) {
+      context.handle(
+        _usedAtMeta,
+        usedAt.isAcceptableOrUnknown(data['usedAt']!, _usedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_usedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  GroupedWallpaperHistoryRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GroupedWallpaperHistoryRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      entryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}entryId'],
+      )!,
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}groupId'],
+      )!,
+      groupName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}groupName'],
+      )!,
+      groupNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}groupNumber'],
+      )!,
+      usedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}usedAt'],
+      )!,
+    );
+  }
+
+  @override
+  $GroupedWallpaperHistoryRowsTable createAlias(String alias) {
+    return $GroupedWallpaperHistoryRowsTable(attachedDatabase, alias);
+  }
+}
+
+class GroupedWallpaperHistoryRow extends DataClass
+    implements Insertable<GroupedWallpaperHistoryRow> {
+  final int id;
+  final int entryId;
+  final String groupId;
+
+  /// The group's stored name (`@arbKey` or user text), localized on display.
+  final String groupName;
+
+  /// The group number at the time, for a group that has no name of its own.
+  final int groupNumber;
+
+  /// When the photo was put on screen, in milliseconds since the epoch.
+  final int usedAt;
+  const GroupedWallpaperHistoryRow({
+    required this.id,
+    required this.entryId,
+    required this.groupId,
+    required this.groupName,
+    required this.groupNumber,
+    required this.usedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['entryId'] = Variable<int>(entryId);
+    map['groupId'] = Variable<String>(groupId);
+    map['groupName'] = Variable<String>(groupName);
+    map['groupNumber'] = Variable<int>(groupNumber);
+    map['usedAt'] = Variable<int>(usedAt);
+    return map;
+  }
+
+  GroupedWallpaperHistoryRowsCompanion toCompanion(bool nullToAbsent) {
+    return GroupedWallpaperHistoryRowsCompanion(
+      id: Value(id),
+      entryId: Value(entryId),
+      groupId: Value(groupId),
+      groupName: Value(groupName),
+      groupNumber: Value(groupNumber),
+      usedAt: Value(usedAt),
+    );
+  }
+
+  factory GroupedWallpaperHistoryRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GroupedWallpaperHistoryRow(
+      id: serializer.fromJson<int>(json['id']),
+      entryId: serializer.fromJson<int>(json['entryId']),
+      groupId: serializer.fromJson<String>(json['groupId']),
+      groupName: serializer.fromJson<String>(json['groupName']),
+      groupNumber: serializer.fromJson<int>(json['groupNumber']),
+      usedAt: serializer.fromJson<int>(json['usedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'entryId': serializer.toJson<int>(entryId),
+      'groupId': serializer.toJson<String>(groupId),
+      'groupName': serializer.toJson<String>(groupName),
+      'groupNumber': serializer.toJson<int>(groupNumber),
+      'usedAt': serializer.toJson<int>(usedAt),
+    };
+  }
+
+  GroupedWallpaperHistoryRow copyWith({
+    int? id,
+    int? entryId,
+    String? groupId,
+    String? groupName,
+    int? groupNumber,
+    int? usedAt,
+  }) => GroupedWallpaperHistoryRow(
+    id: id ?? this.id,
+    entryId: entryId ?? this.entryId,
+    groupId: groupId ?? this.groupId,
+    groupName: groupName ?? this.groupName,
+    groupNumber: groupNumber ?? this.groupNumber,
+    usedAt: usedAt ?? this.usedAt,
+  );
+  GroupedWallpaperHistoryRow copyWithCompanion(
+    GroupedWallpaperHistoryRowsCompanion data,
+  ) {
+    return GroupedWallpaperHistoryRow(
+      id: data.id.present ? data.id.value : this.id,
+      entryId: data.entryId.present ? data.entryId.value : this.entryId,
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
+      groupName: data.groupName.present ? data.groupName.value : this.groupName,
+      groupNumber: data.groupNumber.present
+          ? data.groupNumber.value
+          : this.groupNumber,
+      usedAt: data.usedAt.present ? data.usedAt.value : this.usedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupedWallpaperHistoryRow(')
+          ..write('id: $id, ')
+          ..write('entryId: $entryId, ')
+          ..write('groupId: $groupId, ')
+          ..write('groupName: $groupName, ')
+          ..write('groupNumber: $groupNumber, ')
+          ..write('usedAt: $usedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, entryId, groupId, groupName, groupNumber, usedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GroupedWallpaperHistoryRow &&
+          other.id == this.id &&
+          other.entryId == this.entryId &&
+          other.groupId == this.groupId &&
+          other.groupName == this.groupName &&
+          other.groupNumber == this.groupNumber &&
+          other.usedAt == this.usedAt);
+}
+
+class GroupedWallpaperHistoryRowsCompanion
+    extends UpdateCompanion<GroupedWallpaperHistoryRow> {
+  final Value<int> id;
+  final Value<int> entryId;
+  final Value<String> groupId;
+  final Value<String> groupName;
+  final Value<int> groupNumber;
+  final Value<int> usedAt;
+  const GroupedWallpaperHistoryRowsCompanion({
+    this.id = const Value.absent(),
+    this.entryId = const Value.absent(),
+    this.groupId = const Value.absent(),
+    this.groupName = const Value.absent(),
+    this.groupNumber = const Value.absent(),
+    this.usedAt = const Value.absent(),
+  });
+  GroupedWallpaperHistoryRowsCompanion.insert({
+    this.id = const Value.absent(),
+    required int entryId,
+    required String groupId,
+    this.groupName = const Value.absent(),
+    this.groupNumber = const Value.absent(),
+    required int usedAt,
+  }) : entryId = Value(entryId),
+       groupId = Value(groupId),
+       usedAt = Value(usedAt);
+  static Insertable<GroupedWallpaperHistoryRow> custom({
+    Expression<int>? id,
+    Expression<int>? entryId,
+    Expression<String>? groupId,
+    Expression<String>? groupName,
+    Expression<int>? groupNumber,
+    Expression<int>? usedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (entryId != null) 'entryId': entryId,
+      if (groupId != null) 'groupId': groupId,
+      if (groupName != null) 'groupName': groupName,
+      if (groupNumber != null) 'groupNumber': groupNumber,
+      if (usedAt != null) 'usedAt': usedAt,
+    });
+  }
+
+  GroupedWallpaperHistoryRowsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? entryId,
+    Value<String>? groupId,
+    Value<String>? groupName,
+    Value<int>? groupNumber,
+    Value<int>? usedAt,
+  }) {
+    return GroupedWallpaperHistoryRowsCompanion(
+      id: id ?? this.id,
+      entryId: entryId ?? this.entryId,
+      groupId: groupId ?? this.groupId,
+      groupName: groupName ?? this.groupName,
+      groupNumber: groupNumber ?? this.groupNumber,
+      usedAt: usedAt ?? this.usedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (entryId.present) {
+      map['entryId'] = Variable<int>(entryId.value);
+    }
+    if (groupId.present) {
+      map['groupId'] = Variable<String>(groupId.value);
+    }
+    if (groupName.present) {
+      map['groupName'] = Variable<String>(groupName.value);
+    }
+    if (groupNumber.present) {
+      map['groupNumber'] = Variable<int>(groupNumber.value);
+    }
+    if (usedAt.present) {
+      map['usedAt'] = Variable<int>(usedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupedWallpaperHistoryRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('entryId: $entryId, ')
+          ..write('groupId: $groupId, ')
+          ..write('groupName: $groupName, ')
+          ..write('groupNumber: $groupNumber, ')
+          ..write('usedAt: $usedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -7537,6 +7953,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $VisibleRangeKeyValuesTable(this);
   late final $WallpaperGroupRowsTable wallpaperGroupRows =
       $WallpaperGroupRowsTable(this);
+  late final $GroupedWallpaperHistoryRowsTable groupedWallpaperHistoryRows =
+      $GroupedWallpaperHistoryRowsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -7561,6 +7979,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     visibleRangeRuleUsageRows,
     visibleRangeKeyValues,
     wallpaperGroupRows,
+    groupedWallpaperHistoryRows,
   ];
 }
 
@@ -11696,6 +12115,240 @@ typedef $$WallpaperGroupRowsTableProcessedTableManager =
       WallpaperGroupRow,
       PrefetchHooks Function()
     >;
+typedef $$GroupedWallpaperHistoryRowsTableCreateCompanionBuilder =
+    GroupedWallpaperHistoryRowsCompanion Function({
+      Value<int> id,
+      required int entryId,
+      required String groupId,
+      Value<String> groupName,
+      Value<int> groupNumber,
+      required int usedAt,
+    });
+typedef $$GroupedWallpaperHistoryRowsTableUpdateCompanionBuilder =
+    GroupedWallpaperHistoryRowsCompanion Function({
+      Value<int> id,
+      Value<int> entryId,
+      Value<String> groupId,
+      Value<String> groupName,
+      Value<int> groupNumber,
+      Value<int> usedAt,
+    });
+
+class $$GroupedWallpaperHistoryRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $GroupedWallpaperHistoryRowsTable> {
+  $$GroupedWallpaperHistoryRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get entryId => $composableBuilder(
+    column: $table.entryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupName => $composableBuilder(
+    column: $table.groupName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get groupNumber => $composableBuilder(
+    column: $table.groupNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get usedAt => $composableBuilder(
+    column: $table.usedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$GroupedWallpaperHistoryRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $GroupedWallpaperHistoryRowsTable> {
+  $$GroupedWallpaperHistoryRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get entryId => $composableBuilder(
+    column: $table.entryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get groupName => $composableBuilder(
+    column: $table.groupName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get groupNumber => $composableBuilder(
+    column: $table.groupNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get usedAt => $composableBuilder(
+    column: $table.usedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$GroupedWallpaperHistoryRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $GroupedWallpaperHistoryRowsTable> {
+  $$GroupedWallpaperHistoryRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get entryId =>
+      $composableBuilder(column: $table.entryId, builder: (column) => column);
+
+  GeneratedColumn<String> get groupId =>
+      $composableBuilder(column: $table.groupId, builder: (column) => column);
+
+  GeneratedColumn<String> get groupName =>
+      $composableBuilder(column: $table.groupName, builder: (column) => column);
+
+  GeneratedColumn<int> get groupNumber => $composableBuilder(
+    column: $table.groupNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get usedAt =>
+      $composableBuilder(column: $table.usedAt, builder: (column) => column);
+}
+
+class $$GroupedWallpaperHistoryRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $GroupedWallpaperHistoryRowsTable,
+          GroupedWallpaperHistoryRow,
+          $$GroupedWallpaperHistoryRowsTableFilterComposer,
+          $$GroupedWallpaperHistoryRowsTableOrderingComposer,
+          $$GroupedWallpaperHistoryRowsTableAnnotationComposer,
+          $$GroupedWallpaperHistoryRowsTableCreateCompanionBuilder,
+          $$GroupedWallpaperHistoryRowsTableUpdateCompanionBuilder,
+          (
+            GroupedWallpaperHistoryRow,
+            BaseReferences<
+              _$AppDatabase,
+              $GroupedWallpaperHistoryRowsTable,
+              GroupedWallpaperHistoryRow
+            >,
+          ),
+          GroupedWallpaperHistoryRow,
+          PrefetchHooks Function()
+        > {
+  $$GroupedWallpaperHistoryRowsTableTableManager(
+    _$AppDatabase db,
+    $GroupedWallpaperHistoryRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$GroupedWallpaperHistoryRowsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$GroupedWallpaperHistoryRowsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$GroupedWallpaperHistoryRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> entryId = const Value.absent(),
+                Value<String> groupId = const Value.absent(),
+                Value<String> groupName = const Value.absent(),
+                Value<int> groupNumber = const Value.absent(),
+                Value<int> usedAt = const Value.absent(),
+              }) => GroupedWallpaperHistoryRowsCompanion(
+                id: id,
+                entryId: entryId,
+                groupId: groupId,
+                groupName: groupName,
+                groupNumber: groupNumber,
+                usedAt: usedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int entryId,
+                required String groupId,
+                Value<String> groupName = const Value.absent(),
+                Value<int> groupNumber = const Value.absent(),
+                required int usedAt,
+              }) => GroupedWallpaperHistoryRowsCompanion.insert(
+                id: id,
+                entryId: entryId,
+                groupId: groupId,
+                groupName: groupName,
+                groupNumber: groupNumber,
+                usedAt: usedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$GroupedWallpaperHistoryRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $GroupedWallpaperHistoryRowsTable,
+      GroupedWallpaperHistoryRow,
+      $$GroupedWallpaperHistoryRowsTableFilterComposer,
+      $$GroupedWallpaperHistoryRowsTableOrderingComposer,
+      $$GroupedWallpaperHistoryRowsTableAnnotationComposer,
+      $$GroupedWallpaperHistoryRowsTableCreateCompanionBuilder,
+      $$GroupedWallpaperHistoryRowsTableUpdateCompanionBuilder,
+      (
+        GroupedWallpaperHistoryRow,
+        BaseReferences<
+          _$AppDatabase,
+          $GroupedWallpaperHistoryRowsTable,
+          GroupedWallpaperHistoryRow
+        >,
+      ),
+      GroupedWallpaperHistoryRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -11744,4 +12397,10 @@ class $AppDatabaseManager {
       $$VisibleRangeKeyValuesTableTableManager(_db, _db.visibleRangeKeyValues);
   $$WallpaperGroupRowsTableTableManager get wallpaperGroupRows =>
       $$WallpaperGroupRowsTableTableManager(_db, _db.wallpaperGroupRows);
+  $$GroupedWallpaperHistoryRowsTableTableManager
+  get groupedWallpaperHistoryRows =>
+      $$GroupedWallpaperHistoryRowsTableTableManager(
+        _db,
+        _db.groupedWallpaperHistoryRows,
+      );
 }

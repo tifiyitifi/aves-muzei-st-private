@@ -2,6 +2,7 @@ import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dart';
@@ -51,6 +52,12 @@ class GroupedWallpaperPlan extends Equatable {
   /// Global to the grouped wallpaper: the page has one switch, not one per group.
   final bool scrollEffect;
 
+  /// How many photos the usage history keeps; `0` turns recording off.
+  ///
+  /// It travels with the plan because the engine is what records a shown photo,
+  /// and the notification needs the same value to grey its "previous" button.
+  final int historyLimit;
+
   const new({
     required this.group,
     this.range,
@@ -61,6 +68,7 @@ class GroupedWallpaperPlan extends Equatable {
     this.paused = false,
     this.notification = true,
     this.scrollEffect = true,
+    this.historyLimit = GroupedWallpaperHistoryLimit.defaultLimit,
   });
 
   bool get isNone => group.isNone;
@@ -74,7 +82,7 @@ class GroupedWallpaperPlan extends Equatable {
   bool get enabled => !disabled && !group.isNone;
 
   @override
-  List<Object?> get props => [group, range, disabled, gestures, ordering, interval, paused, notification, scrollEffect];
+  List<Object?> get props => [group, range, disabled, gestures, ordering, interval, paused, notification, scrollEffect, historyLimit];
 }
 
 /// Reads and updates [GroupedWallpaperPlan].
@@ -102,6 +110,12 @@ abstract interface class GroupedWallpaperPlanStore {
 
   /// Records whether frames keep the photo's whole width for the launcher to pan.
   Future<void> setScrollEffect(bool enabled);
+
+  /// Records how many photos the usage history keeps.
+  ///
+  /// It only affects the next recorded photo: lowering it never deletes rows on
+  /// its own.
+  Future<void> setHistoryLimit(int limit);
 
   /// Makes the next (`delta > 0`) or previous enabled group current.
   ///
@@ -133,6 +147,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final paused = await store.readPaused();
     final notification = await store.readNotification();
     final scrollEffect = await store.readScrollEffect();
+    final historyLimit = await store.readHistoryLimit();
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? WallpaperGroup.none;
     if (group.isNone) {
       return GroupedWallpaperPlan(
@@ -144,6 +159,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
         paused: paused,
         notification: notification,
         scrollEffect: scrollEffect,
+        historyLimit: historyLimit,
       );
     }
     final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
@@ -157,6 +173,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       paused: paused,
       notification: notification,
       scrollEffect: scrollEffect,
+      historyLimit: historyLimit,
     );
   }
 
@@ -168,12 +185,13 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final gestures = await store.readGestures();
     final notification = await store.readNotification();
     final scrollEffect = await store.readScrollEffect();
+    final historyLimit = await store.readHistoryLimit();
     // A group that is already current is the answer: adopting is idempotent, so
     // a repeated activation never moves the wallpaper to another group.
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? enabledWallpaperGroups(groups).firstOrNull;
     if (group == null) {
       await store.writeDisabled(true);
-      return GroupedWallpaperPlan(group: WallpaperGroup.none, disabled: true, gestures: gestures, notification: notification, scrollEffect: scrollEffect);
+      return GroupedWallpaperPlan(group: WallpaperGroup.none, disabled: true, gestures: gestures, notification: notification, scrollEffect: scrollEffect, historyLimit: historyLimit);
     }
     if (!group.current) {
       await store.saveGroups(normalizeWallpaperGroups([
@@ -193,6 +211,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       interval: group.interval,
       notification: notification,
       scrollEffect: scrollEffect,
+      historyLimit: historyLimit,
     );
   }
 
@@ -210,6 +229,9 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
 
   @override
   Future<void> setScrollEffect(bool enabled) async => WallpaperGroupStore(await _open()).writeScrollEffect(enabled);
+
+  @override
+  Future<void> setHistoryLimit(int limit) async => WallpaperGroupStore(await _open()).writeHistoryLimit(limit);
 
   @override
   Future<GroupedWallpaperPlan> switchGroup(int delta) async {
@@ -237,6 +259,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       interval: target.interval,
       notification: await store.readNotification(),
       scrollEffect: await store.readScrollEffect(),
+      historyLimit: await store.readHistoryLimit(),
     );
   }
 }

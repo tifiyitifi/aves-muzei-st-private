@@ -7,7 +7,8 @@ of the Muzei-style live wallpaper mechanism.
 
 - **Done**: group model, layout invariants, bundled defaults (JSON), storage
   (`wallpaper_groups` table, schema v7; `baseActive` in v9; per-group `effects`
-  in v10; per-group `interval`/`ordering` in v11), controller with the page's
+  in v10; per-group `interval`/`ordering` in v11; `grouped_wallpaper_history` in
+  v12), controller with the page's
   in-memory draft, the wallpaper-group page reachable from the visible-range
   page's More menu / the shared bottom-bar entry, the engine's closed loop (Dart
   baking + native slot queue), global gestures, the immersive view page, per-group
@@ -17,9 +18,10 @@ of the Muzei-style live wallpaper mechanism.
   availability label under the group switcher, the global home-screen scroll
   effect switch, the full set of rule actions on the group page (move to
   base/restriction/supplement, open in a media set by replacing or appending,
-  delete) and per-permission locking.
-- **Not done yet**: the notification's copy/usage-history buttons (shown but
-  disabled), filtering the management surfaces (settings, explorer, vaults,
+  delete), per-permission locking, the usage history (page, notification entry,
+  configurable limit) and "duplicate group".
+- **Not done yet**: the notification's copy/share button (shown but disabled),
+  filtering the management surfaces (settings, explorer, vaults,
   recycle bin) while a range is locked, temporary/permanent selection ranges,
   Aves Copy, and import/export.
 
@@ -130,13 +132,18 @@ layout's first button switches between the two sets:
 
 | | Collapsed (4) | Expanded (5) |
 |---|---|---|
-| Photo actions (unlocked default) | previous / next photo / copy\* / record\* | switch / previous / next / copy\* / record\* |
+| Photo actions (unlocked default) | previous / next photo / copy\* / history | switch / previous / next / copy\* / history |
 | Group actions (locked default) | previous / next group / freeze / next photo | switch / previous / next group / freeze / next photo |
 
-`*` copy and usage history keep Aves-ST's icons but are disabled (dimmed, no
-action) until those features exist. The channel is `grouped_wallpaper_v3`,
-`IMPORTANCE_HIGH`, no badge, with the system's default sound and no vibration,
-like Aves-ST's bar: MIUI hides a silent notification on the lock screen even when
+`*` copy keeps Aves-ST's icon but stays disabled (dimmed, no action) until that
+feature exists. **history** opens the usage-history page through the app's
+cold-start route, like the notification's content intent. **previous** is greyed
+out while the history limit is 0: recording is off, so the engine refuses to step
+back and the button would do nothing.
+
+The channel is `grouped_wallpaper_v3`, `IMPORTANCE_HIGH`, no badge, with the
+system's default sound and no vibration, like Aves-ST's bar: MIUI hides a silent
+notification on the lock screen even when
 it belongs to a foreground service. The notification is `setOnlyAlertOnce`, so a
 frame update never beeps and only the first post after the service starts alerts.
 It is also `VISIBILITY_PUBLIC`, so the group and photo names stay readable on the
@@ -149,8 +156,9 @@ screen" report. The sound could only change through an id bump, so it is settled
 too.
 
 The bar is re-read from `state.json` on every frame load, so the service posts
-only when `contentKey` changes: status, group number/name, freeze state, button
-set and the photo on screen. Re-posting an unchanged bar (hundreds of times a day)
+only when `contentKey` changes: status, group number/name, freeze state, the
+history limit (it greys "previous"), button set and the photo on screen.
+Re-posting an unchanged bar (hundreds of times a day)
 is what made MIUI rate-limit the app and then hide its notifications on the lock
 screen (`post_frequency` demoted every post).
 
@@ -212,6 +220,41 @@ vault or hiding a filter between two photos can never bring the hidden photo
 back. A v3 state's history has no group id, so its entries are treated as
 belonging to the current group.
 
+### Usage history
+
+`grouped_wallpaper_history` (schema v12) records the photos the wallpaper put on
+screen, so the user can look back at them and step to the previous one.
+
+- **Recorded when the photo changes**: an advance, "previous", a group switch or
+  a promotion the renderer made on its own. A layout re-bake, a freeze/resume, an
+  off switch, a lock or a failure keeps the same entry and adds no row.
+- **Per photo, per group**: the unique key is `(entryId, groupId)`, so showing the
+  same photo again only moves its `usedAt` to the front, while the same photo in
+  another group is a different wallpaper and keeps its own row. The row stores the
+  group name/number as a snapshot, so it still reads correctly after the group was
+  renamed or deleted.
+- **Limit**: `wallpaper.groupedHistoryLimit` (AppMeta, 0–1000, default 200). `0`
+  turns recording off and greys the notification's "previous" button, and the
+  engine's `previousArtwork()` becomes a no-op. Changing the number **never
+  deletes** anything: the next recorded photo prunes the oldest rows beyond the
+  limit, and only "clear history" removes rows.
+- **Where it lives**: `/grouped_wallpaper/history`, reachable from the group
+  page's More, the view page's More and the notification's "history" button (an
+  activity intent, not a broadcast). Rows whose photo left the library are
+  skipped, and tapping one opens the viewer.
+- The limit travels in `state.json` (`historyLimit`) for the same reason as the
+  switches above: the native bar owns the greyed button.
+
+### Duplicating a group
+
+The group page's More menu copies the selected group into a new one. The copy is
+deep: base, rules (new ids, same content), order, permissions, effects, interval
+and ordering. It is never enabled, current or locked, and it is selected right
+after, so the user can edit it immediately. A **locked** group is refused (in the
+page and again in the controller): its range is read-only, so a copy would clone
+what the user froze. The copy is a draft change like any other, so it disappears
+on "discard changes".
+
 ### Freezing
 
 `groupedPaused` (AppMeta, `wallpaper.groupedPaused`) freezes the wallpaper on the
@@ -227,7 +270,8 @@ without asking Flutter.
 A three-finger tap opens an immersive view of the current photo, modelled on
 Muzei's artwork screen: pan and zoom, chrome visible on open and toggled by a
 tap, the group · count · title at the bottom left and the menu at the bottom
-right. The menu has 「Open wallpaper groups」, 「Open in gallery」 and share. A
+right. The menu has 「Open wallpaper groups」, 「Open in gallery」, share and
+「Usage history」. A
 wallpaper gesture has no Activity, so the view is pushed over the playing
 group's page, itself over the app's home page: back walks view → group page →
 home instead of closing the app, and the group page starts on the group being

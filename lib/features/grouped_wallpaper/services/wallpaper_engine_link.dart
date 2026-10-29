@@ -49,6 +49,9 @@ abstract interface class WallpaperEngineConnection {
   /// Records the scroll effect switch and re-bakes the frame on screen.
   Future<void> setScrollEffect(bool enabled);
 
+  /// Records how many photos the usage history keeps.
+  Future<void> setHistoryLimit(int limit);
+
   /// Opens the system live-wallpaper chooser for this service.
   Future<bool> openChooser();
 }
@@ -191,6 +194,8 @@ class WallpaperEngineLink {
     await _connection?.setScrollEffect(enabled);
     _scrollEffect = enabled;
   }
+
+  Future<void> setHistoryLimit(int limit) async => await _connection?.setHistoryLimit(limit);
 
   Future<bool> openChooser() async => await _connection?.openChooser() ?? false;
 }

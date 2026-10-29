@@ -70,6 +70,13 @@ data class GroupedWallpaperFileState(
      * service must post nothing.
      */
     val notification: Boolean = true,
+    /**
+     * How many photos the usage history keeps; `0` means recording is off.
+     *
+     * The bar greys its "previous" button when this is `0`: the engine stops
+     * stepping back and no new history is written, so the button would do nothing.
+     */
+    val historyLimit: Int = 200,
 ) {
     fun slot(id: Int): GroupedWallpaperSlotFile? = slots.firstOrNull { it.id == id }
 
@@ -221,6 +228,7 @@ object GroupedWallpaperStateFile {
             // A file written before the setting existed means "on", which is
             // what those builds did.
             notification = json.optBoolean("notification", true),
+            historyLimit = json.optInt("historyLimit", 200),
         )
     }
 

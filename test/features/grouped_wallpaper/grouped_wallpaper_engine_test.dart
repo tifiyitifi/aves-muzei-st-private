@@ -6,10 +6,13 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_baker.d
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_bridge.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_engine.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_entry_source.dart';
+import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_history_recorder.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_plan.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_entry.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
@@ -36,6 +39,7 @@ void main() {
   late _FakeBaker baker;
   late _FakePlanStore planStore;
   late _FakeEntrySource entrySource;
+  late _FakeHistoryRecorder historyRecorder;
   late GroupedWallpaperStateStore store;
   late WallpaperEngineLink link;
   late GroupedWallpaperEngine engine;
@@ -76,6 +80,7 @@ void main() {
     baker = _FakeBaker();
     planStore = _FakePlanStore(plan);
     entrySource = _FakeEntrySource();
+    historyRecorder = _FakeHistoryRecorder();
     store = GroupedWallpaperStateStore(dir);
     link = WallpaperEngineLink();
     engine = GroupedWallpaperEngine(
@@ -85,6 +90,7 @@ void main() {
       entrySource: entrySource,
       nameResolver: (group) => 'DCIM',
       link: link,
+      history: historyRecorder,
       targetSize: () async => platform.size,
       now: () => 1234,
     );
@@ -982,6 +988,116 @@ void main() {
       expect(baker.bakeCount, bakeCount);
     });
   });
+
+  group('history', () {
+    test('records the photo on screen, not the prefetched ones', () async {
+      serve(entries(12));
+
+      await engine.prepare();
+
+      expect(historyRecorder.rows.map((row) => row.entryId), [50]);
+      final row = historyRecorder.rows.single;
+      expect(row.groupId, dcimGroup.id);
+      expect(row.groupName, dcimGroup.name);
+      expect(row.groupNumber, dcimGroup.number);
+      expect(row.usedAt, 1234);
+      expect(historyRecorder.limit, GroupedWallpaperHistoryLimit.defaultLimit);
+    });
+
+    test('a repeat prepare and a layout re-bake add no row', () async {
+      serve(entries(12));
+      await engine.prepare();
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
+      platform.size = const Size(1000, 2000);
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      expect(historyRecorder.rows, hasLength(1));
+    });
+
+    test('advancing records the photo it moves to', () async {
+      serve(entries(12));
+      await engine.prepare();
+
+      expect(await engine.syncNow(), GroupedWallpaperSyncResult.baked);
+
+      expect(historyRecorder.rows.map((row) => row.entryId), [50, 49]);
+    });
+
+    test('previous records the photo it steps back to', () async {
+      serve(entries(12));
+      await engine.prepare();
+      await engine.syncNow();
+
+      expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.baked);
+
+      expect(historyRecorder.rows.map((row) => row.entryId), [50, 49, 50]);
+    });
+
+    test('freezing and resuming add no row', () async {
+      serve(entries(12));
+      await engine.prepare();
+
+      await engine.setPaused(true);
+      await engine.setPaused(false);
+
+      expect(historyRecorder.rows, hasLength(1));
+    });
+
+    test('a zero limit records nothing and makes previous inert', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, scrollEffect: false, historyLimit: 0);
+      serve(entries(12));
+
+      await engine.prepare();
+      expect(historyRecorder.rows, isEmpty);
+      expect(await engine.syncNow(), GroupedWallpaperSyncResult.baked);
+      expect(historyRecorder.rows, isEmpty);
+      // The queue still advances: only the history is off.
+      expect((await store.readState())!.currentSlot?.entryId, 49);
+
+      expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.unchanged);
+      expect((await store.readState())!.currentSlot?.entryId, 49);
+    });
+
+    test('setHistoryLimit writes the plan and the state without pruning', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final refreshes = platform.notificationRefreshes;
+
+      await engine.setHistoryLimit(5);
+
+      expect(planStore.historyLimitWrites, [5]);
+      expect((await store.readState())!.historyLimit, 5);
+      expect(platform.notificationRefreshes, greaterThan(refreshes));
+      // The frame on screen is untouched: only the limit changed.
+      expect(platform.reloadCount, 1);
+    });
+  });
+}
+
+class _FakeHistoryRecorder implements GroupedWallpaperHistoryRecorder {
+  final List<GroupedWallpaperHistoryEntry> rows = [];
+
+  @override
+  Future<void> record({
+    required int entryId,
+    required String groupId,
+    required String groupName,
+    required int groupNumber,
+    required int usedAt,
+    required int limit,
+  }) async {
+    rows.add(GroupedWallpaperHistoryEntry(
+      entryId: entryId,
+      groupId: groupId,
+      groupName: groupName,
+      groupNumber: groupNumber,
+      usedAt: usedAt,
+    ));
+    this.limit = limit;
+  }
+
+  /// The last limit the engine asked to record with.
+  int? limit;
 }
 
 class _FakePlatform implements GroupedWallpaperPlatform {
@@ -1153,6 +1269,14 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   }
 
   final List<bool> scrollEffectWrites = [];
+
+  @override
+  Future<void> setHistoryLimit(int limit) async {
+    historyLimitWrites.add(limit);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification, scrollEffect: plan.scrollEffect, historyLimit: limit);
+  }
+
+  final List<int> historyLimitWrites = [];
 
   @override
   Future<GroupedWallpaperPlan> switchGroup(int delta) async {

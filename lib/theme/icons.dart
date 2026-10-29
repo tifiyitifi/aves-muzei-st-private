@@ -73,6 +73,9 @@ class AIcons {
 
   /// A wallpaper group's auto-advance interval and ordering.
   static const autoAdvance = Symbols.schedule;
+
+  /// The grouped wallpaper's usage history.
+  static const history = Symbols.history;
   static const rating = Symbols.star;
   static const ratingRejected = MdiIcons.starMinusOutline;
   static const ratingUnrated = MdiIcons.starOffOutline;

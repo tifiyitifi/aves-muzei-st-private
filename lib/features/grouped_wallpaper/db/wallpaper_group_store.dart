@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
@@ -57,6 +58,13 @@ class WallpaperGroupStore {
   /// It is global to the grouped wallpaper: it changes how every group is baked,
   /// so it never belongs to a group row and never bumps `updatedAt`.
   static const keyScrollEffect = 'wallpaper.groupedScrollEffect';
+
+  /// AppMeta key of how many photos the usage history keeps.
+  ///
+  /// Global like the switches above: the history spans every group, so its size
+  /// is a property of the wallpaper, not of one group. `0` turns recording off
+  /// without deleting what was already recorded.
+  static const keyHistoryLimit = 'wallpaper.groupedHistoryLimit';
 
   /// AppMeta key of "the grouped wallpaper has been the system wallpaper".
   ///
@@ -183,6 +191,24 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeScrollEffect(bool enabled) => AppMetaStore(db).write({keyScrollEffect: enabled ? 'true' : 'false'});
+
+  /// How many photos the usage history keeps.
+  ///
+  /// A missing value is a fresh install (or a build before the history existed),
+  /// which starts at [GroupedWallpaperHistoryLimit.defaultLimit]. The stored value
+  /// is clamped on read, so a corrupted row cannot disable the history page or
+  /// grow it without bound.
+  Future<int> readHistoryLimit() async {
+    final values = await AppMetaStore(db).read({keyHistoryLimit});
+    final parsed = int.tryParse(values[keyHistoryLimit] ?? '');
+    return GroupedWallpaperHistoryLimit.sanitize(parsed ?? GroupedWallpaperHistoryLimit.defaultLimit);
+  }
+
+  /// Stores the history limit without touching the recorded rows.
+  ///
+  /// Lowering the limit only changes what the next shown photo prunes, exactly as
+  /// the user asked: changing a number must never delete history on its own.
+  Future<void> writeHistoryLimit(int limit) => AppMetaStore(db).write({keyHistoryLimit: '${GroupedWallpaperHistoryLimit.sanitize(limit)}'});
 
   /// Whether the grouped wallpaper has already been the system wallpaper.
   Future<bool> readWasActive() async {

@@ -5,6 +5,7 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.d
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
@@ -428,5 +429,109 @@ void main() {
     final cold = makeController();
     await cold.init();
     expect(cold.selectedGroupId, 'wallpaper.group.all');
+  });
+
+  group('duplicateGroup', () {
+    test('deep-copies the range, effects and auto-advance under new ids', () async {
+      await controller.selectGroup('wallpaper.group.dcim');
+      final source = controller.range!;
+      await controller.groupController.saveGroupRange(
+        source.copyWith(
+          baseName: 'DCIM only',
+          basePresetId: 'builtin.path',
+          rules: [
+            VisibleRangeRule(
+              id: 'rule.1.0',
+              rangeId: source.id,
+              kind: VisibleRangeRuleKind.restriction,
+              label: 'No videos',
+              filters: {MimeFilter.video},
+              active: false,
+            ),
+          ],
+          order: VisibleRangeOrder.unionFirst,
+        ),
+      );
+      await controller.groupController.setEffects('wallpaper.group.dcim', const WallpaperEffectsConfig(home: WallpaperEffects(blur: 2)));
+
+      final copy = await controller.duplicateGroup('wallpaper.group.dcim', name: 'DCIM copy');
+
+      expect(copy, isNotNull);
+      expect(copy!.id, isNot('wallpaper.group.dcim'));
+      expect(copy.name, 'DCIM copy');
+      expect(copy.enabled, isFalse);
+      expect(copy.current, isFalse);
+      expect(copy.interval, controller.groups.firstWhere((group) => group.id == 'wallpaper.group.dcim').interval);
+      expect(copy.effects.home.blur, 2);
+      // The page switched to the copy, which is how the user sees it right away.
+      expect(controller.selectedGroupId, copy.id);
+
+      final copied = controller.range!;
+      expect(copied.ownerId, copy.id);
+      expect(copied.id, '${copy.id}.range');
+      expect(copied.baseName, 'DCIM only');
+      expect(copied.baseFilters, {PathFilter('/dcim')});
+      expect(copied.order, VisibleRangeOrder.unionFirst);
+      expect(copied.locked, isFalse);
+      expect(copied.rules, hasLength(1));
+      expect(copied.rules.single.id, isNot('rule.1.0'));
+      expect(copied.rules.single.rangeId, copied.id);
+      expect(copied.rules.single.label, 'No videos');
+      expect(copied.rules.single.filters, {MimeFilter.video});
+      expect(copied.rules.single.active, isFalse);
+      // The source keeps its own rule.
+      expect((await controller.groupController.groupRange('wallpaper.group.dcim')).rules.single.id, 'rule.1.0');
+    });
+
+    test('the copy lands in the disabled segment and is not current', () async {
+      final copy = await controller.duplicateGroup('wallpaper.group.all', name: 'Copy');
+
+      final groups = controller.groups;
+      expect(groups.map((group) => group.id), contains(copy!.id));
+      expect(groups.firstWhere((group) => group.id == copy.id).enabled, isFalse);
+      // The wallpaper still plays the group it played before.
+      expect(controller.current.id, 'wallpaper.group.all');
+      // Enabled groups come first, so a disabled copy is never numbered among them.
+      expect(controller.groups.where((group) => group.enabled).map((group) => group.id), isNot(contains(copy.id)));
+    });
+
+    test('a locked source is refused and nothing is written', () async {
+      await controller.selectGroup('wallpaper.group.pictures');
+      await controller.lockWithPreset(VisibleRangeLockPreset.readOnly);
+      final before = controller.groups.length;
+
+      final copy = await controller.duplicateGroup('wallpaper.group.pictures', name: 'Copy');
+
+      expect(copy, isNull);
+      expect(controller.groups, hasLength(before));
+      expect(controller.selectedGroupId, 'wallpaper.group.pictures');
+    });
+
+    test('the copy is a draft change until the page saves', () async {
+      final copy = await controller.duplicateGroup('wallpaper.group.dcim', name: 'Copy');
+      expect(controller.dirty, isTrue);
+
+      final storedBeforeSave = makeController();
+      await storedBeforeSave.init();
+      expect(storedBeforeSave.groups.any((group) => group.id == copy!.id), isFalse);
+
+      await controller.saveDraft();
+
+      final stored = makeController();
+      await stored.init();
+      final copyId = copy!.id;
+      final reloaded = stored.groups.firstWhere((group) => group.id == copyId);
+      expect(reloaded.enabled, isFalse);
+      expect((await stored.groupController.groupRange(copyId)).baseFilters, {PathFilter('/dcim')});
+    });
+
+    test('discarding the draft drops the copy', () async {
+      final copy = await controller.duplicateGroup('wallpaper.group.dcim', name: 'Copy');
+
+      await controller.discardDraft();
+
+      expect(controller.groups.any((group) => group.id == copy!.id), isFalse);
+      expect(controller.dirty, isFalse);
+    });
   });
 }

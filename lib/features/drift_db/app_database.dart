@@ -15,10 +15,12 @@ import 'package:aves/features/drift_db/migration/migration_v7.dart';
 import 'package:aves/features/drift_db/migration/migration_v8.dart';
 import 'package:aves/features/drift_db/migration/migration_v10.dart';
 import 'package:aves/features/drift_db/migration/migration_v11.dart';
+import 'package:aves/features/drift_db/migration/migration_v12.dart';
 import 'package:aves/features/drift_db/migration/migration_v9.dart';
 import 'package:aves/features/drift_db/trash/trash_table.dart';
 import 'package:aves/features/drift_db/vaults/vault_table.dart';
 import 'package:aves/features/drift_db/video_playback/video_playback_table.dart';
+import 'package:aves/features/grouped_wallpaper/db/grouped_wallpaper_history_table.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_table.dart';
 import 'package:aves/features/meta_settings/db/settings_values_table.dart';
 import 'package:aves/features/visible_range/db/visible_range_tables.dart';
@@ -58,6 +60,7 @@ part 'app_database.g.dart';
     VisibleRangeRuleUsageRows,
     VisibleRangeKeyValues,
     WallpaperGroupRows,
+    GroupedWallpaperHistoryRows,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -68,7 +71,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -88,6 +91,7 @@ class AppDatabase extends _$AppDatabase {
           if (from < 9) await MigrationV9(this).run(m);
           if (from < 10) await MigrationV10(this).run(m);
           if (from < 11) await MigrationV11(this).run(m);
+          if (from < 12) await MigrationV12(this).run(m);
         },
         beforeOpen: (details) async {
           // The main isolate and the analysis background isolate each open
@@ -109,5 +113,6 @@ class AppDatabase extends _$AppDatabase {
     await MigrationV5.createNewIndexes(this);
     await MigrationV7.createNewIndexes(this);
     await MigrationV8.createNewIndexes(this);
+    await MigrationV12.createNewIndexes(this);
   }
 }

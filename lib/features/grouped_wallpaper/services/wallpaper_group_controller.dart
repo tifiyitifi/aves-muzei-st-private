@@ -363,6 +363,84 @@ class WallpaperGroupController extends ChangeNotifier {
     return _groups.firstWhere((candidate) => candidate.id == group.id);
   }
 
+  /// Copies [id] into a new group and returns the copy.
+  ///
+  /// The copy is never enabled, current or locked: it is a starting point, not a
+  /// second player, and a locked range is read-only, so copying it would clone
+  /// content the user froze. Rules get fresh ids so the two groups never share a
+  /// row, while the effects, the auto-advance contract and the range content are
+  /// deep-copied. Returns null when the group is unknown or its range is locked.
+  Future<WallpaperGroup?> duplicateGroup(String id, {required String name}) async {
+    _requireInitialized();
+    final source = _groups.firstWhereOrNull((group) => group.id == id);
+    if (source == null) return null;
+    final range = await groupRange(id);
+    if (range.locked) return null;
+
+    final now = _now;
+    final copy = WallpaperGroup(
+      id: 'group.$now.${_idSequence++}',
+      name: name.trim(),
+      description: source.description,
+      enabled: false,
+      current: false,
+      effects: source.effects,
+      interval: source.interval,
+      ordering: source.ordering,
+      createdAt: now,
+      updatedAt: now,
+    );
+    final copyRangeId = wallpaperGroupRangeId(copy.id);
+    final copiedRange = VisibleRange(
+      id: copyRangeId,
+      scope: VisibleRangeScope.wallpaper,
+      ownerId: copy.id,
+      baseName: range.baseName,
+      basePresetId: range.basePresetId,
+      baseFilters: range.baseFilters,
+      baseActive: range.baseActive,
+      rules: [
+        for (final rule in range.rules)
+          VisibleRangeRule(
+            id: 'rule.$now.${_idSequence++}',
+            rangeId: copyRangeId,
+            kind: rule.kind,
+            position: rule.position,
+            label: rule.label,
+            description: rule.description,
+            filters: rule.filters,
+            active: rule.active,
+          ),
+      ],
+      order: range.order,
+      locked: false,
+      permissions: range.permissions,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    // Insert right after the source, then normalize: normalization owns the
+    // enabled/disabled segments, so a disabled copy lands at the start of the
+    // disabled segment rather than necessarily next to its source.
+    final index = _groups.indexWhere((group) => group.id == id);
+    final next = normalizeWallpaperGroups([..._groups]..insert(index + 1, copy));
+    if (_draftActive) {
+      _groups = next;
+      _ranges[copy.id] = copiedRange;
+      _dirty = true;
+      notifyListeners();
+      return next.firstWhereOrNull((group) => group.id == copy.id);
+    }
+    final store = await _openStore();
+    await store.db.transaction(() async {
+      await store.saveGroups(next);
+      await VisibleRangeStore(store.db).saveRange(copiedRange);
+    });
+    _groups = next;
+    notifyListeners();
+    return next.firstWhereOrNull((group) => group.id == copy.id);
+  }
+
   /// Updates the user text of a group. An empty name keeps the current one, so
   /// the dialog cannot leave a group nameless.
   Future<void> updateGroup(String id, {required String name, String? description}) async {

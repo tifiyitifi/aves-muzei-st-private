@@ -1,5 +1,6 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -50,6 +51,7 @@ void main() {
     newestEntryId: 9,
     ordering: GroupedWallpaperOrdering.inOrder,
     paused: true,
+    historyLimit: 500,
     bakedAt: 1234,
   );
 
@@ -69,6 +71,15 @@ void main() {
     expect(parsed.newestEntryId, 9);
     expect(parsed.ordering, GroupedWallpaperOrdering.inOrder);
     expect(parsed.paused, isTrue);
+    expect(parsed.historyLimit, 500);
+  });
+
+  test('a file written before the history limit existed records at the default', () {
+    final json = state.toJsonMap()..remove('historyLimit');
+    expect(GroupedWallpaperState.tryFromJsonMap(json)!.historyLimit, GroupedWallpaperHistoryLimit.defaultLimit);
+
+    final outOfRange = state.toJsonMap()..['historyLimit'] = 100000;
+    expect(GroupedWallpaperState.tryFromJsonMap(outOfRange)!.historyLimit, GroupedWallpaperHistoryLimit.maxLimit);
   });
 
   test('a v3 file reads as playing, with no group on its history', () {

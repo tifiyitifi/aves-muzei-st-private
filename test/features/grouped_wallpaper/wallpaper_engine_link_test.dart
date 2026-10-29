@@ -213,5 +213,10 @@ class _FakeConnection implements WallpaperEngineConnection {
   bool scrollEffect = true;
 
   @override
+  Future<void> setHistoryLimit(int limit) async => historyLimit = limit;
+
+  int historyLimit = 200;
+
+  @override
   Future<bool> openChooser() async => true;
 }

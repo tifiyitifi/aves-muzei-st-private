@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_cover.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -39,6 +40,7 @@ enum _ViewAction {
   openGroups,
   openInGallery,
   share,
+  history,
 }
 
 class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
@@ -153,6 +155,13 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
         await _openInGallery();
       case _ViewAction.share:
         await _share();
+      case _ViewAction.history:
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            settings: const RouteSettings(name: GroupedWallpaperHistoryPage.routeName),
+            builder: (_) => const GroupedWallpaperHistoryPage(),
+          ),
+        );
     }
   }
 
@@ -310,6 +319,10 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
                               value: _ViewAction.share,
                               enabled: entry != null,
                               child: _menuRow(AIcons.share, l10n.groupedWallpaperViewShare),
+                            ),
+                            PopupMenuItem(
+                              value: _ViewAction.history,
+                              child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
                             ),
                           ],
                         ),

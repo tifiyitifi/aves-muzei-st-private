@@ -61,23 +61,33 @@ class GroupedWallpaperHistoryStore {
   }
 
   /// The recorded photos, newest first.
-  Future<List<GroupedWallpaperHistoryEntry>> load() async {
+  ///
+  /// [groupId] narrows the list to one group, which is what the history page
+  /// shows when the user came from a group; `null` means every group.
+  Future<List<GroupedWallpaperHistoryEntry>> load({String? groupId}) async {
     final query = db.select(db.groupedWallpaperHistoryRows)
       ..orderBy([
         (t) => OrderingTerm.desc(t.usedAt),
         (t) => OrderingTerm.desc(t.id),
       ]);
+    if (groupId != null) query.where((t) => t.groupId.equals(groupId));
     return [for (final row in await query.get()) _toEntry(row)];
   }
 
-  Future<int> count() async {
+  Future<int> count({String? groupId}) async {
     final count = db.groupedWallpaperHistoryRows.id.count();
     final query = db.selectOnly(db.groupedWallpaperHistoryRows)..addColumns([count]);
+    if (groupId != null) query.where(db.groupedWallpaperHistoryRows.groupId.equals(groupId));
     final row = await query.getSingle();
     return row.read(count) ?? 0;
   }
 
-  Future<void> clear() => db.delete(db.groupedWallpaperHistoryRows).go();
+  /// Deletes the records of [groupId], or every group when it is null.
+  Future<void> clear({String? groupId}) {
+    final query = db.delete(db.groupedWallpaperHistoryRows);
+    if (groupId != null) query.where((t) => t.groupId.equals(groupId));
+    return query.go();
+  }
 
   static GroupedWallpaperHistoryEntry _toEntry(GroupedWallpaperHistoryRow row) => GroupedWallpaperHistoryEntry(
         entryId: row.entryId,

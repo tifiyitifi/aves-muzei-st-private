@@ -6,6 +6,7 @@
 /// legacy section.
 enum SettingsCategory {
   navigation,
+  wallpaper,
   thumbnails,
   viewer,
   video,

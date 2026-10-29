@@ -1,3 +1,4 @@
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
@@ -56,6 +57,8 @@ class NavigationDisplay {
         return l10n.explorerPageTitle;
       case MuzeiWallpaperPage.routeName:
         return l10n.muzeiWallpaperPageTitle;
+      case GroupedWallpaperPage.routeName:
+        return l10n.wallpaperGroupsTitle;
       case VisibleRangePage.routeName:
         // One entry, two peer pages: the label and the icon follow whichever
         // page the shell currently renders.
@@ -88,6 +91,8 @@ class NavigationDisplay {
       case ExplorerPage.routeName:
         return AIcons.explorer;
       case MuzeiWallpaperPage.routeName:
+        return AIcons.wallpaper;
+      case GroupedWallpaperPage.routeName:
         return AIcons.wallpaper;
       case VisibleRangePage.routeName:
         return visibleRangeDestination.value == VisibleRangeDestination.wallpaper ? AIcons.wallpaper : AIcons.visibleRange;

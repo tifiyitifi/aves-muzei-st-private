@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:aves/app_flavor.dart';
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_target_source.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
@@ -245,6 +246,7 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
         ChangeNotifierProvider<Settings>.value(value: settings),
         ListenableProvider<ValueNotifier<AppMode>>.value(value: _appModeNotifier),
         Provider<CollectionSource>.value(value: _mediaStoreSource),
+        ChangeNotifierProvider<GroupedWallpaperNavController>.value(value: groupedWallpaperNavController),
         Provider<TvRailController>.value(value: _tvRailController),
         DurationsProvider(),
         HighlightInfoProvider(),
@@ -510,6 +512,9 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
       // The gallery must be range-aware before the first collection loads, so a
       // saved range never flashes the unfiltered library.
       _timed('visible range', visibleRangeController.init),
+      // The bottom bar is built on the first frame and cannot read the database,
+      // so its wallpaper entry placement is loaded with the other essentials.
+      _timed('wallpaper navigation', groupedWallpaperNavController.load),
     ]);
     // The pin sheet and the write-back list reach the wallpaper groups through
     // this source. The groups themselves load on first use, so assigning the

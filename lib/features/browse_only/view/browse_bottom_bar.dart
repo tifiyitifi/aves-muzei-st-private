@@ -1,4 +1,6 @@
-import 'package:aves/features/visible_range/view/visible_range_nav.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_nav.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
@@ -50,7 +52,9 @@ class BrowseOnlyBottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final configured = context.select<Settings, List<AvesNavItem>>((v) => v.bottomNavigationActions);
     if (configured.length < 2) return const SizedBox();
-    final items = withVisibleRangeDestination(configured);
+    final navMode = context.select<GroupedWallpaperNavController, GroupedWallpaperNavMode>((v) => v.mode);
+    final navEntryClosed = context.select<GroupedWallpaperNavController, bool>((v) => v.entryClosed);
+    final items = withWallpaperNavDestinations(configured, mode: navMode, entryClosed: navEntryClosed);
     if (items.length < 2) return const SizedBox();
     final views = [for (final item in items) viewFor(item)];
     final safeBottomPadding = MediaQuery.of(context).safeBottomPadding;

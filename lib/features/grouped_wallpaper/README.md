@@ -10,7 +10,7 @@ of the Muzei-style live wallpaper mechanism.
   in v10; per-group `interval`/`ordering` in v11; `grouped_wallpaper_history` in
   v12), controller with the page's
   in-memory draft, the wallpaper-group page reachable from the visible-range
-  page's More menu / the shared bottom-bar entry, the engine's closed loop (Dart
+  page's More menu / its own bottom-bar entry, the engine's closed loop (Dart
   baking + native slot queue), global gestures, the immersive view page, per-group
   home/lock effects with a copy-to-other-groups grid, per-group auto-advance
   (interval + ordering, scheduled through the shared WorkManager chain), the
@@ -24,6 +24,35 @@ of the Muzei-style live wallpaper mechanism.
   filtering the management surfaces (settings, explorer, vaults,
   recycle bin) while a range is locked, temporary/permanent selection ranges,
   Aves Copy, and import/export.
+
+## The bottom-bar entry
+
+The wallpaper is a peer of the visible range, not a hidden sub-page of it, so the
+bar derives its own entry instead of writing it into `bottomNavigationActions`:
+the user's list stays theirs, and the entry can be closed and reopened.
+
+- `wallpaper.groupedNavMode` (AppMeta) picks one of three placements:
+  `shared` (one entry, a shell flipping between the two pages, the original
+  setup), `separateLeft` and `separateRight` (its own entry immediately left or
+  right of the visible-range entry). The default is `separateRight`.
+- `withWallpaperNavDestinations` composes `withVisibleRangeDestination` and
+  inserts the entry next to the range entry wherever the user moved it. It
+  derives nothing while picking a photo, in `shared` mode, when the entry was
+  closed, or when the user pinned `/wallpaper_groups` in their own list.
+- `wallpaper.groupedNavEntryClosed` (AppMeta) is the close switch. Both pages'
+  More menus toggle it, and only while the entry is derived: a pinned entry is
+  the user's, so the menus leave it alone.
+- `GroupedWallpaperNavController` caches both values for the bar, which is built
+  synchronously and cannot read the database; it loads at startup with the other
+  essentials and notifies on every change.
+- The default bar is now All / Favourites / Albums / Visible range: the video
+  shortcut is gone and the range entry is still appended at build time. Existing
+  users keep their own list.
+- Settings → "Visible & wallpaper" collects the switches: the nav mode, the
+  notification bar, the history limit, the history page, the scroll effect, the
+  gestures page, and the four Muzei confirmations/prefetch options that used to
+  sit under "Advanced". The group page keeps the same actions as contextual
+  shortcuts; both read one store.
 
 ## The engine
 
@@ -241,7 +270,21 @@ screen, so the user can look back at them and step to the previous one.
 - **Where it lives**: `/grouped_wallpaper/history`, reachable from the group
   page's More, the view page's More and the notification's "history" button (an
   activity intent, not a broadcast). Rows whose photo left the library are
-  skipped, and tapping one opens the viewer.
+  skipped, and tapping one opens the viewer. The photos are read from the
+  database by id (`localMediaDb.loadEntriesById`): the paged browsing engine never
+  materializes entries in `CollectionSource`, so looking them up there returned
+  nothing and left the page permanently empty.
+- **Scoped to a group**: the page shows the group it was opened from (the group
+  page's selection, the view page's playing group, or the group in `state.json`
+  for the notification and a cold start), with the group name under the title.
+  More → "switch group" lists **every** group with its record count, so an empty
+  group reads as empty instead of broken. A locked range hides that entry: reading
+  another group's photos is exactly what the lock prevents.
+- **Clearing is all-or-nothing**: "clear history" empties every group, not just
+  the one on screen. The confirmation carries a "do not ask again" box
+  (`wallpaper.groupedHistoryClearSkipConfirm`); once skipped, the menu keeps a
+  checked "confirm before clearing" entry to turn it back on, since the dialog can
+  no longer offer the box.
 - The limit travels in `state.json` (`historyLimit`) for the same reason as the
   switches above: the native bar owns the greyed button.
 

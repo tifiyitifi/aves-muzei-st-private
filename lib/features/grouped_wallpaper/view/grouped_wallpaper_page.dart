@@ -6,10 +6,12 @@ import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_sections.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
@@ -108,6 +110,7 @@ enum _PageAction {
   deleteSelectedConditions,
   deleteSelectedGroups,
   visibleRange,
+  toggleNavEntry,
   saveChanges,
   discardChanges,
   syncNow,
@@ -1270,8 +1273,18 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       ),
       const PopupMenuDivider(),
       // The wallpaper page shares one bottom-bar entry with the visible-range
-      // page; this switches the shared destination for the rest of the process.
-      _menuItem(_PageAction.visibleRange, AIcons.visibleRange, l10n.visibleRangePageTitle),
+      // page in the shared mode; this switches that destination for the rest of
+      // the process. With a separate entry the page is already on the bar, so
+      // the same place closes or reopens the derived entry instead. An entry the
+      // user added themselves is theirs: the menu never touches it.
+      if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared)
+        _menuItem(_PageAction.visibleRange, AIcons.visibleRange, l10n.visibleRangePageTitle)
+      else if (!_wallpaperEntryPinned)
+        _menuItem(
+          _PageAction.toggleNavEntry,
+          AIcons.wallpaper,
+          groupedWallpaperNavController.entryClosed ? l10n.wallpaperGroupNavOpen : l10n.wallpaperGroupNavClose,
+        ),
       if (gallery.isRestricted)
         _menuItem(
           _PageAction.cancelGalleryRange,
@@ -1352,11 +1365,19 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     return _controller.groups.firstWhereOrNull((group) => group.id == id);
   }
 
+  /// Whether the user put the wallpaper group page in their own navigation list.
+  ///
+  /// Such an entry is theirs to keep or remove from the navigation editor, so
+  /// the page menu must not offer to close it.
+  bool get _wallpaperEntryPinned => settings.bottomNavigationActions.any((item) => item.route == GroupedWallpaperPage.routeName);
+
   Future<void> _onMenuSelected(_PageAction action) async {
     final group = _selectedGroup;
     switch (action) {
       case _PageAction.visibleRange:
         visibleRangeDestination.value = VisibleRangeDestination.range;
+      case _PageAction.toggleNavEntry:
+        await groupedWallpaperNavController.toggleEntryClosed();
       case _PageAction.saveChanges:
         await _saveDraft();
       case _PageAction.discardChanges:
@@ -1585,11 +1606,14 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   }
 
   /// Opens the photos the wallpaper has shown, newest first.
+  ///
+  /// It opens scoped to the group being viewed: the history belongs to a group,
+  /// and reading another group's photos is what the lock is there to prevent.
   Future<void> _openHistory() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         settings: const RouteSettings(name: GroupedWallpaperHistoryPage.routeName),
-        builder: (_) => const GroupedWallpaperHistoryPage(),
+        builder: (_) => GroupedWallpaperHistoryPage(groupId: _controller.selectedGroupId),
       ),
     );
   }

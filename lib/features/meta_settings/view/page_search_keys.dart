@@ -36,4 +36,8 @@ const Map<String, List<String>> metaPageSearchKeys = {
   MetaPageKeys.navigationDrawer: NavigationDrawerEditorPage.settingKeys,
   MetaPageKeys.bottomNavActions: BottomNavigationActionEditorPage.settingKeys,
   MetaPageKeys.confirmationDialog: ConfirmationDialogPage.settingKeys,
+  // Both wallpaper pages edit fork-owned AppMeta values, not v1 settings, so
+  // there is no setting key to highlight in the recent-settings list.
+  MetaPageKeys.wallpaperHistory: <String>[],
+  MetaPageKeys.wallpaperGestures: <String>[],
 };

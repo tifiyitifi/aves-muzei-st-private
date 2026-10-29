@@ -24,4 +24,8 @@ abstract final class MetaEditorKeys {
   static const String collectionAskBeforeCatalog = 'collection_ask_before_catalog';
   static const String collectionBrowseOnlyBar = 'collection_browse_only_bar';
   static const String collectionBackgroundWork = 'collection_background_work';
+  static const String wallpaperNavMode = 'wallpaper_nav_mode';
+  static const String wallpaperNotification = 'wallpaper_notification';
+  static const String wallpaperHistoryLimit = 'wallpaper_history_limit';
+  static const String wallpaperScrollEffect = 'wallpaper_scroll_effect';
 }

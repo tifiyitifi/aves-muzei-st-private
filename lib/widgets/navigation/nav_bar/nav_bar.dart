@@ -2,7 +2,9 @@ import 'dart:math';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
-import 'package:aves/features/visible_range/view/visible_range_nav.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_nav.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -71,7 +73,14 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
     final configured = context.select<Settings, List<AvesNavItem>>((v) => v.bottomNavigationActions);
     if (configured.length < 2) return const SizedBox();
     final picking = CollectionViewHooksScope.maybeOf(context)?.isPicking ?? false;
-    final items = _visibleItems(context, withVisibleRangeDestination(configured, include: !picking));
+    // The wallpaper entry is derived from the user's own list, so it needs the
+    // two values that decide whether and where it is placed.
+    final navMode = context.select<GroupedWallpaperNavController, GroupedWallpaperNavMode>((v) => v.mode);
+    final navEntryClosed = context.select<GroupedWallpaperNavController, bool>((v) => v.entryClosed);
+    final items = _visibleItems(
+      context,
+      withWallpaperNavDestinations(configured, mode: navMode, entryClosed: navEntryClosed, include: !picking),
+    );
     if (items.length < 2) return const SizedBox();
 
     final safeBottomPadding = context.select<MediaQueryData, double>((mq) => mq.safeBottomPadding);

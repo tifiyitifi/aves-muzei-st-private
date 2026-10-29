@@ -1,3 +1,4 @@
+import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/meta_settings/data/catalog.dart';
 import 'package:aves/features/meta_settings/model/enum/setting_widget_kind.dart';
 import 'package:aves/features/meta_settings/model/enum/settings_category.dart';
@@ -5,7 +6,9 @@ import 'package:aves/features/meta_settings/model/page_keys.dart';
 import 'package:aves/features/meta_settings/model/setting_ids.dart';
 import 'package:aves/features/meta_settings/view/catalog_check.dart';
 import 'package:aves/features/meta_settings/view/category_meta.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_delete_settings.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_prefetch_setting.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_reset_setting.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -126,6 +129,31 @@ void main() {
       });
     });
 
+    test('Visible & wallpaper is fully migrated', () {
+      final keys = metaSettingsDefsFor(SettingsCategory.wallpaper).map((def) => def.key).toList();
+      expect(keys, hasLength(10));
+      expect(keys, containsAll([
+        WallpaperGroupStore.keyNavMode,
+        WallpaperGroupStore.keyNotification,
+        WallpaperGroupStore.keyHistoryLimit,
+        WallpaperGroupStore.keyScrollEffect,
+        MetaPageKeys.wallpaperHistory,
+        MetaPageKeys.wallpaperGestures,
+        WallpaperPrefetchSetting.key,
+        WallpaperSourceResetSetting.key,
+        WallpaperSourceDeleteSetting.key,
+        WallpaperViewerDeleteSetting.key,
+      ]));
+    });
+
+    test('the Muzei wallpaper options left Advanced', () {
+      final keys = metaSettingsDefsFor(SettingsCategory.advanced).map((def) => def.key).toSet();
+      expect(keys, isNot(contains(WallpaperPrefetchSetting.key)));
+      expect(keys, isNot(contains(WallpaperSourceResetSetting.key)));
+      expect(keys, isNot(contains(WallpaperSourceDeleteSetting.key)));
+      expect(keys, isNot(contains(WallpaperViewerDeleteSetting.key)));
+    });
+
     test('defs are returned in sort order', () {
       final orders = metaSettingsDefsFor(SettingsCategory.display).map((def) => def.sortOrder).toList();
       final sorted = [...orders]..sort();
@@ -136,7 +164,7 @@ void main() {
     // stay a plain default-on toggle whose subtitle states the cost.
     test('the wallpaper prefetch option is a default-on toggle', () {
       final def = metaSettingsCatalog.singleWhere((def) => def.key == WallpaperPrefetchSetting.key);
-      expect(def.category, SettingsCategory.advanced);
+      expect(def.category, SettingsCategory.wallpaper);
       expect(def.widgetKind, SettingWidgetKind.toggle);
       expect(def.mutator, isNull);
       expect(def.reader, isNotNull);

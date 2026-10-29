@@ -1,4 +1,6 @@
 import 'package:aves/features/browse_only/view/browse_bottom_bar.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/l10n/l10n.dart';
 import 'package:aves/model/filters/favourite.dart';
@@ -41,8 +43,11 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: ChangeNotifierProvider<Settings>.value(
-          value: settings,
+        home: MultiProvider(
+          providers: [
+            ChangeNotifierProvider<Settings>.value(value: settings),
+            ChangeNotifierProvider<GroupedWallpaperNavController>.value(value: GroupedWallpaperNavController()),
+          ],
           child: Scaffold(
             bottomNavigationBar: StatefulBuilder(
               builder: (context, setState) => BrowseOnlyBottomBar(
@@ -60,16 +65,18 @@ void main() {
     await tester.pump();
 
     final context = tester.element(find.byType(BrowseOnlyBottomBar));
-    // The fork's visible-range destination is appended after the user's items;
-    // nothing here is written into their settings.
+    // The fork's visible-range destination is appended after the user's items,
+    // and the wallpaper entry is derived next to it; nothing here is written into
+    // their settings.
     const visibleRange = AvesNavItem(route: VisibleRangePage.routeName);
-    final barItems = [...items, visibleRange];
+    const wallpaper = AvesNavItem(route: GroupedWallpaperPage.routeName);
+    final barItems = [...items, visibleRange, wallpaper];
     final labels = [for (final item in barItems) item.getText(context)];
     final tooltips = [for (final tooltip in tester.widgetList<Tooltip>(find.byType(Tooltip))) tooltip.message];
 
     // Same items, same order as the bar the user configured — not a fixed set
     // of our own: photos, videos, favourites, albums — plus the fixed range
-    // destination at the far right.
+    // destination and the wallpaper entry beside it.
     expect(tooltips, labels);
     expect(tooltips, [
       items[0].getText(context),
@@ -77,17 +84,19 @@ void main() {
       items[2].getText(context),
       items[3].getText(context),
       visibleRange.getText(context),
+      wallpaper.getText(context),
     ]);
 
     // Videos and favourites need catalogued data: they have no ink response at
     // all, so they cannot even show the ripple of a tap that would do nothing.
     // The range page narrows catalogued browsing, so the browser cannot serve
-    // it either.
+    // it either, and the wallpaper page needs the catalogued library as well.
     expect(find.descendant(of: find.byTooltip(labels[0]), matching: find.byType(InkResponse)), findsOneWidget);
     expect(find.descendant(of: find.byTooltip(labels[1]), matching: find.byType(InkResponse)), findsNothing);
     expect(find.descendant(of: find.byTooltip(labels[2]), matching: find.byType(InkResponse)), findsNothing);
     expect(find.descendant(of: find.byTooltip(labels[3]), matching: find.byType(InkResponse)), findsOneWidget);
     expect(find.descendant(of: find.byTooltip(labels[4]), matching: find.byType(InkResponse)), findsNothing);
+    expect(find.descendant(of: find.byTooltip(labels[5]), matching: find.byType(InkResponse)), findsNothing);
 
     await tester.tap(find.byTooltip(labels[1]));
     await tester.tap(find.byTooltip(labels[2]));

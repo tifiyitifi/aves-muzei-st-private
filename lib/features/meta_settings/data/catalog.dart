@@ -1,4 +1,5 @@
 import 'package:aves/features/collection_paging/engine/collection_paging_keys.dart';
+import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/meta_settings/data/def_visibility.dart';
 import 'package:aves/features/meta_settings/model/editor_keys.dart';
 import 'package:aves/features/meta_settings/model/enum/setting_widget_kind.dart';
@@ -32,6 +33,7 @@ final List<SettingDef> metaSettingsCatalog = [
   ..._videoDefs,
   ..._thumbnailsDefs,
   ..._navigationDefs,
+  ..._wallpaperDefs,
   ..._advancedDefs,
 ];
 
@@ -466,6 +468,103 @@ final List<SettingDef> _navigationDefs = [
   ),
 ];
 
+// Wallpaper
+
+/// The grouped wallpaper and the visible range it is built on.
+///
+/// These switches live in the wallpaper's AppMeta rather than in the v1 settings
+/// store, so they are `custom` editors; the group page keeps its own copies of
+/// the same actions as contextual shortcuts, and both read one store.
+final List<SettingDef> _wallpaperDefs = [
+  SettingDef(
+    key: WallpaperGroupStore.keyNavMode,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsWallpaperNavMode,
+    editorKey: MetaEditorKeys.wallpaperNavMode,
+    availabilityKey: DefVisibility.notTv,
+    sortOrder: 10,
+  ),
+  SettingDef(
+    key: WallpaperGroupStore.keyNotification,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.wallpaperGroupNotification,
+    editorKey: MetaEditorKeys.wallpaperNotification,
+    sortOrder: 20,
+  ),
+  SettingDef(
+    key: WallpaperGroupStore.keyHistoryLimit,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.wallpaperGroupHistoryLimit,
+    editorKey: MetaEditorKeys.wallpaperHistoryLimit,
+    sortOrder: 30,
+  ),
+  SettingDef(
+    key: MetaPageKeys.wallpaperHistory,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.subPage,
+    title: (context) => context.l10n.wallpaperGroupHistoryTitle,
+    routeName: MetaPageKeys.wallpaperHistory,
+    sortOrder: 40,
+  ),
+  SettingDef(
+    key: WallpaperGroupStore.keyScrollEffect,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.wallpaperUseScrollEffect,
+    editorKey: MetaEditorKeys.wallpaperScrollEffect,
+    sortOrder: 50,
+  ),
+  SettingDef(
+    key: MetaPageKeys.wallpaperGestures,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.subPage,
+    title: (context) => context.l10n.wallpaperGroupGestures,
+    routeName: MetaPageKeys.wallpaperGestures,
+    sortOrder: 60,
+  ),
+  // The Muzei confirmations and the prefetch depth belong to the wallpaper too:
+  // they were parked under "Advanced" before this category existed.
+  SettingDef(
+    key: WallpaperPrefetchSetting.key,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.toggle,
+    title: (context) => context.l10n.settingsMuzeiWallpaperPrefetchAhead,
+    subtitle: (context) => context.l10n.settingsMuzeiWallpaperPrefetchAheadSubtitle,
+    reader: WallpaperPrefetchSetting.read,
+    sortOrder: 70,
+  ),
+  SettingDef(
+    key: WallpaperSourceResetSetting.key,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.toggle,
+    title: (context) => context.l10n.settingsMuzeiWallpaperSourceResetConfirm,
+    subtitle: (context) => context.l10n.settingsMuzeiWallpaperSourceResetConfirmSubtitle,
+    reader: WallpaperSourceResetSetting.read,
+    sortOrder: 80,
+  ),
+  SettingDef(
+    key: WallpaperSourceDeleteSetting.key,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.toggle,
+    title: (context) => context.l10n.settingsMuzeiWallpaperSourceDeleteConfirm,
+    subtitle: (context) => context.l10n.settingsMuzeiWallpaperSourceDeleteConfirmSubtitle,
+    reader: WallpaperSourceDeleteSetting.read,
+    sortOrder: 90,
+  ),
+  SettingDef(
+    key: WallpaperViewerDeleteSetting.key,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.toggle,
+    title: (context) => context.l10n.settingsMuzeiWallpaperViewerDeleteConfirm,
+    subtitle: (context) => context.l10n.settingsMuzeiWallpaperViewerDeleteConfirmSubtitle,
+    reader: WallpaperViewerDeleteSetting.read,
+    sortOrder: 100,
+  ),
+];
+
 // Advanced
 
 final List<SettingDef> _advancedDefs = [
@@ -532,41 +631,5 @@ final List<SettingDef> _advancedDefs = [
     title: (context) => context.l10n.settingsCollectionBackgroundWorkTile,
     editorKey: MetaEditorKeys.collectionBackgroundWork,
     sortOrder: 70,
-  ),
-  SettingDef(
-    key: WallpaperPrefetchSetting.key,
-    category: SettingsCategory.advanced,
-    widgetKind: SettingWidgetKind.toggle,
-    title: (context) => context.l10n.settingsMuzeiWallpaperPrefetchAhead,
-    subtitle: (context) => context.l10n.settingsMuzeiWallpaperPrefetchAheadSubtitle,
-    reader: WallpaperPrefetchSetting.read,
-    sortOrder: 80,
-  ),
-  SettingDef(
-    key: WallpaperSourceResetSetting.key,
-    category: SettingsCategory.advanced,
-    widgetKind: SettingWidgetKind.toggle,
-    title: (context) => context.l10n.settingsMuzeiWallpaperSourceResetConfirm,
-    subtitle: (context) => context.l10n.settingsMuzeiWallpaperSourceResetConfirmSubtitle,
-    reader: WallpaperSourceResetSetting.read,
-    sortOrder: 85,
-  ),
-  SettingDef(
-    key: WallpaperSourceDeleteSetting.key,
-    category: SettingsCategory.advanced,
-    widgetKind: SettingWidgetKind.toggle,
-    title: (context) => context.l10n.settingsMuzeiWallpaperSourceDeleteConfirm,
-    subtitle: (context) => context.l10n.settingsMuzeiWallpaperSourceDeleteConfirmSubtitle,
-    reader: WallpaperSourceDeleteSetting.read,
-    sortOrder: 86,
-  ),
-  SettingDef(
-    key: WallpaperViewerDeleteSetting.key,
-    category: SettingsCategory.advanced,
-    widgetKind: SettingWidgetKind.toggle,
-    title: (context) => context.l10n.settingsMuzeiWallpaperViewerDeleteConfirm,
-    subtitle: (context) => context.l10n.settingsMuzeiWallpaperViewerDeleteConfirmSubtitle,
-    reader: WallpaperViewerDeleteSetting.read,
-    sortOrder: 87,
   ),
 ];

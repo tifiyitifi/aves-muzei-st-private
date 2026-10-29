@@ -75,4 +75,11 @@ final Map<SettingsCategory, MetaCategoryMeta> metaCategoryMeta = {
           color: context.select<AvesColorsData, Color>((v) => v.navigation),
         ),
   ),
+  SettingsCategory.wallpaper: (
+    title: (context) => context.l10n.settingsWallpaperSectionTitle,
+    icon: (context) => MetaTileLeading(
+          icon: AIcons.wallpaper,
+          color: context.select<AvesColorsData, Color>((v) => v.fromHue(260)),
+        ),
+  ),
 };

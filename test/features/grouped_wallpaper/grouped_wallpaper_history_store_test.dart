@@ -94,6 +94,35 @@ void main() {
     expect(await store.load(), isEmpty);
   });
 
+  test('load, count and clear can be narrowed to one group', () async {
+    await record(1, usedAt: 100);
+    await record(2, usedAt: 200);
+    await record(3, groupId: 'group.2', usedAt: 300);
+
+    expect((await store.load(groupId: 'group.1')).map((row) => row.entryId), [2, 1]);
+    expect((await store.load(groupId: 'group.2')).map((row) => row.entryId), [3]);
+    expect(await store.count(groupId: 'group.1'), 2);
+    expect(await store.count(groupId: 'group.2'), 1);
+    expect(await store.count(groupId: 'group.3'), 0);
+
+    await store.clear(groupId: 'group.1');
+
+    expect(await store.load(groupId: 'group.1'), isEmpty);
+    expect(await store.count(), 1);
+    expect((await store.load()).map((row) => row.entryId), [3]);
+  });
+
+  test('the clear confirmation is off by default and survives a round trip', () async {
+    final groups = WallpaperGroupStore(db);
+    expect(await groups.readHistoryClearSkipConfirm(), isFalse);
+
+    await groups.writeHistoryClearSkipConfirm(true);
+    expect(await groups.readHistoryClearSkipConfirm(), isTrue);
+
+    await groups.writeHistoryClearSkipConfirm(false);
+    expect(await groups.readHistoryClearSkipConfirm(), isFalse);
+  });
+
   test('the stored limit defaults to the model default and is clamped', () async {
     final groups = WallpaperGroupStore(db);
     expect(await groups.readHistoryLimit(), GroupedWallpaperHistoryLimit.defaultLimit);

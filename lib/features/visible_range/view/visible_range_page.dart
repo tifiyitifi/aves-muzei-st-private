@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/services/visible_range_candidate_stats.dart';
@@ -57,6 +60,7 @@ enum _MoreAction {
   order,
   reAddDefaults,
   wallpaperGroups,
+  toggleNavEntry,
   lockDetailed,
   about,
 }
@@ -82,6 +86,12 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   final _selection = Selection<FilterGridItem<VisibleRangeCandidateFilter>>(toSelectableItems: null);
 
   VisibleRangeController get _controller => visibleRangeController;
+
+  /// Whether the user put the wallpaper group page in their own navigation list.
+  ///
+  /// Such an entry is theirs to keep or remove from the navigation editor, so
+  /// the page menu must not offer to close it.
+  bool get _wallpaperEntryPinned => settings.bottomNavigationActions.any((item) => item.route == GroupedWallpaperPage.routeName);
 
   @override
   void initState() {
@@ -383,9 +393,20 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       _menuItem(context, _MoreAction.order, AIcons.sortOrder, l10n.visibleRangeOrder),
       _menuItem(context, _MoreAction.reAddDefaults, AIcons.newTier, l10n.visibleRangeReAddDefaults),
       const PopupMenuDivider(),
-      // The wallpaper groups own their own ranges, so they are reachable from
-      // the range page instead of the bottom bar: one filter entry, one place.
-      _menuItem(context, _MoreAction.wallpaperGroups, AIcons.wallpaper, l10n.wallpaperGroupsTitle),
+      // In the shared mode the wallpaper groups are a peer page behind the same
+      // bottom-bar entry, so the range page is where they are reached from. With
+      // a separate entry the page is already on the bar, and this entry closes or
+      // reopens that derived one instead. An entry the user added themselves is
+      // theirs: the menu never touches it.
+      if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared)
+        _menuItem(context, _MoreAction.wallpaperGroups, AIcons.wallpaper, l10n.wallpaperGroupsTitle)
+      else if (!_wallpaperEntryPinned)
+        _menuItem(
+          context,
+          _MoreAction.toggleNavEntry,
+          AIcons.wallpaper,
+          groupedWallpaperNavController.entryClosed ? l10n.wallpaperGroupNavOpen : l10n.wallpaperGroupNavClose,
+        ),
       const PopupMenuDivider(),
       _menuItem(context, _MoreAction.lockDetailed, AIcons.locked, l10n.visibleRangeLockSheetTitle),
       _menuItem(context, _MoreAction.about, AIcons.info, l10n.visibleRangeAbout),
@@ -749,6 +770,8 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
         // The wallpaper page is a peer of this one behind the same bottom-bar
         // entry, not a child page: switching keeps the entry highlighted.
         visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
+      case _MoreAction.toggleNavEntry:
+        await groupedWallpaperNavController.toggleEntryClosed();
       case _MoreAction.lockDetailed:
         await _lockDetailed();
       case _MoreAction.about:

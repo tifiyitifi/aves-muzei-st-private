@@ -4,6 +4,7 @@ import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
@@ -65,6 +66,23 @@ class WallpaperGroupStore {
   /// is a property of the wallpaper, not of one group. `0` turns recording off
   /// without deleting what was already recorded.
   static const keyHistoryLimit = 'wallpaper.groupedHistoryLimit';
+
+  /// AppMeta key of how the grouped wallpaper's bottom-bar entry is placed.
+  ///
+  /// The entry is derived at build time rather than written into the user's
+  /// `bottomNavigationActions`, so its placement needs a home of its own.
+  static const keyNavMode = 'wallpaper.groupedNavMode';
+
+  /// AppMeta key of the user closing the derived bottom-bar entry.
+  static const keyNavEntryClosed = 'wallpaper.groupedNavEntryClosed';
+
+  /// AppMeta key of "do not ask before clearing the whole usage history".
+  ///
+  /// Clearing is all-or-nothing, so the confirmation dialog is the only guard.
+  /// A user who is sure can turn it off, and the history page's menu keeps a
+  /// checked "confirm before clearing" entry to turn it back on: the dialog
+  /// cannot offer that once it is skipped.
+  static const keyHistoryClearSkipConfirm = 'wallpaper.groupedHistoryClearSkipConfirm';
 
   /// AppMeta key of "the grouped wallpaper has been the system wallpaper".
   ///
@@ -209,6 +227,30 @@ class WallpaperGroupStore {
   /// Lowering the limit only changes what the next shown photo prunes, exactly as
   /// the user asked: changing a number must never delete history on its own.
   Future<void> writeHistoryLimit(int limit) => AppMetaStore(db).write({keyHistoryLimit: '${GroupedWallpaperHistoryLimit.sanitize(limit)}'});
+
+  /// Whether clearing the usage history skips its confirmation dialog.
+  Future<bool> readHistoryClearSkipConfirm() async {
+    final values = await AppMetaStore(db).read({keyHistoryClearSkipConfirm});
+    return values[keyHistoryClearSkipConfirm] == 'true';
+  }
+
+  Future<void> writeHistoryClearSkipConfirm(bool skip) => AppMetaStore(db).write({keyHistoryClearSkipConfirm: skip ? 'true' : 'false'});
+
+  /// How the grouped wallpaper's bottom-bar entry is placed.
+  Future<GroupedWallpaperNavMode> readNavMode() async {
+    final values = await AppMetaStore(db).read({keyNavMode});
+    return groupedWallpaperNavModeFrom(values[keyNavMode]);
+  }
+
+  Future<void> writeNavMode(GroupedWallpaperNavMode mode) => AppMetaStore(db).write({keyNavMode: mode.name});
+
+  /// Whether the user closed the derived bottom-bar entry.
+  Future<bool> readNavEntryClosed() async {
+    final values = await AppMetaStore(db).read({keyNavEntryClosed});
+    return values[keyNavEntryClosed] == 'true';
+  }
+
+  Future<void> writeNavEntryClosed(bool closed) => AppMetaStore(db).write({keyNavEntryClosed: closed ? 'true' : 'false'});
 
   /// Whether the grouped wallpaper has already been the system wallpaper.
   Future<bool> readWasActive() async {

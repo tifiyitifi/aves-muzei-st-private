@@ -1,3 +1,5 @@
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_page.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/meta_settings/model/page_keys.dart';
 import 'package:aves/widgets/settings/navigation/bottom_nav_actions_editor_page.dart';
 import 'package:aves/widgets/settings/navigation/confirmation_dialog_page.dart';
@@ -33,5 +35,7 @@ void main() {
     expect(MetaPageKeys.navigationDrawer, NavigationDrawerEditorPage.routeName);
     expect(MetaPageKeys.bottomNavActions, BottomNavigationActionEditorPage.routeName);
     expect(MetaPageKeys.confirmationDialog, ConfirmationDialogPage.routeName);
+    expect(MetaPageKeys.wallpaperHistory, GroupedWallpaperHistoryPage.routeName);
+    expect(MetaPageKeys.wallpaperGestures, GroupedWallpaperGesturesPage.routeName);
   });
 }

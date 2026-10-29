@@ -1997,6 +1997,17 @@
   "wallpaperGroupHistoryClearConfirm": "Clear the whole usage history? This cannot be undone.",
   "wallpaperGroupHistoryLimit": "History limit",
   "wallpaperGroupHistoryLimitHint": "0–1000. Changing this does not clear old records; it only affects new ones.",
+  "wallpaperGroupHistorySwitchGroup": "Switch group",
+  "wallpaperGroupHistoryClearDontAsk": "Do not ask again",
+  "wallpaperGroupHistoryClearConfirmToggle": "Confirm before clearing",
+  "wallpaperGroupHistoryCount": "{count, plural, =0{No record} =1{1 record} other{{count} records}}",
+  "@wallpaperGroupHistoryCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "wallpaperGroupDuplicate": "Duplicate group",
   "wallpaperGroupCopyName": "{name} copy",
   "@wallpaperGroupCopyName": {
@@ -2008,6 +2019,13 @@
   },
 
   "explorerUseCurrentPath": "Use current folder",
+  "settingsWallpaperSectionTitle": "Visible & wallpaper",
+  "settingsWallpaperNavMode": "Bottom bar",
+  "settingsWallpaperNavModeShared": "Shared entry",
+  "settingsWallpaperNavModeLeft": "Separate, left of the visible range",
+  "settingsWallpaperNavModeRight": "Separate, right of the visible range",
+  "wallpaperGroupNavClose": "Close the wallpaper group entry",
+  "wallpaperGroupNavOpen": "Wallpaper group",
 
   "searchAssistSectionTitle": "Assist",
   "searchAssistPath": "Path",

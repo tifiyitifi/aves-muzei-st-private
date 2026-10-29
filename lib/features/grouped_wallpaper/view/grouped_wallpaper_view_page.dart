@@ -159,7 +159,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
         await Navigator.of(context).push(
           MaterialPageRoute(
             settings: const RouteSettings(name: GroupedWallpaperHistoryPage.routeName),
-            builder: (_) => const GroupedWallpaperHistoryPage(),
+            builder: (_) => GroupedWallpaperHistoryPage(groupId: _state?.groupId),
           ),
         );
     }

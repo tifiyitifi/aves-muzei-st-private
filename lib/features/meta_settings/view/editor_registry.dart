@@ -10,6 +10,7 @@ import 'package:aves/features/meta_settings/view/widgets/editors/settings_engine
 import 'package:aves/features/meta_settings/view/widgets/editors/thumbnails_editors.dart';
 import 'package:aves/features/meta_settings/view/widgets/editors/video_editors.dart';
 import 'package:aves/features/meta_settings/view/widgets/editors/viewer_editors.dart';
+import 'package:aves/features/meta_settings/view/widgets/editors/wallpaper_editors.dart';
 import 'package:flutter/widgets.dart';
 
 typedef MetaEditorBuilder = Widget Function(BuildContext context, SettingDef def);
@@ -37,4 +38,8 @@ final Map<String, MetaEditorBuilder> metaEditorRegistry = {
   MetaEditorKeys.collectionAskBeforeCatalog: (context, def) => CollectionAskBeforeCatalogEditor(def: def),
   MetaEditorKeys.collectionBrowseOnlyBar: (context, def) => CollectionBrowseOnlyBarEditor(def: def),
   MetaEditorKeys.collectionBackgroundWork: (context, def) => CollectionBackgroundWorkEditor(def: def),
+  MetaEditorKeys.wallpaperNavMode: (context, def) => WallpaperNavModeEditor(def: def),
+  MetaEditorKeys.wallpaperNotification: (context, def) => WallpaperNotificationEditor(def: def),
+  MetaEditorKeys.wallpaperHistoryLimit: (context, def) => WallpaperHistoryLimitEditor(def: def),
+  MetaEditorKeys.wallpaperScrollEffect: (context, def) => WallpaperScrollEffectEditor(def: def),
 };

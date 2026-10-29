@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
@@ -29,7 +30,10 @@ import 'package:aves/features/visible_range/view/visible_range_about_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_active_footer.dart';
 import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
+import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/features/visible_range/view/visible_range_section_key.dart';
+import 'package:aves/features/visible_range/view/widgets/visible_range_lock_dialog.dart';
+import 'package:aves/features/visible_range/view/widgets/visible_range_rule_actions.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_tile.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
@@ -38,6 +42,7 @@ import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/theme/format.dart';
 import 'package:aves/theme/icons.dart';
+import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/common/grid/scaling.dart';
 import 'package:aves/widgets/common/identity/aves_filter_chip.dart';
@@ -47,6 +52,7 @@ import 'package:aves/widgets/common/tile_extent_controller.dart';
 import 'package:aves/widgets/filter_grids/common/app_bar.dart';
 import 'package:aves/widgets/filter_grids/common/filter_grid_page.dart';
 import 'package:aves/widgets/filter_grids/common/section_keys.dart';
+import 'package:aves/widgets/navigation/nav_item.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
@@ -89,8 +95,10 @@ enum _PageAction {
   delete,
   order,
   lock,
+  lockDetailed,
   about,
   applyToMediaSet,
+  editRule,
   renameRule,
   deleteSelectedConditions,
   deleteSelectedGroups,
@@ -936,6 +944,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         if (rules.length == 1 && candidates.length == 1 && !hasBase)
           IconButton(
             icon: const Icon(AIcons.edit),
+            tooltip: context.l10n.visibleRangeEditRule,
+            onPressed: () => unawaited(_editRule(rules.first)),
+          ),
+        if (rules.length == 1 && candidates.length == 1 && !hasBase)
+          IconButton(
+            icon: const Icon(AIcons.rename),
             tooltip: context.l10n.visibleRangeActionRename,
             onPressed: () => unawaited(_renameRule(rules.first)),
           ),
@@ -978,7 +992,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       final groups = _selectedGroupIds(selection);
       return [
         if (candidates.any((candidate) => candidate.isApplicable)) _menuItem(_PageAction.applyToMediaSet, AIcons.apply, context.l10n.visibleRangeApplyToMediaSet),
-        if (rules.length == 1 && candidates.length == 1 && !hasBase) _menuItem(_PageAction.renameRule, AIcons.edit, context.l10n.visibleRangeActionRename),
+        if (rules.length == 1 && candidates.length == 1 && !hasBase) _menuItem(_PageAction.editRule, AIcons.edit, context.l10n.visibleRangeEditRule),
+        if (rules.length == 1 && candidates.length == 1 && !hasBase) _menuItem(_PageAction.renameRule, AIcons.rename, context.l10n.visibleRangeActionRename),
         if (rules.isNotEmpty || hasBase) _menuItem(_PageAction.deleteSelectedConditions, AIcons.delete, context.l10n.visibleRangeActionDelete),
         if (groups.isNotEmpty) _menuItem(_PageAction.deleteSelectedGroups, AIcons.delete, context.l10n.wallpaperGroupDeleteSelected),
       ];
@@ -1084,6 +1099,72 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     // The renamed rule is a new value, so the selection cannot keep pointing at
     // the old one.
     _selection.browse();
+  }
+
+  /// Opens the shared rule actions and applies the chosen one to this group.
+  ///
+  /// The sheet is the same one the visible-range page uses; only the write path
+  /// differs, because a wallpaper group keeps its edits in the page's draft.
+  Future<void> _editRule(VisibleRangeRule rule) async {
+    if (_controller.range == null) return;
+    final action = await showVisibleRangeRuleActions(context, rule: rule, canEdit: _controller.canEdit);
+    if (action == null || !mounted) return;
+    switch (action) {
+      case VisibleRangeRuleAction.rename:
+        await _renameRule(rule);
+      case VisibleRangeRuleAction.moveToBase:
+        if (!_controller.canEdit) {
+          _showBlocked();
+          return;
+        }
+        _selection.browse();
+        await _controller.moveRuleToBase(rule.id, name: visibleRangeRuleLabel(context, rule));
+      case VisibleRangeRuleAction.moveToRestriction:
+      case VisibleRangeRuleAction.moveToSupplement:
+        if (!_controller.canEdit) {
+          _showBlocked();
+          return;
+        }
+        _selection.browse();
+        await _controller.moveRuleToKind(
+          rule.id,
+          action == VisibleRangeRuleAction.moveToRestriction ? VisibleRangeRuleKind.restriction : VisibleRangeRuleKind.supplement,
+        );
+      case VisibleRangeRuleAction.activateReplace:
+        await _activateRule(rule, replace: true);
+      case VisibleRangeRuleAction.activateAppend:
+        await _activateRule(rule, replace: false);
+      case VisibleRangeRuleAction.delete:
+        if (!_controller.canEdit) {
+          _showBlocked();
+          return;
+        }
+        _selection.browse();
+        await _controller.deleteConditions(ruleIds: {rule.id});
+    }
+  }
+
+  /// Opens the media set with the rule's conditions, replacing what it shows or
+  /// appending to it. Nothing is written: the user keeps working there.
+  Future<void> _activateRule(VisibleRangeRule rule, {required bool replace}) async {
+    final current = mediaSetTab.currentFilters ?? const <CollectionFilter>{};
+    final target = replace ? rule.filters : {...current, ...rule.filters};
+    _selection.browse();
+    await AvesNavItem(route: CollectionPage.routeName, filters: target).goTo(context, topLevel: false);
+  }
+
+  /// Locks the group's range with per-permission control.
+  ///
+  /// The group page has no "last preset" of its own, so the dialog opens on the
+  /// most restrictive one; the user can still pick another or toggle each
+  /// permission.
+  Future<void> _lockDetailed() async {
+    final permissions = await showDialog<VisibleRangePermissions>(
+      context: context,
+      builder: (context) => const VisibleRangeLockDialog(initialPreset: VisibleRangeLockPreset.readOnly),
+    );
+    if (permissions == null) return;
+    await _controller.lock(permissions: permissions);
   }
 
   List<PopupMenuEntry<_PageAction>> _menuEntries(BuildContext context) {
@@ -1207,6 +1288,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       if (range != null) ...[
         _menuItem(_PageAction.order, AIcons.sortOrder, l10n.visibleRangeOrder),
         _menuItem(_PageAction.lock, locked ? AIcons.locked : AIcons.unlocked, locked ? l10n.visibleRangeUnlock : l10n.visibleRangeLock),
+        _menuItem(_PageAction.lockDetailed, AIcons.locked, l10n.visibleRangeLockSheetTitle),
         const PopupMenuDivider(),
       ],
       _menuItem(_PageAction.about, AIcons.info, l10n.aboutWallpaperTitle),
@@ -1303,10 +1385,15 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         await _pickOrder();
       case _PageAction.lock:
         await _toggleLock();
+      case _PageAction.lockDetailed:
+        await _lockDetailed();
       case _PageAction.about:
         await _openAbout();
       case _PageAction.applyToMediaSet:
         await _applySelectionToMediaSet();
+      case _PageAction.editRule:
+        final rules = _selectedRules(_selection);
+        if (rules.length == 1) await _editRule(rules.first);
       case _PageAction.renameRule:
         final rules = _selectedRules(_selection);
         if (rules.length == 1) await _renameRule(rules.first);

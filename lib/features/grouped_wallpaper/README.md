@@ -14,8 +14,10 @@ of the Muzei-style live wallpaper mechanism.
   home/lock effects with a copy-to-other-groups grid, per-group auto-advance
   (interval + ordering, scheduled through the shared WorkManager chain), the
   four-layout notification with photo, group and freeze actions, the
-  availability label under the group switcher, and the global home-screen scroll
-  effect switch.
+  availability label under the group switcher, the global home-screen scroll
+  effect switch, the full set of rule actions on the group page (move to
+  base/restriction/supplement, open in a media set by replacing or appending,
+  delete) and per-permission locking.
 - **Not done yet**: the notification's copy/usage-history buttons (shown but
   disabled), filtering the management surfaces (settings, explorer, vaults,
   recycle bin) while a range is locked, temporary/permanent selection ranges,
@@ -376,9 +378,11 @@ path is unknown.
 A group owns its range only. It never shows the gallery's preset catalogue or
 its default restriction/supplement candidates: those belong to the visible-range
 page. Conditions are added by pinning them from a media set, and the group page
-only shows, toggles, renames, takes out and deletes what is already there. Older
-builds materialized that catalogue into every group; it is pruned on every start
-(not only on a defaults bump), so a restored backup cannot bring it back.
+only works on what is already there: it shows, toggles, renames, moves a rule to
+another section or to the base, opens it in a media set (replacing or appending),
+and deletes it. Older builds materialized that catalogue into every group; it is
+pruned on every start (not only on a defaults bump), so a restored backup cannot
+bring it back.
 
 Each group range starts with the 「All images」 tile, the wallpaper counterpart of
 the gallery page's 「Unrestricted」. It is not a condition: its image filter set is
@@ -395,6 +399,11 @@ a process it loads every group and range into memory (the wallpaper feature may
 never be visited); from then on group edits — including pin targets, since they
 read the same aggregate — stay in memory. The database and the live wallpaper
 keep the saved state.
+
+The rule actions (move to base/restriction/supplement, delete) and the detailed
+lock are drafts too: they change what the page shows and are written, with
+everything else, by **Save changes**. Opening a rule in a media set writes
+nothing.
 
 - **Save changes** writes groups, ranges, rules and deletions in one transaction,
   then re-bakes so the frame on screen matches what was saved.

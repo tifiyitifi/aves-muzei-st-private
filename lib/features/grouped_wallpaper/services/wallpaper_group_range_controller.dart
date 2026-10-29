@@ -213,6 +213,39 @@ class WallpaperGroupRangeController extends ChangeNotifier {
 
   Future<void> deleteRules(Set<String> ids) => _update((range) => range.copyWith(rules: range.rules.where((rule) => !ids.contains(rule.id)).toList()));
 
+  /// Replaces one rule with [rule], keeping its place in the list.
+  ///
+  /// Used by the rule actions to change a rule's kind; the caller appends to the
+  /// target section by setting [VisibleRangeRule.position] first.
+  Future<void> updateRule(VisibleRangeRule rule) => _update((range) {
+        if (range.ruleById(rule.id) == null) return range;
+        return range.copyWith(rules: [for (final candidate in range.rules) candidate.id == rule.id ? rule : candidate]);
+      });
+
+  /// Moves a rule to another section, appended after the rules already there.
+  Future<void> moveRuleToKind(String ruleId, VisibleRangeRuleKind kind) => _update((range) {
+        final rule = range.ruleById(ruleId);
+        if (rule == null || rule.kind == kind) return range;
+        final moved = rule.copyWith(kind: kind, position: range.rulesOf(kind).length);
+        return range.copyWith(rules: [for (final candidate in range.rules) candidate.id == ruleId ? moved : candidate]);
+      });
+
+  /// Turns a rule into the group's base and removes the rule.
+  ///
+  /// The base is overwritten when the group already has one, exactly like the
+  /// visible-range page: the base is one slot, not a list.
+  Future<void> moveRuleToBase(String ruleId, {required String name}) => _update((range) {
+        final rule = range.ruleById(ruleId);
+        if (rule == null) return range;
+        return range.copyWith(
+          baseName: name.trim(),
+          basePresetId: '',
+          baseFilters: rule.filters,
+          baseActive: true,
+          rules: range.rules.where((candidate) => candidate.id != ruleId).toList(),
+        );
+      });
+
   Future<void> setOrder(VisibleRangeOrder order) => _update((range) => range.copyWith(order: order));
 
   Future<void> lockWithPreset(VisibleRangeLockPreset preset) => _update(

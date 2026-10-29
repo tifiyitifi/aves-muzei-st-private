@@ -14,6 +14,8 @@ import 'package:aves/features/visible_range/view/visible_range_candidate_filter.
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/features/visible_range/view/visible_range_section_key.dart';
+import 'package:aves/features/visible_range/view/widgets/visible_range_lock_dialog.dart';
+import 'package:aves/features/visible_range/view/widgets/visible_range_rule_actions.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_tile.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/selection.dart';
@@ -58,8 +60,6 @@ enum _MoreAction {
   lockDetailed,
   about,
 }
-
-enum _RuleAction { rename, moveToRestriction, moveToSupplement, moveToBase, activateReplace, activateAppend, delete }
 
 enum _PresetAction { edit, delete }
 
@@ -581,84 +581,22 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   /// Single-rule actions. Locked rules show only read-only actions.
   Future<void> _showRuleEditor(VisibleRangeRule rule) async {
-    final l10n = context.l10n;
-    final editable = _controller.canEdit;
-    final title = visibleRangeRuleLabel(context, rule);
-    final action = await showModalBottomSheet<_RuleAction>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(title.isEmpty ? _kindLabel(context, rule.kind) : title),
-              subtitle: Text(
-                [rule.description, _kindLabel(context, rule.kind)].where((v) => v.isNotEmpty).join(' · '),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(AIcons.rename),
-              title: Text(l10n.visibleRangeActionRename),
-              enabled: editable,
-              onTap: () => Navigator.pop(context, _RuleAction.rename),
-            ),
-            ListTile(
-              leading: const Icon(AIcons.visibleRangeRestriction),
-              title: Text(l10n.visibleRangeActionMoveToRestriction),
-              enabled: editable && rule.kind != VisibleRangeRuleKind.restriction,
-              onTap: () => Navigator.pop(context, _RuleAction.moveToRestriction),
-            ),
-            ListTile(
-              leading: const Icon(AIcons.visibleRangeSupplement),
-              title: Text(l10n.visibleRangeActionMoveToSupplement),
-              enabled: editable && rule.kind != VisibleRangeRuleKind.supplement,
-              onTap: () => Navigator.pop(context, _RuleAction.moveToSupplement),
-            ),
-            ListTile(
-              leading: const Icon(AIcons.folder),
-              title: Text(l10n.visibleRangeActionMoveToBase),
-              enabled: editable,
-              onTap: () => Navigator.pop(context, _RuleAction.moveToBase),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(AIcons.search),
-              title: Text(l10n.visibleRangeActionActivateReplace),
-              onTap: () => Navigator.pop(context, _RuleAction.activateReplace),
-            ),
-            ListTile(
-              leading: const Icon(AIcons.add),
-              title: Text(l10n.visibleRangeActionActivateAppend),
-              onTap: () => Navigator.pop(context, _RuleAction.activateAppend),
-            ),
-            ListTile(
-              leading: const Icon(AIcons.delete),
-              title: Text(l10n.visibleRangeActionDelete),
-              enabled: editable,
-              onTap: () => Navigator.pop(context, _RuleAction.delete),
-            ),
-          ],
-        ),
-      ),
-    );
+    final action = await showVisibleRangeRuleActions(context, rule: rule, canEdit: _controller.canEdit);
     if (!mounted || action == null) return;
     switch (action) {
-      case _RuleAction.rename:
+      case VisibleRangeRuleAction.rename:
         await _renameRule(rule);
-      case _RuleAction.moveToRestriction:
+      case VisibleRangeRuleAction.moveToRestriction:
         await _moveRule(rule, VisibleRangeRuleKind.restriction);
-      case _RuleAction.moveToSupplement:
+      case VisibleRangeRuleAction.moveToSupplement:
         await _moveRule(rule, VisibleRangeRuleKind.supplement);
-      case _RuleAction.moveToBase:
+      case VisibleRangeRuleAction.moveToBase:
         await _moveRuleToBase(rule);
-      case _RuleAction.activateReplace:
+      case VisibleRangeRuleAction.activateReplace:
         await _activate(rule, VisibleRangeActivationMode.override);
-      case _RuleAction.activateAppend:
+      case VisibleRangeRuleAction.activateAppend:
         await _activate(rule, VisibleRangeActivationMode.append);
-      case _RuleAction.delete:
+      case VisibleRangeRuleAction.delete:
         await _deleteRules({rule});
     }
   }
@@ -789,14 +727,6 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     _selection.browse();
   }
 
-  String _kindLabel(BuildContext context, VisibleRangeRuleKind kind) {
-    final l10n = context.l10n;
-    return switch (kind) {
-      VisibleRangeRuleKind.restriction => l10n.visibleRangeRuleKindRestriction,
-      VisibleRangeRuleKind.supplement => l10n.visibleRangeRuleKindSupplement,
-    };
-  }
-
   Future<void> _onExtraMenuSelected(Object value) async {
     if (value is! _MoreAction) return;
     switch (value) {
@@ -868,7 +798,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   Future<void> _lockDetailed() async {
     final permissions = await showDialog<VisibleRangePermissions>(
       context: context,
-      builder: (context) => const _LockDialog(),
+      builder: (context) => VisibleRangeLockDialog(initialPreset: _controller.lastLockPreset),
     );
     if (permissions == null) return;
     await _controller.lock(permissions: permissions);
@@ -877,111 +807,6 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   Future<void> _openAbout() async {
     await Navigator.maybeOf(context)?.push(
       MaterialPageRoute(settings: const RouteSettings(name: VisibleRangeAboutPage.routeName), builder: (_) => const VisibleRangeAboutPage()),
-    );
-  }
-}
-
-class _LockDialog extends StatefulWidget {
-  const new();
-
-  @override
-  State<_LockDialog> createState() => _LockDialogState();
-}
-
-class _LockDialogState extends State<_LockDialog> {
-  VisibleRangeLockPreset _preset = visibleRangeController.lastLockPreset;
-  late VisibleRangePermissions _permissions = VisibleRangePermissions.of(_preset);
-
-  void _applyPreset(VisibleRangeLockPreset? preset) {
-    if (preset == null) return;
-    setState(() {
-      _preset = preset;
-      _permissions = VisibleRangePermissions.of(preset);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return AlertDialog(
-      title: Text(l10n.visibleRangeLockSheetTitle),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(l10n.visibleRangeLockSheetPreset),
-            DropdownButton<VisibleRangeLockPreset>(
-              value: _preset,
-              isExpanded: true,
-              onChanged: _applyPreset,
-              items: [
-                DropdownMenuItem(value: VisibleRangeLockPreset.readOnly, child: Text(l10n.visibleRangeLockSheetReadOnly)),
-                DropdownMenuItem(value: VisibleRangeLockPreset.manageable, child: Text(l10n.visibleRangeLockSheetManageable)),
-                DropdownMenuItem(value: VisibleRangeLockPreset.full, child: Text(l10n.visibleRangeLockSheetFull)),
-              ],
-            ),
-            const Divider(),
-            _permissionTile(l10n.visibleRangePermissionShare, (p) => p.share, (v) => VisibleRangePermissions(
-                  share: v,
-                  delete: _permissions.delete,
-                  edit: _permissions.edit,
-                  move: _permissions.move,
-                  rename: _permissions.rename,
-                  hide: _permissions.hide,
-                  vault: _permissions.vault,
-                  trash: _permissions.trash,
-                  metadata: _permissions.metadata,
-                )),
-            _permissionTile(l10n.visibleRangePermissionDelete, (p) => p.delete, (v) => _copy(delete: v)),
-            _permissionTile(l10n.visibleRangePermissionEdit, (p) => p.edit, (v) => _copy(edit: v)),
-            _permissionTile(l10n.visibleRangePermissionMove, (p) => p.move, (v) => _copy(move: v)),
-            _permissionTile(l10n.visibleRangePermissionRename, (p) => p.rename, (v) => _copy(rename: v)),
-            _permissionTile(l10n.visibleRangePermissionHide, (p) => p.hide, (v) => _copy(hide: v)),
-            _permissionTile(l10n.visibleRangePermissionVault, (p) => p.vault, (v) => _copy(vault: v)),
-            _permissionTile(l10n.visibleRangePermissionTrash, (p) => p.trash, (v) => _copy(trash: v)),
-            _permissionTile(l10n.visibleRangePermissionMetadata, (p) => p.metadata, (v) => _copy(metadata: v)),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
-        TextButton(onPressed: () => Navigator.pop(context, _permissions), child: Text(l10n.visibleRangeLockConfirm)),
-      ],
-    );
-  }
-
-  Widget _permissionTile(String title, bool Function(VisibleRangePermissions p) read, VisibleRangePermissions Function(bool value) update) {
-    return SwitchListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      title: Text(title),
-      value: read(_permissions),
-      onChanged: (value) => setState(() => _permissions = update(value)),
-    );
-  }
-
-  VisibleRangePermissions _copy({
-    bool? share,
-    bool? delete,
-    bool? edit,
-    bool? move,
-    bool? rename,
-    bool? hide,
-    bool? vault,
-    bool? trash,
-    bool? metadata,
-  }) {
-    return VisibleRangePermissions(
-      share: share ?? _permissions.share,
-      delete: delete ?? _permissions.delete,
-      edit: edit ?? _permissions.edit,
-      move: move ?? _permissions.move,
-      rename: rename ?? _permissions.rename,
-      hide: hide ?? _permissions.hide,
-      vault: vault ?? _permissions.vault,
-      trash: trash ?? _permissions.trash,
-      metadata: metadata ?? _permissions.metadata,
     );
   }
 }

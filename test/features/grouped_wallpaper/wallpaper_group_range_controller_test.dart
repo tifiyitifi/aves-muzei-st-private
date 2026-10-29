@@ -54,6 +54,17 @@ void main() {
     await controller.init();
   });
 
+  /// Seeds rules into [groupId]'s stored range and reloads the page on it.
+  ///
+  /// The page only edits rules that already exist (they arrive by pinning), so
+  /// the tests have to put them there first.
+  Future<void> seedRules(String groupId, List<VisibleRangeRule> Function(String rangeId) build) async {
+    await controller.selectGroup(groupId);
+    final range = controller.range!;
+    await controller.groupController.saveGroupRange(range.copyWith(rules: build(range.id)));
+    await controller.selectGroup(groupId);
+  }
+
   tearDown(() => db.close());
 
   test('opens on group 1', () {
@@ -150,6 +161,110 @@ void main() {
 
     await controller.deleteRules({'r1'});
     expect(controller.range!.rules, isEmpty);
+  });
+
+  test('updateRule replaces one rule and leaves the others alone', () async {
+    await seedRules('wallpaper.group.pictures', (rangeId) => [
+          VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}),
+          VisibleRangeRule(id: 'r2', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, position: 1, filters: {MimeFilter.video}),
+        ]);
+
+    await controller.updateRule(controller.range!.ruleById('r1')!.copyWith(label: 'Mine', description: 'a note'));
+
+    final updated = controller.range!.ruleById('r1')!;
+    expect(updated.label, 'Mine');
+    expect(updated.description, 'a note');
+    expect(controller.range!.ruleById('r2')!.filters, {MimeFilter.video});
+  });
+
+  test('moveRuleToKind appends the rule to the target section', () async {
+    await seedRules('wallpaper.group.pictures', (rangeId) => [
+          VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}, label: 'Mine', active: false),
+          VisibleRangeRule(id: 'r2', rangeId: rangeId, kind: VisibleRangeRuleKind.supplement, filters: {MimeFilter.video}),
+        ]);
+
+    await controller.moveRuleToKind('r1', VisibleRangeRuleKind.supplement);
+
+    final moved = controller.range!.ruleById('r1')!;
+    expect(moved.kind, VisibleRangeRuleKind.supplement);
+    // Appended after the supplement that was already there.
+    expect(moved.position, 1);
+    // Only the section changes: the rule keeps its own conditions and toggle.
+    expect(moved.label, 'Mine');
+    expect(moved.active, isFalse);
+    expect(moved.filters, {MimeFilter.image});
+
+    await controller.moveRuleToKind('r1', VisibleRangeRuleKind.restriction);
+    expect(controller.range!.ruleById('r1')!.position, 0);
+  });
+
+  test('moveRuleToBase turns a rule into the base', () async {
+    await seedRules('wallpaper.group.all', (rangeId) => [
+          VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.supplement, filters: {MimeFilter.video}),
+        ]);
+
+    await controller.moveRuleToBase('r1', name: ' Videos ');
+
+    final range = controller.range!;
+    expect(range.baseName, 'Videos');
+    expect(range.basePresetId, '');
+    expect(range.baseFilters, {MimeFilter.video});
+    expect(range.baseActive, isTrue);
+    expect(range.rules, isEmpty);
+  });
+
+  test('moveRuleToBase overwrites an existing base', () async {
+    await seedRules('wallpaper.group.pictures', (rangeId) => [
+          VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}),
+        ]);
+
+    await controller.moveRuleToBase('r1', name: 'Images');
+
+    final range = controller.range!;
+    expect(range.baseName, 'Images');
+    // The base is one slot: the seeded /pictures conditions are replaced.
+    expect(range.baseFilters, {MimeFilter.image});
+    expect(range.rules, isEmpty);
+  });
+
+  test('a locked range refuses the rule actions too', () async {
+    await seedRules('wallpaper.group.pictures', (rangeId) => [
+          VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}),
+        ]);
+    await controller.lockWithPreset(VisibleRangeLockPreset.readOnly);
+
+    await controller.updateRule(controller.range!.ruleById('r1')!.copyWith(label: 'Nope'));
+    expect(controller.range!.ruleById('r1')!.label, isEmpty);
+
+    await controller.moveRuleToBase('r1', name: 'Nope');
+    expect(controller.range!.rules, hasLength(1));
+    expect(controller.range!.baseFilters, {PathFilter('/pictures')});
+  });
+
+  test('locking with custom permissions stores each one', () async {
+    await controller.selectGroup('wallpaper.group.pictures');
+    const permissions = VisibleRangePermissions(
+      share: false,
+      delete: true,
+      edit: false,
+      move: true,
+      rename: false,
+      hide: true,
+      vault: false,
+      trash: true,
+      metadata: false,
+    );
+    await controller.lock(permissions: permissions);
+
+    expect(controller.range!.locked, isTrue);
+    expect(controller.range!.permissions, permissions);
+
+    await controller.saveDraft();
+    final restarted = makeController();
+    await restarted.init();
+    await restarted.selectGroup('wallpaper.group.pictures');
+    expect(restarted.range!.locked, isTrue);
+    expect(restarted.range!.permissions, permissions);
   });
 
   test('a locked range refuses edits', () async {

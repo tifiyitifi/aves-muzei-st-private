@@ -27,6 +27,13 @@ abstract interface class GroupedWallpaperPlatform {
   /// Asks the running service to re-post or drop the bar from `state.json`.
   Future<void> refreshNotification();
 
+  /// Drops a bar the service left behind when it was killed without cleanup.
+  ///
+  /// The app calls it when it attaches the engine and finds this service is no
+  /// longer the system wallpaper, so a bar the system never got to remove does
+  /// not survive until the next boot.
+  Future<void> cancelNotification();
+
   /// Opens the system live-wallpaper chooser for this service.
   Future<bool> openChooser();
 
@@ -79,6 +86,9 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
 
   @override
   Future<void> refreshNotification() => _invoke<void>('refreshNotification');
+
+  @override
+  Future<void> cancelNotification() => _invoke<void>('cancelNotification');
 
   @override
   Future<bool> openChooser() async {

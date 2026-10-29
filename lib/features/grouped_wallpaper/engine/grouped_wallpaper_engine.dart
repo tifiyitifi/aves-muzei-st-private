@@ -104,8 +104,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       onCommand: (command) => unawaited(handleCommand(command)),
     );
     link.attach(this);
-    await link.refreshActive();
+    final active = await link.refreshActive();
     await link.refreshDisabled();
+    // A service the system killed never runs its cleanup, so its bar can outlive
+    // the wallpaper. When this is no longer the system wallpaper, drop it now
+    // instead of leaving it until the next boot.
+    if (!active) await platform.cancelNotification();
   }
 
   void detach() {

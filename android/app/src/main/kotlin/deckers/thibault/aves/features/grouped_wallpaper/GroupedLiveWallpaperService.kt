@@ -67,6 +67,21 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         fun refreshNotification() {
             instance?.updateNotification()
         }
+
+        /**
+         * Drops a bar whose service is gone.
+         *
+         * A service the system or the OEM kills never runs `onDestroy`, so its
+         * notification can outlive the wallpaper until the next boot. The app calls
+         * this when it attaches the engine and finds this service is no longer the
+         * system wallpaper. A live instance is left alone: it owns its bar and
+         * clears it on the way out, and a foreground notification cannot be
+         * cancelled behind its back anyway.
+         */
+        fun cancelNotification(context: Context) {
+            if (instance != null) return
+            GroupedWallpaperNotification.cancel(context)
+        }
     }
 
     override fun onCreate() {
@@ -85,6 +100,10 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
     override fun onDestroy() {
         Log.d(TAG, "service.destroy")
+        // `super.onDestroy()` tears the engines down, and their
+        // `onRealEngineDestroyed` would post the bar again after this method
+        // cleared it. Nothing may post from here on.
+        destroying = true
         isRunning = false
         instance = null
         // A foreground notification cannot be cancelled directly: drop the
@@ -92,6 +111,15 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         clearNotification()
         super.onDestroy()
     }
+
+    /**
+     * Whether this instance is being destroyed.
+     *
+     * The wallpaper is gone, so the bar must go with it, including the refresh
+     * the engines request on their way out.
+     */
+    @Volatile
+    private var destroying = false
 
     /** The slot the renderer is drawing, reported so the notification matches. */
     @Volatile
@@ -122,6 +150,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
      * at any time, and the preview engine must not cancel the real one's.
      */
     private fun updateNotification() {
+        // The wallpaper is going away: whatever the engines report on their way
+        // out must not bring the bar back.
+        if (destroying) return
         val state = GroupedWallpaperStateFile.read(this)
         // Off means no bar at all, and no foreground service either: the user
         // turned the notification off, so posting a hidden one would still keep
@@ -134,8 +165,19 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             return
         }
         val slot = if (displayedSlotId >= 0) state.slot(displayedSlotId) else state.currentSlot
-        val key = GroupedWallpaperNotification.contentKey(this, state, slot)
         val foreground = realEngines > 0
+        // The plain bar belongs to a wallpaper the system is showing. During the
+        // picker preview, or when an engine outlives a replacement, this service
+        // is not it, and a bar there would outlive the wallpaper. The foreground
+        // path is exempt: on some devices `wallpaperInfo` lags behind the real
+        // switch, and a wrong answer there would keep the bar off the lock screen.
+        if (!foreground && !isSystemWallpaper()) {
+            if (postedKey != null || isForeground) {
+                clearNotification()
+            }
+            return
+        }
+        val key = GroupedWallpaperNotification.contentKey(this, state, slot)
         if (key == postedKey && foreground == postedAsForeground) return
         // With a real engine attached the bar has to be this service's foreground
         // notification: MIUI hides a silent, non-foreground one on the lock screen.
@@ -148,6 +190,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         postedKey = key
         postedAsForeground = false
     }
+
+    /** Whether this service is the wallpaper the system is showing. */
+    private fun isSystemWallpaper(): Boolean = WallpaperManager.getInstance(this).wallpaperInfo?.serviceName == GroupedLiveWallpaperService::class.java.name
 
     /** Drops the bar and forgets what was posted, so a re-enable posts again. */
     private fun clearNotification() {

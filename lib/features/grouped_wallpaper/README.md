@@ -141,6 +141,23 @@ notification is otherwise posted normally, and dropping the foreground state
 that before cancelling. With the bar off, the wallpaper is a plain
 `WallpaperService` like Muzei's, which has no notification either.
 
+The bar only exists while this service is the wallpaper the system is showing:
+
+- `onDestroy` sets a `destroying` flag before clearing the bar. `super.onDestroy()`
+  tears the engines down afterwards, and their `onRealEngineDestroyed` callback
+  used to post the bar again — a bar that then stayed in the shade after the
+  wallpaper was replaced.
+- The plain (non-foreground) path checks `WallpaperManager.wallpaperInfo` first, so
+  the picker preview and an engine that outlived a replacement post nothing. The
+  foreground path is exempt on purpose: some devices report `wallpaperInfo` late,
+  and a wrong answer there would keep the bar off the lock screen.
+- A service the system or the OEM kills never runs `onDestroy`, so the app cancels
+  a leftover bar itself: `GroupedWallpaperEngine.attach()` (app start and the
+  background refill worker) calls the `cancelNotification` channel method when the
+  service is no longer the system wallpaper. A live instance is left alone, since
+  it owns its bar and clears it on the way out; only a bar whose service is gone is
+  a leftover.
+
 Tapping the body opens the immersive view of the photo on screen, exactly like
 the three-finger gesture: the app pushes the shared bottom-bar destination
 (`/visible_range`, rendering the wallpaper page on the playing group) below the

@@ -101,6 +101,26 @@ void main() {
     expect(link.isDisabled, isFalse);
     expect(link.isPlaying, isTrue);
     expect(platform.syncHandler, isNotNull);
+    // Still the system wallpaper: the bar this service may have posted is kept.
+    expect(platform.notificationCancels, 0);
+  });
+
+  test('attach drops a leftover bar once the wallpaper is no longer ours', () async {
+    // A service the system killed never ran its cleanup, so its bar can outlive
+    // the wallpaper. Attaching while replaced is the moment to drop it.
+    final replacedPlatform = _FakePlatform(dir.path)..active = false;
+    final replacedLink = WallpaperEngineLink();
+    final replaced = GroupedWallpaperEngine(
+      platform: replacedPlatform,
+      planStore: _FakePlanStore(plan),
+      link: replacedLink,
+    );
+
+    await replaced.attach();
+
+    expect(replacedPlatform.notificationCancels, 1);
+    expect(replacedLink.isActive, isFalse);
+    replaced.detach();
   });
 
   test('a host without the service stays inert', () async {
@@ -903,6 +923,13 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   }
 
   int notificationRefreshes = 0;
+
+  @override
+  Future<void> cancelNotification() async {
+    notificationCancels++;
+  }
+
+  int notificationCancels = 0;
 
   @override
   Future<bool> openChooser() async {

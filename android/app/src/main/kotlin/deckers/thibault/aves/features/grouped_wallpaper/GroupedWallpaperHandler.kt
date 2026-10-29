@@ -57,6 +57,7 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
             "setRequestHandler" -> safe(call, result, ::setRequestHandler)
             "scheduleAutoAdvance" -> safe(call, result, ::scheduleAutoAdvance)
             "refreshNotification" -> safe(call, result, ::refreshNotification)
+            "cancelNotification" -> safe(call, result, ::cancelNotification)
             else -> result.notImplemented()
         }
     }
@@ -172,6 +173,18 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
      */
     private fun refreshNotification(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
         GroupedLiveWallpaperService.refreshNotification()
+        result.success(null)
+    }
+
+    /**
+     * Drops a bar left behind by a service that never ran `onDestroy`.
+     *
+     * The app calls this when it attaches the engine and finds the grouped
+     * wallpaper is no longer the system wallpaper, so a killed service cannot
+     * leave its notification in the shade until the next boot.
+     */
+    private fun cancelNotification(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        GroupedLiveWallpaperService.cancelNotification(context)
         result.success(null)
     }
 }

@@ -52,6 +52,12 @@ class WallpaperGroupStore {
   /// foreground service, not a hidden bar.
   static const keyNotification = 'wallpaper.groupedNotification';
 
+  /// AppMeta key of the home-screen scroll effect switch.
+  ///
+  /// It is global to the grouped wallpaper: it changes how every group is baked,
+  /// so it never belongs to a group row and never bumps `updatedAt`.
+  static const keyScrollEffect = 'wallpaper.groupedScrollEffect';
+
   /// AppMeta key of "the grouped wallpaper has been the system wallpaper".
   ///
   /// Another wallpaper replacing it looks exactly like a wallpaper the user never
@@ -166,6 +172,17 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeNotification(bool enabled) => AppMetaStore(db).write({keyNotification: enabled ? 'true' : 'false'});
+
+  /// Whether frames keep the photo's whole width for the launcher to pan.
+  ///
+  /// On by default, like the static wallpaper's scroll effect: a file without the
+  /// value is a fresh install.
+  Future<bool> readScrollEffect() async {
+    final values = await AppMetaStore(db).read({keyScrollEffect});
+    return values[keyScrollEffect] != 'false';
+  }
+
+  Future<void> writeScrollEffect(bool enabled) => AppMetaStore(db).write({keyScrollEffect: enabled ? 'true' : 'false'});
 
   /// Whether the grouped wallpaper has already been the system wallpaper.
   Future<bool> readWasActive() async {

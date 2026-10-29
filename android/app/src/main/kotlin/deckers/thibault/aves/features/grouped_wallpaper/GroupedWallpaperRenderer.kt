@@ -228,7 +228,10 @@ class GroupedWallpaperRenderer(
 
         val slot = textures[displayed]
         if (slot != null) {
-            GroupedWallpaperViewport.texCoords(texCoords, slot.aspect, viewWidth.toFloat() / viewHeight.toFloat(), offsetX)
+            // The lock screen does not pan: center the window instead of leaving
+            // it on whichever home page the launcher stopped at.
+            val offset = if (lockScreenVisible) 0.5f else offsetX
+            GroupedWallpaperViewport.texCoords(texCoords, slot.aspect, viewWidth.toFloat() / viewHeight.toFloat(), offset)
             texCoordBuffer.put(texCoords).position(0)
             drawQuad(fullVertexBuffer, texCoordBuffer, slot.texture)
         } else if (placeholderTexture != 0) {

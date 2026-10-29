@@ -95,6 +95,25 @@ void main() {
     expect(link.notificationEnabled, isTrue);
   });
 
+  test('the scroll effect switch is cached and written through', () async {
+    link.attach(connection);
+    connection.scrollEffect = false;
+
+    expect(link.scrollEffectEnabled, isTrue);
+    await link.refreshScrollEffect();
+    expect(link.scrollEffectEnabled, isFalse);
+
+    await link.setScrollEffect(true);
+    expect(link.scrollEffectEnabled, isTrue);
+    expect(connection.scrollEffect, isTrue);
+  });
+
+  test('a detached link reports the scroll effect as on', () async {
+    expect(link.scrollEffectEnabled, isTrue);
+    await link.refreshScrollEffect();
+    expect(link.scrollEffectEnabled, isTrue);
+  });
+
   test('delegates the engine actions', () async {
     link.attach(connection);
     connection.state = const GroupedWallpaperState(
@@ -184,6 +203,14 @@ class _FakeConnection implements WallpaperEngineConnection {
   Future<void> setNotification(bool enabled) async => notification = enabled;
 
   bool notification = true;
+
+  @override
+  Future<bool> isScrollEffectEnabled() async => scrollEffect;
+
+  @override
+  Future<void> setScrollEffect(bool enabled) async => scrollEffect = enabled;
+
+  bool scrollEffect = true;
 
   @override
   Future<bool> openChooser() async => true;

@@ -106,6 +106,7 @@ enum _PageAction {
   gestures,
   engineStatus,
   toggleNotification,
+  toggleScrollEffect,
   cancelGalleryRange,
 }
 
@@ -203,11 +204,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   }
 
   /// Re-reads whether the grouped wallpaper is active, whether it is turned on,
-  /// whether it may show its bar, and what it is showing.
+  /// whether it may show its bar, whether frames pan with the home pages, and
+  /// what it is showing.
   Future<void> _refreshEngine() async {
     final active = await wallpaperEngineLink.refreshActive();
     await wallpaperEngineLink.refreshDisabled();
     await wallpaperEngineLink.refreshNotification();
+    await wallpaperEngineLink.refreshScrollEffect();
     final state = await wallpaperEngineLink.readState();
     if (!mounted) return;
     setState(() => _engineState = active ? state : null);
@@ -261,6 +264,16 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         ),
       ),
     );
+  }
+
+  /// Turns the home-screen scroll effect on or off.
+  ///
+  /// Global to the grouped wallpaper: the engine re-bakes the frame on screen so
+  /// the change applies at once instead of waiting for the next photo.
+  Future<void> _toggleScrollEffect() async {
+    final enabled = !wallpaperEngineLink.scrollEffectEnabled;
+    await wallpaperEngineLink.setScrollEffect(enabled);
+    await _refreshEngine();
   }
 
   /// Re-bakes the saved frame when the group list or a range changed.
@@ -1149,6 +1162,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       ),
       _menuItem(_PageAction.gestures, AIcons.gestures, l10n.wallpaperGroupGestures),
       _menuItemChecked(
+        _PageAction.toggleScrollEffect,
+        l10n.wallpaperUseScrollEffect,
+        checked: wallpaperEngineLink.scrollEffectEnabled,
+      ),
+      _menuItemChecked(
         _PageAction.toggleNotification,
         l10n.wallpaperGroupNotification,
         checked: wallpaperEngineLink.notificationEnabled,
@@ -1260,6 +1278,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         await _openGestures();
       case _PageAction.toggleNotification:
         await _toggleNotification();
+      case _PageAction.toggleScrollEffect:
+        await _toggleScrollEffect();
       case _PageAction.engineStatus:
         break;
       case _PageAction.cancelGalleryRange:

@@ -115,6 +115,16 @@ void main() {
     expect(await store.readDefaultsVersion(), 3);
   });
 
+  test('the scroll effect switch defaults to on and round-trips', () async {
+    expect(await store.readScrollEffect(), isTrue);
+
+    await store.writeScrollEffect(false);
+    expect(await store.readScrollEffect(), isFalse);
+
+    await store.writeScrollEffect(true);
+    expect(await store.readScrollEffect(), isTrue);
+  });
+
   test('the current flag is stored as one flag per group', () async {
     await store.saveGroups([group('a', current: true), group('b')]);
     expect((await store.loadGroups()).where((g) => g.current).single.id, 'a');

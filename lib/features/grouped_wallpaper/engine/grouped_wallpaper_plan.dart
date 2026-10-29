@@ -46,6 +46,11 @@ class GroupedWallpaperPlan extends Equatable {
   /// Whether the wallpaper may show its notification bar.
   final bool notification;
 
+  /// Whether frames keep the photo's whole width for the launcher to pan.
+  ///
+  /// Global to the grouped wallpaper: the page has one switch, not one per group.
+  final bool scrollEffect;
+
   const new({
     required this.group,
     this.range,
@@ -55,6 +60,7 @@ class GroupedWallpaperPlan extends Equatable {
     this.interval = WallpaperInterval.never,
     this.paused = false,
     this.notification = true,
+    this.scrollEffect = true,
   });
 
   bool get isNone => group.isNone;
@@ -68,7 +74,7 @@ class GroupedWallpaperPlan extends Equatable {
   bool get enabled => !disabled && !group.isNone;
 
   @override
-  List<Object?> get props => [group, range, disabled, gestures, ordering, interval, paused, notification];
+  List<Object?> get props => [group, range, disabled, gestures, ordering, interval, paused, notification, scrollEffect];
 }
 
 /// Reads and updates [GroupedWallpaperPlan].
@@ -93,6 +99,9 @@ abstract interface class GroupedWallpaperPlanStore {
 
   /// Records whether the wallpaper may show its notification bar.
   Future<void> setNotification(bool enabled);
+
+  /// Records whether frames keep the photo's whole width for the launcher to pan.
+  Future<void> setScrollEffect(bool enabled);
 
   /// Makes the next (`delta > 0`) or previous enabled group current.
   ///
@@ -123,6 +132,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final gestures = await store.readGestures();
     final paused = await store.readPaused();
     final notification = await store.readNotification();
+    final scrollEffect = await store.readScrollEffect();
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? WallpaperGroup.none;
     if (group.isNone) {
       return GroupedWallpaperPlan(
@@ -133,6 +143,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
         interval: group.interval,
         paused: paused,
         notification: notification,
+        scrollEffect: scrollEffect,
       );
     }
     final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
@@ -145,6 +156,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       interval: group.interval,
       paused: paused,
       notification: notification,
+      scrollEffect: scrollEffect,
     );
   }
 
@@ -155,12 +167,13 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final groups = normalizeWallpaperGroups(await store.loadGroups());
     final gestures = await store.readGestures();
     final notification = await store.readNotification();
+    final scrollEffect = await store.readScrollEffect();
     // A group that is already current is the answer: adopting is idempotent, so
     // a repeated activation never moves the wallpaper to another group.
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? enabledWallpaperGroups(groups).firstOrNull;
     if (group == null) {
       await store.writeDisabled(true);
-      return GroupedWallpaperPlan(group: WallpaperGroup.none, disabled: true, gestures: gestures, notification: notification);
+      return GroupedWallpaperPlan(group: WallpaperGroup.none, disabled: true, gestures: gestures, notification: notification, scrollEffect: scrollEffect);
     }
     if (!group.current) {
       await store.saveGroups(normalizeWallpaperGroups([
@@ -179,6 +192,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       ordering: group.ordering,
       interval: group.interval,
       notification: notification,
+      scrollEffect: scrollEffect,
     );
   }
 
@@ -193,6 +207,9 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
 
   @override
   Future<void> setNotification(bool enabled) async => WallpaperGroupStore(await _open()).writeNotification(enabled);
+
+  @override
+  Future<void> setScrollEffect(bool enabled) async => WallpaperGroupStore(await _open()).writeScrollEffect(enabled);
 
   @override
   Future<GroupedWallpaperPlan> switchGroup(int delta) async {
@@ -219,6 +236,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       ordering: target.ordering,
       interval: target.interval,
       notification: await store.readNotification(),
+      scrollEffect: await store.readScrollEffect(),
     );
   }
 }

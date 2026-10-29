@@ -53,6 +53,7 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
             "reload" -> safe(call, result, ::reload)
             "openChooser" -> safe(call, result, ::openChooser)
             "wallpaperSize" -> safe(call, result, ::wallpaperSize)
+            "scrollStep" -> safe(call, result, ::scrollStep)
             "stateRoot" -> safe(call, result, ::stateRoot)
             "setRequestHandler" -> safe(call, result, ::setRequestHandler)
             "scheduleAutoAdvance" -> safe(call, result, ::scheduleAutoAdvance)
@@ -132,8 +133,17 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
         result.success(mapOf("width" to width, "height" to height))
     }
 
-    private fun stateRoot(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
-        result.success(GroupedWallpaperStateFile.ensureRoot(context).absolutePath)
+    /**
+     * Reports the launcher's scroll step, so the engine can tell whether a wide
+     * frame would pan or only crop.
+     *
+     * `0` is a single-page home screen; `-1` means no offset callback arrived yet.
+     */
+    private fun scrollStep(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        result.success(GroupedLiveWallpaperService.scrollStep)
+    }
+
+    private fun stateRoot(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {        result.success(GroupedWallpaperStateFile.ensureRoot(context).absolutePath)
     }
 
     /**

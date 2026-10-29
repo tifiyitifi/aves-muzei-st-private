@@ -214,8 +214,10 @@ class GroupedWallpaperState extends Equatable {
   /// v2 added the slot queue; v3 added the ordering metadata ([recent],
   /// [cursor], [newestEntryId]); v4 added [paused] and the group id of a recent
   /// entry. Older files are read with those at their defaults, so an upgrade
-  /// never loses the frame on screen. [notification] was added afterwards without
-  /// a version bump: a file without it means "on", which is what those builds did.
+  /// never loses the frame on screen. [notification], the [surfaceWidth] /
+  /// [surfaceHeight] layout and [scrollEffect] were added afterwards without a
+  /// version bump: a file without them means "on" for the bar and "unknown" for
+  /// the layout, which re-bakes once.
   static const int currentVersion = 4;
 
   /// How many recently shown photos are remembered.
@@ -276,6 +278,21 @@ class GroupedWallpaperState extends Equatable {
   /// posts nothing and never promotes itself to a foreground service.
   final bool notification;
 
+  /// The wallpaper surface this frame was baked for.
+  ///
+  /// The launcher changes it on rotation and when it updates its dimension hints;
+  /// a frame baked for another surface would be stretched or cropped, so the
+  /// engine re-bakes once when it differs. `0` means "written before this was
+  /// recorded", which also re-bakes once.
+  final int surfaceWidth;
+  final int surfaceHeight;
+
+  /// Whether the frames were baked with the home-screen scroll effect.
+  ///
+  /// It changes the width of every frame, so a mismatch with the current switch
+  /// re-bakes once, exactly like a surface change.
+  final bool scrollEffect;
+
   final int bakedAt;
 
   const new({
@@ -297,6 +314,9 @@ class GroupedWallpaperState extends Equatable {
     this.gestures = const GroupedWallpaperGestures(),
     this.paused = false,
     this.notification = true,
+    this.surfaceWidth = 0,
+    this.surfaceHeight = 0,
+    this.scrollEffect = false,
     this.bakedAt = 0,
   });
 
@@ -357,6 +377,9 @@ class GroupedWallpaperState extends Equatable {
     GroupedWallpaperGestures? gestures,
     bool? paused,
     bool? notification,
+    int? surfaceWidth,
+    int? surfaceHeight,
+    bool? scrollEffect,
     int? bakedAt,
   }) => GroupedWallpaperState(
         version: version ?? this.version,
@@ -377,6 +400,9 @@ class GroupedWallpaperState extends Equatable {
         gestures: gestures ?? this.gestures,
         paused: paused ?? this.paused,
         notification: notification ?? this.notification,
+        surfaceWidth: surfaceWidth ?? this.surfaceWidth,
+        surfaceHeight: surfaceHeight ?? this.surfaceHeight,
+        scrollEffect: scrollEffect ?? this.scrollEffect,
         bakedAt: bakedAt ?? this.bakedAt,
       );
 
@@ -417,6 +443,9 @@ class GroupedWallpaperState extends Equatable {
         'gestures': gestures.toJsonMap(),
         'paused': paused,
         'notification': notification,
+        'surfaceWidth': surfaceWidth,
+        'surfaceHeight': surfaceHeight,
+        'scrollEffect': scrollEffect,
         'bakedAt': bakedAt,
       };
 
@@ -508,6 +537,10 @@ class GroupedWallpaperState extends Equatable {
       // Files written before the setting existed kept the bar on, which is what
       // those builds did.
       notification: json['notification'] != false,
+      // Absent means "unknown": the next run bakes once for the real layout.
+      surfaceWidth: _int(json['surfaceWidth']) ?? 0,
+      surfaceHeight: _int(json['surfaceHeight']) ?? 0,
+      scrollEffect: json['scrollEffect'] == true,
       bakedAt: _int(json['bakedAt']) ?? 0,
     );
     // `ready` without a frame is a contradiction: show the placeholder instead
@@ -529,7 +562,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, paused, notification, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, paused, notification, surfaceWidth, surfaceHeight, scrollEffect, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

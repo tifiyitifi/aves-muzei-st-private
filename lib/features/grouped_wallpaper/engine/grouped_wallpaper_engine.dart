@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_baker.dart';
@@ -179,6 +180,19 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     await platform.refreshNotification();
   }
 
+  @override
+  Future<bool> isScrollEffectEnabled() async => (await planStore.load()).scrollEffect;
+
+  /// Records the home-screen scroll effect switch and re-bakes the frame now.
+  ///
+  /// The layout is part of the staleness check, so the following prepare bakes
+  /// exactly once: without it the switch would only apply to the next photo.
+  @override
+  Future<void> setScrollEffect(bool enabled) async {
+    await planStore.setScrollEffect(enabled);
+    await prepare();
+  }
+
   /// Keeps the queue ready for the saved group, whether or not the grouped
   /// service is the system wallpaper yet.
   ///
@@ -344,7 +358,16 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final runtime = await store.readRuntime();
       final adopted = _adoptRuntime(previous, runtime);
       final promoted = !identical(adopted, previous);
-      final stale = _isStale(plan, adopted);
+      final surface = await _resolveTargetSize();
+      final scrollEffect = await _effectiveScrollEffect(plan);
+      final groupStale = _isStale(plan, adopted);
+      final layoutStale = _isLayoutStale(adopted, surface, scrollEffect);
+      final stale = groupStale || layoutStale;
+      // A layout change re-bakes the photos already queued into the same slots,
+      // so a rotation or the switch keeps the photo on screen (and a freeze)
+      // instead of restarting the group.
+      final rebake = !groupStale && layoutStale ? await _layoutRebake(plan, adopted) : const <int, AvesEntry>{};
+      final rebakeComplete = !groupStale && layoutStale && rebake.isNotEmpty;
       // A frozen wallpaper keeps the photo on screen, even when the interval or a
       // sync asks for the next one.
       final (seed, advanced) = advance && !stale && !plan.paused ? _promote(adopted) : (adopted, false);
@@ -358,8 +381,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         store,
         plan,
         total: total,
-        seed: stale ? null : seed,
+        // A group change starts over; a layout-only change keeps the queue.
+        seed: groupStale || (layoutStale && !rebakeComplete) ? null : seed,
         mustWrite: promoted || advanced,
+        surface: surface,
+        scrollEffect: scrollEffect,
+        rebakeEntries: rebakeComplete ? rebake : const {},
       );
     } catch (error, stack) {
       groupedWallpaperLog.e('sync failed', error, stack);
@@ -388,10 +415,19 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final entry = await entrySource.entryById(plan.range, previous.entryId);
       if (entry == null) return GroupedWallpaperSyncResult.unchanged;
 
+      final surface = await _resolveTargetSize();
+      final scrollEffect = await _effectiveScrollEffect(plan);
+      // Every slot carries the old geometry after a rotation or a switch change:
+      // re-bake the queue instead of stacking one new-layout photo in front of
+      // stale ones the renderer would promote next.
+      if (_isLayoutStale(state, surface, scrollEffect)) {
+        return await _run(advance: false, requireActive: false, activation: false);
+      }
+
       final current = state.currentSlot!;
       final next = state.nextSlot;
       final id = _nextSlotId({for (final slot in state.slots) slot.id});
-      final slot = await _bakeSlot(store, plan, entry, id);
+      final slot = await _bakeSlot(store, plan, entry, id, surface, scrollEffect);
       final ordered = [slot.id, current.id, if (next != null) next.id];
       await store.pruneSlots(ordered);
       final nextState = state.copyWith(
@@ -406,6 +442,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         ordering: plan.ordering,
         gestures: plan.gestures,
         paused: plan.paused,
+        surfaceWidth: surface.width.round(),
+        surfaceHeight: surface.height.round(),
+        scrollEffect: scrollEffect,
         bakedAt: now(),
       );
       await store.writeState(nextState);
@@ -433,6 +472,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     required int total,
     GroupedWallpaperState? seed,
     required bool mustWrite,
+    required Size surface,
+    required bool scrollEffect,
+    Map<int, AvesEntry> rebakeEntries = const {},
   }) async {
     final state = seed;
     var current = state?.current ?? -1;
@@ -491,7 +533,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         final id = _nextSlotId(usedIds);
         usedIds.add(id);
         try {
-          final slot = await _bakeSlot(store, plan, entry, id);
+          final slot = await _bakeSlot(store, plan, entry, id, surface, scrollEffect);
           bakedAny = true;
           excluded.add(entry.id);
           return slot;
@@ -506,13 +548,30 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     // `current` first: it is what the user sees, so it must never be the slot
     // left empty while the queue ahead is filled.
     GroupedWallpaperSlot? kept(int id) {
+      // A slot queued for a layout re-bake must not be kept as it is: its file
+      // still has the old geometry.
+      if (rebakeEntries.containsKey(id)) return null;
       for (final slot in slots) {
         if (slot.id == id) return slot;
       }
       return null;
     }
 
-    GroupedWallpaperSlot? currentSlot = kept(current);
+    /// Re-bakes a queued slot's own photo into the same id for the new layout.
+    Future<GroupedWallpaperSlot?> bakeSame(int id) async {
+      final entry = rebakeEntries[id];
+      if (entry == null) return null;
+      try {
+        final slot = await _bakeSlot(store, plan, entry, id, surface, scrollEffect);
+        bakedAny = true;
+        return slot;
+      } on GroupedWallpaperBakeException catch (error, stack) {
+        groupedWallpaperLog.w('layout re-bake failed entry=${entry.id} slot=$id', error, stack);
+        return null;
+      }
+    }
+
+    GroupedWallpaperSlot? currentSlot = kept(current) ?? await bakeSame(current);
     if (currentSlot == null) {
       currentSlot = await bakeInto();
       current = currentSlot?.id ?? -1;
@@ -527,7 +586,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     if (currentSlot != null) byId[currentSlot.id] = currentSlot;
 
     if (prefetchAhead >= 1) {
-      var nextSlot = kept(next);
+      var nextSlot = kept(next) ?? await bakeSame(next);
       nextSlot ??= await bakeInto();
       next = nextSlot?.id ?? -1;
       if (nextSlot != null) byId[nextSlot.id] = nextSlot;
@@ -535,7 +594,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       next = -1;
     }
     if (prefetchAhead >= 2) {
-      var next2Slot = kept(next2);
+      var next2Slot = kept(next2) ?? await bakeSame(next2);
       next2Slot ??= await bakeInto();
       next2 = next2Slot?.id ?? -1;
       if (next2Slot != null) byId[next2Slot.id] = next2Slot;
@@ -590,11 +649,14 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       gestures: plan.gestures,
       paused: plan.paused,
       notification: plan.notification,
+      surfaceWidth: surface.width.round(),
+      surfaceHeight: surface.height.round(),
+      scrollEffect: scrollEffect,
       bakedAt: now(),
     );
     await store.writeState(nextState);
     await platform.reload();
-    groupedWallpaperLog.d('queue.baked current=$current next=$next next2=$next2 count=$total cursor=$cursor');
+    groupedWallpaperLog.d('queue.baked current=$current next=$next next2=$next2 count=$total cursor=$cursor surface=${surface.width.round()}x${surface.height.round()} scrollEffect=$scrollEffect');
     return current < 0 ? GroupedWallpaperSyncResult.empty : GroupedWallpaperSyncResult.baked;
   }
 
@@ -602,8 +664,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   ///
   /// Shared by the forward queue and "previous photo", so both write exactly the
   /// same file set and the renderer never sees a half-baked slot.
-  Future<GroupedWallpaperSlot> _bakeSlot(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, AvesEntry entry, int id) async {
-    final targetSize = await _resolveTargetSize();
+  Future<GroupedWallpaperSlot> _bakeSlot(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, AvesEntry entry, int id, Size surface, bool scrollEffect) async {
+    final targetSize = scrollEffect ? _scrollTarget(surface, entry) : surface;
     final bake = await baker.bake(
       entry: entry,
       targetSize: targetSize,
@@ -725,6 +787,58 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     if (previous.bakedAt < plan.group.updatedAt) return true;
     if (previous.bakedAt < (plan.range?.updatedAt ?? 0)) return true;
     return false;
+  }
+
+  /// Whether [previous] was baked for another surface or scroll effect.
+  ///
+  /// The launcher changes the surface on rotation and when it updates its
+  /// dimension hints, and the switch changes the width of every frame: keeping
+  /// the old texture would stretch or crop it, so either re-bakes once.
+  static bool _isLayoutStale(GroupedWallpaperState? previous, Size surface, bool scrollEffect) {
+    if (previous == null) return true;
+    if (previous.surfaceWidth != surface.width.round()) return true;
+    if (previous.surfaceHeight != surface.height.round()) return true;
+    return previous.scrollEffect != scrollEffect;
+  }
+
+  /// The entries of the queue, so a layout change re-bakes them into the same
+  /// slots instead of picking other photos.
+  ///
+  /// Returns an empty map when a slot's entry is gone: the caller then restarts
+  /// the group rather than leave one frame at the old size.
+  Future<Map<int, AvesEntry>> _layoutRebake(GroupedWallpaperPlan plan, GroupedWallpaperState? state) async {
+    if (state == null) return const {};
+    final entries = <int, AvesEntry>{};
+    for (final slot in state.slots) {
+      final entry = await entrySource.entryById(plan.range, slot.entryId);
+      if (entry == null) return const {};
+      entries[slot.id] = entry;
+    }
+    return entries;
+  }
+
+  /// Whether frames should keep the photo's whole width for the launcher to pan.
+  ///
+  /// The switch is the user's, but a launcher that never pans (`xOffsetStep` 0)
+  /// has nothing to pan with, so a wide frame there would only crop the sides. An
+  /// unknown step means no offset callback arrived yet: follow the switch.
+  Future<bool> _effectiveScrollEffect(GroupedWallpaperPlan plan) async {
+    if (!plan.scrollEffect) return false;
+    final step = await platform.scrollStep();
+    return step == null || step > 0;
+  }
+
+  /// The photo's whole width at the surface height, capped by the texture limit.
+  ///
+  /// The renderer maps the launcher's `0..1` offset onto the whole texture, so a
+  /// frame this wide lets the home pages show the rest of the photo. A photo
+  /// narrower than the surface keeps the surface size: there is nothing to pan.
+  static Size _scrollTarget(Size surface, AvesEntry entry) {
+    final display = entry.displaySize;
+    if (display.width <= 0 || display.height <= 0) return surface;
+    final width = surface.height * display.width / display.height;
+    if (!width.isFinite || width <= surface.width) return surface;
+    return Size(math.min(width, GroupedWallpaperBaker.maxDimension.toDouble()), surface.height);
   }
 
   /// Whether [previous] already holds the whole queue for the current media set,

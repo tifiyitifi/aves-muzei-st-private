@@ -19,11 +19,11 @@ package deckers.thibault.aves.features.grouped_wallpaper
 /**
  * Texture coordinates of the wallpaper quad.
  *
- * The engine bakes at `WallpaperManager.desiredMinimumWidth`, which is wider than
- * the screen on a scrolling launcher, so the surface shows a window into the
- * texture and pans it with the launcher offset. The geometry follows Muzei's
- * `GLPictureSet` (Apache-2.0), without the zoom effect: the grouped wallpaper
- * has no effects to zoom.
+ * The engine bakes a frame that covers the surface, or — with the scroll effect
+ * on — the photo's whole width at the surface height, so the surface shows a
+ * window into the texture and pans it with the launcher offset. The geometry
+ * follows Muzei's `GLPictureSet` (Apache-2.0), without the zoom effect: the
+ * grouped wallpaper has no effects to zoom.
  */
 object GroupedWallpaperViewport {
     /**

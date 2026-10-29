@@ -13,8 +13,9 @@ of the Muzei-style live wallpaper mechanism.
   baking + native slot queue), global gestures, the immersive view page, per-group
   home/lock effects with a copy-to-other-groups grid, per-group auto-advance
   (interval + ordering, scheduled through the shared WorkManager chain), the
-  four-layout notification with photo, group and freeze actions, and the
-  availability label under the group switcher.
+  four-layout notification with photo, group and freeze actions, the
+  availability label under the group switcher, and the global home-screen scroll
+  effect switch.
 - **Not done yet**: the notification's copy/usage-history buttons (shown but
   disabled), filtering the management surfaces (settings, explorer, vaults,
   recycle bin) while a range is locked, temporary/permanent selection ranges,
@@ -41,15 +42,16 @@ One run:
    record);
 4. resolves the media set with `wallpaperMediaSetFilter` and picks each missing
    slot through the saved ordering;
-5. bakes a cover-cropped PNG at `WallpaperManager.desiredMinimumWidth` per slot,
-   plus one effect PNG per surface when the group's effects are not identity;
+5. bakes a cover-cropped PNG per slot — at the wallpaper surface, or at the
+   photo's whole width when the scroll effect is on (see below) — plus one effect
+   PNG per surface when the group's effects are not identity;
 6. writes `state.json` and the slot photos atomically, then asks the renderer to
    reload.
 
 A plain `prepare` skips the bake when the state already holds the full queue for
-the saved group and is newer than the group's and the range's `updatedAt`, so an
-app start on an untouched install costs a database read and a file stat, not a
-bake.
+the saved group, is newer than the group's and the range's `updatedAt`, and was
+baked for the current layout (surface size and scroll effect). An app start on an
+untouched install costs a database read and a file stat, not a bake.
 
 ### The promotion queue
 
@@ -68,6 +70,33 @@ renderer does the same on reload: if the new state's queue still contains the
 slot on screen after its current, it keeps that slot, shifts the queue to it and
 rewrites the runtime with the new generation. Without that, a tap could show the
 next photo and then snap back to the one it just left.
+
+### Scroll effect
+
+The wallpaper can pan with the home pages, the way the static wallpaper's "use
+scroll effect on home screen" option does. It is one switch, global to the
+grouped wallpaper and on by default; it is not stored per group, because it
+changes how every group is baked.
+
+With it on, a frame is `surface.height × photo aspect` wide (capped by the
+baker's 4096 texture limit) instead of the surface width, so the renderer's
+`0..1` offset walks the whole photo. With it off, the frame is exactly the
+surface, which is what the wallpaper always did. The renderer and
+`GroupedWallpaperViewport` need no change: a frame that is not wider than the
+surface simply has no pan range.
+
+Two guards keep the wider frame honest:
+
+- a launcher that never pans (`onOffsetsChanged` reports `xOffsetStep == 0`)
+  gets surface-sized frames anyway, or the sides would only be cropped away; an
+  unknown step (no callback yet) follows the switch;
+- the lock screen does not pan, so the renderer centers its window (`offsetX`
+  `0.5`) instead of leaving it on the last home page.
+
+`state.json` records the layout the queue was baked for (`surfaceWidth`,
+`surfaceHeight`, `scrollEffect`). A mismatch re-bakes once, which is what makes
+the switch immediate and also fixes rotation or a changed system dimension hint
+silently keeping a stretched frame.
 
 ### Effects
 

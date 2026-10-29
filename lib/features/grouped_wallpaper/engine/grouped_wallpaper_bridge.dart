@@ -18,6 +18,13 @@ abstract interface class GroupedWallpaperPlatform {
   /// Desired wallpaper bitmap size, including the launcher's scrollable width.
   Future<Size?> wallpaperSize();
 
+  /// Fraction of the scroll range one home page takes, from the launcher.
+  ///
+  /// `0` means the launcher never pans the wallpaper (a single-page home
+  /// screen); `null` means no offset callback has arrived yet, so the caller
+  /// follows the user's switch instead of guessing.
+  Future<double?> scrollStep();
+
   /// Asks the renderer to re-read `state.json`.
   Future<void> reload();
 
@@ -76,6 +83,13 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
     final height = _number(raw?['height']);
     if (width == null || height == null || width <= 0 || height <= 0) return null;
     return Size(width, height);
+  }
+
+  @override
+  Future<double?> scrollStep() async {
+    final step = await _invoke<double>('scrollStep');
+    if (step == null || step < 0) return null;
+    return step;
   }
 
   @override

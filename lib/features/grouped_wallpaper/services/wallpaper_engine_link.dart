@@ -43,6 +43,12 @@ abstract interface class WallpaperEngineConnection {
   /// Records the notification bar switch and applies it now.
   Future<void> setNotification(bool enabled);
 
+  /// Whether frames keep the photo's whole width for the launcher to pan.
+  Future<bool> isScrollEffectEnabled();
+
+  /// Records the scroll effect switch and re-bakes the frame on screen.
+  Future<void> setScrollEffect(bool enabled);
+
   /// Opens the system live-wallpaper chooser for this service.
   Future<bool> openChooser();
 }
@@ -58,6 +64,7 @@ class WallpaperEngineLink {
   bool _active = false;
   bool _disabled = false;
   bool _notification = true;
+  bool _scrollEffect = true;
 
   /// Whether the engine is wired to the platform channel.
   bool get isAttached => _connection != null;
@@ -73,6 +80,10 @@ class WallpaperEngineLink {
   /// [refreshNotification].
   bool get notificationEnabled => _notification;
 
+  /// Whether frames keep the photo's whole width, as of the last
+  /// [refreshScrollEffect].
+  bool get scrollEffectEnabled => _scrollEffect;
+
   /// Whether the grouped wallpaper is on screen and following its group.
   ///
   /// A disabled feature keeps its last frame, so it is not "playing" even while
@@ -87,6 +98,7 @@ class WallpaperEngineLink {
     _connection = null;
     _active = false;
     _disabled = false;
+    _scrollEffect = true;
   }
 
   /// Re-reads whether the grouped service is the current system wallpaper and
@@ -138,6 +150,21 @@ class WallpaperEngineLink {
     }
   }
 
+  /// Re-reads the scroll effect switch.
+  Future<void> refreshScrollEffect() async {
+    final connection = _connection;
+    if (connection == null) {
+      _scrollEffect = true;
+      return;
+    }
+    try {
+      _scrollEffect = await connection.isScrollEffectEnabled();
+    } catch (_) {
+      // An unreadable flag is "on", like the switches above.
+      _scrollEffect = true;
+    }
+  }
+
   Future<GroupedWallpaperState?> readState() async => await _connection?.readState();
 
   Future<String?> currentPhotoPath() async => await _connection?.currentPhotoPath();
@@ -158,6 +185,11 @@ class WallpaperEngineLink {
   Future<void> setNotification(bool enabled) async {
     await _connection?.setNotification(enabled);
     _notification = enabled;
+  }
+
+  Future<void> setScrollEffect(bool enabled) async {
+    await _connection?.setScrollEffect(enabled);
+    _scrollEffect = enabled;
   }
 
   Future<bool> openChooser() async => await _connection?.openChooser() ?? false;

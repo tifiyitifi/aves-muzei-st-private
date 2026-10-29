@@ -139,7 +139,21 @@ void main() {
     await store.ensureLayout();
     // The field is absent, which is what every build before the switch wrote.
     await store.stateFile.writeAsString('{"version": 4, "status": "ready", "groupId": "g", "current": -1}');
-    expect((await store.readState())!.notification, isTrue);
+    final state = (await store.readState())!;
+    expect(state.notification, isTrue);
+    // An unknown layout re-bakes once instead of keeping a stale texture.
+    expect(state.surfaceWidth, 0);
+    expect(state.surfaceHeight, 0);
+    expect(state.scrollEffect, isFalse);
+  });
+
+  test('the baked layout travels with the state', () async {
+    await store.writeState(state.copyWith(surfaceWidth: 1080, surfaceHeight: 2340, scrollEffect: true));
+
+    final read = (await store.readState())!;
+    expect(read.surfaceWidth, 1080);
+    expect(read.surfaceHeight, 2340);
+    expect(read.scrollEffect, isTrue);
   });
 
   test('reads the runtime the renderer wrote', () async {

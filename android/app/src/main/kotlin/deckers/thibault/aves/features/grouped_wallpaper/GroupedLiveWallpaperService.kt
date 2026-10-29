@@ -59,6 +59,23 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         var isRunning = false
             private set
 
+        /**
+         * Fraction of the scroll range one home page takes, as last reported by
+         * the launcher's `onOffsetsChanged`.
+         *
+         * `0` means a single-page home screen that never pans, and `-1` means no
+         * callback has arrived yet. The engine bakes wider frames only when the
+         * launcher can actually pan them.
+         */
+        @Volatile
+        var scrollStep = -1.0
+            private set
+
+        /** Records the launcher's scroll step for the engine to read. */
+        fun recordScrollStep(step: Float) {
+            scrollStep = step.toDouble()
+        }
+
         /** The live instance, so the notification's actions can refresh the bar. */
         @Volatile
         private var instance: GroupedLiveWallpaperService? = null
@@ -326,8 +343,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             // The engine may be created while the screen is off, so hand the
             // initial keyguard state to the renderer before the first load.
             renderer.setLockScreenVisible(lockScreenVisible)
-            // The engine bakes at the launcher's desired width, so the surface
-            // shows a window into it and pans with the launcher offset.
+            // The frame may be wider than the surface when the scroll effect is
+            // on, so the surface shows a window into it and pans with the
+            // launcher offset.
             setOffsetNotificationsEnabled(true)
             setTouchEventsEnabled(true)
             Log.d(TAG, "engine.create preview=$isPreview lockScreen=$lockScreenVisible")
@@ -359,6 +377,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             yPixelOffset: Int,
         ) {
             super.onOffsetsChanged(xOffset, yOffset, xOffsetStep, yOffsetStep, xPixelOffset, yPixelOffset)
+            // The step is how much of the wallpaper's scroll range one page
+            // covers: the engine uses it to decide whether a wide frame can pan.
+            GroupedLiveWallpaperService.recordScrollStep(xOffsetStep)
             if (!::renderer.isInitialized) return
             // Single-page launchers report a zero step and a zero offset; center
             // the artwork instead of pinning it to the left edge.

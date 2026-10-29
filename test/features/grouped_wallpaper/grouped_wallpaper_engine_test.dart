@@ -27,7 +27,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// stale image.
 void main() {
   const dcimGroup = WallpaperGroup(id: 'group.1', number: 1, name: '@wallpaperGroupDefaultDcim', current: true, updatedAt: 10);
-  const plan = GroupedWallpaperPlan(group: dcimGroup);
+  // The baseline keeps the scroll effect off, so the queue tests assert the
+  // surface-sized bake they were written for. The scroll effect has its own group.
+  const plan = GroupedWallpaperPlan(group: dcimGroup, scrollEffect: false);
 
   late Directory dir;
   late _FakePlatform platform;
@@ -38,15 +40,15 @@ void main() {
   late WallpaperEngineLink link;
   late GroupedWallpaperEngine engine;
 
-  AvesEntry entry(int id) => AvesEntry(
+  AvesEntry entry(int id, {int width = 300, int height = 100}) => AvesEntry(
         id: id,
         uri: 'content://media/$id',
         path: null,
         contentId: id,
         pageId: null,
         sourceMimeType: 'image/jpeg',
-        width: 300,
-        height: 100,
+        width: width,
+        height: height,
         sourceRotationDegrees: 0,
         sizeBytes: 1,
         sourceTitle: 'IMG_$id',
@@ -83,7 +85,7 @@ void main() {
       entrySource: entrySource,
       nameResolver: (group) => 'DCIM',
       link: link,
-      targetSize: () async => const Size(100, 200),
+      targetSize: () async => platform.size,
       now: () => 1234,
     );
     await engine.attach();
@@ -382,6 +384,103 @@ void main() {
 
       await engine.syncNow();
       expect((await store.readState())!.currentSlot?.entryId, 50);
+    });
+  });
+
+  group('scroll effect', () {
+    test("bakes the photo's whole width at the surface height", () async {
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
+      serve(entries(12));
+
+      await engine.prepare();
+
+      final state = (await store.readState())!;
+      expect(state.scrollEffect, isTrue);
+      expect(state.surfaceWidth, 100);
+      expect(state.surfaceHeight, 200);
+      // A 3:1 photo at a 200 px surface height.
+      expect(state.width, 600);
+      expect(state.height, 200);
+    });
+
+    test('off bakes exactly the surface', () async {
+      serve(entries(12));
+
+      await engine.prepare();
+
+      final state = (await store.readState())!;
+      expect(state.scrollEffect, isFalse);
+      expect(state.width, 100);
+      expect(state.height, 200);
+    });
+
+    test('a photo narrower than the surface is not stretched', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
+      serve([entry(1, width: 100, height: 200), entry(2, width: 100, height: 200)]);
+
+      await engine.prepare();
+
+      final state = (await store.readState())!;
+      expect(state.width, 100);
+      expect(state.height, 200);
+    });
+
+    test('a launcher that never pans keeps the surface-sized bake', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
+      platform.scrollStepValue = 0;
+      serve(entries(12));
+
+      await engine.prepare();
+
+      final state = (await store.readState())!;
+      expect(state.scrollEffect, isFalse);
+      expect(state.width, 100);
+    });
+
+    test('an unknown scroll step follows the switch', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
+      serve(entries(12));
+
+      await engine.prepare();
+
+      expect(platform.scrollStepReads, greaterThan(0));
+      expect((await store.readState())!.scrollEffect, isTrue);
+    });
+
+    test('toggling re-bakes once and then keeps the queue', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final first = (await store.readState())!;
+      expect(first.scrollEffect, isFalse);
+
+      await engine.setScrollEffect(true);
+
+      final toggled = (await store.readState())!;
+      expect(toggled.scrollEffect, isTrue);
+      // The same photo is re-baked wider: a layout change must not cost the user
+      // the image on screen.
+      expect(toggled.entryId, first.entryId);
+      expect(toggled.width, 600);
+      expect(baker.bakeCount, 6);
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
+      expect(baker.bakeCount, 6);
+    });
+
+    test('a surface change re-bakes once', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final first = (await store.readState())!;
+      expect(first.surfaceWidth, 100);
+
+      platform.size = const Size(200, 300);
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      final state = (await store.readState())!;
+      expect(state.surfaceWidth, 200);
+      expect(state.surfaceHeight, 300);
+      expect(state.entryId, first.entryId);
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
     });
   });
 
@@ -862,7 +961,7 @@ void main() {
       serve(entries(12));
       await engine.prepare();
       final before = (await store.readState())!;
-      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, paused: true);
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, paused: true, scrollEffect: false);
 
       expect(await engine.refill(advance: true), GroupedWallpaperSyncResult.unchanged);
 
@@ -888,6 +987,9 @@ void main() {
 class _FakePlatform implements GroupedWallpaperPlatform {
   final String? root;
   bool active = true;
+  Size size = const Size(100, 200);
+  double? scrollStepValue;
+  int scrollStepReads = 0;
   int reloadCount = 0;
   bool chooserOpened = false;
   final List<int> scheduledSeconds = [];
@@ -904,7 +1006,13 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   Future<String?> stateRoot() async => root;
 
   @override
-  Future<Size?> wallpaperSize() async => const Size(100, 200);
+  Future<Size?> wallpaperSize() async => size;
+
+  @override
+  Future<double?> scrollStep() async {
+    scrollStepReads++;
+    return scrollStepValue;
+  }
 
   @override
   Future<void> reload() async {
@@ -1016,27 +1124,35 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setDisabled(bool disabled) async {
     disabledWrites.add(disabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification, scrollEffect: plan.scrollEffect);
   }
 
   @override
   Future<void> setGestures(GroupedWallpaperGestures gestures) async {
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification, scrollEffect: plan.scrollEffect);
   }
 
   @override
   Future<void> setPaused(bool paused) async {
     pausedWrites.add(paused);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: paused, notification: plan.notification);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: paused, notification: plan.notification, scrollEffect: plan.scrollEffect);
   }
 
   @override
   Future<void> setNotification(bool enabled) async {
     notificationWrites.add(enabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: enabled);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: enabled, scrollEffect: plan.scrollEffect);
   }
 
   final List<bool> notificationWrites = [];
+
+  @override
+  Future<void> setScrollEffect(bool enabled) async {
+    scrollEffectWrites.add(enabled);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification, scrollEffect: enabled);
+  }
+
+  final List<bool> scrollEffectWrites = [];
 
   @override
   Future<GroupedWallpaperPlan> switchGroup(int delta) async {

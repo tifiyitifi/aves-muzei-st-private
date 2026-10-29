@@ -1,3 +1,4 @@
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -47,10 +48,17 @@ class SettingsDefaults {
     TagListPage.routeName,
     ExplorerPage.routeName,
   ];
+  /// The four destinations a fresh install starts with.
+  ///
+  /// The visible-range entry is one of them on purpose: it is a real page, so the
+  /// user can move or remove it in the navigation editor, while the builder still
+  /// re-appends it when it is missing. The wallpaper groups' entry is *not* here:
+  /// it is derived next to the range entry, which is what keeps it closable.
   static final bottomNavigationActions = [
     const AvesNavItem(route: CollectionPage.routeName),
     AvesNavItem(route: CollectionPage.routeName, filters: {FavouriteFilter.instance}),
     const AvesNavItem(route: AlbumListPage.routeName),
+    const AvesNavItem(route: VisibleRangePage.routeName),
   ];
 
   // collection

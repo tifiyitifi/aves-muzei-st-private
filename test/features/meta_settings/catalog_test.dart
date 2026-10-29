@@ -39,6 +39,12 @@ void main() {
       }
     });
 
+    test('Visible & wallpaper sits just before Advanced', () {
+      const values = SettingsCategory.values;
+      expect(values.indexOf(SettingsCategory.wallpaper), values.indexOf(SettingsCategory.advanced) - 1);
+      expect(values.indexOf(SettingsCategory.language), values.indexOf(SettingsCategory.wallpaper) - 1);
+    });
+
     test('Display is fully migrated', () {
       final keys = metaSettingsDefsFor(SettingsCategory.display).map((def) => def.key).toSet();
       expect(keys, {

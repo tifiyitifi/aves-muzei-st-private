@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/model/settings/enums/accessibility_animations.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/icons.dart';
@@ -42,6 +43,10 @@ class _BottomNavigationActionEditorPageState extends State<BottomNavigationActio
       );
     }).toList(),
     [
+      // The fork's own page comes first: adding it here pins the entry in the
+      // user's list, which stops the bar from deriving one next to the visible
+      // range. Its title and icon come from `NavigationDisplay`.
+      GroupedWallpaperPage.routeName,
       HomePage.routeName,
       SettingsPage.routeName,
       ...NavigationDrawerEditorPage.pageOptions,

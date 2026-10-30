@@ -55,6 +55,7 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
             "openChooser" -> safe(call, result, ::openChooser)
             "wallpaperSize" -> safe(call, result, ::wallpaperSize)
             "scrollStep" -> safe(call, result, ::scrollStep)
+            "displayedSlot" -> safe(call, result, ::displayedSlot)
             "stateRoot" -> safe(call, result, ::stateRoot)
             "setRequestHandler" -> safe(call, result, ::setRequestHandler)
             "scheduleAutoAdvance" -> safe(call, result, ::scheduleAutoAdvance)
@@ -153,6 +154,16 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
      */
     private fun scrollStep(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
         result.success(GroupedLiveWallpaperService.scrollStep)
+    }
+
+    /**
+     * Reports the slot the wallpaper engine is actually drawing, or `-1`.
+     *
+     * `state.json` says what was last baked, which is not always the frame on
+     * screen; the app uses this to describe the photo the user can see.
+     */
+    private fun displayedSlot(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        result.success(GroupedLiveWallpaperService.displayedSlot)
     }
 
     private fun stateRoot(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {        result.success(GroupedWallpaperStateFile.ensureRoot(context).absolutePath)

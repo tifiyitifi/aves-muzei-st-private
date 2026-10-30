@@ -115,6 +115,9 @@ class _FakeConnection implements WallpaperEngineConnection {
   Future<GroupedWallpaperState?> readState() async => null;
 
   @override
+  Future<GroupedWallpaperState?> readDisplayedState() async => null;
+
+  @override
   Future<String?> currentPhotoPath() async => null;
 
   @override

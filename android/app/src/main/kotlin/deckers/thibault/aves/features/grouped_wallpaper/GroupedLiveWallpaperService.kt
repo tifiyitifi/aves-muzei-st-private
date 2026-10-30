@@ -71,9 +71,19 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         var scrollStep = -1.0
             private set
 
-        /** Records the launcher's scroll step for the engine to read. */
-        fun recordScrollStep(step: Float) {
+        /**
+         * Records the launcher's scroll step.
+         *
+         * @return whether the launcher just started panning, i.e. the step moved
+         * from "cannot pan" to a real one. The first callback arrives after the
+         * wallpaper was bound, so the frame already baked used the earlier
+         * answer; the caller asks for one refill so the photo on screen gains its
+         * wide frame now instead of on the next advance.
+         */
+        fun recordScrollStep(step: Float): Boolean {
+            val previous = scrollStep
             scrollStep = step.toDouble()
+            return previous <= 0.0 && step > 0f
         }
 
         /** The live instance, so the notification's actions can refresh the bar. */
@@ -84,6 +94,15 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         fun refreshNotification() {
             instance?.updateNotification()
         }
+
+        /**
+         * The slot the real engine is drawing, or `-1` when no engine is running.
+         *
+         * The app asks for this instead of trusting `state.json`: the renderer can
+         * promote a slot on its own, and a reload keeps drawing the one it had.
+         */
+        val displayedSlot: Int
+            get() = instance?.displayedSlotId ?: -1
 
         /**
          * Drops a bar whose service is gone.
@@ -334,8 +353,14 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
                 requestRender = { requestRender() },
                 onAdvanced = ::notifyAdvance,
                 onFrameLoaded = {
-                    val displayed = renderer.displayedSlotId()
-                    gestureHandler.post { this@GroupedLiveWallpaperService.onFrameLoaded(displayed) }
+                    // Only the engine drawing the real wallpaper reports: a picker
+                    // preview paints its own copy of the current slot, and letting
+                    // it write here would make the app describe a frame nobody
+                    // sees after the picker closes.
+                    if (!isPreview) {
+                        val displayed = renderer.displayedSlotId()
+                        gestureHandler.post { this@GroupedLiveWallpaperService.onFrameLoaded(displayed) }
+                    }
                 },
             )
             setEGLContextClientVersion(2)
@@ -382,7 +407,18 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             super.onOffsetsChanged(xOffset, yOffset, xOffsetStep, yOffsetStep, xPixelOffset, yPixelOffset)
             // The step is how much of the wallpaper's scroll range one page
             // covers: the engine uses it to decide whether a wide frame can pan.
-            GroupedLiveWallpaperService.recordScrollStep(xOffsetStep)
+            // A picker preview says nothing about the launcher the wallpaper will
+            // live on — it reports its own step, often the single-page `0` — so
+            // only the real engine records it. Logged because "the first photos
+            // lost the effect" is otherwise untraceable.
+            Log.d(TAG, "scroll.step step=$xOffsetStep preview=$isPreview")
+            if (!isPreview) {
+                val startsPanning = GroupedLiveWallpaperService.recordScrollStep(xOffsetStep)
+                if (startsPanning) {
+                    Log.d(TAG, "scroll.step refill for the wider frame")
+                    requestRefill()
+                }
+            }
             if (!::renderer.isInitialized) return
             // Single-page launchers report a zero step and a zero offset; center
             // the artwork instead of pinning it to the left edge.

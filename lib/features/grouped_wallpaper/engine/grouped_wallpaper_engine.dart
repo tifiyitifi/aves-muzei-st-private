@@ -143,10 +143,27 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   @override
   Future<GroupedWallpaperState?> readState() async => await _store?.readState();
 
+  /// [readState] with [GroupedWallpaperState.current] moved to the slot the
+  /// engine is actually drawing.
+  ///
+  /// `state.json` is what Dart baked; the renderer may have promoted a slot on
+  /// its own, or kept drawing one a reload no longer calls current. Reading
+  /// `current` alone therefore describes a photo the user may not be looking at,
+  /// which is what made the three-finger view differ from the wallpaper. A
+  /// missing or pruned slot falls back to the state: a stale answer beats none.
+  @override
+  Future<GroupedWallpaperState?> readDisplayedState() async {
+    final state = await _store?.readState();
+    if (state == null) return null;
+    final displayed = await platform.displayedSlot();
+    if (displayed == null || state.slotById(displayed) == null) return state;
+    return state.copyWith(current: displayed);
+  }
+
   /// Absolute path of the photo on screen, for the view page.
   @override
   Future<String?> currentPhotoPath() async {
-    final state = await _store?.readState();
+    final state = await readDisplayedState();
     final slot = state?.currentSlot;
     if (slot == null) return null;
     return _store?.slotPhotoOf(slot)?.path;
@@ -155,7 +172,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// Absolute path of the home-effect image on screen, for the view page.
   @override
   Future<String?> currentEffectPhotoPath() async {
-    final state = await _store?.readState();
+    final state = await readDisplayedState();
     final slot = state?.currentSlot;
     if (slot == null) return null;
     return _store?.slotEffectPhotoOf(slot, lock: false)?.path;

@@ -453,6 +453,30 @@ void main() {
       expect((await store.readState())!.scrollEffect, isTrue);
     });
 
+    test('a launcher that starts panning re-bakes the same photo wider', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
+      platform.scrollStepValue = 0;
+      serve(entries(12));
+
+      await engine.prepare();
+      final narrow = (await store.readState())!;
+      expect(narrow.scrollEffect, isFalse);
+      expect(narrow.width, 100);
+
+      // The launcher's first callbacks arrive after the wallpaper is bound, so
+      // the frame was baked for a home screen that could not pan. The native
+      // side asks for a refill when the step becomes real; the same photo must
+      // gain the wide frame without being replaced.
+      platform.scrollStepValue = 0.25;
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      final wide = (await store.readState())!;
+      expect(wide.scrollEffect, isTrue);
+      expect(wide.entryId, narrow.entryId);
+      expect(wide.width, 600);
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
+    });
+
     test('toggling re-bakes once and then keeps the queue', () async {
       serve(entries(12));
       await engine.prepare();
@@ -579,6 +603,43 @@ void main() {
       expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
 
       expect((await store.readState())!.currentSlot?.entryId, 50);
+    });
+  });
+
+  group('displayed slot', () {
+    test('describes the slot the engine draws, not the baked current', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final state = (await store.readState())!;
+      // The renderer promoted on its own after Dart wrote the state: `current`
+      // still names the previous photo, the engine draws `next`.
+      platform.displayedSlotValue = state.next;
+
+      final displayed = (await engine.readDisplayedState())!;
+      expect(displayed.current, state.next);
+      expect(displayed.currentSlot?.entryId, state.nextSlot?.entryId);
+      expect(await engine.currentPhotoPath(), store.slotPhotoOf(state.nextSlot!)!.path);
+    });
+
+    test('falls back to the baked current when no engine runs', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final state = (await store.readState())!;
+      platform.displayedSlotValue = null;
+
+      expect(await engine.currentPhotoPath(), store.slotPhotoOf(state.currentSlot!)!.path);
+    });
+
+    test('falls back when the drawn slot was pruned', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final state = (await store.readState())!;
+      // The engine kept drawing a slot a reload has since freed: a stale answer
+      // beats describing no photo at all.
+      platform.displayedSlotValue = 999;
+
+      final displayed = (await engine.readDisplayedState())!;
+      expect(displayed.current, state.current);
     });
   });
 
@@ -1134,6 +1195,12 @@ class _FakePlatform implements GroupedWallpaperPlatform {
     scrollStepReads++;
     return scrollStepValue;
   }
+
+  /// The slot the "engine" is drawing; null mirrors "no engine".
+  int? displayedSlotValue;
+
+  @override
+  Future<int?> displayedSlot() async => displayedSlotValue;
 
   @override
   Future<void> reload() async {

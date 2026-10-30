@@ -17,6 +17,14 @@ abstract interface class WallpaperEngineConnection {
   /// The state the renderer is showing, or null when nothing was ever baked.
   Future<GroupedWallpaperState?> readState();
 
+  /// [readState] moved to the slot the wallpaper engine is actually drawing.
+  ///
+  /// The renderer can promote a slot on its own, and a reload keeps drawing the
+  /// slot it had, so `current` in `state.json` may name another photo than the
+  /// one on screen. Surfaces that describe "the photo I am looking at" read this
+  /// instead.
+  Future<GroupedWallpaperState?> readDisplayedState();
+
   /// Absolute path of the photo on screen, or null when there is none.
   Future<String?> currentPhotoPath();
 
@@ -189,6 +197,8 @@ class WallpaperEngineLink {
   }
 
   Future<GroupedWallpaperState?> readState() async => await _connection?.readState();
+
+  Future<GroupedWallpaperState?> readDisplayedState() async => await _connection?.readDisplayedState();
 
   Future<String?> currentPhotoPath() async => await _connection?.currentPhotoPath();
 

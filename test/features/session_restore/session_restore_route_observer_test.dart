@@ -1,5 +1,8 @@
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/session_restore/session_restore_route_observer.dart';
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/explorer/explorer_page.dart';
 import 'package:aves/widgets/filter_grids/albums_page.dart';
@@ -70,5 +73,26 @@ void main() {
 
     expect(observer.currentRestorableRoute, CollectionPage.routeName);
     expect(observer.currentRestorableBaseRoute, isNull);
+  });
+
+  test('the wallpaper page is restored over the page it was opened from', () {
+    push(CollectionPage.routeName);
+    push(VisibleRangePage.routeName);
+    push(GroupedWallpaperPage.routeName);
+
+    // Without the wallpaper page in the restorable set, the snapshot would only
+    // remember the range page underneath and reopen that instead.
+    expect(observer.currentRestorableRoute, GroupedWallpaperPage.routeName);
+    expect(observer.currentRestorableBaseRoute, VisibleRangePage.routeName);
+  });
+
+  test('a page above the wallpaper page does not move the base', () {
+    push(CollectionPage.routeName);
+    push(GroupedWallpaperPage.routeName);
+    // The wallpaper view and the usage history are transient sub-pages.
+    push(GroupedWallpaperViewPage.routeName);
+
+    expect(observer.currentRestorableRoute, GroupedWallpaperPage.routeName);
+    expect(observer.currentRestorableBaseRoute, CollectionPage.routeName);
   });
 }

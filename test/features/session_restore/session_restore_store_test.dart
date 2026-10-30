@@ -1,6 +1,8 @@
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/session_restore/session_restore_snapshot.dart';
 import 'package:aves/features/session_restore/session_restore_store.dart';
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
@@ -124,6 +126,38 @@ void main() {
       const snapshot = SessionRestoreSnapshot(routeName: CollectionPage.routeName, baseRouteName: MapPage.routeName);
 
       expect(snapshot.isValid, isFalse);
+    });
+
+    test('round-trips the shared entry sub-page', () {
+      const snapshot = SessionRestoreSnapshot(routeName: VisibleRangePage.routeName, rangeWallpaper: true);
+
+      final decoded = SessionRestoreSnapshot.tryFromJsonString(snapshot.toJsonString());
+      expect(decoded, isNotNull);
+      expect(decoded!.routeName, VisibleRangePage.routeName);
+      expect(decoded.rangeWallpaper, isTrue);
+      expect(decoded.isValid, isTrue);
+    });
+
+    test('keeps the sub-page flag off every other route', () {
+      // The flag only means something behind the shared entry: a snapshot written
+      // by a newer build, or edited by hand, must not turn another page into the
+      // wallpaper one.
+      final decoded = SessionRestoreSnapshot.tryFromJsonString('{"route":"${CollectionPage.routeName}","rangeWallpaper":true}');
+
+      expect(decoded?.rangeWallpaper, isFalse);
+    });
+
+    test('round-trips the wallpaper page over the page it was opened from', () {
+      const snapshot = SessionRestoreSnapshot(
+        routeName: GroupedWallpaperPage.routeName,
+        baseRouteName: VisibleRangePage.routeName,
+      );
+
+      final decoded = SessionRestoreSnapshot.tryFromJsonString(snapshot.toJsonString());
+      expect(decoded, isNotNull);
+      expect(decoded!.routeName, GroupedWallpaperPage.routeName);
+      expect(decoded.baseRouteName, VisibleRangePage.routeName);
+      expect(decoded.isValid, isTrue);
     });
   });
 

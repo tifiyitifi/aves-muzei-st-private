@@ -1,3 +1,4 @@
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
@@ -18,6 +19,7 @@ const Set<String> restorableSessionRoutes = {
   MapPage.routeName,
   MuzeiWallpaperPage.routeName,
   VisibleRangePage.routeName,
+  GroupedWallpaperPage.routeName,
 };
 
 /// Restorable pages that are normally pushed over another page.
@@ -26,4 +28,9 @@ const Set<String> restorableSessionRoutes = {
 /// back to, so the snapshot also records the page it was opened from.
 const Set<String> pushedRestorableSessionRoutes = {
   MuzeiWallpaperPage.routeName,
+  // The wallpaper page is always opened over another page: its own bottom-bar
+  // entry pushes it, and in the shared mode the range shell renders it behind
+  // the range entry. Without the base, restoring it would have no page to return
+  // to, and the snapshot would only remember the page underneath instead.
+  GroupedWallpaperPage.routeName,
 };

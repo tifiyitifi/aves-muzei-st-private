@@ -1,6 +1,8 @@
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/session_restore/session_restore_plan.dart';
 import 'package:aves/features/session_restore/session_restore_snapshot.dart';
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
@@ -120,6 +122,44 @@ void main() {
 
       expect(plan.routeName, CollectionPage.routeName);
       expect(plan.baseRouteName, isNull);
+    });
+
+    test('restores the wallpaper page over the page it was opened from', () {
+      final plan = planSessionRestore(
+        snapshot(route: GroupedWallpaperPage.routeName, baseRoute: VisibleRangePage.routeName),
+        homeRouteName: CollectionPage.routeName,
+      );
+
+      expect(plan.routeName, GroupedWallpaperPage.routeName);
+      expect(plan.filters, isNull);
+      expect(plan.baseRouteName, VisibleRangePage.routeName);
+      expect(plan.baseFilters, isNull);
+      // The wallpaper page is its own route, so the shared entry flag means
+      // nothing here.
+      expect(plan.rangeWallpaper, isFalse);
+    });
+
+    test('stands the home page in under the wallpaper page when no base was saved', () {
+      final plan = planSessionRestore(
+        snapshot(route: GroupedWallpaperPage.routeName),
+        homeRouteName: AlbumListPage.routeName,
+      );
+
+      expect(plan.routeName, GroupedWallpaperPage.routeName);
+      expect(plan.baseRouteName, AlbumListPage.routeName);
+    });
+
+    test('carries the shared entry sub-page for the range route only', () {
+      const range = SessionRestoreSnapshot(routeName: VisibleRangePage.routeName, rangeWallpaper: true);
+      final shared = planSessionRestore(range, homeRouteName: CollectionPage.routeName);
+
+      expect(shared.routeName, VisibleRangePage.routeName);
+      expect(shared.rangeWallpaper, isTrue);
+
+      // The same flag under another route is stale and must not reopen a page the
+      // user never had.
+      const other = SessionRestoreSnapshot(routeName: MapPage.routeName, rangeWallpaper: true);
+      expect(planSessionRestore(other, homeRouteName: CollectionPage.routeName).rangeWallpaper, isFalse);
     });
   });
 }

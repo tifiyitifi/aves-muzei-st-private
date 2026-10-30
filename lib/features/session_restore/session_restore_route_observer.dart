@@ -15,7 +15,8 @@ class SessionRestoreRouteObserver extends NavigatorObserver {
   }
 
   /// The page the current restorable route was pushed over, when that route is
-  /// one of [pushedRestorableSessionRoutes] (the wallpaper preview).
+  /// one of [pushedRestorableSessionRoutes] (the wallpaper preview, the wallpaper
+  /// groups page).
   String? get currentRestorableBaseRoute {
     final index = _topRestorableIndex;
     if (index < 0) return null;

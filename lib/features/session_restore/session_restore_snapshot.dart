@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:aves/features/session_restore/session_restore_routes.dart';
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:flutter/foundation.dart';
 
@@ -10,21 +11,27 @@ import 'package:flutter/foundation.dart';
 /// or an external intent is never restored: those belong to a task that no
 /// longer exists.
 ///
-/// A page that was pushed over another one (the wallpaper preview) also records
-/// that base page: restoring it alone would leave the navigator with nothing to
-/// go back to.
+/// A page that was pushed over another one (the wallpaper preview, the wallpaper
+/// groups) also records that base page: restoring it alone would leave the
+/// navigator with nothing to go back to.
+///
+/// [rangeWallpaper] covers the shared bottom-bar entry, whose two pages live
+/// behind one route: the range route is restored either way, and the flag is what
+/// brings back the wallpaper page it was showing.
 @immutable
 class SessionRestoreSnapshot {
   final String routeName;
   final List<String> filtersJson;
   final String? baseRouteName;
   final List<String> baseFiltersJson;
+  final bool rangeWallpaper;
 
   const new({
     required this.routeName,
     this.filtersJson = const [],
     this.baseRouteName,
     this.baseFiltersJson = const [],
+    this.rangeWallpaper = false,
   });
 
   Set<CollectionFilter> get filters => filtersJson.map(CollectionFilter.fromJson).nonNulls.toSet();
@@ -40,6 +47,7 @@ class SessionRestoreSnapshot {
     if (filtersJson.isNotEmpty) 'filters': filtersJson,
     if (baseRouteName != null) 'baseRoute': baseRouteName,
     if (baseFiltersJson.isNotEmpty) 'baseFilters': baseFiltersJson,
+    if (rangeWallpaper) 'rangeWallpaper': true,
   };
 
   String toJsonString() => jsonEncode(toJsonMap());
@@ -59,11 +67,15 @@ class SessionRestoreSnapshot {
       final baseRoute = rawBaseRoute is String && pushedRestorableSessionRoutes.contains(route) && rawBaseRoute != route && restorableSessionRoutes.contains(rawBaseRoute) ? rawBaseRoute : null;
       final rawBaseFilters = decoded['baseFilters'];
       final baseFilters = baseRoute != null && rawBaseFilters is List ? rawBaseFilters.whereType<String>().toList() : <String>[];
+      // The flag belongs to the shared entry only: with any other route there is
+      // no sub-page to bring back, so a stale value is ignored.
+      final rangeWallpaper = decoded['rangeWallpaper'] == true && route == VisibleRangePage.routeName;
       return SessionRestoreSnapshot(
         routeName: route,
         filtersJson: filters,
         baseRouteName: baseRoute,
         baseFiltersJson: baseFilters,
+        rangeWallpaper: rangeWallpaper,
       );
     } on FormatException {
       // Persisted data may be from an interrupted write; the caller falls back.

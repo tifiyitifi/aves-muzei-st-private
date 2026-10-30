@@ -176,6 +176,10 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           _initialFilters = plan.filters;
           _restoredBaseRouteName = plan.baseRouteName;
           _restoredBaseFilters = plan.baseFilters;
+          // The shared entry hosts two pages behind the range route, so the
+          // snapshot carries which one it was showing. A separate entry ignores
+          // the value: its range entry always renders the range page.
+          if (plan.rangeWallpaper) visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
         }
       }
 

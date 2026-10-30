@@ -13,6 +13,8 @@ import 'package:aves/features/session_restore/session_restore_route_observer.dar
 import 'package:aves/features/session_restore/session_restore_snapshot.dart';
 import 'package:aves/features/session_restore/session_restore_store.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
+import 'package:aves/features/visible_range/view/visible_range_destination.dart';
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/l10n/l10n.dart';
 import 'package:aves/model/app/intent.dart';
@@ -424,6 +426,9 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
     // The media set below a pushed page is still mounted, so its filters are
     // already recorded; restoring them brings back the exact previous view.
     final baseFilters = baseRoute == CollectionPage.routeName ? sessionRestoreCollectionState.filters : null;
+    // One route hosts the range page and the wallpaper page in the shared mode,
+    // so the route alone does not say which one the user was looking at.
+    final rangeWallpaper = route == VisibleRangePage.routeName && visibleRangeDestination.value == VisibleRangeDestination.wallpaper;
     unawaited(
       sessionRestoreStore.save(
         SessionRestoreSnapshot(
@@ -431,6 +436,7 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
           filtersJson: [for (final filter in filters ?? const <CollectionFilter>{}) filter.toJsonString()],
           baseRouteName: baseRoute,
           baseFiltersJson: [for (final filter in baseFilters ?? const <CollectionFilter>{}) filter.toJsonString()],
+          rangeWallpaper: rangeWallpaper,
         ),
       ),
     );

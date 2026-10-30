@@ -50,6 +50,36 @@ String visibleRangePresetLabel(BuildContext context, String key) {
   };
 }
 
+/// The range part of a group card: the base name when it is not the group's own
+/// name, followed by how many extra restrictions apply.
+///
+/// A bundled group's base is spelled exactly like the group (`Pictures`), so
+/// repeating it would take the card's whole line and push the image count out;
+/// only a range that actually differs (a renamed group, or another base) is
+/// named. Supplements never count, because they never narrow the result.
+String visibleRangeGroupSummary(BuildContext context, {required VisibleRange? range, required String groupName, required bool isNone}) {
+  final l10n = context.l10n;
+  if (range == null) return '';
+  final restrictions = range.activeRulesOf(VisibleRangeRuleKind.restriction).length;
+  // An empty, unused base is 「no base」, not a base called "All images": group 3
+  // stores exactly that, and naming it would only take the card's line.
+  final showBase = !isNone && !range.isBaseUnrestricted && range.baseName != groupName;
+  if (showBase) {
+    final base = _baseLabel(context, range);
+    return restrictions == 0 ? base : l10n.wallpaperGroupRangeRules(base, restrictions);
+  }
+  return restrictions == 0 ? '' : l10n.wallpaperGroupRangeRestrictions(restrictions);
+}
+
+/// A range's base name: its bundled or user name, else its filters' labels.
+String _baseLabel(BuildContext context, VisibleRange range) {
+  final name = range.baseName;
+  if (name.startsWith('@')) return visibleRangePresetLabel(context, name.substring(1));
+  if (name.isNotEmpty) return name;
+  final filters = visibleRangeFilterLabels(context, range.baseFilters);
+  return filters.isEmpty ? context.l10n.wallpaperGroupAllImages : filters;
+}
+
 /// The label of a rule: a localized default name, the user's rename, or the
 /// filters' own labels when the rule was never named.
 String visibleRangeRuleLabel(BuildContext context, VisibleRangeRule rule) {

@@ -1,4 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
+import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:material_ui/material_ui.dart';
@@ -36,9 +37,15 @@ class WallpaperGroupFilter extends CollectionFilter {
 
   /// The group whose range this page shows.
   final bool selected;
-
   /// Number of images the group's range resolves to, when known.
   final int? count;
+
+  /// The group's saved range, shown as a one-line summary on the card.
+  ///
+  /// A wallpaper can look empty because of a restriction three screens deep, so
+  /// the list states the range at a glance instead of leaving it to the page the
+  /// user would have to open.
+  final VisibleRange? range;
 
   const new({
     required this.groupId,
@@ -50,6 +57,7 @@ class WallpaperGroupFilter extends CollectionFilter {
     this.stopped = false,
     this.selected = false,
     this.count,
+    this.range,
     super.reversed = false,
   });
 
@@ -85,5 +93,5 @@ class WallpaperGroupFilter extends CollectionFilter {
       };
 
   @override
-  List<Object?> get props => [groupId, number, name, description, enabled, playing, stopped, selected, count, reversed];
+  List<Object?> get props => [groupId, number, name, description, enabled, playing, stopped, selected, count, range, reversed];
 }

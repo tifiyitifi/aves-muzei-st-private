@@ -1960,6 +1960,7 @@
   "groupedWallpaperViewMissing": "That photo is no longer in the library.",
   "groupedWallpaperViewOpenGroups": "Open wallpaper groups",
   "groupedWallpaperViewOpenInGallery": "Open in gallery",
+  "groupedWallpaperViewWholeGroup": "View whole group",
   "groupedWallpaperViewShare": "Share",
   "groupedWallpaperViewInfo": "{group} · {count, plural, =0{no photos} =1{1 photo} other{{count} photos}}",
   "@groupedWallpaperViewInfo": {
@@ -1993,6 +1994,56 @@
   "wallpaperGroupAvailable": "Available wallpaper",
   "wallpaperGroupAvailableBrowsingRestricted": "Available wallpaper (browsing restricted)",
   "wallpaperGroupAvailableBrowsingTooltip": "The group cards count what the wallpaper can use. Browsing also applies the gallery visible range, so the media set may show fewer photos or none.",
+  "wallpaperGroupRangeRules": "{base} +{count}",
+  "@wallpaperGroupRangeRules": {
+    "description": "A wallpaper group's base range followed by how many extra restrictions apply",
+    "placeholders": {
+      "base": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "wallpaperGroupRangeRestrictions": "+{count}",
+  "@wallpaperGroupRangeRestrictions": {
+    "description": "How many extra restrictions narrow a wallpaper group",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "wallpaperGroupCount": "{count, plural, =1{1 image} other{{count} images}}",
+  "@wallpaperGroupCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "wallpaperGroupCountShort": "{count}",
+  "@wallpaperGroupCountShort": {
+    "description": "Image count alone, for a group card too narrow to spell the unit",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "wallpaperGroupRangeLine": "{range} · {count, plural, =1{1 image} other{{count} images}}",
+  "@wallpaperGroupRangeLine": {
+    "description": "Group card subtitle: the range summary and how many images the wallpaper may use",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "groupedWallpaperScopeHidden": "The gallery visible range hides this group's photos",
   "groupedWallpaperScopeHiddenCount": "{count, plural, =1{The gallery visible range hides the 1 photo in this group} other{The gallery visible range hides {count} photos in this group}}",
   "@groupedWallpaperScopeHiddenCount": {

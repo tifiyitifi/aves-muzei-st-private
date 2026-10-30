@@ -138,6 +138,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   final Set<String> _pendingStats = {};
   Map<String, VisibleRangeCandidateStats> _stats = const {};
   Map<String, Set<CollectionFilter>> _groupFilters = const {};
+
+  /// Each group's saved range, for the card's one-line summary.
+  Map<String, VisibleRange?> _groupRanges = const {};
   VisibleRangeCandidateStats? _resultStats;
   int _resultToken = 0;
 
@@ -396,15 +399,23 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   /// The media set behind every group card, so a card without a note can show
   /// its image count. Group 0 is every image.
+  ///
+  /// The ranges are kept too: the card states the range in one line, since a
+  /// restriction deep in the page is what usually explains an empty wallpaper.
   Future<void> _refreshGroupFilters() async {
     final next = <String, Set<CollectionFilter>>{wallpaperGroupNoneId: {MimeFilter.image}};
+    final ranges = <String, VisibleRange?>{wallpaperGroupNoneId: null};
     for (final group in _controller.groups) {
       final range = await _controller.groupController.groupRange(group.id);
       final filter = wallpaperMediaSetFilter(range);
       next[group.id] = filter == null ? {MimeFilter.image} : {filter};
+      ranges[group.id] = range;
     }
     if (!mounted) return;
-    setState(() => _groupFilters = next);
+    setState(() {
+      _groupFilters = next;
+      _groupRanges = ranges;
+    });
     await _refreshStats();
   }
 
@@ -711,6 +722,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       stopped: group == null && !wallpaperEngineLink.isPlaying,
       selected: _controller.selectedGroupId == group?.id,
       count: filters == null ? null : _stats[filterFingerprint(filters)]?.count,
+      range: _groupRanges[groupId],
     );
   }
 

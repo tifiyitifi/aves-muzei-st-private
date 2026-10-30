@@ -2,15 +2,22 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
+import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_cover.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/filters/mime.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/aves_app.dart';
+import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
+import 'package:aves/widgets/navigation/nav_item.dart';
 import 'package:aves/widgets/viewer/entry_viewer_page.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -39,6 +46,7 @@ class GroupedWallpaperViewPage extends StatefulWidget {
 enum _ViewAction {
   openGroups,
   openInGallery,
+  viewWholeGroup,
   share,
   history,
 }
@@ -79,7 +87,10 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
   }
 
   Future<void> _load() async {
-    final state = await wallpaperEngineLink.readState();
+    // `current` may name another slot than the frame the renderer painted (it
+    // promotes on its own, and a reload keeps the slot it had); the entry, the
+    // title and the aspect ratio below must all describe the photo on screen.
+    final state = await wallpaperEngineLink.readDisplayedState();
     // The view shows the wallpaper's own pixels, effects included; the entry
     // still points at the original photo for "open in gallery" and share.
     final photo = await wallpaperEngineLink.currentEffectPhotoPath();
@@ -113,15 +124,67 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
   Future<void> _openInGallery() async {
     final entry = _entry;
     if (entry == null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.groupedWallpaperViewMissing)));
+      _showMissing();
       return;
     }
-    await Navigator.of(context).push(
+    await _pushImmersive(
       MaterialPageRoute(
         settings: const RouteSettings(name: EntryViewerPage.routeName),
         builder: (_) => EntryViewerPage(initialEntry: entry),
       ),
     );
+  }
+
+  /// Opens the whole group's media set, not just this photo.
+  ///
+  /// The range is the group's own, so this is what the wallpaper may draw from;
+  /// the gallery's visible range still joins it, because browsing says so
+  /// everywhere else too (the media set explains an empty result).
+  Future<void> _openWholeGroup() async {
+    final groupId = _state?.groupId;
+    if (groupId == null || groupId.isEmpty || groupId == wallpaperGroupNoneId) return;
+    final range = await wallpaperGroupController.groupRange(groupId);
+    if (!mounted) return;
+    final mediaSet = wallpaperMediaSetFilter(range);
+    _setSystemUiVisible(true);
+    await AvesNavItem(route: CollectionPage.routeName, filters: <CollectionFilter>{mediaSet ?? MimeFilter.image}).goTo(context, topLevel: false);
+    if (!mounted) return;
+    _setSystemUiVisible(false);
+  }
+
+  /// Hands the photo to another app through the system chooser.
+  ///
+  /// A long press is the direct gesture for "I want to do something else with
+  /// this photo", like the viewer's own long press, so it bypasses a menu of
+  /// our own.
+  Future<void> _openWith() async {
+    final entry = _entry;
+    if (entry == null) {
+      _showMissing();
+      return;
+    }
+    // The chooser is a system surface: it must not appear under hidden bars.
+    _setSystemUiVisible(true);
+    await appService.open(entry.uri, entry.mimeType, forceChooser: true);
+    if (!mounted) return;
+    _setSystemUiVisible(false);
+  }
+
+  void _showMissing() {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.groupedWallpaperViewMissing)));
+  }
+
+  /// Pushes a normal page over this immersive one, then takes the bars away
+  /// again.
+  ///
+  /// This page hides the system bars on entry, so a pushed page would draw its
+  /// app bar under the status bar. The bars come back for the pushed page and
+  /// are hidden again only when the user returns here.
+  Future<void> _pushImmersive(Route<void> route) async {
+    _setSystemUiVisible(true);
+    await Navigator.of(context).push(route);
+    if (!mounted) return;
+    _setSystemUiVisible(false);
   }
 
   /// Shares the photo through the app's existing share channel.
@@ -144,6 +207,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
         } else {
           // Defensive: a view without its group page below replaces itself, so
           // back from the group page never returns to a stale artwork.
+          _setSystemUiVisible(true);
           await navigator.pushReplacement(
             MaterialPageRoute(
               settings: const RouteSettings(name: GroupedWallpaperPage.routeName),
@@ -153,10 +217,12 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
         }
       case _ViewAction.openInGallery:
         await _openInGallery();
+      case _ViewAction.viewWholeGroup:
+        await _openWholeGroup();
       case _ViewAction.share:
         await _share();
       case _ViewAction.history:
-        await Navigator.of(context).push(
+        await _pushImmersive(
           MaterialPageRoute(
             settings: const RouteSettings(name: GroupedWallpaperHistoryPage.routeName),
             builder: (_) => GroupedWallpaperHistoryPage(groupId: _state?.groupId),
@@ -170,7 +236,8 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
     final l10n = context.l10n;
     final state = _state;
     final entry = _entry;
-    final info = state == null ? '' : l10n.groupedWallpaperViewInfo(state.groupName, state.count);
+    final title = state?.entryTitle ?? '';
+    final canOpenGroup = state != null && state.groupId.isNotEmpty && state.groupId != wallpaperGroupNoneId;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -198,6 +265,9 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => setState(() => _chromeVisible = !_chromeVisible),
+                  // The direct gesture for "do something else with this photo",
+                  // like the viewer's own long press: the chooser, no menu.
+                  onLongPress: () => unawaited(_openWith()),
                   child: InteractiveViewer(
                     transformationController: _viewport,
                     minScale: 1,
@@ -276,26 +346,19 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                info,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                  color: Colors.white70,
-                                  shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
-                                ),
-                              ),
-                              if (state != null && state.entryTitle.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 2),
-                                  child: Text(
-                                    state.entryTitle,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      color: Colors.white,
-                                      shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
-                                    ),
+                              // One line, Muzei's title slot: the photo's own
+                              // name (an XMP title when it has one, else the file
+                              // name). The group's range and count belong to the
+                              // group list, not to the photo.
+                              if (title.isNotEmpty)
+                                Text(
+                                  title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
                                   ),
                                 ),
                             ],
@@ -315,6 +378,11 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
                               enabled: entry != null,
                               child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
                             ),
+                            if (canOpenGroup)
+                              PopupMenuItem(
+                                value: _ViewAction.viewWholeGroup,
+                                child: _menuRow(AIcons.allCollection, l10n.groupedWallpaperViewWholeGroup),
+                              ),
                             PopupMenuItem(
                               value: _ViewAction.share,
                               enabled: entry != null,

@@ -2,7 +2,7 @@ import 'dart:math';
 
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_filter.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
-import 'package:aves/model/settings/settings.dart';
+import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/filter_grids/common/list_details_theme.dart';
@@ -10,14 +10,18 @@ import 'package:aves_model/aves_model.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
-/// One wallpaper group on the page: a number, a name, a note and its state.
+/// One wallpaper group on the page: a number, a name, its range and its state.
 ///
-/// The lamp sits before the note of an enabled group, like the check icon on a
-/// range tile sits before its count; the play icon marks the group the live
-/// wallpaper is actually playing, and the stop icon sits on group 0 while
-/// nothing is playing. Both can be on at once. A disabled group stays readable
-/// but dimmed, shows no lamp, and the note falls back to the image count.
+/// The subtitle is two lines: the range summary with the available count, then
+/// the user's note when there is one. The lamp sits before the summary of an
+/// enabled group, like the check icon on a range tile sits before its count; the
+/// play icon marks the group the live wallpaper is actually playing, and the stop
+/// icon sits on group 0 while nothing is playing. Both can be on at once. A
+/// disabled group stays readable but dimmed and shows no lamp.
 class WallpaperGroupTile extends StatelessWidget {
+  /// Below this width the card cannot hold a range line and a count.
+  static const double _compactWidth = 120;
+
   final WallpaperGroupFilter filter;
   final TileLayout tileLayout;
   final Size tileSize;
@@ -85,7 +89,9 @@ class WallpaperGroupTile extends StatelessWidget {
                 children: [
                   Text(_label(context), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.titleStyle),
                   const SizedBox(height: 2),
-                  _buildSubtitleRow(context, theme.captionStyle.color),
+                  // A list row only has room for the note when the theme's own
+                  // measurement says a second caption line fits.
+                  _buildSubtitleRow(context, theme.captionStyle.color, showNote: theme.showDate),
                 ],
               ),
             ),
@@ -122,7 +128,10 @@ class WallpaperGroupTile extends StatelessWidget {
               children: [
                 Text(_label(context), maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.onSurface)),
                 const SizedBox(height: 2),
-                _buildSubtitleRow(context, colors.onSurfaceVariant),
+                // A grid5 card is ~63 dp wide: it shows the count alone, since the
+                // range line would push the number off the card, while a wider
+                // card or a list row has room for both.
+                _buildSubtitleRow(context, colors.onSurfaceVariant, compact: tileSize.width < _compactWidth),
               ],
             ),
           ),
@@ -166,29 +175,49 @@ class WallpaperGroupTile extends StatelessWidget {
     );
   }
 
-  Widget _buildSubtitleRow(BuildContext context, Color? color) {
+  Widget _buildSubtitleRow(BuildContext context, Color? color, {bool showNote = true, bool compact = false}) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final subtitle = _subtitle(context);
+    final themeColors = theme.textTheme.bodySmall?.copyWith(color: color ?? colors.onSurfaceVariant);
+    final rangeLine = _rangeLine(context, compact: compact);
+    final note = filter.description;
     final showLamp = filter.enabled && !filter.isNone;
-    if (subtitle == null && !showLamp) return const SizedBox.shrink();
-    return Row(
+    final showNoteLine = showNote && note.isNotEmpty;
+    if (rangeLine == null && !showLamp && !showNoteLine) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showLamp) ...[
-          Tooltip(
-            message: context.l10n.wallpaperGroupEnabled,
-            child: Icon(AIcons.visibleRangeActive, size: 14, color: colors.primary),
+        if (rangeLine != null || showLamp)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showLamp) ...[
+                Tooltip(
+                  message: context.l10n.wallpaperGroupEnabled,
+                  child: Icon(AIcons.visibleRangeActive, size: 14, color: colors.primary),
+                ),
+                const SizedBox(width: 4),
+              ],
+              if (rangeLine != null)
+                Flexible(
+                  child: Text(
+                    rangeLine,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: themeColors,
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(width: 4),
-        ],
-        if (subtitle != null)
-          Flexible(
+        if (showNoteLine)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
             child: Text(
-              subtitle,
+              note,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(color: color ?? colors.onSurfaceVariant),
+              style: themeColors?.copyWith(color: colors.onSurfaceVariant.withValues(alpha: .8)),
             ),
           ),
       ],
@@ -218,11 +247,21 @@ class WallpaperGroupTile extends StatelessWidget {
 
   String _label(BuildContext context) => wallpaperGroupNameOf(context, name: filter.name, number: filter.number, isNone: filter.isNone);
 
-  /// The group's note, else how many images its range resolves to.
-  String? _subtitle(BuildContext context) {
-    if (filter.description.isNotEmpty) return filter.description;
+  /// The range summary with the available count, e.g. `+1 · 767 images`.
+  ///
+  /// The count is what the live wallpaper may use, not what browsing shows: the
+  /// gallery range joins browsing only, and the availability label says so. The
+  /// base name is only repeated when it differs from the group's own name, which
+  /// leaves the count on the line instead of pushing it off a narrow card.
+  ///
+  /// [compact] is for a grid5 tile, ~63 dp wide: there only the count fits, and
+  /// the range would cut the number off with an ellipsis.
+  String? _rangeLine(BuildContext context, {bool compact = false}) {
     final count = filter.count;
-    if (count == null) return null;
-    return settings.avesLocale.decimalNumberFormat().format(count);
+    if (compact) return count == null ? null : context.l10n.wallpaperGroupCountShort(count);
+    final l10n = context.l10n;
+    final summary = visibleRangeGroupSummary(context, range: filter.range, groupName: filter.name, isNone: filter.isNone);
+    if (count == null) return summary.isEmpty ? null : summary;
+    return summary.isEmpty ? l10n.wallpaperGroupCount(count) : l10n.wallpaperGroupRangeLine(summary, count);
   }
 }

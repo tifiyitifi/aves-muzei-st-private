@@ -255,4 +255,45 @@ void main() {
     expect(VisibleRangeGate.overlay, isNull);
     expect(VisibleRangeGate.filter, PathFilter('/a'));
   });
+
+  group('releasing a page scope', () {
+    test('is deferred and only clears the scope it owns', () async {
+      final group = PathFilter('/b');
+      final owner = VisibleRangeGate.claimWallpaperScope(VisibleRangeBrowsingOverlay(groupFilter: group));
+      expect(VisibleRangeGate.overlay?.groupFilter, group);
+
+      final released = VisibleRangeGate.releaseWallpaperScope(owner);
+      // The clear must wait for the next microtask: a page disposes with the
+      // widget tree locked, and notifying listeners there throws.
+      expect(VisibleRangeGate.overlay?.groupFilter, group);
+      expect(await released, isTrue);
+      expect(VisibleRangeGate.overlay, isNull);
+    });
+
+    test('leaves the scope a newer page claimed, even with an equal value', () async {
+      final group = PathFilter('/b');
+      // The notifier keeps the first instance when the value is equal, so an
+      // identity check against the value would clear the newer page's scope.
+      final first = VisibleRangeGate.claimWallpaperScope(VisibleRangeBrowsingOverlay(groupFilter: group));
+      final second = VisibleRangeGate.claimWallpaperScope(VisibleRangeBrowsingOverlay(groupFilter: group));
+
+      expect(await VisibleRangeGate.releaseWallpaperScope(first), isFalse);
+      expect(VisibleRangeGate.overlay?.groupFilter, group);
+
+      // The stale page may no longer publish over the newer one either.
+      expect(VisibleRangeGate.publishWallpaperScope(first, const VisibleRangeBrowsingOverlay()), isFalse);
+      expect(VisibleRangeGate.overlay?.groupFilter, group);
+
+      expect(await VisibleRangeGate.releaseWallpaperScope(second), isTrue);
+      expect(VisibleRangeGate.overlay, isNull);
+    });
+
+    test('releasing nothing is a no-op', () async {
+      final group = PathFilter('/b');
+      VisibleRangeGate.claimWallpaperScope(VisibleRangeBrowsingOverlay(groupFilter: group));
+
+      expect(await VisibleRangeGate.releaseWallpaperScope(null), isFalse);
+      expect(VisibleRangeGate.overlay?.groupFilter, group);
+    });
+  });
 }

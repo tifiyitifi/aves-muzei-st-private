@@ -173,6 +173,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// switch instead of keeping a copy the page would not see.
   bool get _gallerySuspended => VisibleRangeGate.overlay?.gallerySuspended ?? false;
 
+  /// The browsing overlay this page claimed, or null before the first sync.
+  ///
+  /// Releasing by token (not by value) is what keeps a closed page from clearing
+  /// the scope a newer page published with the same group.
+  Object? _scopeOwner;
+
   /// What the live wallpaper last baked, read when the page opens or resumes.
   GroupedWallpaperState? _engineState;
 
@@ -213,10 +219,18 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     // the page is open (and to any page pushed over it) and is dropped here, so
     // the rest of the app returns to the gallery range. The live wallpaper reads
     // the saved group range itself and is never affected. The listeners go first:
-    // clearing the scope notifies, and a disposed page must not react.
+    // clearing the scope notifies, and a disposed page must not react. The clear
+    // is deferred, because `dispose` runs with the widget tree locked.
     VisibleRangeGate.overlayListenable.removeListener(_onBrowseScopeChanged);
     visibleRangeController.removeListener(_onBrowseScopeChanged);
-    VisibleRangeGate.setWallpaperScope(null);
+    final groupId = _controller.selectedGroupId;
+    final released = VisibleRangeGate.releaseWallpaperScope(_scopeOwner);
+    _scopeOwner = null;
+    unawaited(
+      released.then((applied) {
+        groupedWallpaperLog.i('scope.release group=$groupId stillCurrent=$applied');
+      }),
+    );
     _controller.removeListener(_onControllerChanged);
     _controller.dispose();
     _selection.dispose();
@@ -346,9 +360,17 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// The suspension flag is read back from the overlay so a strip on a page
   /// pushed over this one keeps its choice when the group changes here.
   void _syncBrowsingOverlay() {
-    VisibleRangeGate.overlay = VisibleRangeBrowsingOverlay(
+    final next = VisibleRangeBrowsingOverlay(
       groupFilter: _controller.range?.resolve(),
       gallerySuspended: _gallerySuspended,
+    );
+    final owner = _scopeOwner;
+    final applied = owner == null || VisibleRangeGate.publishWallpaperScope(owner, next);
+    _scopeOwner ??= VisibleRangeGate.claimWallpaperScope(next);
+    if (!applied) return;
+    final gallery = visibleRangeController.gallery;
+    groupedWallpaperLog.i(
+      'scope.publish group=${_controller.selectedGroupId} gallery=${gallery.isRestricted} locked=${gallery.locked} suspended=${next.gallerySuspended} filter=${next.groupFilter?.key}',
     );
   }
 

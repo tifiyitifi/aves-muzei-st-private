@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/container/set_and.dart';
@@ -66,6 +68,61 @@ abstract final class VisibleRangeGate {
   static VisibleRangeBrowsingOverlay? get overlay => _overlay.value;
 
   static set overlay(VisibleRangeBrowsingOverlay? value) => _overlay.value = value;
+
+  /// Stands for "no page owns the overlay", so a release can be a no-op without
+  /// a nullable comparison against a token someone else holds.
+  static final Object _unowned = Object();
+
+  /// Identifies the page currently allowed to publish or release the overlay.
+  ///
+  /// Comparing values is not enough: a replacement page often publishes the very
+  /// same group, and the notifier keeps the older, equal instance. An identity
+  /// check would then let the closed page clear the new page's scope. The token
+  /// is therefore per page, not per publish.
+  static Object _overlayOwner = _unowned;
+
+  /// Claims the overlay for a page and publishes its first scope.
+  ///
+  /// The returned token is the only thing that page may pass back to
+  /// [releaseWallpaperScope]. Claiming while another page owns it takes over:
+  /// the newest page is always the one describing the screen.
+  static Object claimWallpaperScope(VisibleRangeBrowsingOverlay? value) {
+    final owner = Object();
+    _overlayOwner = owner;
+    overlay = value;
+    return owner;
+  }
+
+  /// Publishes the scope of the page that owns the overlay.
+  ///
+  /// Returns false when a newer page has taken over, in which case the caller's
+  /// group no longer describes the screen and must not overwrite it.
+  static bool publishWallpaperScope(Object owner, VisibleRangeBrowsingOverlay? value) {
+    if (!identical(_overlayOwner, owner)) return false;
+    overlay = value;
+    return true;
+  }
+
+  /// Releases the overlay a page owned, without touching a newer page's scope.
+  ///
+  /// `State.dispose` runs while the framework finalizes the tree: notifying
+  /// listeners there throws "setState() called when widget tree was locked" and
+  /// breaks every `ListenableBuilder` in the chain, so the clear is deferred to
+  /// a microtask. The future completes with whether this release applied.
+  static Future<bool> releaseWallpaperScope(Object? owner) {
+    if (owner == null) return Future.value(false);
+    final completer = Completer<bool>();
+    scheduleMicrotask(() {
+      if (!identical(_overlayOwner, owner)) {
+        completer.complete(false);
+        return;
+      }
+      _overlayOwner = _unowned;
+      overlay = null;
+      completer.complete(true);
+    });
+    return completer.future;
+  }
 
   /// Replaces the overlay with the group scope alone, dropping the page-local
   /// gallery suspension.

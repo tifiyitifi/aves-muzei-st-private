@@ -177,6 +177,8 @@ object GroupedWallpaperNotification {
         // The limit greys the "previous" button, so it is part of what the bar
         // shows: without it a changed limit would not re-post the bar.
         append(state.historyLimit).append('|')
+        // The lock greys the group buttons, so it is part of what the bar shows.
+        append(state.switchLocked).append('|')
         append(usesGroupActions(context)).append('|')
         append(slot?.id ?: -1).append('|')
         append(slot?.entryId ?: -1).append('|')
@@ -482,12 +484,14 @@ object GroupedWallpaperNotification {
             R.drawable.baseline_arrow_downward_24,
             ACTION_PREVIOUS_GROUP,
             context.getString(R.string.grouped_wallpaper_action_previous_group),
+            enabled = !state.switchLocked,
         )
         val nextGroup = NotificationButton(
             R.id.grouped_notification_button_2,
             R.drawable.baseline_arrow_upward_24,
             ACTION_NEXT_GROUP,
             context.getString(R.string.grouped_wallpaper_action_next_group),
+            enabled = !state.switchLocked,
         )
         val freeze = NotificationButton(
             R.id.grouped_notification_button_3,
@@ -516,12 +520,14 @@ object GroupedWallpaperNotification {
                 R.drawable.baseline_arrow_downward_24,
                 ACTION_PREVIOUS_GROUP,
                 context.getString(R.string.grouped_wallpaper_action_previous_group),
+                enabled = !state.switchLocked,
             ),
             NotificationButton(
                 R.id.grouped_notification_button_3,
                 R.drawable.baseline_arrow_upward_24,
                 ACTION_NEXT_GROUP,
                 context.getString(R.string.grouped_wallpaper_action_next_group),
+                enabled = !state.switchLocked,
             ),
             NotificationButton(
                 R.id.grouped_notification_button_4,

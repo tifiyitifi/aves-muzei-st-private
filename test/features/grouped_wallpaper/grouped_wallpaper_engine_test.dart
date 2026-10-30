@@ -43,6 +43,7 @@ void main() {
   late GroupedWallpaperStateStore store;
   late WallpaperEngineLink link;
   late GroupedWallpaperEngine engine;
+  late bool groupSwitchLocked;
 
   AvesEntry entry(int id, {int width = 300, int height = 100}) => AvesEntry(
         id: id,
@@ -83,6 +84,7 @@ void main() {
     historyRecorder = _FakeHistoryRecorder();
     store = GroupedWallpaperStateStore(dir);
     link = WallpaperEngineLink();
+    groupSwitchLocked = false;
     engine = GroupedWallpaperEngine(
       platform: platform,
       baker: baker,
@@ -93,6 +95,7 @@ void main() {
       history: historyRecorder,
       targetSize: () async => platform.size,
       now: () => 1234,
+      groupSwitchLocked: () => groupSwitchLocked,
     );
     await engine.attach();
   });
@@ -992,6 +995,52 @@ void main() {
 
     await engine.handleCommand('resume');
     expect((await store.readState())!.paused, isFalse);
+  });
+
+  test('a bake records the group-switch lock in the state', () async {
+    groupSwitchLocked = true;
+    serve(entries(2));
+
+    await engine.prepare();
+
+    expect((await store.readState())!.switchLocked, isTrue);
+  });
+
+  test('refreshLock records the group-switch lock without baking', () async {
+    serve(entries(12));
+    await engine.prepare();
+    final before = (await store.readState())!;
+    final bakes = baker.bakeCount;
+    expect(before.switchLocked, isFalse);
+
+    groupSwitchLocked = true;
+    await engine.refreshLock();
+
+    final after = (await store.readState())!;
+    expect(after.switchLocked, isTrue);
+    expect(after.entryId, before.entryId);
+    expect(baker.bakeCount, bakes);
+    expect(platform.notificationRefreshes, greaterThan(0));
+
+    // The same value writes nothing more.
+    final generation = after.generation;
+    await engine.refreshLock();
+    expect((await store.readState())!.generation, generation);
+  });
+
+  test('a locked group switch refuses the notification command', () async {
+    serve(entries(2));
+    await engine.prepare();
+    groupSwitchLocked = true;
+
+    await engine.handleCommand('nextGroup');
+    await engine.handleCommand('previousGroup');
+
+    expect(planStore.switchDeltas, isEmpty);
+
+    groupSwitchLocked = false;
+    await engine.handleCommand('nextGroup');
+    expect(planStore.switchDeltas, [1]);
   });
 
   test('an unknown notification command is ignored', () async {

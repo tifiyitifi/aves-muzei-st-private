@@ -300,6 +300,14 @@ class GroupedWallpaperState extends Equatable {
   /// button: with recording off the bar greys it out instead of asking the app.
   final int historyLimit;
 
+  /// Whether the group-switch lock is on, so the bar greys its group buttons.
+  ///
+  /// It travels with the state because the notification is built natively from
+  /// `state.json`: without the flag the bar would offer a switch the Dart side
+  /// must refuse. The Dart lock service refreshes it when the lock changes, and
+  /// every bake records the current value.
+  final bool switchLocked;
+
   final int bakedAt;
 
   const new({
@@ -325,6 +333,7 @@ class GroupedWallpaperState extends Equatable {
     this.surfaceHeight = 0,
     this.scrollEffect = false,
     this.historyLimit = GroupedWallpaperHistoryLimit.defaultLimit,
+    this.switchLocked = false,
     this.bakedAt = 0,
   });
 
@@ -389,6 +398,7 @@ class GroupedWallpaperState extends Equatable {
     int? surfaceHeight,
     bool? scrollEffect,
     int? historyLimit,
+    bool? switchLocked,
     int? bakedAt,
   }) => GroupedWallpaperState(
         version: version ?? this.version,
@@ -413,6 +423,7 @@ class GroupedWallpaperState extends Equatable {
         surfaceHeight: surfaceHeight ?? this.surfaceHeight,
         scrollEffect: scrollEffect ?? this.scrollEffect,
         historyLimit: historyLimit ?? this.historyLimit,
+        switchLocked: switchLocked ?? this.switchLocked,
         bakedAt: bakedAt ?? this.bakedAt,
       );
 
@@ -457,6 +468,7 @@ class GroupedWallpaperState extends Equatable {
         'surfaceHeight': surfaceHeight,
         'scrollEffect': scrollEffect,
         'historyLimit': historyLimit,
+        'switchLocked': switchLocked,
         'bakedAt': bakedAt,
       };
 
@@ -555,6 +567,7 @@ class GroupedWallpaperState extends Equatable {
       // Files written before the limit existed recorded everything, which is what
       // the store's default still does.
       historyLimit: GroupedWallpaperHistoryLimit.sanitize(_int(json['historyLimit']) ?? GroupedWallpaperHistoryLimit.defaultLimit),
+      switchLocked: json['switchLocked'] == true,
       bakedAt: _int(json['bakedAt']) ?? 0,
     );
     // `ready` without a frame is a contradiction: show the placeholder instead
@@ -576,7 +589,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, paused, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, paused, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, switchLocked, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

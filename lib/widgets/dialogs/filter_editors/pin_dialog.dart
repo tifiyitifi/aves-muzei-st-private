@@ -6,6 +6,7 @@ import 'package:pin_code_fields/pin_code_fields.dart';
 class const PinDialog({
   super.key,
   required final bool needConfirmation,
+  final String? title,
 }) extends StatefulWidget {
   static const routeName = '/dialog/pin';
 
@@ -27,6 +28,7 @@ class _PinDialogState extends State<PinDialog> {
   @override
   Widget build(BuildContext context) {
     return AvesDialog(
+      title: widget.title,
       content: Column(
         mainAxisSize: .min,
         children: [

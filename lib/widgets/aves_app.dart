@@ -16,6 +16,7 @@ import 'package:aves/features/session_restore/session_restore_store.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
+import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/l10n/l10n.dart';
 import 'package:aves/model/app/intent.dart';
@@ -526,6 +527,9 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
       // The bottom bar is built on the first frame and cannot read the database,
       // so its wallpaper entry placement is loaded with the other essentials.
       _timed('wallpaper navigation', groupedWallpaperNavController.load),
+      // A page or menu reads the lock synchronously on its first build, so the
+      // flags must be in memory before the first frame.
+      _timed('wallpaper locks', wallpaperLockService.init),
     ]);
     // The pin sheet and the write-back list reach the wallpaper groups through
     // this source. The groups themselves load on first use, so assigning the

@@ -63,6 +63,9 @@ abstract interface class WallpaperEngineConnection {
   /// Records how many photos the usage history keeps.
   Future<void> setHistoryLimit(int limit);
 
+  /// Makes the wallpaper bar reflect the group-switch lock.
+  Future<void> refreshLock();
+
   /// Shows the photo before the current one, when the history remembers one.
   Future<GroupedWallpaperSyncResult> previousArtwork();
 
@@ -232,6 +235,8 @@ class WallpaperEngineLink {
   }
 
   Future<void> setHistoryLimit(int limit) async => await _connection?.setHistoryLimit(limit);
+
+  Future<void> refreshLock() async => await _connection?.refreshLock();
 
   Future<GroupedWallpaperSyncResult> previousArtwork() async => await _connection?.previousArtwork() ?? GroupedWallpaperSyncResult.notActive;
 

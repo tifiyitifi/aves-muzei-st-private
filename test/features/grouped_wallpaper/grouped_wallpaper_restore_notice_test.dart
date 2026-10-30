@@ -151,6 +151,9 @@ class _FakeConnection implements WallpaperEngineConnection {
   Future<void> setHistoryLimit(int limit) async {}
 
   @override
+  Future<void> refreshLock() async {}
+
+  @override
   Future<GroupedWallpaperSyncResult> previousArtwork() async => GroupedWallpaperSyncResult.notActive;
 
   @override

@@ -17,6 +17,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
+import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/painting.dart';
@@ -65,6 +66,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// Clock, injectable so a test can assert the written `bakedAt`.
   final int Function() now;
 
+  /// Whether the group-switch lock is on, injectable so a test does not need the
+  /// lock service's database and encrypted store.
+  final bool Function() _groupSwitchLocked;
+
   final Future<Size?> Function() _targetSize;
 
   GroupedWallpaperStateStore? _store;
@@ -83,6 +88,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     GroupedWallpaperHistoryRecorder? history,
     Future<Size?> Function()? targetSize,
     int Function()? now,
+    bool Function()? groupSwitchLocked,
   })  : baker = baker ?? GroupedWallpaperBaker(),
         planStore = planStore ?? SavedGroupedWallpaperPlanStore(),
         entrySource = entrySource ?? GroupedWallpaperDbEntrySource(),
@@ -90,6 +96,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         link = link ?? wallpaperEngineLink,
         history = history ?? DbGroupedWallpaperHistoryRecorder(),
         now = now ?? (() => DateTime.now().millisecondsSinceEpoch),
+        _groupSwitchLocked = groupSwitchLocked ?? (() => wallpaperLockService.groupSwitchLocked),
         _targetSize = targetSize ?? platform.wallpaperSize;
 
   bool get isAttached => _store != null;
@@ -297,6 +304,25 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     return _serialize(() async => _scheduleAutoAdvance(await planStore.load()));
   }
 
+  /// Records the group-switch lock and re-posts the bar.
+  ///
+  /// Only the bar's group buttons change: the photo on screen and the queue are
+  /// untouched, so this never bakes.
+  @override
+  Future<void> refreshLock() {
+    return _serialize(() async {
+      final store = _store;
+      if (store == null) return;
+      final state = await store.readState();
+      if (state == null) return;
+      final locked = _groupSwitchLocked();
+      if (state.switchLocked == locked) return;
+      await store.writeState(state.copyWith(generation: state.generation + 1, switchLocked: locked));
+      await platform.reload();
+      await platform.refreshNotification();
+    });
+  }
+
   /// Makes the next (`delta > 0`) or previous enabled group current and bakes it.
   ///
   /// A locked target range still displays: baking only reads the range, so the
@@ -327,6 +353,16 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     return refill(advance: true);
   }
 
+  /// Refuses a group switch sent by the notification while its lock is on.
+  ///
+  /// The native bar already greys those buttons, so this only covers a bar
+  /// posted before the lock changed.
+  bool _refuseLockedGroupSwitch() {
+    if (!_groupSwitchLocked()) return false;
+    groupedWallpaperLog.i('ignoring a group switch: group switching is locked');
+    return true;
+  }
+
   /// Runs a command sent by the notification.
   Future<void> handleCommand(String command) async {
     final parsed = GroupedWallpaperCommand.tryParse(command);
@@ -340,8 +376,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       case GroupedWallpaperCommand.nextArtwork:
         await nextArtwork();
       case GroupedWallpaperCommand.nextGroup:
+        if (_refuseLockedGroupSwitch()) return;
         await switchGroup(1);
       case GroupedWallpaperCommand.previousGroup:
+        if (_refuseLockedGroupSwitch()) return;
         await switchGroup(-1);
       case GroupedWallpaperCommand.pause:
         await setPaused(true);
@@ -718,6 +756,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       surfaceHeight: surface.height.round(),
       scrollEffect: scrollEffect,
       historyLimit: plan.historyLimit,
+      switchLocked: _groupSwitchLocked(),
       bakedAt: now(),
     );
     await store.writeState(nextState);
@@ -962,7 +1001,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   Future<void> _recordLocked(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, GroupedWallpaperState? previous) async {
     if (previous?.status == GroupedWallpaperStatus.locked && previous?.groupId == plan.group.id) return;
     final state = previous != null
-        ? previous.copyWith(generation: previous.generation + 1, status: GroupedWallpaperStatus.locked, paused: plan.paused, historyLimit: plan.historyLimit)
+        ? previous.copyWith(generation: previous.generation + 1, status: GroupedWallpaperStatus.locked, paused: plan.paused, historyLimit: plan.historyLimit, switchLocked: _groupSwitchLocked())
         : GroupedWallpaperState(
             generation: 1,
             status: GroupedWallpaperStatus.locked,
@@ -974,6 +1013,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             paused: plan.paused,
             notification: plan.notification,
             historyLimit: plan.historyLimit,
+            switchLocked: _groupSwitchLocked(),
             bakedAt: now(),
           );
     await store.writeState(state);
@@ -1006,6 +1046,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               paused: plan.paused,
               notification: plan.notification,
               historyLimit: plan.historyLimit,
+              switchLocked: _groupSwitchLocked(),
               bakedAt: now(),
             )
           : GroupedWallpaperState(
@@ -1018,6 +1059,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               paused: previous?.paused ?? false,
               notification: previous?.notification ?? true,
               historyLimit: previous?.historyLimit ?? GroupedWallpaperHistoryLimit.defaultLimit,
+              switchLocked: _groupSwitchLocked(),
               bakedAt: now(),
             );
       await store.writeState(state);

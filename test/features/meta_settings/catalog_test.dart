@@ -9,6 +9,7 @@ import 'package:aves/features/meta_settings/view/category_meta.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_delete_settings.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_prefetch_setting.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_source_reset_setting.dart';
+import 'package:aves/features/wallpaper_lock/db/wallpaper_lock_store.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -137,9 +138,11 @@ void main() {
 
     test('Visible & wallpaper is fully migrated', () {
       final keys = metaSettingsDefsFor(SettingsCategory.wallpaper).map((def) => def.key).toList();
-      expect(keys, hasLength(10));
+      expect(keys, hasLength(12));
       expect(keys, containsAll([
         WallpaperGroupStore.keyNavMode,
+        WallpaperLockStore.keyVisibleRangeEnabled,
+        WallpaperLockStore.keyGroupSwitchEnabled,
         WallpaperGroupStore.keyNotification,
         WallpaperGroupStore.keyHistoryLimit,
         WallpaperGroupStore.keyScrollEffect,

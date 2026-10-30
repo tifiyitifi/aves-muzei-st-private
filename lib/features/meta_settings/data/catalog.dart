@@ -1,5 +1,6 @@
 import 'package:aves/features/collection_paging/engine/collection_paging_keys.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
+import 'package:aves/features/wallpaper_lock/db/wallpaper_lock_store.dart';
 import 'package:aves/features/meta_settings/data/def_visibility.dart';
 import 'package:aves/features/meta_settings/model/editor_keys.dart';
 import 'package:aves/features/meta_settings/model/enum/setting_widget_kind.dart';
@@ -484,6 +485,22 @@ final List<SettingDef> _wallpaperDefs = [
     editorKey: MetaEditorKeys.wallpaperNavMode,
     availabilityKey: DefVisibility.notTv,
     sortOrder: 10,
+  ),
+  SettingDef(
+    key: WallpaperLockStore.keyVisibleRangeEnabled,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsWallpaperLockVisibleRange,
+    editorKey: MetaEditorKeys.wallpaperLockVisibleRange,
+    sortOrder: 15,
+  ),
+  SettingDef(
+    key: WallpaperLockStore.keyGroupSwitchEnabled,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsWallpaperLockGroupSwitch,
+    editorKey: MetaEditorKeys.wallpaperLockGroupSwitch,
+    sortOrder: 16,
   ),
   SettingDef(
     key: WallpaperGroupStore.keyNotification,

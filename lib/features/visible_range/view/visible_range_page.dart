@@ -21,6 +21,8 @@ import 'package:aves/features/visible_range/view/visible_range_section_key.dart'
 import 'package:aves/features/visible_range/view/widgets/visible_range_lock_dialog.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_rule_actions.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_tile.dart';
+import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
+import 'package:aves/features/wallpaper_lock/view/wallpaper_lock_prompt.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/selection.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -169,10 +171,17 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     }
   }
 
+  /// Whether this page may write the range.
+  ///
+  /// Two gates: the range's own lock (an unlocked range with the edit
+  /// permission), and the optional PIN that freezes the whole page. The PIN is
+  /// checked here rather than in every action, so no entry point can forget it.
+  bool get _canEdit => _controller.canEdit && !wallpaperLockService.visibleRangeLocked;
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _controller,
+      animation: Listenable.merge([_controller, wallpaperLockService]),
       builder: (context, _) {
         final source = context.read<CollectionSource>();
         final sections = _buildSections(context);
@@ -188,7 +197,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
           onActivate: (context, rule) => _activate(rule, VisibleRangeActivationMode.override),
           extraLayoutRows: (context) => [_buildActiveStyleRow(context)],
         );
-        return FilterGroupProvider(
+        final page = FilterGroupProvider(
           // The visible-range candidates are not the album page's group
           // children: shadow the app-wide notifier so a stale album group
           // cannot show a crumb or swallow the back gesture here.
@@ -237,6 +246,15 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
               },
             ),
           ),
+        );
+        if (!wallpaperLockService.visibleRangeLocked) return page;
+        return Column(
+          children: [
+            _VisibleRangeLockBanner(
+              onUnlock: () => unawaited(ensureVisibleRangeUnlocked(context)),
+            ),
+            Expanded(child: page),
+          ],
         );
       },
     );
@@ -496,7 +514,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   void _toggleRule(VisibleRangeRule rule) {
-    if (!_controller.canEdit) {
+    if (!_canEdit) {
       _showBlocked();
       return;
     }
@@ -504,7 +522,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   void _cancelBase() {
-    if (!_controller.canEdit) {
+    if (!_canEdit) {
       _showBlocked();
       return;
     }
@@ -524,6 +542,11 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   // actions
 
   Future<void> _toggleLock() async {
+    // Locking the range and unlocking it are both edits to the range: the PIN
+    // guards either direction, so this button cannot lift the range's own lock
+    // behind the PIN's back.
+    if (wallpaperLockService.visibleRangeLocked && !await ensureVisibleRangeUnlocked(context)) return;
+    if (!mounted) return;
     final range = _controller.gallery;
     if (range.locked) {
       await _controller.unlock();
@@ -537,7 +560,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   Future<void> _selectBase(VisibleRangePreset? preset) async {
-    if (!_controller.canEdit) {
+    if (!_canEdit) {
       _showBlocked();
       return;
     }
@@ -549,7 +572,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   Future<void> _deletePreset(VisibleRangePreset preset) async {
-    if (!_controller.canEdit) {
+    if (!_canEdit) {
       _showBlocked();
       return;
     }
@@ -594,6 +617,10 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   Future<void> _editPresetNameDescription(VisibleRangePreset preset) async {
+    if (!_canEdit) {
+      _showBlocked();
+      return;
+    }
     final result = await _showNameDescriptionDialog(
       title: context.l10n.visibleRangeEditNameDescription,
       initialName: preset.name,
@@ -610,7 +637,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   /// Single-rule actions. Locked rules show only read-only actions.
   Future<void> _showRuleEditor(VisibleRangeRule rule) async {
-    final action = await showVisibleRangeRuleActions(context, rule: rule, canEdit: _controller.canEdit);
+    final action = await showVisibleRangeRuleActions(context, rule: rule, canEdit: _canEdit);
     if (!mounted || action == null) return;
     switch (action) {
       case VisibleRangeRuleAction.rename:
@@ -730,7 +757,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   Future<void> _deleteRules(Set<VisibleRangeRule> rules) async {
-    if (!_controller.canEdit) {
+    if (!_canEdit) {
       _showBlocked();
       return;
     }
@@ -767,7 +794,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       case _MoreAction.order:
         await _pickOrder();
       case _MoreAction.reAddDefaults:
-        if (!_controller.canEdit) {
+        if (!_canEdit) {
           _showBlocked();
           return;
         }
@@ -797,7 +824,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   Future<void> _pickOrder() async {
-    if (!_controller.canEdit) {
+    if (!_canEdit) {
       _showBlocked();
       return;
     }
@@ -836,6 +863,9 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   Future<void> _lockDetailed() async {
+    // Changing the range's lock permissions is as much an edit as locking it.
+    if (wallpaperLockService.visibleRangeLocked && !await ensureVisibleRangeUnlocked(context)) return;
+    if (!mounted) return;
     final permissions = await showDialog<VisibleRangePermissions>(
       context: context,
       builder: (context) => VisibleRangeLockDialog(initialPreset: _controller.lastLockPreset),
@@ -847,6 +877,48 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   Future<void> _openAbout() async {
     await Navigator.maybeOf(context)?.push(
       MaterialPageRoute(settings: const RouteSettings(name: VisibleRangeAboutPage.routeName), builder: (_) => const VisibleRangeAboutPage()),
+    );
+  }
+}
+
+/// Says the page is frozen by its PIN and offers the one-tap way in.
+///
+/// Greyed tiles alone would read as a broken page: the lock is optional and was
+/// turned on in the settings, so this strip names it and unlocks in place.
+class _VisibleRangeLockBanner extends StatelessWidget {
+  final VoidCallback onUnlock;
+
+  const new({required this.onUnlock});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Material(
+      color: colors.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.only(start: 16, end: 4),
+        child: Row(
+          children: [
+            Icon(AIcons.locked, size: 18, color: colors.onSurfaceVariant),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                context.l10n.wallpaperLockVisibleRangeLocked,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: onUnlock,
+              style: TextButton.styleFrom(foregroundColor: colors.primary),
+              child: Text(context.l10n.wallpaperLockUnlock),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -10,6 +10,7 @@ import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_p
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_actions.dart';
 import 'package:aves/features/visible_range/services/visible_range_gate.dart';
+import 'package:aves/features/wallpaper_lock/view/wallpaper_lock_prompt.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_cover.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_share_uri.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_artwork_panel.dart';
@@ -260,7 +261,12 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
       case _ViewAction.viewWholeGroup:
         await _openWholeGroup();
       case _ViewAction.toggleGalleryRange:
-        VisibleRangeGate.setGallerySuspended(!(VisibleRangeGate.overlay?.gallerySuspended ?? false));
+        // Restoring is always allowed; ignoring the range is what the lock
+        // protects.
+        final suspended = VisibleRangeGate.overlay?.gallerySuspended ?? false;
+        if (!suspended && !await ensureVisibleRangeUnlocked(context)) return;
+        if (!mounted) return;
+        VisibleRangeGate.setGallerySuspended(!suspended);
       case _ViewAction.share:
         await _share();
       case _ViewAction.history:

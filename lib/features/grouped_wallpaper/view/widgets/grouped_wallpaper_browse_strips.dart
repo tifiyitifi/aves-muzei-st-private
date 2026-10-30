@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_restore_notice.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_restore_bar.dart';
 import 'package:aves/features/visible_range/services/visible_range_candidate_stats.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/visible_range/services/visible_range_gate.dart';
+import 'package:aves/features/wallpaper_lock/view/wallpaper_lock_prompt.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/theme/icons.dart';
@@ -223,6 +226,12 @@ class _ScopeHintBarState extends State<_ScopeHintBar> {
     return stats.values.firstOrNull?.count;
   }
 
+  /// Asks for the visible-range PIN before ignoring the gallery range.
+  Future<void> _ignore(BuildContext context) async {
+    if (!await ensureVisibleRangeUnlocked(context) || !mounted) return;
+    VisibleRangeGate.setGallerySuspended(true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -265,7 +274,7 @@ class _ScopeHintBarState extends State<_ScopeHintBar> {
               )
             else
               TextButton(
-                onPressed: () => VisibleRangeGate.setGallerySuspended(true),
+                onPressed: () => unawaited(_ignore(context)),
                 style: TextButton.styleFrom(foregroundColor: colors.primary),
                 child: Text(context.l10n.groupedWallpaperScopeIgnore),
               ),

@@ -11,6 +11,8 @@ import 'package:aves/features/meta_settings/view/widgets/editors/thumbnails_edit
 import 'package:aves/features/meta_settings/view/widgets/editors/video_editors.dart';
 import 'package:aves/features/meta_settings/view/widgets/editors/viewer_editors.dart';
 import 'package:aves/features/meta_settings/view/widgets/editors/wallpaper_editors.dart';
+import 'package:aves/features/wallpaper_lock/model/wallpaper_lock_kind.dart';
+import 'package:aves/features/wallpaper_lock/view/widgets/wallpaper_lock_editor.dart';
 import 'package:flutter/widgets.dart';
 
 typedef MetaEditorBuilder = Widget Function(BuildContext context, SettingDef def);
@@ -42,4 +44,6 @@ final Map<String, MetaEditorBuilder> metaEditorRegistry = {
   MetaEditorKeys.wallpaperNotification: (context, def) => WallpaperNotificationEditor(def: def),
   MetaEditorKeys.wallpaperHistoryLimit: (context, def) => WallpaperHistoryLimitEditor(def: def),
   MetaEditorKeys.wallpaperScrollEffect: (context, def) => WallpaperScrollEffectEditor(def: def),
+  MetaEditorKeys.wallpaperLockVisibleRange: (context, def) => WallpaperLockEditor(def: def, kind: WallpaperLockKind.visibleRange),
+  MetaEditorKeys.wallpaperLockGroupSwitch: (context, def) => WallpaperLockEditor(def: def, kind: WallpaperLockKind.groupSwitch),
 };

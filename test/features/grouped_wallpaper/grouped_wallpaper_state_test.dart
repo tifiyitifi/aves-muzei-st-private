@@ -74,6 +74,14 @@ void main() {
     expect(parsed.historyLimit, 500);
   });
 
+  test('the group-switch lock travels with the state', () {
+    final locked = state.copyWith(switchLocked: true);
+    expect(GroupedWallpaperState.tryFromJsonMap(locked.toJsonMap())!.switchLocked, isTrue);
+    // A file written before the lock existed reads as unlocked.
+    final json = state.toJsonMap()..remove('switchLocked');
+    expect(GroupedWallpaperState.tryFromJsonMap(json)!.switchLocked, isFalse);
+  });
+
   test('a file written before the history limit existed records at the default', () {
     final json = state.toJsonMap()..remove('historyLimit');
     expect(GroupedWallpaperState.tryFromJsonMap(json)!.historyLimit, GroupedWallpaperHistoryLimit.defaultLimit);

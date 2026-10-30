@@ -77,6 +77,13 @@ data class GroupedWallpaperFileState(
      * stepping back and no new history is written, so the button would do nothing.
      */
     val historyLimit: Int = 200,
+    /**
+     * Whether switching the playing group is locked.
+     *
+     * The bar greys its previous/next group buttons: the app's own guard refuses
+     * the command anyway, so an enabled button would only do nothing.
+     */
+    val switchLocked: Boolean = false,
 ) {
     fun slot(id: Int): GroupedWallpaperSlotFile? = slots.firstOrNull { it.id == id }
 
@@ -229,6 +236,7 @@ object GroupedWallpaperStateFile {
             // what those builds did.
             notification = json.optBoolean("notification", true),
             historyLimit = json.optInt("historyLimit", 200),
+            switchLocked = json.optBoolean("switchLocked", false),
         )
     }
 

@@ -42,6 +42,8 @@ import 'package:aves/features/visible_range/view/visible_range_section_key.dart'
 import 'package:aves/features/visible_range/view/widgets/visible_range_lock_dialog.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_rule_actions.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_tile.dart';
+import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
+import 'package:aves/features/wallpaper_lock/view/wallpaper_lock_prompt.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/selection.dart';
@@ -1266,7 +1268,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final locked = range?.locked ?? false;
     final canDelete = _controller.groups.length > 1;
     final gallery = visibleRangeController.gallery;
-    final canSuspendGallery = gallery.isRestricted && !gallery.locked;
+    final canSuspendGallery = gallery.isRestricted && !gallery.locked && (_gallerySuspended || !wallpaperLockService.visibleRangeLocked);
     final engineActive = wallpaperEngineLink.isActive;
     return [
       // Draft actions come first: nothing below reaches the database until the
@@ -1372,7 +1374,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           gallery.locked ? AIcons.locked : AIcons.visibleRangeActive,
           _gallerySuspended ? l10n.wallpaperGroupRestoreGalleryRange : l10n.wallpaperGroupCancelGalleryRange,
           enabled: canSuspendGallery,
-          subtitle: gallery.locked ? l10n.visibleRangeWhenLocked : null,
+          subtitle: gallery.locked
+              ? l10n.visibleRangeWhenLocked
+              : !_gallerySuspended && wallpaperLockService.visibleRangeLocked
+                  ? l10n.wallpaperLockVisibleRangeLocked
+                  : null,
         ),
       const PopupMenuDivider(),
       if (group != null) ...[
@@ -1490,7 +1496,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       case _PageAction.engineStatus:
         break;
       case _PageAction.cancelGalleryRange:
-        _toggleGallerySuspension();
+        await _toggleGallerySuspension();
       case _PageAction.toggleEnabled:
         if (group != null) {
           await _controller.setEnabled(group.id, !group.enabled);
@@ -1562,6 +1568,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// before the chooser opens, so the picker shows a photo instead of the
   /// placeholder while the system commits the change.
   Future<void> _setCurrentAsWallpaper(WallpaperGroup group) async {
+    if (!await ensureGroupSwitchUnlocked(context)) return;
+    if (!mounted) return;
     // The notification is the only way to control the wallpaper from the lock
     // screen, so ask for the permission at the moment it first becomes useful.
     try {
@@ -1764,7 +1772,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// It is a view choice only: nothing is written, and [dispose] restores it.
   /// The value is published in the browsing overlay, so the media set's strip
   /// flips the same switch and its listener repaints this page.
-  void _toggleGallerySuspension() {
+  Future<void> _toggleGallerySuspension() async {
+    // Restoring is always allowed; ignoring the gallery range is what the lock
+    // protects, so only that direction asks for the PIN.
+    if (!_gallerySuspended && !await ensureVisibleRangeUnlocked(context)) return;
+    if (!mounted) return;
     VisibleRangeGate.setGallerySuspended(!_gallerySuspended);
   }
 

@@ -195,26 +195,26 @@ void main() {
     expect(notifications, 3);
   });
 
-  test('leaving the wallpaper page keeps the group scope but restores the gallery range', () async {
+  test('closing the wallpaper page drops the group scope', () async {
     final controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const <VisibleRangePresetDefinition>[]);
     await controller.init();
     VisibleRangeGate.debugController = controller;
     await controller.selectBase(presetId: '', name: 'a', filters: {PathFilter('/a')});
 
     final group = PathFilter('/b');
-    // While the page is open the gallery range can be temporarily suspended.
+    // While the page is open the group joins the gallery range, and the page can
+    // temporarily suspend the gallery range.
     VisibleRangeGate.overlay = VisibleRangeBrowsingOverlay(groupFilter: group, gallerySuspended: true);
     expect(VisibleRangeGate.filter, group);
-
-    // Leaving publishes the group scope alone: the group stays, the temporary
-    // suspension is restored.
-    VisibleRangeGate.setWallpaperScope(group);
+    VisibleRangeGate.overlay = VisibleRangeBrowsingOverlay(groupFilter: group);
     final combined = VisibleRangeGate.filter;
     expect(combined, isA<SetAndFilter>());
     expect((combined as SetAndFilter).innerFilters, {PathFilter('/a'), group});
 
-    // Selecting group 0 clears the scope, so browsing falls back to the gallery.
+    // The scope lives exactly as long as the page: closing it returns the whole
+    // app to the gallery range, so the restriction is not left behind.
     VisibleRangeGate.setWallpaperScope(null);
+    expect(VisibleRangeGate.overlay, isNull);
     expect(VisibleRangeGate.filter, PathFilter('/a'));
   });
 }

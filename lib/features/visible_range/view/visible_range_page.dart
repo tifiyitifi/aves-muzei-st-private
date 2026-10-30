@@ -4,6 +4,7 @@ import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_nav.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
@@ -60,6 +61,7 @@ enum _MoreAction {
   order,
   reAddDefaults,
   wallpaperGroups,
+  toggleNavEntry,
   lockDetailed,
   about,
 }
@@ -85,6 +87,23 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   final _selection = Selection<FilterGridItem<VisibleRangeCandidateFilter>>(toSelectableItems: null);
 
   VisibleRangeController get _controller => visibleRangeController;
+
+  /// Whether the user put the wallpaper group page in their own navigation list.
+  ///
+  /// Such an entry is theirs to keep or remove from the navigation editor, so
+  /// this page must not offer to bring a derived one back while it exists.
+  bool get _wallpaperEntryPinned => settings.bottomNavigationActions.any((item) => item.route == GroupedWallpaperPage.routeName);
+
+  /// Whether the bar's derived wallpaper entry is currently hidden.
+  ///
+  /// The page can close it, and closing is what sends the user back here, so
+  /// this page is where it can be brought back: otherwise the only control would
+  /// live on the page the entry leads to.
+  bool get _wallpaperEntryClosed => canReopenWallpaperNavEntry(
+        mode: groupedWallpaperNavController.mode,
+        entryClosed: groupedWallpaperNavController.entryClosed,
+        pinned: _wallpaperEntryPinned,
+      );
 
   @override
   void initState() {
@@ -392,6 +411,10 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       // destination, so the bar highlights the wallpaper entry rather than
       // leaving the range entry selected.
       _menuItem(context, _MoreAction.wallpaperGroups, AIcons.wallpaper, l10n.wallpaperGroupsTitle),
+      // Closing the entry sends the user back to this page, so the way to bring
+      // it back has to be here too; a pinned entry is the user's own and is
+      // managed in the navigation editor instead.
+      if (_wallpaperEntryClosed) _menuItem(context, _MoreAction.toggleNavEntry, AIcons.wallpaper, l10n.wallpaperGroupNavOpen),
       const PopupMenuDivider(),
       _menuItem(context, _MoreAction.lockDetailed, AIcons.locked, l10n.visibleRangeLockSheetTitle),
       _menuItem(context, _MoreAction.about, AIcons.info, l10n.visibleRangeAbout),
@@ -757,9 +780,15 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
           visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
         } else {
           // The page has its own entry, so opening it the same way the bar does
-          // is what moves the bar's selection to it.
+          // is what moves the bar's selection to it. A closed entry is reopened
+          // first: the page is being used, and a destination the bar does not
+          // show could not be highlighted.
+          if (_wallpaperEntryClosed) await groupedWallpaperNavController.setEntryClosed(false);
+          if (!mounted) return;
           await const AvesNavItem(route: GroupedWallpaperPage.routeName).goTo(context, topLevel: false);
         }
+      case _MoreAction.toggleNavEntry:
+        await groupedWallpaperNavController.setEntryClosed(false);
       case _MoreAction.lockDetailed:
         await _lockDetailed();
       case _MoreAction.about:

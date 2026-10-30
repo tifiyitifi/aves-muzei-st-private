@@ -47,7 +47,17 @@ the user's list stays theirs, and the entry can be closed and reopened.
 - The visible range page's More keeps "Wallpaper groups": in `shared` mode it
   flips the one entry's page, and in a separate mode it opens the page through the
   bar's own destination, so the bar highlights the wallpaper entry rather than
-  leaving the range entry selected.
+  leaving the range entry selected. Opening the page this way reopens a closed
+  derived entry first, because a destination the bar does not show cannot be
+  highlighted.
+- Closing is undone from the visible range page: while the derived entry is
+  closed it offers "Show the wallpaper group entry". The close control sends the
+  user back there, so the page that receives them owns the way back; a pinned
+  entry is managed in the navigation editor instead.
+- A tap on a fork page's own entry is a no-op while that page is on top (these
+  destinations are pushed, not top-level, so a second tap would stack a copy). In
+  `shared` mode the range entry's tap also points the shell back at the range
+  page.
 - `GroupedWallpaperNavController` caches both values for the bar, which is built
   synchronously and cannot read the database; it loads at startup with the other
   essentials and notifies on every change.
@@ -519,16 +529,20 @@ moves the page to the first remaining one.
 
 The gallery range and a group range are independent data sets. The group page
 publishes the range of the group it shows through `VisibleRangeGate`, so browsing
-— the page itself and every other tab — sees the gallery range **and** the group
-range, exactly the photos the wallpaper may use. The page can temporarily ignore
-the gallery range while it is open; that choice is page-local and is restored on
-leaving.
+— the page itself and any page pushed over it — sees the gallery range **and** the
+group range, exactly the photos the wallpaper may use. The intersection is the
+default on purpose: a user may have restricted the gallery for privacy and still
+hand the phone over to show the wallpaper, so the page must not widen what the
+gallery hides. The page can temporarily ignore the gallery range while it is
+open, but only while the gallery range is unlocked; that choice is page-local and
+is restored on leaving.
 
-Leaving the page keeps the group scope: the restriction follows the viewed group
-until the user selects group 0, which clears it. It is in-memory only, so a
-process restart returns to the gallery range alone. The live wallpaper never reads
-the gate: it uses the saved group range through `wallpaperMediaSetFilter`, so
-gallery browsing can never narrow the wallpaper result.
+The scope lives exactly as long as the page: `dispose` clears the overlay, so the
+rest of the app returns to the gallery range as soon as the page is closed. It is
+in-memory only, so a process restart returns to the gallery range alone too. The
+live wallpaper never reads the gate: it uses the saved group range through
+`wallpaperMediaSetFilter`, so gallery browsing can never narrow the wallpaper
+result.
 
 All three browsing paths ask the same gate — the paged predicate, the summary
 query and the legacy in-memory scan — so the album list, the album counts and a

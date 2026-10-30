@@ -9,6 +9,8 @@ import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart'
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/drift_db/migration/widgets/legacy_import_indicator.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_page.dart';
@@ -417,16 +419,18 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           );
           final topRoute = await _getRedirectRoute(appMode);
           unawaited(navigator.pushAndRemoveUntil(baseRoute, (route) => false));
-          // The grouped view sits on the shared bottom-bar destination, showing
-          // the playing group, so backing out lands on the wallpaper page with
-          // its entry highlighted instead of on a route the bar does not know.
+          // The grouped view is opened from the wallpaper, so backing out lands
+          // on the group page showing the playing group, with its own bottom-bar
+          // entry highlighted. With a separate entry that page is its own
+          // destination; the shared entry hosts it behind the range route.
           if (_intentOverlayRouteName == GroupedWallpaperViewPage.routeName) {
-            visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
+            final sharedEntry = groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared;
+            if (sharedEntry) visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
             unawaited(
               navigator.push(
                 await _getRedirectRoute(
                   appMode,
-                  overrideRouteName: VisibleRangePage.routeName,
+                  overrideRouteName: sharedEntry ? VisibleRangePage.routeName : GroupedWallpaperPage.routeName,
                   useIntentFilters: false,
                   selectCurrentWallpaperGroup: true,
                 ),

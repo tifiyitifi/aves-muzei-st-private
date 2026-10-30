@@ -44,11 +44,11 @@ abstract final class VisibleRangeGate {
 
   /// The wallpaper page's browsing overlay.
   ///
-  /// It follows the group the page shows and outlives the page: leaving the page
-  /// keeps the group scope, so the other tabs show what the wallpaper may use.
-  /// Only the page-local gallery suspension is dropped on leaving. Selecting
-  /// group 0 clears it. It is in-memory only, so a process restart returns to the
-  /// gallery range alone.
+  /// It follows the group the page shows and lives exactly as long as the page:
+  /// the page publishes it while open (and any page pushed over it keeps it), and
+  /// drops it when closed, so the rest of the app returns to the gallery range.
+  /// It is in-memory only, so a process restart returns to the gallery range
+  /// alone. Selecting group 0 clears it as well.
   ///
   /// The live wallpaper never reads this gate: it uses the saved group range
   /// through `wallpaperMediaSetFilter`, so gallery browsing can never narrow the

@@ -76,6 +76,15 @@ class AvesNavItem extends Equatable {
 
   Future<void> goTo(BuildContext context, {bool? topLevel}) async {
     topLevel ??= _defaultTopLevel;
+    // A fork page that is already on top must not be stacked again: these
+    // destinations are pushed rather than top-level, so a second tap on the same
+    // entry would add another copy and back would need one press per tap.
+    if (_isCurrentRoute(context)) {
+      // The shared entry hosts two pages behind one route, so its tap is also
+      // how the user returns to the range page from the wallpaper one.
+      if (this.route == VisibleRangePage.routeName) visibleRangeDestination.value = VisibleRangeDestination.range;
+      return;
+    }
     // A borrowed view (the wallpaper picker) owns its media set: following the
     // app-wide slot would leave the task it was opened for.
     final hookFilters = this.route == CollectionPage.routeName ? CollectionViewHooksScope.read(context)?.mediaSetFilters : null;
@@ -93,6 +102,21 @@ class AvesNavItem extends Equatable {
       );
     } else {
       await Navigator.maybeOf(context)?.push(route);
+    }
+  }
+
+  /// Whether this destination is already the page on top.
+  ///
+  /// Only the fork's own filter pages are compared: a collection destination
+  /// carries filters, and tapping it is how the user switches media set.
+  bool _isCurrentRoute(BuildContext context) {
+    switch (route) {
+      case VisibleRangePage.routeName:
+      case GroupedWallpaperPage.routeName:
+      case MuzeiWallpaperPage.routeName:
+        return ModalRoute.of(context)?.settings.name == route;
+      default:
+        return false;
     }
   }
 

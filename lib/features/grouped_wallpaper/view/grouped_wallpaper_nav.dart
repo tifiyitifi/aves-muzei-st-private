@@ -41,3 +41,17 @@ List<AvesNavItem> withWallpaperNavDestinations(
     ...items.sublist(index),
   ];
 }
+
+/// Whether the derived wallpaper entry is hidden and can be brought back.
+///
+/// Closing the entry sends the user back to the visible range page, so that page
+/// owns the way back: without it the only control would live on the page the
+/// missing entry leads to. A pinned entry belongs to the user's own list and is
+/// managed in the navigation editor instead, and the shared mode has no derived
+/// entry to close.
+bool canReopenWallpaperNavEntry({
+  required GroupedWallpaperNavMode mode,
+  required bool entryClosed,
+  required bool pinned,
+}) =>
+    mode != GroupedWallpaperNavMode.shared && entryClosed && !pinned;

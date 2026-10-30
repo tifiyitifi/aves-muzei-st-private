@@ -74,4 +74,24 @@ void main() {
     expect(groupedWallpaperNavModeFrom(null), defaultGroupedWallpaperNavMode);
     expect(groupedWallpaperNavModeFrom('shared'), GroupedWallpaperNavMode.shared);
   });
+
+  test('a closed derived entry can be brought back from the range page', () {
+    expect(
+      canReopenWallpaperNavEntry(mode: GroupedWallpaperNavMode.separateRight, entryClosed: true, pinned: false),
+      isTrue,
+    );
+    expect(
+      canReopenWallpaperNavEntry(mode: GroupedWallpaperNavMode.separateLeft, entryClosed: true, pinned: false),
+      isTrue,
+    );
+  });
+
+  test('there is nothing to reopen while the entry is shown, pinned or shared', () {
+    // The entry is already on the bar.
+    expect(canReopenWallpaperNavEntry(mode: GroupedWallpaperNavMode.separateRight, entryClosed: false, pinned: false), isFalse);
+    // A pinned entry is the user's own and is managed in the navigation editor.
+    expect(canReopenWallpaperNavEntry(mode: GroupedWallpaperNavMode.separateRight, entryClosed: true, pinned: true), isFalse);
+    // The shared mode has no derived entry to close.
+    expect(canReopenWallpaperNavEntry(mode: GroupedWallpaperNavMode.shared, entryClosed: true, pinned: false), isFalse);
+  });
 }

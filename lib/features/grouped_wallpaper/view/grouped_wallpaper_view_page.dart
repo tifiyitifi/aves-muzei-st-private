@@ -9,7 +9,10 @@ import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_control
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_cover.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_share_uri.dart';
+import 'package:aves/features/muzei_wallpaper/view/wallpaper_artwork_panel.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/entry/extensions/props.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/services/common/services.dart';
@@ -23,10 +26,11 @@ import 'package:material_ui/material_ui.dart';
 
 /// Immersive view of the photo the grouped wallpaper is showing.
 ///
-/// Modelled on Muzei's artwork screen: a full-screen image with pan and zoom and
-/// chrome that appears on tap. Its menu sits at the bottom right, next to the
-/// group name and photo title, and opens the wallpaper group page instead of
-/// Muzei's "source" entry, because a group *is* the source here.
+/// The photo fills the screen and the chrome uses the same bottom panel as
+/// Muzei's artwork screen: a title, the line that says what touching does, and
+/// the overflow menu. The line names the group and its count here, because a
+/// group *is* the source, but its gestures are Muzei's: a tap opens the photo in
+/// the viewer, a long press hands it to another app.
 class GroupedWallpaperViewPage extends StatefulWidget {
   static const routeName = '/grouped_wallpaper/view';
 
@@ -156,7 +160,10 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
   ///
   /// A long press is the direct gesture for "I want to do something else with
   /// this photo", like the viewer's own long press, so it bypasses a menu of
-  /// our own.
+  /// our own. The URI and the wildcard type follow the Muzei page: a file URI is
+  /// wrapped in the app's FileProvider natively, and a receiver that only claims
+  /// a narrower type still appears. A failure must be visible — a silent chooser
+  /// reads as a gesture that does nothing.
   Future<void> _openWith() async {
     final entry = _entry;
     if (entry == null) {
@@ -165,9 +172,11 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
     }
     // The chooser is a system surface: it must not appear under hidden bars.
     _setSystemUiVisible(true);
-    await appService.open(entry.uri, entry.mimeType, forceChooser: true);
+    final opened = await appService.open(wallpaperShareUri(entry), entry.mimeTypeAnySubtype, forceChooser: true);
     if (!mounted) return;
     _setSystemUiVisible(false);
+    if (opened) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.noMatchingAppDialogMessage)));
   }
 
   void _showMissing() {
@@ -325,78 +334,45 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
                 opacity: _chromeVisible ? 1 : 0,
                 duration: const Duration(milliseconds: 160),
                 curve: Curves.easeOut,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [Colors.black.withValues(alpha: .6), Colors.transparent],
-                    ),
-                  ),
-                  child: Padding(
-                    // The menu sits at the bottom right, next to the info, as in
-                    // Muzei; the extra right inset keeps the touch target off the
-                    // screen edge.
-                    padding: EdgeInsets.fromLTRB(16, 24, 8, 8 + MediaQuery.viewPaddingOf(context).bottom),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // One line, Muzei's title slot: the photo's own
-                              // name (an XMP title when it has one, else the file
-                              // name). The group's range and count belong to the
-                              // group list, not to the photo.
-                              if (title.isNotEmpty)
-                                Text(
-                                  title,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                    shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
-                                  ),
-                                ),
-                            ],
-                          ),
+                // The same panel Muzei's artwork screen uses: the two pages are
+                // the same "look at the photo" surface, so they must not drift.
+                child: WallpaperArtworkPanel(
+                  title: title.isEmpty ? null : title,
+                  subtitle: state == null ? null : l10n.groupedWallpaperViewInfo(state.groupName, state.count),
+                  onViewArtwork: () => unawaited(_openInGallery()),
+                  onOpenWith: () => unawaited(_openWith()),
+                  actions: [
+                    PopupMenuButton<_ViewAction>(
+                      icon: const Icon(AIcons.more, color: Colors.white),
+                      tooltip: MaterialLocalizations.of(context).showMenuTooltip,
+                      onSelected: (action) => unawaited(_onAction(action)),
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: _ViewAction.openGroups,
+                          child: _menuRow(AIcons.wallpaper, l10n.groupedWallpaperViewOpenGroups),
                         ),
-                        PopupMenuButton<_ViewAction>(
-                          icon: const Icon(AIcons.more, color: Colors.white),
-                          tooltip: MaterialLocalizations.of(context).showMenuTooltip,
-                          onSelected: (action) => unawaited(_onAction(action)),
-                          itemBuilder: (context) => [
-                            PopupMenuItem(
-                              value: _ViewAction.openGroups,
-                              child: _menuRow(AIcons.wallpaper, l10n.groupedWallpaperViewOpenGroups),
-                            ),
-                            PopupMenuItem(
-                              value: _ViewAction.openInGallery,
-                              enabled: entry != null,
-                              child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
-                            ),
-                            if (canOpenGroup)
-                              PopupMenuItem(
-                                value: _ViewAction.viewWholeGroup,
-                                child: _menuRow(AIcons.allCollection, l10n.groupedWallpaperViewWholeGroup),
-                              ),
-                            PopupMenuItem(
-                              value: _ViewAction.share,
-                              enabled: entry != null,
-                              child: _menuRow(AIcons.share, l10n.groupedWallpaperViewShare),
-                            ),
-                            PopupMenuItem(
-                              value: _ViewAction.history,
-                              child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
-                            ),
-                          ],
+                        PopupMenuItem(
+                          value: _ViewAction.openInGallery,
+                          enabled: entry != null,
+                          child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
+                        ),
+                        if (canOpenGroup)
+                          PopupMenuItem(
+                            value: _ViewAction.viewWholeGroup,
+                            child: _menuRow(AIcons.allCollection, l10n.groupedWallpaperViewWholeGroup),
+                          ),
+                        PopupMenuItem(
+                          value: _ViewAction.share,
+                          enabled: entry != null,
+                          child: _menuRow(AIcons.share, l10n.groupedWallpaperViewShare),
+                        ),
+                        PopupMenuItem(
+                          value: _ViewAction.history,
+                          child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
                         ),
                       ],
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),

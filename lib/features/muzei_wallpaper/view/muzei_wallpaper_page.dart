@@ -13,6 +13,7 @@ import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller_fact
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_prefs.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_view_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/slot_artwork_image.dart';
+import 'package:aves/features/muzei_wallpaper/view/wallpaper_artwork_panel.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_overflow_button.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_viewer_delete_policy.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -448,13 +449,26 @@ class _MuzeiWallpaperPageState extends State<MuzeiWallpaperPage> with WidgetsBin
           bottom: 0,
           child: _PanelVisibility(
             visible: _panelVisible,
-            child: _BottomPanel(
-              controller: controller,
+            child: WallpaperArtworkPanel(
               title: title,
               status: status,
+              subtitle: l10n.muzeiWallpaperTouchToView,
               onViewArtwork: () => unawaited(_openArtwork(controller)),
               onOpenWith: () => unawaited(_openWith(controller)),
-              aboutBackdrop: () => _artwork(controller) ?? const ColoredBox(color: Colors.black),
+              actions: [
+                IconButton(
+                  tooltip: l10n.muzeiWallpaperNextAction,
+                  color: Colors.white,
+                  onPressed: controller.busy || controller.resolution?.status == WallpaperSourceStatus.empty ? null : controller.advance,
+                  icon: controller.busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(AIcons.nextArtwork),
+                ),
+                WallpaperOverflowButton(
+                  controller: controller,
+                  section: WallpaperSection.artwork,
+                  color: Colors.white,
+                  aboutBackdrop: () => _artwork(controller) ?? const ColoredBox(color: Colors.black),
+                ),
+              ],
             ),
           ),
         ),
@@ -479,121 +493,6 @@ class _PanelVisibility extends StatelessWidget {
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOut,
         child: child,
-      ),
-    );
-  }
-}
-
-/// The single floating row: title line, "touch to view", next and overflow.
-class _BottomPanel extends StatelessWidget {
-  final WallpaperController controller;
-  final String? title;
-  final String? status;
-  final VoidCallback onViewArtwork;
-  final VoidCallback onOpenWith;
-  final Widget Function() aboutBackdrop;
-
-  const new({
-    required this.controller,
-    required this.title,
-    required this.status,
-    required this.onViewArtwork,
-    required this.onOpenWith,
-    required this.aboutBackdrop,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final titleText = title;
-    final statusText = status;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.transparent, Colors.black.withValues(alpha: .88)],
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 48, 4, 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (titleText != null)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 16),
-                        // The title carries the same actions as "touch to view":
-                        // it is the line users point at when they want to see
-                        // the artwork, so both must behave alike.
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: onViewArtwork,
-                          onLongPress: onOpenWith,
-                          child: Text(
-                            titleText,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                              shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
-                            ),
-                          ),
-                        ),
-                      ),
-                    if (statusText != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4, right: 16),
-                        child: Text(
-                          statusText,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
-                        ),
-                      ),
-                    // Long press only fires on this line: the rest of the screen
-                    // toggles the overlay instead.
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onViewArtwork,
-                      onLongPress: onOpenWith,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(2, 10, 24, 10),
-                        child: Text(
-                          l10n.muzeiWallpaperTouchToView,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.white70,
-                            shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: l10n.muzeiWallpaperNextAction,
-                color: Colors.white,
-                onPressed: controller.busy || controller.resolution?.status == WallpaperSourceStatus.empty ? null : controller.advance,
-                icon: controller.busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(AIcons.nextArtwork),
-              ),
-              WallpaperOverflowButton(
-                controller: controller,
-                section: WallpaperSection.artwork,
-                color: Colors.white,
-                aboutBackdrop: aboutBackdrop,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

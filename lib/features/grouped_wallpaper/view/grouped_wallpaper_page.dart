@@ -36,6 +36,7 @@ import 'package:aves/features/visible_range/view/visible_range_about_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_active_footer.dart';
 import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/features/visible_range/view/visible_range_section_key.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_lock_dialog.dart';
@@ -280,6 +281,26 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         action: SnackBarAction(
           label: context.l10n.wallpaperGroupReapply,
           onPressed: () => unawaited(_setWallpaper()),
+        ),
+      ),
+    );
+  }
+
+  /// Closes or reopens the bottom bar's own entry for this page.
+  ///
+  /// Closing removes the entry the page was reached from, so the page hands the
+  /// screen back to the visible range it sits next to instead of staying on a
+  /// destination the bar no longer shows.
+  Future<void> _toggleNavEntry() async {
+    final closing = !groupedWallpaperNavController.entryClosed;
+    await groupedWallpaperNavController.toggleEntryClosed();
+    if (!closing || !mounted) return;
+    visibleRangeDestination.value = VisibleRangeDestination.range;
+    unawaited(
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          settings: const RouteSettings(name: VisibleRangePage.routeName),
+          builder: (_) => const VisibleRangeShellPage(),
         ),
       ),
     );
@@ -1377,7 +1398,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       case _PageAction.visibleRange:
         visibleRangeDestination.value = VisibleRangeDestination.range;
       case _PageAction.toggleNavEntry:
-        await groupedWallpaperNavController.toggleEntryClosed();
+        await _toggleNavEntry();
       case _PageAction.saveChanges:
         await _saveDraft();
       case _PageAction.discardChanges:

@@ -2025,7 +2025,7 @@
   "settingsWallpaperNavModeLeft": "Separate, left of the visible range",
   "settingsWallpaperNavModeRight": "Separate, right of the visible range",
   "wallpaperGroupNavClose": "Close the wallpaper group entry",
-  "wallpaperGroupNavOpen": "Wallpaper group",
+  "wallpaperGroupNavOpen": "Show the wallpaper group entry",
 
   "searchAssistSectionTitle": "Assist",
   "searchAssistPath": "Path",

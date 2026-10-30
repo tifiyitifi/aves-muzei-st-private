@@ -39,15 +39,22 @@ the user's list stays theirs, and the entry can be closed and reopened.
   inserts the entry next to the range entry wherever the user moved it. It
   derives nothing while picking a photo, in `shared` mode, when the entry was
   closed, or when the user pinned `/wallpaper_groups` in their own list.
-- `wallpaper.groupedNavEntryClosed` (AppMeta) is the close switch. Both pages'
-  More menus toggle it, and only while the entry is derived: a pinned entry is
-  the user's, so the menus leave it alone.
+- `wallpaper.groupedNavEntryClosed` (AppMeta) is the close switch. It lives on the
+  wallpaper page's More, and only while the entry is derived: a pinned entry is
+  the user's, so the menu leaves it alone. Closing removes the entry the page was
+  reached from, so the page hands the screen back to the visible range instead of
+  staying on a destination the bar no longer shows.
+- The visible range page's More keeps "Wallpaper groups": in `shared` mode it
+  flips the one entry's page, and in a separate mode it opens the page through the
+  bar's own destination, so the bar highlights the wallpaper entry rather than
+  leaving the range entry selected.
 - `GroupedWallpaperNavController` caches both values for the bar, which is built
   synchronously and cannot read the database; it loads at startup with the other
   essentials and notifies on every change.
-- The default bar is now All / Favourites / Albums / Visible range: the video
-  shortcut is gone and the range entry is still appended at build time. Existing
-  users keep their own list.
+- The default bar is All / Favourites / Albums / Visible range: the video
+  shortcut is gone and the range entry is stored like any other destination (so
+  the user can move or remove it), while the builder still re-appends it when it
+  is missing. Existing users keep their own list.
 - Settings → "Visible & wallpaper" collects the switches: the nav mode, the
   notification bar, the history limit, the history page, the scroll effect, the
   gestures page, and the four Muzei confirmations/prefetch options that used to

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:aves/features/collection_paging/lens/scope_registry.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
@@ -100,6 +101,7 @@ class AvesNavItem extends Equatable {
       case AboutPage.routeName:
       case AppDebugPage.routeName:
       case MuzeiWallpaperPage.routeName:
+      case GroupedWallpaperPage.routeName:
       case VisibleRangePage.routeName:
       case SearchPage.routeName:
       case SettingsPage.routeName:
@@ -151,6 +153,10 @@ class AvesNavItem extends Equatable {
         return (_) => ExplorerPage(path: path);
       case MuzeiWallpaperPage.routeName:
         return (_) => const MuzeiWallpaperPage();
+      case GroupedWallpaperPage.routeName:
+        // The bottom bar's own entry. It keeps the group the user was last on,
+        // unlike the cold-start route, which has to describe the playing one.
+        return (_) => const GroupedWallpaperPage();
       case VisibleRangePage.routeName:
         return (_) => const VisibleRangeShellPage();
       case SettingsPage.routeName:

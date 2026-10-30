@@ -460,7 +460,6 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
         );
 
     final animations = context.select<Settings, AccessibilityAnimations>((v) => v.accessibilityAnimations);
-    final extraEntries = widget.extraMenuEntriesBuilder?.call(context, appMode, selection, actionDelegate) ?? const <PopupMenuEntry<Object>>[];
     // Extra actions sit between the quick actions and the overflow, so ⋮ is
     // always the rightmost action of the bar.
     final extraActions = widget.extraActionsBuilder?.call(context, appMode, selection, actionDelegate) ?? const <Widget>[];
@@ -469,6 +468,11 @@ class _FilterGridAppBarState<T extends CollectionFilter, CSAD extends ChipSetAct
       ...extraActions,
       PopupMenuButton<Object>(
         itemBuilder: (context) {
+          // Built when the menu opens, not with the bar: a page's own entries can
+          // depend on state that changes while the bar stays mounted (a switch in
+          // the menu itself), and baking them at build time showed a stale label
+          // until something else rebuilt the page.
+          final extraEntries = widget.extraMenuEntriesBuilder?.call(context, appMode, selection, actionDelegate) ?? const <PopupMenuEntry<Object>>[];
           final generalMenuItems = ChipSetActions.general
               .where(isVisible)
               .map(

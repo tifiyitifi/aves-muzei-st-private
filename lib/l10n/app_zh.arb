@@ -1035,6 +1035,8 @@
     "wallpaperGroupTapView": "打开当前壁纸",
     "wallpaperGroupCancelGalleryRange": "临时忽略相册可见范围",
     "wallpaperGroupRestoreGalleryRange": "恢复相册可见范围",
+    "wallpaperGroupRangeIgnored": "已临时忽略相册可见范围",
+    "wallpaperGroupRangeRestore": "恢复",
     "wallpaperGroupAvailable": "可用壁纸",
     "wallpaperGroupAvailableBrowsingRestricted": "可用壁纸（浏览功能受限中）",
     "wallpaperGroupAvailableBrowsingTooltip": "分组卡片显示的是壁纸可用的张数。浏览时还会叠加相册可见范围，因此媒体集可能更少甚至为空。",

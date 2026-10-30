@@ -8,6 +8,7 @@ import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.d
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
+import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_cover.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_share_uri.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_artwork_panel.dart';
@@ -51,6 +52,7 @@ enum _ViewAction {
   openGroups,
   openInGallery,
   viewWholeGroup,
+  toggleGalleryRange,
   share,
   history,
 }
@@ -228,6 +230,8 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
         await _openInGallery();
       case _ViewAction.viewWholeGroup:
         await _openWholeGroup();
+      case _ViewAction.toggleGalleryRange:
+        VisibleRangeGate.setGallerySuspended(!(VisibleRangeGate.overlay?.gallerySuspended ?? false));
       case _ViewAction.share:
         await _share();
       case _ViewAction.history:
@@ -346,31 +350,48 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
                       icon: const Icon(AIcons.more, color: Colors.white),
                       tooltip: MaterialLocalizations.of(context).showMenuTooltip,
                       onSelected: (action) => unawaited(_onAction(action)),
-                      itemBuilder: (context) => [
-                        PopupMenuItem(
-                          value: _ViewAction.openGroups,
-                          child: _menuRow(AIcons.wallpaper, l10n.groupedWallpaperViewOpenGroups),
-                        ),
-                        PopupMenuItem(
-                          value: _ViewAction.openInGallery,
-                          enabled: entry != null,
-                          child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
-                        ),
-                        if (canOpenGroup)
+                      itemBuilder: (context) {
+                        final suspended = VisibleRangeGate.overlay?.gallerySuspended ?? false;
+                        return [
                           PopupMenuItem(
-                            value: _ViewAction.viewWholeGroup,
-                            child: _menuRow(AIcons.allCollection, l10n.groupedWallpaperViewWholeGroup),
+                            value: _ViewAction.openGroups,
+                            child: _menuRow(AIcons.wallpaper, l10n.groupedWallpaperViewOpenGroups),
                           ),
-                        PopupMenuItem(
-                          value: _ViewAction.share,
-                          enabled: entry != null,
-                          child: _menuRow(AIcons.share, l10n.groupedWallpaperViewShare),
-                        ),
-                        PopupMenuItem(
-                          value: _ViewAction.history,
-                          child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
-                        ),
-                      ],
+                          PopupMenuItem(
+                            value: _ViewAction.openInGallery,
+                            enabled: entry != null,
+                            child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
+                          ),
+                          if (canOpenGroup)
+                            PopupMenuItem(
+                              value: _ViewAction.viewWholeGroup,
+                              child: _menuRow(AIcons.allCollection, l10n.groupedWallpaperViewWholeGroup),
+                            ),
+                          // The same switch the wallpaper page's overflow menu
+                          // and the media set's strip offer: this page is often
+                          // where the user notices the range hides the photos.
+                          // Restoring is always allowed; ignoring the range is
+                          // what the range lock forbids.
+                          if (VisibleRangeGate.galleryRestricted)
+                            PopupMenuItem(
+                              value: _ViewAction.toggleGalleryRange,
+                              enabled: suspended || !VisibleRangeGate.galleryLocked,
+                              child: _menuRow(
+                                suspended ? AIcons.visibleRangeActive : AIcons.visibleRangeInactive,
+                                suspended ? l10n.wallpaperGroupRestoreGalleryRange : l10n.wallpaperGroupCancelGalleryRange,
+                              ),
+                            ),
+                          PopupMenuItem(
+                            value: _ViewAction.share,
+                            enabled: entry != null,
+                            child: _menuRow(AIcons.share, l10n.groupedWallpaperViewShare),
+                          ),
+                          PopupMenuItem(
+                            value: _ViewAction.history,
+                            child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
+                          ),
+                        ];
+                      },
                     ),
                   ],
                 ),

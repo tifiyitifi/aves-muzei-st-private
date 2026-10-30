@@ -29,13 +29,56 @@ bool groupedWallpaperScopeHidesMediaSet({
   return overlay.groupFilter != null;
 }
 
+/// The strips a grouped-wallpaper browsing surface can put above its content.
+///
+/// Ordered as they stack: the wallpaper notice outranks the browsing ones, and
+/// the "range ignored" reminder outranks the empty-set explanation it replaces.
+enum GroupedWallpaperBrowseStrip {
+  /// The live wallpaper stopped and can be re-applied.
+  restore,
+
+  /// The gallery range is temporarily ignored, with the way back.
+  suspended,
+
+  /// The gallery range hides every photo of the group.
+  emptyScope,
+}
+
+/// Which strips to show, in order.
+///
+/// A suspended range is worth saying even when the media set is not empty: the
+/// user asked for it explicitly, and without a reminder the only way back is a
+/// menu they may not find. It replaces the empty-set explanation, which cannot
+/// apply while the range is ignored.
+List<GroupedWallpaperBrowseStrip> groupedWallpaperBrowseStrips({
+  required bool restoreOffered,
+  required bool gallerySuspended,
+  required bool awaitingFirstWindow,
+  required bool isEmpty,
+  required VisibleRangeBrowsingOverlay? overlay,
+  required bool galleryRestricted,
+}) {
+  final strips = <GroupedWallpaperBrowseStrip>[];
+  if (restoreOffered) strips.add(GroupedWallpaperBrowseStrip.restore);
+  if (gallerySuspended) {
+    strips.add(GroupedWallpaperBrowseStrip.suspended);
+  } else if (!awaitingFirstWindow &&
+      groupedWallpaperScopeHidesMediaSet(
+        isEmpty: isEmpty,
+        overlay: overlay,
+        galleryRestricted: galleryRestricted,
+      )) {
+    strips.add(GroupedWallpaperBrowseStrip.emptyScope);
+  }
+  return strips;
+}
+
 /// The strips the grouped wallpaper puts above a browsable surface.
 ///
-/// Both are about the same thing — browsing and the wallpaper disagreeing — so
-/// they share one shell: only the first visible strip takes over the status bar
-/// inset the pages below draw themselves, or two stacked strips would leave a
-/// double gap. The notice comes first because a stopped wallpaper outranks a
-/// scoped view.
+/// They are all about the same thing — browsing and the wallpaper disagreeing —
+/// so they share one shell: only the first visible strip takes over the status
+/// bar inset the pages below draw themselves, or stacked strips would leave a
+/// double gap.
 class GroupedWallpaperBrowseStrips extends StatelessWidget {
   /// The collection on screen, read only for its emptiness.
   final PagedCollectionLens lens;
@@ -49,33 +92,83 @@ class GroupedWallpaperBrowseStrips extends StatelessWidget {
     return ListenableBuilder(
       listenable: Listenable.merge([groupedWallpaperRestoreNotice, VisibleRangeGate.overlayListenable, visibleRangeController, lens]),
       builder: (context, _) {
-        final restore = groupedWallpaperRestoreNotice.isOffered;
         final overlay = VisibleRangeGate.overlay;
         // A lens still waiting for its first window reports "empty" for a
         // moment; explaining that would make the strip flash on every filter
         // change.
-        final scopeHint = !lens.awaitingFirstWindow &&
-            groupedWallpaperScopeHidesMediaSet(
-              isEmpty: lens.isEmpty,
-              overlay: overlay,
-              galleryRestricted: VisibleRangeGate.galleryRestricted,
-            );
-        if (!restore && !scopeHint) return child;
+        final strips = groupedWallpaperBrowseStrips(
+          restoreOffered: groupedWallpaperRestoreNotice.isOffered,
+          gallerySuspended: overlay?.gallerySuspended ?? false,
+          awaitingFirstWindow: lens.awaitingFirstWindow,
+          isEmpty: lens.isEmpty,
+          overlay: overlay,
+          galleryRestricted: VisibleRangeGate.galleryRestricted,
+        );
+        if (strips.isEmpty) return child;
         return Column(
           children: [
-            if (restore) const GroupedWallpaperRestoreBar(),
-            if (scopeHint)
-              _ScopeHintBar(
-                groupFilter: overlay!.groupFilter!,
-                locked: visibleRangeController.gallery.locked,
-                takesStatusBarInset: !restore,
-              ),
+            for (final (index, strip) in strips.indexed)
+              switch (strip) {
+                GroupedWallpaperBrowseStrip.restore => const GroupedWallpaperRestoreBar(),
+                GroupedWallpaperBrowseStrip.suspended => _SuspendedRangeBar(takesStatusBarInset: index == 0),
+                GroupedWallpaperBrowseStrip.emptyScope => _ScopeHintBar(
+                    groupFilter: overlay!.groupFilter!,
+                    locked: visibleRangeController.gallery.locked,
+                    takesStatusBarInset: index == 0,
+                  ),
+              },
             Expanded(
               child: MediaQuery.removePadding(context: context, removeTop: true, child: child),
             ),
           ],
         );
       },
+    );
+  }
+}
+
+/// Reminds the user that the gallery range is ignored for this browsing session
+/// and offers the one-tap way back.
+class _SuspendedRangeBar extends StatelessWidget {
+  /// Whether this strip owns the inset the page below would otherwise add.
+  final bool takesStatusBarInset;
+
+  const new({required this.takesStatusBarInset});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Material(
+      color: colors.surfaceContainerHighest,
+      child: Padding(
+        padding: EdgeInsetsDirectional.only(
+          start: 16,
+          end: 4,
+          top: takesStatusBarInset ? MediaQuery.paddingOf(context).top + 2 : 2,
+          bottom: 2,
+        ),
+        child: Row(
+          children: [
+            Icon(AIcons.visibleRangeInactive, size: 18, color: colors.onSurfaceVariant),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                context.l10n.wallpaperGroupRangeIgnored,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: () => VisibleRangeGate.setGallerySuspended(false),
+              style: TextButton.styleFrom(foregroundColor: colors.primary),
+              child: Text(context.l10n.wallpaperGroupRangeRestore),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

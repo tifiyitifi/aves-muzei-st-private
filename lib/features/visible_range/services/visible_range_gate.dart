@@ -157,6 +157,9 @@ abstract final class VisibleRangeGate {
   /// Whether the gallery range currently restricts browsing.
   static bool get galleryRestricted => _controller.gallery.isRestricted;
 
+  /// Whether the gallery range is locked against edits.
+  static bool get galleryLocked => _controller.gallery.locked;
+
   static VisibleRangeController get _controller => debugController ?? visibleRangeController;
 
   /// The resolved browsing filter: the gallery range, the wallpaper scope's

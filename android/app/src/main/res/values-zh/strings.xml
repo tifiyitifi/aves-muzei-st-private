@@ -25,4 +25,7 @@
     <string name="grouped_wallpaper_action_switch_actions">切换操作</string>
     <string name="grouped_wallpaper_action_copy">复制分享（稍后提供）</string>
     <string name="grouped_wallpaper_action_used">使用记录（稍后提供）</string>
+    <string name="grouped_wallpaper_restore_hint_title">分组壁纸已停止</string>
+    <string name="grouped_wallpaper_restore_hint_text">点按可重新应用。</string>
+    <string name="grouped_wallpaper_restore_hint_action">恢复</string>
 </resources>

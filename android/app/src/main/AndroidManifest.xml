@@ -60,6 +60,12 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- to change wallpaper -->
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
+    <!--
+        to bind the grouped live wallpaper again after the package is replaced:
+        some OEM builds reset the wallpaper to their default instead of rebinding
+        the component, and only this permission allows restoring it silently
+    -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER_COMPONENT" />
     <!-- TODO TLAD remove this permission when this is fixed: https://github.com/flutter/flutter/issues/42451 -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
@@ -360,6 +366,18 @@
         <receiver
             android:name=".features.grouped_wallpaper.GroupedWallpaperActionReceiver"
             android:exported="false" />
+
+        <!--
+            puts the grouped wallpaper back after the package is replaced, when the
+            OEM reset it to its default wallpaper instead of rebinding it
+        -->
+        <receiver
+            android:name=".features.grouped_wallpaper.GroupedWallpaperRestoreReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- file provider to share files having a file:// URI -->
         <provider

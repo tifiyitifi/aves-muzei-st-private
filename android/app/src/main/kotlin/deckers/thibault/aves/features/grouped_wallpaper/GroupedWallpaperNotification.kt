@@ -19,6 +19,7 @@ package deckers.thibault.aves.features.grouped_wallpaper
 import android.app.KeyguardManager
 import android.app.Notification
 import android.app.PendingIntent
+import android.app.WallpaperManager
 import android.content.Context
 import android.content.Intent
 import android.media.RingtoneManager
@@ -69,11 +70,23 @@ object GroupedWallpaperNotification {
 
     const val NOTIFICATION_ID = 3
 
+    /**
+     * Id of the "the wallpaper stopped" hint.
+     *
+     * It is not the bar: the bar only exists while the wallpaper is bound, and this
+     * notification exists exactly when it is not, so the two never replace each
+     * other.
+     */
+    private const val RESTORE_HINT_ID = 0x5757
+
     /** The app route of the immersive wallpaper view. */
     private const val VIEW_ROUTE = "/grouped_wallpaper/view"
 
     /** The app route of the usage history. */
     private const val HISTORY_ROUTE = "/grouped_wallpaper/history"
+
+    /** The app route of the wallpaper group page, where the wallpaper is applied. */
+    private const val GROUPS_ROUTE = "/wallpaper_groups"
 
     // Broadcast actions handled by GroupedWallpaperActionReceiver.
     const val ACTION_PREVIOUS_ARTWORK = "deckers.thibault.aves.grouped_wallpaper.PREVIOUS_ARTWORK"
@@ -236,6 +249,58 @@ object GroupedWallpaperNotification {
             Log.w(TAG, "failed to cancel the grouped wallpaper notification", t)
         }
     }
+
+    /**
+     * Tells the user the wallpaper stopped, and where to bring it back.
+     *
+     * Only the fallback: when the wallpaper can be bound silently there is nothing
+     * to announce. It shares the bar's channel so the two do not split into two
+     * entries in the system's notification settings.
+     */
+    fun postRestoreHint(context: Context) {
+        ensureChannel(context)
+        val manager = NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled()) return
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.grouped_wallpaper_restore_hint_title))
+            .setContentText(context.getString(R.string.grouped_wallpaper_restore_hint_text))
+            .setContentIntent(pageIntent(context, GROUPS_ROUTE, pageRequestCode(GROUPS_ROUTE)))
+            .addAction(0, context.getString(R.string.grouped_wallpaper_restore_hint_action), chooserIntent(context))
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .build()
+        try {
+            manager.notify(RESTORE_HINT_ID, notification)
+        } catch (t: Throwable) {
+            // A missing POST_NOTIFICATIONS grant must never fail the restore path.
+            Log.w(TAG, "failed to post the grouped wallpaper restore hint", t)
+        }
+    }
+
+    /** Drops the hint, because the wallpaper is bound again or the user acted on it. */
+    fun cancelRestoreHint(context: Context) {
+        try {
+            NotificationManagerCompat.from(context).cancel(RESTORE_HINT_ID)
+        } catch (t: Throwable) {
+            Log.w(TAG, "failed to cancel the grouped wallpaper restore hint", t)
+        }
+    }
+
+    /**
+     * Opens the system's live wallpaper list.
+     *
+     * The generic chooser is used rather than the per-component preview: MIUI closes
+     * that preview immediately, so the action would look like it did nothing.
+     */
+    private fun chooserIntent(context: Context): PendingIntent = PendingIntent.getActivity(
+        context,
+        10,
+        Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
 
     /**
      * Opens the immersive view of the photo on screen, like the three-finger

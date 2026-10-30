@@ -60,6 +60,7 @@ import deckers.thibault.aves.channel.streams.platformtodart.SettingsChangeStream
 import deckers.thibault.aves.channel.streams.platformtodart.WindowChangeStreamHandler
 import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperAppBridge
 import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperHandler
+import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperRestore
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillHandler
 import deckers.thibault.aves.features.muzei_wallpaper.LiveWallpaperHandler
 import deckers.thibault.aves.features.muzei_wallpaper.WallpaperAppBridge
@@ -114,6 +115,12 @@ open class MainActivity : FlutterFragmentActivity() {
 //        )
 
         super.onCreate(savedInstanceState)
+
+        // An OEM may reset the wallpaper to its default when the package is
+        // replaced or force-stopped, and a stopped package receives no
+        // `MY_PACKAGE_REPLACED` broadcast. Opening the app is the other chance to
+        // bind the grouped wallpaper again, so check off the main thread.
+        defaultScope.launch { GroupedWallpaperRestore.restoreIfLost(applicationContext) }
 
         ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, windowInsets ->
             val insets = ViewCompat.onApplyWindowInsets(view, windowInsets)

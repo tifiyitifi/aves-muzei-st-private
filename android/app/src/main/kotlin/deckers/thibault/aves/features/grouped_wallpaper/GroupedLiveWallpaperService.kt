@@ -106,6 +106,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         Log.d(TAG, "service.create")
         isRunning = true
         instance = this
+        // The wallpaper is bound again, so a "it stopped" hint left from an update
+        // is stale, and the next loss must be able to hint again.
+        GroupedWallpaperRestore.onWallpaperActive(this)
         // A restart rebuilds the bar from scratch: the keyguard picks the set.
         GroupedWallpaperNotification.resetGroupActionsOverride()
         GroupedWallpaperNotification.ensureChannel(this)

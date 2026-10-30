@@ -41,7 +41,13 @@ class GroupedWallpaperRestoreBody extends StatelessWidget {
 
 /// The strip itself, including the status bar inset it took over.
 class GroupedWallpaperRestoreBar extends StatelessWidget {
-  const new({super.key});
+  /// Whether this strip owns the inset the page below would otherwise add.
+  ///
+  /// When another strip is already above it, that one took the inset and adding
+  /// it twice would leave a gap.
+  final bool takesStatusBarInset;
+
+  const new({super.key, this.takesStatusBarInset = true});
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +59,7 @@ class GroupedWallpaperRestoreBar extends StatelessWidget {
         padding: EdgeInsetsDirectional.only(
           start: 16,
           end: 4,
-          top: MediaQuery.paddingOf(context).top + 2,
+          top: takesStatusBarInset ? MediaQuery.paddingOf(context).top + 2 : 2,
           bottom: 2,
         ),
         child: Row(

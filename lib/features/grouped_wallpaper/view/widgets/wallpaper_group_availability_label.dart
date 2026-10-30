@@ -24,22 +24,25 @@ class WallpaperGroupAvailabilityLabel extends StatelessWidget {
         final theme = Theme.of(context);
         final colors = theme.colorScheme;
         final restricted = visibleRangeController.gallery.isRestricted && !gallerySuspended;
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              restricted ? AIcons.visibleRangeInactive : AIcons.checked,
-              size: 14,
-              color: restricted ? colors.onSurfaceVariant : colors.primary,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              restricted ? context.l10n.wallpaperGroupAvailableBrowsingRestricted : context.l10n.wallpaperGroupAvailable,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
-            ),
-          ],
+        return Tooltip(
+          message: context.l10n.wallpaperGroupAvailableBrowsingTooltip,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                restricted ? AIcons.visibleRangeInactive : AIcons.checked,
+                size: 14,
+                color: restricted ? colors.onSurfaceVariant : colors.primary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                restricted ? context.l10n.wallpaperGroupAvailableBrowsingRestricted : context.l10n.wallpaperGroupAvailable,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            ],
+          ),
         );
       },
     );

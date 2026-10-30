@@ -14,7 +14,7 @@ import 'package:aves/features/collection_paging/view/catalog_prompt_dialog.dart'
 import 'package:aves/features/collection_paging/view/collection_import_intro.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
-import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_restore_bar.dart';
+import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_browse_strips.dart';
 import 'package:aves/features/session_restore/session_restore_collection_state.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -291,8 +291,9 @@ class _CollectionPageState extends State<CollectionPage> with RouteAware {
           // The grouped wallpaper notice is above the grid, not inside it: the
           // loss happens while the app is not running, so it belongs where the
           // user lands rather than in the scrollable content they may never
-          // reach.
-          final body = GroupedWallpaperRestoreBody(child: gridBody);
+          // reach. An empty media set can also be the gallery range hiding the
+          // group's photos, which the same shell explains.
+          final body = GroupedWallpaperBrowseStrips(lens: _collection, child: gridBody);
 
           Widget page;
           if (useTvLayout) {

@@ -195,6 +195,44 @@ void main() {
     expect(notifications, 3);
   });
 
+  test('suspending the gallery range belongs to the overlay', () async {
+    final controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const <VisibleRangePresetDefinition>[]);
+    await controller.init();
+    VisibleRangeGate.debugController = controller;
+    await controller.selectBase(presetId: '', name: 'a', filters: {PathFilter('/a')});
+
+    final group = PathFilter('/b');
+    VisibleRangeGate.setWallpaperScope(group);
+    expect(VisibleRangeGate.galleryRestricted, isTrue);
+
+    // The media set's strip flips the same switch the wallpaper page's menu
+    // does, without knowing about that page.
+    VisibleRangeGate.setGallerySuspended(true);
+    expect(VisibleRangeGate.overlay?.groupFilter, group);
+    expect(VisibleRangeGate.filter, group);
+
+    var notifications = 0;
+    void listener() => notifications++;
+    VisibleRangeGate.overlayListenable.addListener(listener);
+    addTearDown(() => VisibleRangeGate.overlayListenable.removeListener(listener));
+
+    // Setting the value it already has must not invalidate browsing caches.
+    VisibleRangeGate.setGallerySuspended(true);
+    expect(notifications, 0);
+
+    VisibleRangeGate.setGallerySuspended(false);
+    expect(notifications, 1);
+    final combined = VisibleRangeGate.filter;
+    expect(combined, isA<SetAndFilter>());
+    expect((combined as SetAndFilter).innerFilters, {PathFilter('/a'), group});
+
+    // With no wallpaper scope published there is no group to browse in favour
+    // of, so the flag is ignored rather than keeping an empty overlay alive.
+    VisibleRangeGate.overlay = null;
+    VisibleRangeGate.setGallerySuspended(true);
+    expect(VisibleRangeGate.overlay, isNull);
+  });
+
   test('closing the wallpaper page drops the group scope', () async {
     final controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const <VisibleRangePresetDefinition>[]);
     await controller.init();

@@ -77,6 +77,29 @@ abstract final class VisibleRangeGate {
     overlay = groupFilter == null ? null : VisibleRangeBrowsingOverlay(groupFilter: groupFilter);
   }
 
+  /// Temporarily stops (or resumes) applying the gallery range to browsing.
+  ///
+  /// The choice belongs to the overlay, not to a page: the wallpaper page and
+  /// every surface pushed over it (the media set, the strip explaining an empty
+  /// one) must flip the same switch, or each would keep its own copy and the
+  /// collection would not re-resolve where the user tapped.
+  ///
+  /// It never writes the range: dropping the overlay restores it.
+  static void setGallerySuspended(bool suspended) {
+    final current = overlay;
+    if (current == null) {
+      // No wallpaper scope is published, so there is no group to browse: the
+      // gallery range alone is what browsing means, and there is nothing to
+      // suspend it in favour of.
+      return;
+    }
+    if (current.gallerySuspended == suspended) return;
+    overlay = VisibleRangeBrowsingOverlay(groupFilter: current.groupFilter, gallerySuspended: suspended);
+  }
+
+  /// Whether the gallery range currently restricts browsing.
+  static bool get galleryRestricted => _controller.gallery.isRestricted;
+
   static VisibleRangeController get _controller => debugController ?? visibleRangeController;
 
   /// The resolved browsing filter: the gallery range, the wallpaper scope's

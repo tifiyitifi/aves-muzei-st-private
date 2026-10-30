@@ -164,9 +164,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   /// Whether the gallery range is temporarily ignored while this page is open.
   ///
-  /// It only affects browsing on this page; leaving restores it, and it never
-  /// changes the range itself or the wallpaper.
-  bool _gallerySuspended = false;
+  /// It only affects browsing; leaving restores it, and it never changes the
+  /// range itself or the wallpaper. The flag lives in the browsing overlay so
+  /// the media set (and the strip explaining an empty one) can flip the same
+  /// switch instead of keeping a copy the page would not see.
+  bool get _gallerySuspended => VisibleRangeGate.overlay?.gallerySuspended ?? false;
 
   /// What the live wallpaper last baked, read when the page opens or resumes.
   GroupedWallpaperState? _engineState;
@@ -178,6 +180,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     _controller = WallpaperGroupRangeController();
     _controller.addListener(_onControllerChanged);
     _syncBrowsingOverlay();
+    // The browsing scope is shared with the pages pushed over this one, so a
+    // strip there can suspend the gallery range and this page must follow.
+    VisibleRangeGate.overlayListenable.addListener(_onBrowseScopeChanged);
+    visibleRangeController.addListener(_onBrowseScopeChanged);
     unawaited(_initController());
     unawaited(_refreshEngine());
   }
@@ -203,7 +209,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     // The group's scope is a browsing aid for this page only: it applies while
     // the page is open (and to any page pushed over it) and is dropped here, so
     // the rest of the app returns to the gallery range. The live wallpaper reads
-    // the saved group range itself and is never affected.
+    // the saved group range itself and is never affected. The listeners go first:
+    // clearing the scope notifies, and a disposed page must not react.
+    VisibleRangeGate.overlayListenable.removeListener(_onBrowseScopeChanged);
+    visibleRangeController.removeListener(_onBrowseScopeChanged);
     VisibleRangeGate.setWallpaperScope(null);
     _controller.removeListener(_onControllerChanged);
     _controller.dispose();
@@ -330,11 +339,22 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// Publishes the page's browsing scope: the group on screen joins the gallery
   /// range while the wallpaper page is open. The live wallpaper never uses this;
   /// it reads the saved group range alone.
+  ///
+  /// The suspension flag is read back from the overlay so a strip on a page
+  /// pushed over this one keeps its choice when the group changes here.
   void _syncBrowsingOverlay() {
     VisibleRangeGate.overlay = VisibleRangeBrowsingOverlay(
       groupFilter: _controller.range?.resolve(),
       gallerySuspended: _gallerySuspended,
     );
+  }
+
+  /// Re-reads a browsing scope changed elsewhere (the media set's strip, or the
+  /// gallery range itself), since both change what this page previews.
+  void _onBrowseScopeChanged() {
+    if (!mounted) return;
+    setState(() {});
+    unawaited(_refreshResultStats());
   }
 
   void _onControllerChanged() {
@@ -353,7 +373,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     unawaited(_refreshGroupFilters());
   }
 
-  /// Count and cover of what the selected group's range resolves to.
+  /// Count and cover of what browsing yields for the selected group.
+  ///
+  /// The preview follows the browsing gate, so it shows the gallery range joined
+  /// with the group instead of the group alone: the card above still counts what
+  /// the live wallpaper may use, and the two differ exactly when the gallery
+  /// range narrows browsing. A user who sees an empty media set then sees the
+  /// same zero here instead of a number the app never displays.
   Future<void> _refreshResultStats() async {
     final range = _controller.range;
     final token = ++_resultToken;
@@ -361,7 +387,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       setState(() => _resultStats = null);
       return;
     }
-    final filter = range.resolve();
+    final filter = VisibleRangeGate.filter;
     final filters = filter == null ? const <CollectionFilter>{} : <CollectionFilter>{filter};
     final stats = await VisibleRangeCandidateStatsLoader.load([filters]);
     if (!mounted || token != _resultToken) return;
@@ -1699,12 +1725,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// Temporarily stops applying the gallery range to browsing on this page.
+  /// Temporarily stops applying the gallery range to browsing.
   ///
   /// It is a view choice only: nothing is written, and [dispose] restores it.
+  /// The value is published in the browsing overlay, so the media set's strip
+  /// flips the same switch and its listener repaints this page.
   void _toggleGallerySuspension() {
-    setState(() => _gallerySuspended = !_gallerySuspended);
-    _syncBrowsingOverlay();
+    VisibleRangeGate.setGallerySuspended(!_gallerySuspended);
   }
 
   Future<void> _renameGroup(WallpaperGroup group) async {

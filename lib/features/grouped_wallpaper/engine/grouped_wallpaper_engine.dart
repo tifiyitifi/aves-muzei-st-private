@@ -313,7 +313,19 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   ///
   /// The previous photo is re-baked instead of restored from disk: slots are
   /// recycled, so the old file may already show another image.
+  @override
   Future<GroupedWallpaperSyncResult> previousArtwork() => _enqueue(_runPrevious);
+
+  /// Shows the next photo of the group, resuming a frozen wallpaper first.
+  ///
+  /// An explicit "next" is the user asking the wallpaper to play again, like the
+  /// notification's next: the freeze is cleared before the queue advances. The
+  /// two runs are queued separately on purpose, as [handleCommand] does.
+  @override
+  Future<GroupedWallpaperSyncResult> nextArtwork() async {
+    await setPaused(false);
+    return refill(advance: true);
+  }
 
   /// Runs a command sent by the notification.
   Future<void> handleCommand(String command) async {
@@ -326,9 +338,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       case GroupedWallpaperCommand.previousArtwork:
         await previousArtwork();
       case GroupedWallpaperCommand.nextArtwork:
-        // An explicit "next" is the user asking the wallpaper to play again.
-        await setPaused(false);
-        await refill(advance: true);
+        await nextArtwork();
       case GroupedWallpaperCommand.nextGroup:
         await switchGroup(1);
       case GroupedWallpaperCommand.previousGroup:

@@ -926,6 +926,21 @@ void main() {
     expect(after.current, before.current);
   });
 
+  test('next photo resumes a frozen wallpaper and advances the queue', () async {
+    serve(entries(12));
+    await engine.prepare();
+    await engine.setPaused(true);
+    expect((await store.readState())!.currentSlot?.entryId, 50);
+
+    expect(await engine.nextArtwork(), GroupedWallpaperSyncResult.baked);
+
+    final state = (await store.readState())!;
+    expect(state.paused, isFalse);
+    expect(planStore.pausedWrites, [true, false]);
+    expect(state.currentSlot?.entryId, 49);
+    expect(state.recent.map((entry) => entry.entryId), [49, 50]);
+  });
+
   test('previous photo skips a photo that left the media set', () async {
     serve(entries(12));
     await engine.prepare();

@@ -8,6 +8,7 @@ import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.d
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_actions.dart';
 import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_cover.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_share_uri.dart';
@@ -65,6 +66,12 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
   String? _photo;
   bool _loading = true;
 
+  /// Whether a previous/next step is in flight.
+  ///
+  /// Both controls are inert meanwhile so two steps cannot queue on the engine
+  /// and land on a frame the page never shows.
+  bool _busy = false;
+
   /// The chrome is on when the page opens, so the back button and the photo's
   /// context are visible without a first tap; a tap toggles it, like Muzei.
   bool _chromeVisible = true;
@@ -113,6 +120,28 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
       _photo = photo;
       _loading = false;
     });
+  }
+
+  /// Steps the wallpaper to the previous or next photo and re-reads what it now
+  /// shows.
+  ///
+  /// The step acts on the wallpaper itself, not on a page-local gallery: the
+  /// user asked the wallpaper to move, so the frame, the notification and the
+  /// queue all follow. The photo, the entry and the menu actions are then read
+  /// back, so "open in gallery" and "share" describe the photo on screen.
+  Future<void> _step({required bool previous}) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      if (previous) {
+        await wallpaperEngineLink.previousArtwork();
+      } else {
+        await wallpaperEngineLink.nextArtwork();
+      }
+      await _load();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   void _syncViewport(Size childSize, Size viewportSize) {
@@ -251,6 +280,8 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
     final entry = _entry;
     final title = state?.entryTitle ?? '';
     final canOpenGroup = state != null && state.groupId.isNotEmpty && state.groupId != wallpaperGroupNoneId;
+    final canPrevious = state != null && groupedWallpaperCanGoPrevious(state);
+    final canNext = state != null && groupedWallpaperCanGoNext(state);
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -346,6 +377,20 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
                   onViewArtwork: () => unawaited(_openInGallery()),
                   onOpenWith: () => unawaited(_openWith()),
                   actions: [
+                    IconButton(
+                      tooltip: l10n.wallpaperGroupPreviousPhoto,
+                      color: Colors.white,
+                      disabledColor: Colors.white38,
+                      onPressed: canPrevious && !_busy ? () => unawaited(_step(previous: true)) : null,
+                      icon: const Icon(AIcons.previousArtwork),
+                    ),
+                    IconButton(
+                      tooltip: l10n.wallpaperGroupNextPhoto,
+                      color: Colors.white,
+                      disabledColor: Colors.white38,
+                      onPressed: canNext && !_busy ? () => unawaited(_step(previous: false)) : null,
+                      icon: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(AIcons.nextArtwork),
+                    ),
                     PopupMenuButton<_ViewAction>(
                       icon: const Icon(AIcons.more, color: Colors.white),
                       tooltip: MaterialLocalizations.of(context).showMenuTooltip,

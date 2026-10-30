@@ -1993,6 +1993,8 @@
   "wallpaperGroupRestoreGalleryRange": "Restore the gallery range",
   "wallpaperGroupRangeIgnored": "The gallery visible range is temporarily ignored",
   "wallpaperGroupRangeRestore": "Restore",
+  "wallpaperGroupPreviousPhoto": "Previous photo",
+  "wallpaperGroupNextPhoto": "Next photo",
   "wallpaperGroupAvailable": "Available wallpaper",
   "wallpaperGroupAvailableBrowsingRestricted": "Available wallpaper (browsing restricted)",
   "wallpaperGroupAvailableBrowsingTooltip": "The group cards count what the wallpaper can use. Browsing also applies the gallery visible range, so the media set may show fewer photos or none.",

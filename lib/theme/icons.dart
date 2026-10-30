@@ -215,6 +215,9 @@ class AIcons {
   /// the app (stats, breadcrumbs, metadata cards) and must not change shape.
   static const nextArtwork = MdiIcons.chevronDoubleRight;
 
+  /// The other end of [nextArtwork], so the pair reads as one control.
+  static const previousArtwork = MdiIcons.chevronDoubleLeft;
+
   // video actions
   // `play` and `pause` icon should be consistent with `AnimatedIcons.play_pause`
   static const play = Symbols.play_arrow;

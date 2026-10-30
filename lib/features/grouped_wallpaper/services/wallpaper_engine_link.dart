@@ -63,6 +63,12 @@ abstract interface class WallpaperEngineConnection {
   /// Records how many photos the usage history keeps.
   Future<void> setHistoryLimit(int limit);
 
+  /// Shows the photo before the current one, when the history remembers one.
+  Future<GroupedWallpaperSyncResult> previousArtwork();
+
+  /// Shows the next photo of the group, resuming a frozen wallpaper first.
+  Future<GroupedWallpaperSyncResult> nextArtwork();
+
   /// Opens the system live-wallpaper chooser for this service.
   Future<bool> openChooser();
 }
@@ -226,6 +232,10 @@ class WallpaperEngineLink {
   }
 
   Future<void> setHistoryLimit(int limit) async => await _connection?.setHistoryLimit(limit);
+
+  Future<GroupedWallpaperSyncResult> previousArtwork() async => await _connection?.previousArtwork() ?? GroupedWallpaperSyncResult.notActive;
+
+  Future<GroupedWallpaperSyncResult> nextArtwork() async => await _connection?.nextArtwork() ?? GroupedWallpaperSyncResult.notActive;
 
   Future<bool> openChooser() async => await _connection?.openChooser() ?? false;
 }

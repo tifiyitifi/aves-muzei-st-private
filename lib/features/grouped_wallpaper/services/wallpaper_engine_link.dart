@@ -8,6 +8,9 @@ abstract interface class WallpaperEngineConnection {
   /// Whether the grouped service is the current system wallpaper.
   Future<bool> isActive();
 
+  /// Whether the wallpaper was in use and the system dropped it.
+  Future<bool> restoreOffer();
+
   /// Whether the grouped wallpaper is explicitly turned off.
   Future<bool> isDisabled();
 
@@ -120,6 +123,23 @@ class WallpaperEngineLink {
       _active = false;
     }
     return _active;
+  }
+
+  /// Re-asks whether the wallpaper was in use and the system dropped it.
+  ///
+  /// The app asks on every return instead of trusting an older answer: the
+  /// binding is lost while the app is away (an update), and it comes back when
+  /// the user re-applies through the system chooser.
+  Future<bool> refreshRestoreOffer() async {
+    final connection = _connection;
+    if (connection == null) return false;
+    try {
+      return await connection.restoreOffer();
+    } catch (_) {
+      // Without an answer there is nothing to offer: a wrong notice would send
+      // the user to a picker that takes over a wallpaper they did not lose.
+      return false;
+    }
   }
 
   /// Re-reads the explicit off switch, which the page may have just written.

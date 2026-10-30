@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_restore_bar.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/grouping/common.dart';
 import 'package:aves/model/highlight.dart';
@@ -105,7 +106,7 @@ class FilterGridPage<T extends CollectionFilter> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final useTvLayout = settings.useTvLayout;
-    final body = GestureAreaProtectorStack(
+    final gridBody = GestureAreaProtectorStack(
       child: DirectionalSafeArea(
         start: !useTvLayout,
         top: false,
@@ -137,6 +138,10 @@ class FilterGridPage<T extends CollectionFilter> extends StatelessWidget {
         ),
       ),
     );
+    // Every browsable grid carries the notice, because the grouped wallpaper
+    // notice is about the system wallpaper, not about the page the user happens
+    // to open first.
+    final body = GroupedWallpaperRestoreBody(child: gridBody);
 
     if (useTvLayout) {
       final canNavigate = context.select<ValueNotifier<AppMode>, bool>((v) => v.value.canNavigate);

@@ -47,6 +47,28 @@ void main() {
     expect(link.isActive, isFalse);
   });
 
+  test('restoreOffer is only true once the platform says so', () async {
+    // Detached: nothing can be offered, whatever the platform would answer.
+    expect(await link.refreshRestoreOffer(), isFalse);
+
+    link.attach(connection);
+    expect(await link.refreshRestoreOffer(), isFalse);
+
+    connection.offer = true;
+    expect(await link.refreshRestoreOffer(), isTrue);
+
+    connection.offer = false;
+    expect(await link.refreshRestoreOffer(), isFalse);
+  });
+
+  test('a failed restore probe offers nothing', () async {
+    // A wrong offer would open a picker over a wallpaper the user still has.
+    connection.error = StateError('channel gone');
+    link.attach(connection);
+
+    expect(await link.refreshRestoreOffer(), isFalse);
+  });
+
   test('playing needs both the service on screen and the feature on', () async {
     link.attach(connection);
     await link.refreshActive();
@@ -163,6 +185,15 @@ class _FakeConnection implements WallpaperEngineConnection {
     if (failure != null) throw failure;
     return active;
   }
+
+  @override
+  Future<bool> restoreOffer() async {
+    final failure = error;
+    if (failure != null) throw failure;
+    return offer;
+  }
+
+  bool offer = false;
 
   @override
   Future<bool> isDisabled() async => disabled;

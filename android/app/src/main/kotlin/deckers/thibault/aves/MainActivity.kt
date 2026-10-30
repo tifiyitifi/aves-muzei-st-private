@@ -119,8 +119,10 @@ open class MainActivity : FlutterFragmentActivity() {
         // An OEM may reset the wallpaper to its default when the package is
         // replaced or force-stopped, and a stopped package receives no
         // `MY_PACKAGE_REPLACED` broadcast. Opening the app is the other chance to
-        // bind the grouped wallpaper again, so check off the main thread.
-        defaultScope.launch { GroupedWallpaperRestore.restoreIfLost(applicationContext) }
+        // bind the grouped wallpaper again, so check off the main thread; when
+        // binding is refused, the notice on the browsable pages offers the same
+        // one tap, so no notification is posted from here.
+        defaultScope.launch { GroupedWallpaperRestore.restoreOnStart(applicationContext) }
 
         ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, windowInsets ->
             val insets = ViewCompat.onApplyWindowInsets(view, windowInsets)

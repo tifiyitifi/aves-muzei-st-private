@@ -5,6 +5,7 @@ import 'package:aves/app_flavor.dart';
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_restore_notice.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_target_source.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
@@ -407,6 +408,10 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
         availability.onResume();
         RecentlyAddedFilter.updateNow();
         _mediaStoreSource.checkForChanges();
+        // The wallpaper binding is lost while the app is away, and it comes back
+        // when the user re-applies through the picker, so the notice is re-asked
+        // on every return instead of trusting the startup answer.
+        unawaited(groupedWallpaperRestoreNotice.refresh());
       default:
         break;
     }
@@ -652,6 +657,11 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
         sessionRestoreRouteObserver,
       ],
     );
+    // The activity's own restore ran before the engine was ready to answer, so
+    // this is the first point where the app can learn the wallpaper was dropped.
+    // The launch is the only place besides a resume, because a cold start does
+    // not emit a lifecycle transition.
+    unawaited(groupedWallpaperRestoreNotice.refresh());
   }
 
   // at this level `ModalRoute.of(context)` is null,

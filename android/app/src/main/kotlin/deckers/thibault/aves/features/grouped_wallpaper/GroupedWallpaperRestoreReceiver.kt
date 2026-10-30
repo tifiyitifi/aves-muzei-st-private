@@ -37,7 +37,7 @@ class GroupedWallpaperRestoreReceiver : BroadcastReceiver() {
         val appContext = context.applicationContext
         Thread {
             try {
-                GroupedWallpaperRestore.restoreIfLost(appContext)
+                GroupedWallpaperRestore.restoreAfterReplace(appContext)
             } finally {
                 pending.finish()
             }

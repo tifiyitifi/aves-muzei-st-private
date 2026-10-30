@@ -19,7 +19,8 @@ of the Muzei-style live wallpaper mechanism.
   effect switch, the full set of rule actions on the group page (move to
   base/restriction/supplement, open in a media set by replacing or appending,
   delete), per-permission locking, the usage history (page, notification entry,
-  configurable limit) and "duplicate group".
+  configurable limit), "duplicate group", and the in-app notice that offers the
+  wallpaper back after an update made the system drop it.
 - **Not done yet**: the notification's copy/share button (shown but disabled),
   filtering the management surfaces (settings, explorer, vaults,
   recycle bin) while a range is locked, temporary/permanent selection ranges,
@@ -438,6 +439,37 @@ The native side lives in
 `android/app/src/main/kotlin/deckers/thibault/aves/features/grouped_wallpaper/`
 and uses its own state root (`filesDir/grouped_wallpaper`), so it shares no files
 with Muzei. It never touches the database.
+
+#### An update that resets the wallpaper
+
+AOSP rebinds the component when the package is replaced, but some OEM builds
+(MIUI observed) reset the wallpaper to their default instead, so every app update
+stops the wallpaper. Nothing in the app can rebind it silently:
+`SET_WALLPAPER_COMPONENT` is `signature|privileged`, and a normal install is
+refused with a `SecurityException` even through reflection. Muzei answers the
+same problem the same way, by checking on entry and offering one tap to re-apply;
+it has no boot or package-replaced receiver either.
+
+So the restore has two channels, and both start from one decision:
+
+- `GroupedWallpaperRestore.restoreIfLost` runs from `MainActivity.onCreate` (a
+  force-stopped package receives no `MY_PACKAGE_REPLACED`, and MIUI does not
+  deliver it either) and from the receiver on builds that do. Where the
+  permission happens to be granted it binds the component; otherwise it posts a
+  one-tap notification.
+- `GroupedWallpaperRestore.restoreOffer` is the same decision, side-effect free,
+  exposed on the channel and polled by `GroupedWallpaperRestoreNotice`. It drives
+  `GroupedWallpaperRestoreBody`, the strip on the collection and filter-grid
+  pages, because an OEM that resets a wallpaper also tends to silence the app's
+  notifications (MIUI: every post of this app muted), so a notification is not
+  what the user reads. Applying from the strip opens the system picker; the
+  answer is re-read on every resume, so a committed switch drops the strip.
+
+The decision only fires when the wallpaper was in use (`state.json` recent and
+not `disabled`/paused), the component is not ours, no *other* live wallpaper is
+bound, and no static wallpaper file exists. That last pair is what keeps the
+notice from nagging a user who picked another wallpaper, and the OEM's fallback
+is distinguishable because after a reset the system keeps no wallpaper file.
 
 The headless path is shared with Muzei instead: `features/live_wallpaper_refill/`
 owns the `vm:entry-point` isolate, the warm engine and the WorkManager chain, and

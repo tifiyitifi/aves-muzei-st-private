@@ -50,6 +50,7 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "isActive" -> safe(call, result, ::isActive)
+            "restoreOffer" -> safe(call, result, ::restoreOffer)
             "reload" -> safe(call, result, ::reload)
             "openChooser" -> safe(call, result, ::openChooser)
             "wallpaperSize" -> safe(call, result, ::wallpaperSize)
@@ -66,6 +67,17 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
     private fun isActive(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
         val info = WallpaperManager.getInstance(context).wallpaperInfo
         result.success(info?.serviceName == GroupedLiveWallpaperService::class.java.name)
+    }
+
+    /**
+     * Whether the app should offer the wallpaper back.
+     *
+     * The app asks on every return, because the binding can be lost while it is
+     * away; the answer is the same rule the startup restore uses, so the notice
+     * never offers a live wallpaper the user picked.
+     */
+    private fun restoreOffer(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        result.success(GroupedWallpaperRestore.restoreOffer(context))
     }
 
     private fun reload(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {

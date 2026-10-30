@@ -131,6 +131,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   Future<bool> isActive() => platform.isActive();
 
   @override
+  Future<bool> restoreOffer() => platform.restoreOffer();
+
+  @override
   Future<bool> isDisabled() async => (await planStore.load()).disabled;
 
   @override

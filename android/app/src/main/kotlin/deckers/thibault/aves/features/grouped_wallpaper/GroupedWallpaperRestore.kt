@@ -33,10 +33,13 @@ import android.util.Log
  * to open the system chooser again after every update.
  *
  * Binding is silent only where the platform allows it: `SET_WALLPAPER_COMPONENT` is
- * a `signature|privileged` permission, so a normal install is refused and gets a
- * one-tap notification instead. Either way the restore is deliberately narrow: it
- * only runs when the wallpaper was in use, and never takes back a live wallpaper
- * the user picked or a static photo they set.
+ * a `signature|privileged` permission, so a normal install is refused. On such
+ * builds the app carries the message itself ([restoreOffer] drives an in-app
+ * notice; the package-replaced path also posts a one-tap notification), because an
+ * OEM that resets the wallpaper also tends to silence the app's notifications.
+ * Either way the restore is deliberately narrow: it only runs when the wallpaper
+ * was in use, and never takes back a live wallpaper the user picked or a static
+ * photo they set.
  */
 object GroupedWallpaperRestore {
     private const val TAG = "AvesGroupedWallpaper"
@@ -76,18 +79,18 @@ object GroupedWallpaperRestore {
     )
 
     /**
-     * Puts the wallpaper back if the system dropped it.
+     * Whether the grouped wallpaper was in use and the system dropped it.
      *
-     * Called when the package is replaced and when the app starts, because a
-     * force-stopped package receives no `MY_PACKAGE_REPLACED` broadcast. It is
-     * idempotent: while the wallpaper is still bound the first check returns.
+     * This is the one case where offering the wallpaper back is right, so the
+     * decision lives here only: the restore paths act on it, and the app asks for
+     * it to show its own notice. Only the platform can tell the OEM's fallback
+     * from a wallpaper the user picked, because both report the component as
+     * simply not ours.
      *
-     * @return whether the wallpaper was bound again.
+     * Side-effect free, so the app can re-ask every time it comes back.
      */
-    fun restoreIfLost(context: Context): Boolean {
+    fun restoreOffer(context: Context): Boolean {
         val manager = WallpaperManager.getInstance(context)
-        val component = ComponentName(context, GroupedLiveWallpaperService::class.java)
-
         val current = try {
             manager.wallpaperInfo
         } catch (t: Throwable) {
@@ -96,29 +99,63 @@ object GroupedWallpaperRestore {
             Log.w(TAG, "restore.stateUnavailable", t)
             return false
         }
-        if (current?.serviceName == GroupedLiveWallpaperService::class.java.name) {
-            // The app is opened all the time; leave as soon as nothing is wrong.
-            return false
-        }
-        if (!wasInUse(context)) return false
+        // The app is opened all the time, so the common case has to stay cheap:
+        // leave before touching the state file or the wallpaper file.
+        if (current?.serviceName == GroupedLiveWallpaperService::class.java.name) return false
+        // The probe is the only place that sees the platform's answer, so its
+        // inputs are logged together: a reset and a wallpaper the user picked
+        // are otherwise indistinguishable in a bug report.
+        val inUse = wasInUse(context)
+        val static = current == null && hasStaticWallpaper(manager)
+        Log.i(TAG, "restore.probe current=$current inUse=$inUse static=$static")
         if (current != null) {
             // Another live wallpaper is bound: the user picked it, so it is theirs.
-            Log.i(TAG, "restore.skip other live wallpaper=$current")
             return false
         }
-        if (hasStaticWallpaper(manager)) {
+        if (!inUse) return false
+        if (static) {
             // A static photo is the user's own choice, and the OEM's fallback is
             // distinguishable from it: after a reset the system keeps no wallpaper
             // file (verified on the target device), so this case is not ours.
-            Log.i(TAG, "restore.skip static wallpaper")
             return false
         }
+        return true
+    }
+
+    /**
+     * Puts the wallpaper back when the package was replaced and the app is not
+     * open.
+     *
+     * The notification is the only thing that can reach the user here, so it is
+     * posted when the binding is refused. Idempotent: while the wallpaper is
+     * still bound [restoreOffer] returns false.
+     *
+     * @return whether the wallpaper was bound again.
+     */
+    fun restoreAfterReplace(context: Context): Boolean = restore(context, postHint = true)
+
+    /**
+     * Puts the wallpaper back when the app starts.
+     *
+     * No notification here: the app is being opened, and the in-app notice
+     * ([restoreOffer] driving `GroupedWallpaperRestoreBody`) already offers the
+     * same one tap without leaving a stale bar behind.
+     *
+     * @return whether the wallpaper was bound again.
+     */
+    fun restoreOnStart(context: Context): Boolean = restore(context, postHint = false)
+
+    private fun restore(context: Context, postHint: Boolean): Boolean {
+        if (!restoreOffer(context)) return false
+
+        val manager = WallpaperManager.getInstance(context)
+        val component = ComponentName(context, GroupedLiveWallpaperService::class.java)
         if (!canBindSilently(context)) {
             // `SET_WALLPAPER_COMPONENT` is a signature|privileged permission, so a
-            // normal install can never bind the component itself. The hint, with its
-            // one-tap restore, is the whole answer on such builds.
+            // normal install can never bind the component itself. Only the
+            // background path can notify; the in-app notice covers the rest.
             Log.i(TAG, "restore.hint silent binding needs a system permission")
-            postHintOnce(context)
+            if (postHint) postHintOnce(context)
             return false
         }
 
@@ -131,7 +168,7 @@ object GroupedWallpaperRestore {
         } catch (t: Throwable) {
             // An OEM may still refuse the component; the hint is what is left.
             Log.w(TAG, "restore.failed component=$component", t)
-            postHintOnce(context)
+            if (postHint) postHintOnce(context)
             false
         }
     }

@@ -1119,6 +1119,11 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   Future<bool> isActive() async => active;
 
   @override
+  Future<bool> restoreOffer() async => offer;
+
+  bool offer = false;
+
+  @override
   Future<String?> stateRoot() async => root;
 
   @override

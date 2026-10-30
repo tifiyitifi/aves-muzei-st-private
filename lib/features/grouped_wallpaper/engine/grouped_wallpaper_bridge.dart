@@ -12,6 +12,13 @@ abstract interface class GroupedWallpaperPlatform {
   /// Whether [GroupedLiveWallpaperService] is the current system wallpaper.
   Future<bool> isActive();
 
+  /// Whether the wallpaper was in use and the system dropped it.
+  ///
+  /// The platform owns this decision: the OEM's fallback and a wallpaper the
+  /// user picked both look like "not ours", and only the baked state plus the
+  /// wallpaper file tell them apart.
+  Future<bool> restoreOffer();
+
   /// Absolute directory the renderer and Dart share for `state.json`.
   Future<String?> stateRoot();
 
@@ -71,6 +78,12 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
   Future<bool> isActive() async {
     final active = await _invoke<bool>('isActive');
     return active ?? false;
+  }
+
+  @override
+  Future<bool> restoreOffer() async {
+    final offered = await _invoke<bool>('restoreOffer');
+    return offered ?? false;
   }
 
   @override

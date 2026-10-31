@@ -43,6 +43,19 @@ class VisibleRangeWriteBackTarget extends Equatable {
     required this.locked,
   });
 
+  VisibleRangeWriteBackTarget copyWith({bool? locked}) => VisibleRangeWriteBackTarget(
+        usageId: usageId,
+        rangeId: rangeId,
+        targetId: targetId,
+        kind: kind,
+        isGallery: isGallery,
+        number: number,
+        ownerName: ownerName,
+        label: label,
+        filters: filters,
+        locked: locked ?? this.locked,
+      );
+
   bool get isBase => kind == VisibleRangeCandidateKind.base;
 
   @override

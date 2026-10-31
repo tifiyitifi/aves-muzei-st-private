@@ -2105,6 +2105,10 @@
   "wallpaperLockPinWrong": "Wrong PIN",
   "wallpaperLockNeededTitle": "PIN required",
   "wallpaperLockVisibleRangeLocked": "The visible range is locked",
+  "wallpaperGroupLockCurrent": "Lock the current group",
+  "wallpaperGroupUnlockCurrent": "Unlock the group",
+  "wallpaperGroupLockedSubtitle": "Group switching is locked",
+  "wallpaperGroupLockedSwitch": "Unlock the group to switch or edit it.",
   "wallpaperGroupNavClose": "Close the wallpaper group entry",
   "wallpaperGroupNavOpen": "Show the wallpaper group entry",
 

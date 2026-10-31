@@ -6,6 +6,7 @@ import 'package:aves/features/visible_range/model/visible_range_write_back.dart'
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_target_grid.dart';
+import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/format.dart';
@@ -80,11 +81,14 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
       final targets = await visibleRangeController.loadPinTargets();
       final applied = await visibleRangeController.loadAppliedTargets();
       if (!mounted) return;
+      // A locked group accepts no new content: its own rule set is frozen, and
+      // writing into it would be a way around that. The gallery is unaffected.
+      final groupLocked = wallpaperLockService.groupSwitchLocked;
       setState(() {
-        _targets = targets;
-        _appliedTargets = applied;
+        _targets = [for (final target in targets) target.copyWith(locked: target.locked || (groupLocked && !target.isGallery))];
+        _appliedTargets = [for (final target in applied) target.copyWith(locked: target.locked || (groupLocked && !target.isGallery))];
         _selectedTargets.addAll([
-          for (final target in targets)
+          for (final target in _targets)
             if (target.isGallery && !target.locked) target.rangeId,
         ]);
         _loading = false;

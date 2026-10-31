@@ -12,8 +12,7 @@ import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.d
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_history_group_dialog.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_history_limit_dialog.dart';
-import 'package:aves/features/visible_range/db/visible_range_store.dart';
-import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/services/common/services.dart';
@@ -67,7 +66,6 @@ class _GroupedWallpaperHistoryPageState extends State<GroupedWallpaperHistoryPag
   int _limit = GroupedWallpaperHistoryLimit.defaultLimit;
   bool _loaded = false;
   bool _scopeResolved = false;
-  bool _locked = false;
   bool _skipClearConfirm = false;
 
   @override
@@ -94,12 +92,10 @@ class _GroupedWallpaperHistoryPageState extends State<GroupedWallpaperHistoryPag
       final limit = await groupStore.readHistoryLimit();
       final skipClearConfirm = await groupStore.readHistoryClearSkipConfirm();
       final group = _groupId == null ? null : groups.firstWhereOrNull((group) => group.id == _groupId);
-      final locked = group == null ? false : (await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id))?.locked ?? false;
       if (!mounted) return;
       setState(() {
         _groups = groups;
         _group = group;
-        _locked = locked;
         _items = [
           for (final row in rows)
             if (byId[row.entryId] case final entry?) (row: row, entry: entry),
@@ -118,12 +114,19 @@ class _GroupedWallpaperHistoryPageState extends State<GroupedWallpaperHistoryPag
 
   /// Picks the group the page is scoped to, once.
   ///
-  /// A group that no longer exists falls back to every group: its rows have no
-  /// name or range to show, so the whole history is more useful than a scope the
-  /// user cannot name.
+  /// The group switch lock wins over the caller: a locked group's history is the
+  /// only one reachable, even from a notification button or a stale page. A group
+  /// that no longer exists falls back to every group: its rows have no name or
+  /// range to show, so the whole history is more useful than a scope the user
+  /// cannot name.
   Future<void> _resolveScope(List<WallpaperGroup> groups) async {
     if (_scopeResolved) return;
     _scopeResolved = true;
+    if (wallpaperLockService.groupSwitchLocked) {
+      final lockedId = wallpaperLockService.groupSwitchLockedGroupId;
+      _groupId = groups.any((group) => group.id == lockedId) ? lockedId : null;
+      return;
+    }
     final candidate = widget.groupId ?? (await wallpaperEngineLink.readState())?.groupId;
     _groupId = groups.any((group) => group.id == candidate) ? candidate : null;
   }
@@ -216,9 +219,9 @@ class _GroupedWallpaperHistoryPageState extends State<GroupedWallpaperHistoryPag
     );
   }
 
-  /// A locked range refuses everything about its group, including reading
+  /// A locked group refuses switching away from itself, including reading
   /// another group's history from here.
-  bool get _canSwitchGroup => _groups.length > 1 && !_locked;
+  bool get _canSwitchGroup => _groups.length > 1 && !wallpaperLockService.groupSwitchLocked;
 
   @override
   Widget build(BuildContext context) {

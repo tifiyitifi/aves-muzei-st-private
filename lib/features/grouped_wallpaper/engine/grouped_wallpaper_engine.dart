@@ -316,10 +316,13 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final state = await store.readState();
       if (state == null) return;
       final locked = _groupSwitchLocked();
-      if (state.switchLocked == locked) return;
-      await store.writeState(state.copyWith(generation: state.generation + 1, switchLocked: locked));
-      await platform.reload();
-      await platform.refreshNotification();
+      final changed = state.switchLocked != locked;
+      if (changed) {
+        await store.writeState(state.copyWith(generation: state.generation + 1, switchLocked: locked));
+        await platform.reload();
+        await platform.refreshNotification();
+      }
+      groupedWallpaperLog.i('refreshLock switchLocked=$locked wrote=$changed');
     });
   }
 

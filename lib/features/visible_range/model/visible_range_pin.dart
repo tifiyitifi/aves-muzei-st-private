@@ -28,6 +28,14 @@ class VisibleRangePinTarget extends Equatable {
     this.locked = false,
   });
 
+  VisibleRangePinTarget copyWith({bool? locked}) => VisibleRangePinTarget(
+        rangeId: rangeId,
+        number: number,
+        name: name,
+        isGallery: isGallery,
+        locked: locked ?? this.locked,
+      );
+
   @override
   List<Object?> get props => [rangeId, number, name, isGallery, locked];
 }

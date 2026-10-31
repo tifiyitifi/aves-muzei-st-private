@@ -75,7 +75,7 @@ class WallpaperLockService extends ChangeNotifier {
   bool get groupSwitchLocked => _groupSwitchLocked;
 
   /// The group that was showing when the switch lock was set, if any.
-  String? get groupSwitchGroupId => _groupSwitchGroupId;
+  String? get groupSwitchLockedGroupId => _groupSwitchGroupId;
 
   /// Whether [pin] is the current PIN of [kind].
   ///

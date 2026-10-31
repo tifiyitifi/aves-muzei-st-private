@@ -42,14 +42,14 @@ void main() {
 
   test('the group switch starts unlocked', () {
     expect(service.groupSwitchLocked, isFalse);
-    expect(service.groupSwitchGroupId, isNull);
+    expect(service.groupSwitchLockedGroupId, isNull);
   });
 
   test('locking records the group without asking for a PIN', () async {
     await service.lockGroup('wallpaper.group.dcim');
 
     expect(service.groupSwitchLocked, isTrue);
-    expect(service.groupSwitchGroupId, 'wallpaper.group.dcim');
+    expect(service.groupSwitchLockedGroupId, 'wallpaper.group.dcim');
   });
 
   test('unlocking needs the PIN and keeps the lock when it is wrong', () async {
@@ -57,11 +57,11 @@ void main() {
 
     expect(await service.unlockGroup('0000'), isFalse);
     expect(service.groupSwitchLocked, isTrue);
-    expect(service.groupSwitchGroupId, 'wallpaper.group.dcim');
+    expect(service.groupSwitchLockedGroupId, 'wallpaper.group.dcim');
 
     expect(await service.unlockGroup(WallpaperLockService.defaultPin), isTrue);
     expect(service.groupSwitchLocked, isFalse);
-    expect(service.groupSwitchGroupId, isNull);
+    expect(service.groupSwitchLockedGroupId, isNull);
   });
 
   test('changing the PIN needs the current one', () async {
@@ -86,7 +86,7 @@ void main() {
     addTearDown(reloaded.dispose);
 
     expect(reloaded.groupSwitchLocked, isTrue);
-    expect(reloaded.groupSwitchGroupId, 'wallpaper.group.pictures');
+    expect(reloaded.groupSwitchLockedGroupId, 'wallpaper.group.pictures');
   });
 
   test('each PIN is stored under its own key', () async {

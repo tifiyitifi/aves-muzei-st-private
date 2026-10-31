@@ -7,6 +7,7 @@ import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/model/group_lock_rules.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_sections.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
@@ -131,6 +132,8 @@ enum _PageAction {
   toggleNotification,
   toggleScrollEffect,
   cancelGalleryRange,
+  lockGroup,
+  unlockGroup,
 }
 
 class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with WidgetsBindingObserver {
@@ -185,6 +188,21 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// Whether the page last published a non-null group scope, for logging only.
   bool _scopeActive = false;
 
+  /// Whether the group switch lock freezes the page.
+  ///
+  /// The lock freezes one group, not the page: group 0 and the locked group stay
+  /// reachable, and closing the page is always allowed, so the user can browse
+  /// normally again without unlocking.
+  bool get _groupLocked => wallpaperLockService.groupSwitchLocked;
+
+  /// The group the lock froze, if any.
+  String? get _lockedGroupId => wallpaperLockService.groupSwitchLockedGroupId;
+
+  /// Whether the selected group's range may be written.
+  ///
+  /// Two independent locks: the range's own lock and the group switch lock.
+  bool get _canEditRange => canEditWallpaperGroupRange(rangeLocked: !_controller.canEdit, groupLocked: _groupLocked);
+
   /// What the live wallpaper last baked, read when the page opens or resumes.
   GroupedWallpaperState? _engineState;
 
@@ -203,6 +221,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     // strip there can suspend the gallery range and this page must follow.
     VisibleRangeGate.overlayListenable.addListener(_onBrowseScopeChanged);
     visibleRangeController.addListener(_onBrowseScopeChanged);
+    wallpaperLockService.addListener(_onLockChanged);
     unawaited(_initController());
     unawaited(_refreshEngine());
   }
@@ -219,10 +238,18 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final hadSession = wallpaperGroupPageSession.initialized;
     await _controller.init();
     if (!mounted) return;
+    // A locked group owns the page: opening it anywhere shows the frozen group,
+    // never the group that happens to be playing.
+    final lockedId = _lockedGroupId;
+    if (_groupLocked && lockedId != null && _controller.groups.any((group) => group.id == lockedId)) {
+      if (_controller.selectedGroupId != lockedId) await _controller.selectGroup(lockedId);
+      return;
+    }
     if (hadSession && !widget.selectCurrent) return;
     final runningId = await _runningGroupId();
     if (!mounted || runningId == null) return;
     if (_controller.selectedGroupId == runningId) return;
+    if (!canSelectWallpaperGroup(locked: _groupLocked, lockedGroupId: lockedId, targetGroupId: runningId)) return;
     if (_controller.groups.any((group) => group.id == runningId)) {
       await _controller.selectGroup(runningId);
     }
@@ -253,6 +280,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     // because `dispose` runs with the widget tree locked.
     VisibleRangeGate.overlayListenable.removeListener(_onBrowseScopeChanged);
     visibleRangeController.removeListener(_onBrowseScopeChanged);
+    wallpaperLockService.removeListener(_onLockChanged);
     final groupId = _controller.selectedGroupId;
     if (VisibleRangeGate.takeWallpaperScopePreserve()) {
       groupedWallpaperLog.i('scope.keep group=$groupId reason=destination');
@@ -428,6 +456,21 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     if (!mounted) return;
     setState(() {});
     unawaited(_refreshResultStats());
+  }
+
+  /// Follows the group lock when it is set or cleared from a menu or settings.
+  ///
+  /// Unlocking leaves the page on the group that was locked; locking re-opens
+  /// that group even if the page had moved to group 0, so the frozen group is
+  /// what the user sees and cannot wander away from.
+  void _onLockChanged() {
+    if (!mounted) return;
+    final lockedId = _lockedGroupId;
+    if (_groupLocked && lockedId != null && _controller.selectedGroupId != lockedId && _controller.groups.any((group) => group.id == lockedId)) {
+      unawaited(_controller.selectGroup(lockedId));
+    }
+    setState(() {});
+    unawaited(_refreshGroupFilters());
   }
 
   void _onControllerChanged() {
@@ -674,9 +717,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
                                 : _groupStateIcon(context, group),
                             label: Text('${group.number}  ${wallpaperGroupName(context, group)}'),
                             selected: selecting ? selectedIds.contains(group.id) : viewedId == group.id,
-                            labelStyle: group.enabled ? null : TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            labelStyle: group.enabled && _groupSelectable(group.id) ? null : TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             showCheckmark: false,
-                            onSelected: (_) => _onGroupCardTap(group.id),
+                            // A locked group cannot be opened: the chip greys out
+                            // and the tap does nothing, while group 0 and the
+                            // locked group stay live.
+                            onSelected: selecting || !_groupSelectable(group.id) ? null : (_) => _onGroupCardTap(group.id),
                           ),
                         ),
                       ),
@@ -719,16 +765,21 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
                         SizedBox(
                           width: width,
                           height: height,
-                          child: WallpaperGroupTile(
-                            filter: _buildGroupFilter(groupId),
-                            tileLayout: TileLayout.grid,
-                            tileSize: Size(width, height),
-                            selecting: selecting,
-                            selected: selectedIds.contains(groupId),
-                            onTap: () => _onGroupCardTap(groupId == wallpaperGroupNoneId ? null : groupId),
-                            // Always provide a handler so a group card consumes the
-                            // long press instead of the grid's range selection.
-                            onLongPress: () => _onGroupCardLongPress(groupId == wallpaperGroupNoneId ? null : groupId),
+                          // A locked group is dimmed like a disabled one: the card
+                          // still describes the range, but it cannot be opened.
+                          child: Opacity(
+                            opacity: _groupSelectable(groupId == wallpaperGroupNoneId ? null : groupId) ? 1 : .4,
+                            child: WallpaperGroupTile(
+                              filter: _buildGroupFilter(groupId),
+                              tileLayout: TileLayout.grid,
+                              tileSize: Size(width, height),
+                              selecting: selecting,
+                              selected: selectedIds.contains(groupId),
+                              onTap: () => _onGroupCardTap(groupId == wallpaperGroupNoneId ? null : groupId),
+                              // Always provide a handler so a group card consumes the
+                              // long press instead of the grid's range selection.
+                              onLongPress: () => _onGroupCardLongPress(groupId == wallpaperGroupNoneId ? null : groupId),
+                            ),
                           ),
                         ),
                     ],
@@ -750,18 +801,30 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// page is selecting. Group 0 is a view choice and is never selectable.
   void _onGroupCardTap(String? groupId) {
     if (_selection.isSelecting) {
-      if (groupId != null) _selection.toggleSelection(_groupItem(groupId));
+      if (groupId != null && !_groupLocked) _selection.toggleSelection(_groupItem(groupId));
+      return;
+    }
+    if (!canSelectWallpaperGroup(locked: _groupLocked, lockedGroupId: _lockedGroupId, targetGroupId: groupId)) {
+      _showGroupLocked();
       return;
     }
     unawaited(_controller.selectGroup(groupId));
   }
 
   /// Long press starts multi-selection with this group, mirroring the condition
-  /// tiles' selection mode.
+  /// tiles' selection mode. Group selection leads to management actions, which a
+  /// locked group freezes.
   void _onGroupCardLongPress(String? groupId) {
-    if (groupId == null) return;
+    if (groupId == null || _groupLocked) return;
     _selection.toggleSelection(_groupItem(groupId));
   }
+
+  void _showGroupLocked() {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.wallpaperGroupLockedSwitch)));
+  }
+
+  /// Whether the switcher may open [groupId] (null is group 0).
+  bool _groupSelectable(String? groupId) => canSelectWallpaperGroup(locked: _groupLocked, lockedGroupId: _lockedGroupId, targetGroupId: groupId);
 
   Widget? _groupStateIcon(BuildContext context, WallpaperGroup group) {
     final colors = Theme.of(context).colorScheme;
@@ -920,7 +983,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   }
 
   void _toggleRule(VisibleRangeRule rule) {
-    if (!_controller.canEdit) {
+    if (!_canEditRange) {
       _showBlocked();
       return;
     }
@@ -928,7 +991,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   }
 
   void _cancelBase() {
-    if (!_controller.canEdit) {
+    if (!_canEditRange) {
       _showBlocked();
       return;
     }
@@ -958,7 +1021,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       if (_isSelectable(candidate)) _selection.toggleSelection(item);
       return;
     }
-    if (!_controller.canEdit) {
+    if (!_canEditRange) {
       _showBlocked();
       return;
     }
@@ -1186,7 +1249,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final rules = _selectedRules(_selection);
     final base = _selectionHasBase(_selection);
     if (rules.isEmpty && !base) return;
-    if (!_controller.canEdit) {
+    if (!_canEditRange) {
       _showBlocked();
       return;
     }
@@ -1225,7 +1288,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// Renames one rule and edits its note. Filters are never edited here: a
   /// condition comes from a media set through 「pin to visible range」.
   Future<void> _renameRule(VisibleRangeRule rule) async {
-    if (!_controller.canEdit) {
+    if (!_canEditRange) {
       _showBlocked();
       return;
     }
@@ -1247,13 +1310,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// differs, because a wallpaper group keeps its edits in the page's draft.
   Future<void> _editRule(VisibleRangeRule rule) async {
     if (_controller.range == null) return;
-    final action = await showVisibleRangeRuleActions(context, rule: rule, canEdit: _controller.canEdit);
+    final action = await showVisibleRangeRuleActions(context, rule: rule, canEdit: _canEditRange);
     if (action == null || !mounted) return;
     switch (action) {
       case VisibleRangeRuleAction.rename:
         await _renameRule(rule);
       case VisibleRangeRuleAction.moveToBase:
-        if (!_controller.canEdit) {
+        if (!_canEditRange) {
           _showBlocked();
           return;
         }
@@ -1261,7 +1324,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         await _controller.moveRuleToBase(rule.id, name: visibleRangeRuleLabel(context, rule));
       case VisibleRangeRuleAction.moveToRestriction:
       case VisibleRangeRuleAction.moveToSupplement:
-        if (!_controller.canEdit) {
+        if (!_canEditRange) {
           _showBlocked();
           return;
         }
@@ -1275,7 +1338,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       case VisibleRangeRuleAction.activateAppend:
         await _activateRule(rule, replace: false);
       case VisibleRangeRuleAction.delete:
-        if (!_controller.canEdit) {
+        if (!_canEditRange) {
           _showBlocked();
           return;
         }
@@ -1325,8 +1388,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         _PageAction.saveChanges,
         AIcons.save,
         l10n.wallpaperGroupSaveChanges,
-        enabled: _controller.dirty,
-        subtitle: _controller.dirty ? l10n.wallpaperGroupDraftUnsaved : null,
+        enabled: _controller.dirty && !_groupLocked,
+        subtitle: _groupLocked ? l10n.wallpaperGroupLockedSubtitle : _controller.dirty ? l10n.wallpaperGroupDraftUnsaved : null,
       ),
       // One action, following the group the page is viewing: a real group
       // becomes the wallpaper, group 0 turns the feature off. The system picker
@@ -1344,10 +1407,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           _PageAction.setCurrentAsWallpaper,
           AIcons.wallpaperPlaying,
           l10n.wallpaperGroupSetCurrentAsWallpaper,
-          enabled: wallpaperEngineLink.isAttached && group.enabled,
-          subtitle: wallpaperEngineLink.isAttached
-              ? (group.current && wallpaperEngineLink.isPlaying ? l10n.wallpaperGroupAlreadyPlaying : null)
-              : l10n.wallpaperGroupEngineUnavailable,
+          enabled: wallpaperEngineLink.isAttached && group.enabled && !_groupLocked,
+          subtitle: _groupLocked
+              ? l10n.wallpaperGroupLockedSubtitle
+              : wallpaperEngineLink.isAttached
+                  ? (group.current && wallpaperEngineLink.isPlaying ? l10n.wallpaperGroupAlreadyPlaying : null)
+                  : l10n.wallpaperGroupEngineUnavailable,
         ),
       _menuItem(
         _PageAction.syncNow,
@@ -1400,7 +1465,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         _PageAction.discardChanges,
         AIcons.discard,
         l10n.wallpaperGroupDiscardChanges,
-        enabled: _controller.dirty,
+        enabled: _controller.dirty && !_groupLocked,
       ),
       const PopupMenuDivider(),
       // The wallpaper page shares one bottom-bar entry with the visible-range
@@ -1425,31 +1490,39 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           subtitle: gallery.locked && !_gallerySuspended ? l10n.visibleRangeWhenLocked : null,
         ),
       const PopupMenuDivider(),
+      // The group lock is the way in and out; it stays available whatever the
+      // page shows, because group 0 is still reachable while locked.
+      if (_groupLocked)
+        _menuItem(_PageAction.unlockGroup, AIcons.unlocked, l10n.wallpaperGroupUnlockCurrent, subtitle: l10n.wallpaperGroupLockedSubtitle)
+      else if (group != null)
+        _menuItem(_PageAction.lockGroup, AIcons.locked, l10n.wallpaperGroupLockCurrent),
       if (group != null) ...[
         _menuItem(
           _PageAction.toggleEnabled,
           group.enabled ? AIcons.unselected : AIcons.checked,
           group.enabled ? l10n.wallpaperGroupDisable : l10n.wallpaperGroupEnable,
+          enabled: !_groupLocked,
+          subtitle: _groupLocked ? l10n.wallpaperGroupLockedSubtitle : null,
         ),
-        _menuItem(_PageAction.moveUp, AIcons.up, l10n.wallpaperGroupMoveUp),
-        _menuItem(_PageAction.moveDown, AIcons.down, l10n.wallpaperGroupMoveDown),
+        _menuItem(_PageAction.moveUp, AIcons.up, l10n.wallpaperGroupMoveUp, enabled: !_groupLocked),
+        _menuItem(_PageAction.moveDown, AIcons.down, l10n.wallpaperGroupMoveDown, enabled: !_groupLocked),
         const PopupMenuDivider(),
-        _menuItem(_PageAction.rename, AIcons.edit, l10n.wallpaperGroupRename),
+        _menuItem(_PageAction.rename, AIcons.edit, l10n.wallpaperGroupRename, enabled: !_groupLocked),
         _menuItem(
           _PageAction.duplicateGroup,
           AIcons.copy,
           l10n.wallpaperGroupDuplicate,
-          enabled: !locked,
-          subtitle: locked ? l10n.visibleRangeManagementBlocked : null,
+          enabled: !locked && !_groupLocked,
+          subtitle: _groupLocked ? l10n.wallpaperGroupLockedSubtitle : locked ? l10n.visibleRangeManagementBlocked : null,
         ),
       ],
-      _menuItem(_PageAction.add, AIcons.add, l10n.wallpaperGroupAdd),
-      if (group != null) _menuItem(_PageAction.delete, AIcons.delete, l10n.wallpaperGroupDelete, enabled: canDelete),
+      _menuItem(_PageAction.add, AIcons.add, l10n.wallpaperGroupAdd, enabled: !_groupLocked),
+      if (group != null) _menuItem(_PageAction.delete, AIcons.delete, l10n.wallpaperGroupDelete, enabled: canDelete && !_groupLocked),
       const PopupMenuDivider(),
       if (range != null) ...[
-        _menuItem(_PageAction.order, AIcons.sortOrder, l10n.visibleRangeOrder),
-        _menuItem(_PageAction.lock, locked ? AIcons.locked : AIcons.unlocked, locked ? l10n.visibleRangeUnlock : l10n.visibleRangeLock),
-        _menuItem(_PageAction.lockDetailed, AIcons.locked, l10n.visibleRangeLockSheetTitle),
+        _menuItem(_PageAction.order, AIcons.sortOrder, l10n.visibleRangeOrder, enabled: !_groupLocked),
+        _menuItem(_PageAction.lock, locked ? AIcons.locked : AIcons.unlocked, locked ? l10n.visibleRangeUnlock : l10n.visibleRangeLock, enabled: !_groupLocked),
+        _menuItem(_PageAction.lockDetailed, AIcons.locked, l10n.visibleRangeLockSheetTitle, enabled: !_groupLocked),
         const PopupMenuDivider(),
       ],
       _menuItem(_PageAction.about, AIcons.info, l10n.aboutWallpaperTitle),
@@ -1545,6 +1618,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         break;
       case _PageAction.cancelGalleryRange:
         await _toggleGallerySuspension();
+      case _PageAction.lockGroup:
+        await _lockCurrentGroup();
+      case _PageAction.unlockGroup:
+        await promptGroupSwitchUnlock(context);
       case _PageAction.toggleEnabled:
         if (group != null) {
           await _controller.setEnabled(group.id, !group.enabled);
@@ -1776,7 +1853,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// A locked group is refused here and again in the controller: its range is
   /// read-only, so a copy would clone content the user froze.
   Future<void> _duplicateGroup(WallpaperGroup group) async {
-    if (!_controller.canEdit) {
+    if (!_canEditRange) {
       _showMessage(context.l10n.visibleRangeManagementBlocked);
       return;
     }
@@ -1828,6 +1905,16 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       if (!mounted) return;
     }
     VisibleRangeGate.setGallerySuspended(!_gallerySuspended);
+  }
+
+  /// Freezes the group on screen: only it and group 0 stay reachable.
+  ///
+  /// Locking is direct (no PIN); the recorded group is what the page re-opens on
+  /// and what the notification bar refuses to leave.
+  Future<void> _lockCurrentGroup() async {
+    final id = _controller.selectedGroupId;
+    if (id == null) return;
+    await wallpaperLockService.lockGroup(id);
   }
 
   Future<void> _renameGroup(WallpaperGroup group) async {
@@ -1967,7 +2054,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   }
 
   void _showBlocked() {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.visibleRangeManagementBlocked)));
+    final l10n = context.l10n;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_groupLocked ? l10n.wallpaperGroupLockedSwitch : l10n.visibleRangeManagementBlocked)));
   }
 }
 

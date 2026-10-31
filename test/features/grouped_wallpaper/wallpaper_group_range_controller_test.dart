@@ -7,8 +7,7 @@ import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_se
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
-import 'package:aves/features/visible_range/model/visible_range.dart';
-import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
+import 'package:aves/features/visible_range/model/visible_range.dart';import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/path.dart';
 import 'package:aves/services/common/services.dart';
@@ -68,12 +67,12 @@ void main() {
 
   tearDown(() => db.close());
 
-  test('opens on group 1', () {
+  test('a cold start opens group 0', () {
     expect(controller.groups, hasLength(3));
-    expect(controller.selectedGroupId, 'wallpaper.group.all');
-    expect(controller.range, isNotNull);
-    expect(controller.range!.scope, VisibleRangeScope.wallpaper);
-    expect(controller.range!.ownerId, 'wallpaper.group.all');
+    // Group 0 is no browsing constraint, which is what a fresh process must not
+    // imply before the user picks a group.
+    expect(controller.selectedGroupId, isNull);
+    expect(controller.range, isNull);
   });
 
   test('group 0 has no range to edit', () async {
@@ -400,7 +399,7 @@ void main() {
     expect(meta.containsKey(VisibleRangeStore.keyActiveStyle), isFalse);
   });
 
-  test('a cold start opens group 1 even when the wallpaper uses another group', () async {
+  test('a cold start opens group 0 even when the wallpaper uses another group', () async {
     await controller.selectCurrent('wallpaper.group.pictures');
     await controller.saveDraft();
 
@@ -409,7 +408,7 @@ void main() {
       ..selectedGroupId = null;
     final cold = makeController();
     await cold.init();
-    expect(cold.selectedGroupId, 'wallpaper.group.all');
+    expect(cold.selectedGroupId, isNull);
     expect(cold.current.id, 'wallpaper.group.pictures');
   });
 
@@ -421,14 +420,14 @@ void main() {
     await rebuilt.init();
     expect(rebuilt.selectedGroupId, 'wallpaper.group.pictures');
 
-    // A process death clears the in-memory session: the page opens on group 1,
-    // since the wallpaper feature may never have been visited.
+    // A process death clears the in-memory session: the page opens on group 0,
+    // which constrains nothing.
     wallpaperGroupPageSession
       ..initialized = false
       ..selectedGroupId = null;
     final cold = makeController();
     await cold.init();
-    expect(cold.selectedGroupId, 'wallpaper.group.all');
+    expect(cold.selectedGroupId, isNull);
   });
 
   group('duplicateGroup', () {

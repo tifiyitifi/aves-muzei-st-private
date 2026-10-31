@@ -26,6 +26,12 @@ class QuickActionEditorController<T extends Object>({
 
   Stream<EditorControllerEvent<T>> get events => _eventsController.stream;
 
+  /// The buttons the editor is showing, including changes not saved yet.
+  ///
+  /// A page that adds its own read-only section derives it from this list, so
+  /// the section follows the edits instead of describing the last saved state.
+  List<T> get items => List.unmodifiable(_currentItems);
+
   void notify() {
     notifyListeners();
   }
@@ -68,6 +74,12 @@ class const QuickActionEditorPage<T extends Object>({
   required final Widget Function(BuildContext context, T action) actionIcon,
   required final String Function(BuildContext context, T action) actionText,
   required final QuickActionEditorController<T> controller,
+
+  /// An extra section shown right after the displayed buttons.
+  ///
+  /// The bottom navigation editor uses it for the destinations the bar derives
+  /// on its own: they belong to the displayed bar, not to the available list.
+  final Widget? footer,
 }) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -86,6 +98,7 @@ class const QuickActionEditorPage<T extends Object>({
             actionIcon: actionIcon,
             actionText: actionText,
             controller: controller,
+            footer: footer,
           ),
         ),
       ),
@@ -101,6 +114,7 @@ class const QuickActionEditorBody<T extends Object>({
   required final Widget Function(BuildContext context, T action) actionIcon,
   required final String Function(BuildContext context, T action) actionText,
   required final QuickActionEditorController<T> controller,
+  final Widget? footer,
 }) extends StatefulWidget {
   @override
   State<QuickActionEditorBody<T>> createState() => _QuickActionEditorBodyState<T>();
@@ -293,6 +307,7 @@ class _QuickActionEditorBodyState<T extends Object> extends State<QuickActionEdi
               ),
             ),
           ),
+          if (widget.footer != null) widget.footer!,
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(

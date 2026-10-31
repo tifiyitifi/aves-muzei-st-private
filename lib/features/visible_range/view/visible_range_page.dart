@@ -62,7 +62,6 @@ enum _MoreAction {
   order,
   reAddDefaults,
   wallpaperGroups,
-  toggleNavEntry,
   lockDetailed,
   about,
 }
@@ -95,12 +94,11 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   /// this page must not offer to bring a derived one back while it exists.
   bool get _wallpaperEntryPinned => settings.bottomNavigationActions.any((item) => item.route == GroupedWallpaperPage.routeName);
 
-  /// Whether the bar's derived wallpaper entry is currently hidden.
+  /// What the page's single wallpaper entry offers right now.
   ///
-  /// The page can close it, and closing is what sends the user back here, so
-  /// this page is where it can be brought back: otherwise the only control would
-  /// live on the page the entry leads to.
-  bool get _wallpaperEntryClosed => canReopenWallpaperNavEntry(
+  /// The entry is one toggle: it hides the bar's derived entry while that entry
+  /// exists, and brings it back once the user closed it.
+  WallpaperNavEntryAction get _wallpaperEntryAction => wallpaperNavEntryAction(
         mode: groupedWallpaperNavController.mode,
         entryClosed: groupedWallpaperNavController.entryClosed,
         pinned: _wallpaperEntryPinned,
@@ -415,15 +413,15 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       _menuItem(context, _MoreAction.reAddDefaults, AIcons.newTier, l10n.visibleRangeReAddDefaults),
       const PopupMenuDivider(),
       // The wallpaper groups own their own ranges, so they are reached from here
-      // instead of a second filter page. In the shared mode the two pages are
-      // peers behind one entry; with a separate entry the tap goes through that
-      // destination, so the bar highlights the wallpaper entry rather than
-      // leaving the range entry selected.
-      _menuItem(context, _MoreAction.wallpaperGroups, AIcons.wallpaper, l10n.wallpaperGroupsTitle),
-      // Closing the entry sends the user back to this page, so the way to bring
-      // it back has to be here too; a pinned entry is the user's own and is
-      // managed in the navigation editor instead.
-      if (_wallpaperEntryClosed) _menuItem(context, _MoreAction.toggleNavEntry, AIcons.wallpaper, l10n.wallpaperGroupNavOpen),
+      // instead of a second filter page. One entry covers both directions: in
+      // the shared mode the two pages are peers behind one entry, and with a
+      // separate entry the same item closes or reopens that entry.
+      _menuItem(
+        context,
+        _MoreAction.wallpaperGroups,
+        AIcons.wallpaper,
+        _wallpaperEntryAction == WallpaperNavEntryAction.close ? l10n.wallpaperGroupNavClose : l10n.wallpaperGroupNavOpen,
+      ),
       const PopupMenuDivider(),
       _menuItem(context, _MoreAction.lockDetailed, AIcons.locked, l10n.visibleRangeLockSheetTitle),
       _menuItem(context, _MoreAction.about, AIcons.info, l10n.visibleRangeAbout),
@@ -792,25 +790,36 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.visibleRangeReAddDefaultsResult(result.added, result.skipped))));
       case _MoreAction.wallpaperGroups:
-        if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared) {
-          // One entry, two peer pages: switching keeps the entry highlighted.
-          visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
-        } else {
-          // The page has its own entry, so opening it the same way the bar does
-          // is what moves the bar's selection to it. A closed entry is reopened
-          // first: the page is being used, and a destination the bar does not
-          // show could not be highlighted.
-          if (_wallpaperEntryClosed) await groupedWallpaperNavController.setEntryClosed(false);
-          if (!mounted) return;
-          await const AvesNavItem(route: GroupedWallpaperPage.routeName).goTo(context, topLevel: false);
-        }
-      case _MoreAction.toggleNavEntry:
-        await groupedWallpaperNavController.setEntryClosed(false);
+        await _openOrCloseWallpaperGroups();
       case _MoreAction.lockDetailed:
         await _lockDetailed();
       case _MoreAction.about:
         await _openAbout();
     }
+  }
+
+  /// Opens the wallpaper groups, or closes their bottom-bar entry.
+  ///
+  /// The merged menu item follows the bar: while the derived entry is shown it
+  /// hides it, and while it is gone it brings the entry back before opening the
+  /// page. The shared mode always opens, switching the shared destination so the
+  /// bar keeps a single entry highlighted.
+  Future<void> _openOrCloseWallpaperGroups() async {
+    if (_wallpaperEntryAction == WallpaperNavEntryAction.close) {
+      // Closing only hides the derived entry: the groups themselves are not
+      // touched, and the bar keeps the visible-range entry the user is on.
+      await groupedWallpaperNavController.setEntryClosed(true);
+      return;
+    }
+    if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared) {
+      visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
+      return;
+    }
+    if (groupedWallpaperNavController.entryClosed) {
+      await groupedWallpaperNavController.setEntryClosed(false);
+    }
+    if (!mounted) return;
+    await const AvesNavItem(route: GroupedWallpaperPage.routeName).goTo(context, topLevel: false);
   }
 
   Future<void> _pickOrder() async {

@@ -94,4 +94,65 @@ void main() {
     // The shared mode has no derived entry to close.
     expect(canReopenWallpaperNavEntry(mode: GroupedWallpaperNavMode.shared, entryClosed: true, pinned: false), isFalse);
   });
+
+  group('merged wallpaper entry', () {
+    test('a shown derived entry is closed by the menu', () {
+      expect(
+        wallpaperNavEntryAction(mode: GroupedWallpaperNavMode.separateRight, entryClosed: false, pinned: false),
+        WallpaperNavEntryAction.close,
+      );
+      expect(
+        wallpaperNavEntryAction(mode: GroupedWallpaperNavMode.separateLeft, entryClosed: false, pinned: false),
+        WallpaperNavEntryAction.close,
+      );
+    });
+
+    test('a closed derived entry is opened again', () {
+      expect(
+        wallpaperNavEntryAction(mode: GroupedWallpaperNavMode.separateRight, entryClosed: true, pinned: false),
+        WallpaperNavEntryAction.open,
+      );
+    });
+
+    test('a pinned or shared entry always opens', () {
+      expect(
+        wallpaperNavEntryAction(mode: GroupedWallpaperNavMode.separateRight, entryClosed: false, pinned: true),
+        WallpaperNavEntryAction.open,
+      );
+      expect(
+        wallpaperNavEntryAction(mode: GroupedWallpaperNavMode.shared, entryClosed: false, pinned: false),
+        WallpaperNavEntryAction.open,
+      );
+    });
+  });
+
+  group('derived destinations', () {
+    test('lists what the bar adds beyond the user list', () {
+      expect(
+        routes(derivedNavDestinations([all, albums], mode: GroupedWallpaperNavMode.separateRight, entryClosed: false)),
+        [VisibleRangePage.routeName, GroupedWallpaperPage.routeName],
+      );
+    });
+
+    test('shows nothing that is already the user\'s own', () {
+      expect(
+        derivedNavDestinations([all, range, wallpaper], mode: GroupedWallpaperNavMode.separateRight, entryClosed: false),
+        isEmpty,
+      );
+    });
+
+    test('keeps only the range entry while the wallpaper entry is closed', () {
+      expect(
+        routes(derivedNavDestinations([all, albums], mode: GroupedWallpaperNavMode.separateRight, entryClosed: true)),
+        [VisibleRangePage.routeName],
+      );
+    });
+
+    test('adds only the range entry in the shared mode', () {
+      expect(
+        routes(derivedNavDestinations([all, albums], mode: GroupedWallpaperNavMode.shared, entryClosed: false)),
+        [VisibleRangePage.routeName],
+      );
+    });
+  });
 }

@@ -1068,6 +1068,8 @@
   "settingsNavigationBottomActionsTile": "Bottom navigation",
   "settingsNavigationBottomActionEditorPageTitle": "Bottom Navigation",
   "settingsNavigationBottomActionEditorBanner": "Touch and hold to move buttons and select which actions are displayed in the bottom navigation bar.",
+  "settingsNavigationBottomActionDerivedTitle": "Added automatically",
+  "settingsNavigationBottomActionDerivedHint": "The bar also shows these destinations on its own, so they cannot be edited here.",
 
   "settingsThumbnailSectionTitle": "Thumbnails",
   "settingsThumbnailOverlayTile": "Overlay",
@@ -2111,8 +2113,8 @@
   "wallpaperGroupUnlockCurrent": "Unlock the group",
   "wallpaperGroupLockedSubtitle": "Group switching is locked",
   "wallpaperGroupLockedSwitch": "Unlock the group to switch or edit it.",
-  "wallpaperGroupNavClose": "Close the wallpaper group entry",
-  "wallpaperGroupNavOpen": "Show the wallpaper group entry",
+  "wallpaperGroupNavClose": "Close wallpaper groups",
+  "wallpaperGroupNavOpen": "Open wallpaper groups",
 
   "searchAssistSectionTitle": "Assist",
   "searchAssistPath": "Path",

@@ -32,7 +32,15 @@ void main() {
   const dcimGroup = WallpaperGroup(id: 'group.1', number: 1, name: '@wallpaperGroupDefaultDcim', current: true, updatedAt: 10);
   // The baseline keeps the scroll effect off, so the queue tests assert the
   // surface-sized bake they were written for. The scroll effect has its own group.
-  const plan = GroupedWallpaperPlan(group: dcimGroup, scrollEffect: false);
+  const noScrollGroup = WallpaperGroup(
+    id: 'group.1',
+    number: 1,
+    name: '@wallpaperGroupDefaultDcim',
+    current: true,
+    updatedAt: 10,
+    effects: WallpaperEffectsConfig(homeScrollEffect: false),
+  );
+  const plan = GroupedWallpaperPlan(group: noScrollGroup);
 
   late Directory dir;
   late _FakePlatform platform;
@@ -480,13 +488,15 @@ void main() {
       expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
     });
 
-    test('toggling re-bakes once and then keeps the queue', () async {
+    test('turning the group switch on re-bakes once and keeps the queue', () async {
       serve(entries(12));
       await engine.prepare();
       final first = (await store.readState())!;
       expect(first.scrollEffect, isFalse);
 
-      await engine.setScrollEffect(true);
+      // The effects page writes the group's config; the engine re-reads it.
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
+      await engine.prepare();
 
       final toggled = (await store.readState())!;
       expect(toggled.scrollEffect, isTrue);
@@ -1083,7 +1093,7 @@ void main() {
     });
 
     test('a zero limit records nothing and makes previous inert', () async {
-      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, scrollEffect: false, historyLimit: 0);
+      planStore.plan = const GroupedWallpaperPlan(group: noScrollGroup, historyLimit: 0);
       serve(entries(12));
 
       await engine.prepare();
@@ -1289,34 +1299,28 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setDisabled(bool disabled) async {
     disabledWrites.add(disabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, scrollEffect: plan.scrollEffect);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification);
   }
 
   @override
   Future<void> setGestures(GroupedWallpaperGestures gestures) async {
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, scrollEffect: plan.scrollEffect);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification);
   }
 
   @override
   Future<void> setNotification(bool enabled) async {
     notificationWrites.add(enabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: enabled, scrollEffect: plan.scrollEffect);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: enabled);
   }
 
   final List<bool> notificationWrites = [];
-
-  @override
-  Future<void> setScrollEffect(bool enabled) async {
-    scrollEffectWrites.add(enabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, scrollEffect: enabled);
-  }
 
   final List<bool> scrollEffectWrites = [];
 
   @override
   Future<void> setHistoryLimit(int limit) async {
     historyLimitWrites.add(limit);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, scrollEffect: plan.scrollEffect, historyLimit: limit);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, historyLimit: limit);
   }
 
   final List<int> historyLimitWrites = [];

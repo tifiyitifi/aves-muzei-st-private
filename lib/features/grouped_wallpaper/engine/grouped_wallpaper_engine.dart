@@ -222,19 +222,6 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     await platform.refreshNotification();
   }
 
-  @override
-  Future<bool> isScrollEffectEnabled() async => (await planStore.load()).scrollEffect;
-
-  /// Records the home-screen scroll effect switch and re-bakes the frame now.
-  ///
-  /// The layout is part of the staleness check, so the following prepare bakes
-  /// exactly once: without it the switch would only apply to the next photo.
-  @override
-  Future<void> setScrollEffect(bool enabled) async {
-    await planStore.setScrollEffect(enabled);
-    await prepare();
-  }
-
   /// Records how many photos the usage history keeps and tells the bar about it.
   ///
   /// The value travels with the state so the notification can grey its "previous"
@@ -962,7 +949,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// has nothing to pan with, so a wide frame there would only crop the sides. An
   /// unknown step means no offset callback arrived yet: follow the switch.
   Future<bool> _effectiveScrollEffect(GroupedWallpaperPlan plan) async {
-    if (!plan.scrollEffect) return false;
+    if (!plan.effects.homeScrollEffect) return false;
     final step = await platform.scrollStep();
     return step == null || step > 0;
   }

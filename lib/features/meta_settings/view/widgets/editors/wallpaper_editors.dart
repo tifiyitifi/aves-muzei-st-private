@@ -141,24 +141,6 @@ class WallpaperNotificationEditor extends StatelessWidget {
       );
 }
 
-/// The home-screen scroll effect switch.
-class WallpaperScrollEffectEditor extends StatelessWidget {
-  final SettingDef def;
-
-  const new({super.key, required this.def});
-
-  @override
-  Widget build(BuildContext context) => _WallpaperSwitchTile(
-        title: def.title(context),
-        subtitle: def.subtitle?.call(context),
-        read: (store) => store.readScrollEffect(),
-        write: (store, value) async {
-          await store.writeScrollEffect(value);
-          await wallpaperEngineLink.setScrollEffect(value);
-        },
-      );
-}
-
 /// Opens the history limit dialog, the same one the group page and the history
 /// page use, so the number is entered one way everywhere.
 class WallpaperHistoryLimitEditor extends StatefulWidget {

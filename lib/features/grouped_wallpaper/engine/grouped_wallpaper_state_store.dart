@@ -50,8 +50,10 @@ class GroupedWallpaperStateStore {
   ///
   /// The request is written by the native side when the user taps the bar's lock
   /// while the app is not listening, so the tap is persisted before anything
-  /// else can fail.
-  Future<String?> readLockRequest() async {
+  /// else can fail. A request older than [lockRequestMaxAge] is ignored: the bar
+  /// stopped showing the lock long ago, and adopting it on a much later start
+  /// would lock a group the user no longer asked for.
+  Future<String?> readLockRequest({int? nowMillis}) async {
     if (!await lockRequestFile.exists()) return null;
     try {
       final raw = await lockRequestFile.readAsString();
@@ -59,12 +61,25 @@ class GroupedWallpaperStateStore {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
       final groupId = decoded['groupId'];
-      return groupId is String && groupId.isNotEmpty ? groupId : null;
+      if (groupId is! String || groupId.isEmpty) return null;
+      final at = decoded['at'];
+      final now = nowMillis ?? DateTime.now().millisecondsSinceEpoch;
+      if (at is num && now - at.toInt() > lockRequestMaxAge.inMilliseconds) {
+        groupedWallpaperLog.i('ignoring a stale lock request at=${at.toInt()}');
+        return null;
+      }
+      return groupId;
     } catch (error, stack) {
       groupedWallpaperLog.w('failed to read $lockRequestFileName', error, stack);
       return null;
     }
   }
+
+  /// How long a lock request stays meaningful.
+  ///
+  /// The bar shows a pending lock for 30 seconds, so a request from far longer
+  /// ago belongs to a tap the user has already seen fail.
+  static const Duration lockRequestMaxAge = Duration(minutes: 10);
 
   /// Drops the request once the lock is persisted.
   Future<void> clearLockRequest() => _deleteQuietly(lockRequestFile);

@@ -2113,8 +2113,10 @@
   "wallpaperGroupUnlockCurrent": "Unlock the group",
   "wallpaperGroupLockedSubtitle": "Group switching is locked",
   "wallpaperGroupLockedSwitch": "Unlock the group to switch or edit it.",
-  "wallpaperGroupNavClose": "Close wallpaper groups",
-  "wallpaperGroupNavOpen": "Open wallpaper groups",
+  "wallpaperGroupNavClose": "Close the wallpaper group entry",
+  "wallpaperGroupNavOpen": "Show the wallpaper group entry",
+  "wallpaperGroupOpen": "Open wallpaper groups",
+  "wallpaperGroupClose": "Close wallpaper groups",
 
   "searchAssistSectionTitle": "Assist",
   "searchAssistPath": "Path",

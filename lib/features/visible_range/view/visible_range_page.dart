@@ -420,7 +420,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
         context,
         _MoreAction.wallpaperGroups,
         AIcons.wallpaper,
-        _wallpaperEntryAction == WallpaperNavEntryAction.close ? l10n.wallpaperGroupNavClose : l10n.wallpaperGroupNavOpen,
+        _wallpaperEntryAction == WallpaperNavEntryAction.close ? l10n.wallpaperGroupClose : l10n.wallpaperGroupOpen,
       ),
       const PopupMenuDivider(),
       _menuItem(context, _MoreAction.lockDetailed, AIcons.locked, l10n.visibleRangeLockSheetTitle),

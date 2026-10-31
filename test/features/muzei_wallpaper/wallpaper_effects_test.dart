@@ -101,6 +101,23 @@ void main() {
       expect(WallpaperEffectsConfig.fromJsonMap(const {}), const WallpaperEffectsConfig());
     });
 
+    test('the scroll effect travels with the group config', () {
+      const config = WallpaperEffectsConfig(homeScrollEffect: false);
+      final decoded = WallpaperEffectsConfig.fromJsonMap(config.toJsonMap());
+      expect(decoded.homeScrollEffect, isFalse);
+      expect(decoded, config);
+    });
+
+    test('a config written before the scroll switch takes the legacy value', () {
+      // Groups used to share one app-wide switch; reading a group that never
+      // stored its own value keeps the user's existing choice.
+      expect(WallpaperEffectsConfig.fromJsonMap(const {}, legacyScrollEffect: false).homeScrollEffect, isFalse);
+      expect(WallpaperEffectsConfig.fromJsonMap(const {}, legacyScrollEffect: true).homeScrollEffect, isTrue);
+      // A stored value always wins over the legacy one.
+      final json = const WallpaperEffectsConfig(homeScrollEffect: false).toJsonMap();
+      expect(WallpaperEffectsConfig.fromJsonMap(json, legacyScrollEffect: true).homeScrollEffect, isFalse);
+    });
+
     test('applyTo writes the edited surface only, unless the link is on', () {
       const config = WallpaperEffectsConfig(
         home: WallpaperEffects(blur: 10),

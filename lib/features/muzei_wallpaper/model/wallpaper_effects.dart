@@ -115,10 +115,18 @@ class WallpaperEffectsConfig with Equatable {
   final WallpaperEffects lock;
   final bool link;
 
+  /// Whether home frames keep the photo's whole width for the launcher to pan.
+  ///
+  /// It belongs to the group like the effect values, so a group can pan while
+  /// another stays still. The lock screen never pans, so there is no lock
+  /// counterpart: offering one would be a switch with no visible effect.
+  final bool homeScrollEffect;
+
   const new({
     this.home = const WallpaperEffects(),
     this.lock = const WallpaperEffects(),
     this.link = false,
+    this.homeScrollEffect = true,
   });
 
   /// The lock-surface values actually rendered.
@@ -148,23 +156,33 @@ class WallpaperEffectsConfig with Equatable {
     WallpaperEffects? home,
     WallpaperEffects? lock,
     bool? link,
+    bool? homeScrollEffect,
   }) => WallpaperEffectsConfig(
     home: home ?? this.home,
     lock: lock ?? this.lock,
     link: link ?? this.link,
+    homeScrollEffect: homeScrollEffect ?? this.homeScrollEffect,
   );
 
   Map<String, Object?> toJsonMap() => {
     'home': home.toJsonMap(),
     'lock': lock.toJsonMap(),
     'link': link,
+    'homeScrollEffect': homeScrollEffect,
   };
 
-  static WallpaperEffectsConfig fromJsonMap(Map<String, Object?> json) {
+  /// Reads a stored config.
+  ///
+  /// [legacyScrollEffect] is the app-wide switch groups used before it moved
+  /// into the config: a group that never stored its own value keeps the choice
+  /// the user already made instead of silently turning panning on or off.
+  static WallpaperEffectsConfig fromJsonMap(Map<String, Object?> json, {bool legacyScrollEffect = true}) {
+    final scrollEffect = json['homeScrollEffect'];
     return WallpaperEffectsConfig(
       home: WallpaperEffects.fromJsonMap(_map(json['home']) ?? const {}),
       lock: WallpaperEffects.fromJsonMap(_map(json['lock']) ?? const {}),
       link: json['link'] == true,
+      homeScrollEffect: scrollEffect is bool ? scrollEffect : legacyScrollEffect,
     );
   }
 
@@ -174,5 +192,5 @@ class WallpaperEffectsConfig with Equatable {
   }
 
   @override
-  List<Object?> get props => [home, lock, link];
+  List<Object?> get props => [home, lock, link, homeScrollEffect];
 }

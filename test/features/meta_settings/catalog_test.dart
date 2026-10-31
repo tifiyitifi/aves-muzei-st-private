@@ -138,14 +138,13 @@ void main() {
 
     test('Visible & wallpaper is fully migrated', () {
       final keys = metaSettingsDefsFor(SettingsCategory.wallpaper).map((def) => def.key).toList();
-      expect(keys, hasLength(12));
+      expect(keys, hasLength(11));
       expect(keys, containsAll([
         WallpaperGroupStore.keyNavMode,
         WallpaperLockStore.keyVisibleRangeLockId,
         WallpaperLockStore.keyGroupSwitchLocked,
         WallpaperGroupStore.keyNotification,
         WallpaperGroupStore.keyHistoryLimit,
-        WallpaperGroupStore.keyScrollEffect,
         MetaPageKeys.wallpaperHistory,
         MetaPageKeys.wallpaperGestures,
         WallpaperPrefetchSetting.key,

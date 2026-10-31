@@ -527,14 +527,6 @@ final List<SettingDef> _wallpaperDefs = [
     sortOrder: 40,
   ),
   SettingDef(
-    key: WallpaperGroupStore.keyScrollEffect,
-    category: SettingsCategory.wallpaper,
-    widgetKind: SettingWidgetKind.custom,
-    title: (context) => context.l10n.wallpaperUseScrollEffect,
-    editorKey: MetaEditorKeys.wallpaperScrollEffect,
-    sortOrder: 50,
-  ),
-  SettingDef(
     key: MetaPageKeys.wallpaperGestures,
     category: SettingsCategory.wallpaper,
     widgetKind: SettingWidgetKind.subPage,

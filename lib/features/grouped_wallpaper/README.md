@@ -14,9 +14,9 @@ of the Muzei-style live wallpaper mechanism.
   baking + native slot queue), global gestures, the immersive view page, per-group
   home/lock effects with a copy-to-other-groups grid, per-group auto-advance
   (interval + ordering, scheduled through the shared WorkManager chain), the
-  four-layout notification with photo, group and freeze actions, the
-  availability label under the group switcher, the global home-screen scroll
-  effect switch, the full set of rule actions on the group page (move to
+  four-layout notification with photo, group and lock actions, the
+  availability label under the group switcher, the per-group home-screen scroll
+  effect (edited in the effects page), the full set of rule actions on the group page (move to
   base/restriction/supplement, open in a media set by replacing or appending,
   delete), per-permission locking, the usage history (page, notification entry,
   configurable limit), "duplicate group", and the in-app notice that offers the
@@ -67,10 +67,10 @@ the user's list stays theirs, and the entry can be closed and reopened.
   the user can move or remove it), while the builder still re-appends it when it
   is missing. Existing users keep their own list.
 - Settings → "Visible & wallpaper" collects the switches: the nav mode, the
-  notification bar, the history limit, the history page, the scroll effect, the
-  gestures page, and the four Muzei confirmations/prefetch options that used to
-  sit under "Advanced". The group page keeps the same actions as contextual
-  shortcuts; both read one store.
+  notification bar, the history limit, the history page, the gestures page, and
+  the four Muzei confirmations/prefetch options that used to sit under
+  "Advanced". The group page keeps the same actions as contextual shortcuts;
+  both read one store.
 
 ## The engine
 
@@ -125,9 +125,13 @@ next photo and then snap back to the one it just left.
 ### Scroll effect
 
 The wallpaper can pan with the home pages, the way the static wallpaper's "use
-scroll effect on home screen" option does. It is one switch, global to the
-grouped wallpaper and on by default; it is not stored per group, because it
-changes how every group is baked.
+scroll effect on home screen" option does. The switch lives with the group's
+effects (`WallpaperEffectsConfig.homeScrollEffect`, on by default), so a group
+can pan while another stays still; it is edited in the effects page's **Home**
+tab and there is deliberately no lock counterpart, because the lock screen never
+pans. Groups written before the switch moved into the group read the old
+app-wide `wallpaper.groupedScrollEffect` value once, so an upgrade keeps the
+user's choice.
 
 With it on, a frame is `surface.height × photo aspect` wide (capped by the
 baker's 4096 texture limit) instead of the surface width, so the renderer's
@@ -180,7 +184,7 @@ layout's first button switches between the two sets:
 | | Collapsed (4) | Expanded (5) |
 |---|---|---|
 | Photo actions (unlocked default) | previous / next photo / copy\* / history | switch / previous / next / copy\* / history |
-| Group actions (locked default) | previous / next group / freeze / next photo | switch / previous / next group / freeze / next photo |
+| Group actions (locked default) | previous / next group / lock / next photo | switch / previous / next group / lock / next photo |
 
 `*` copy keeps Aves-ST's icon but stays disabled (dimmed, no action) until that
 feature exists. **history** opens the usage-history page through the app's
@@ -203,8 +207,9 @@ screen" report. The sound could only change through an id bump, so it is settled
 too.
 
 The bar is re-read from `state.json` on every frame load, so the service posts
-only when `contentKey` changes: status, group number/name, freeze state, the
-history limit (it greys "previous"), button set and the photo on screen.
+only when `contentKey` changes: status, group number/name, lock state, the
+history limit (it greys "previous"), the pending switch feedback, button set and
+the photo on screen.
 Re-posting an unchanged bar (hundreds of times a day)
 is what made MIUI rate-limit the app and then hide its notifications on the lock
 screen (`post_frequency` demoted every post).
@@ -273,8 +278,8 @@ belonging to the current group.
 screen, so the user can look back at them and step to the previous one.
 
 - **Recorded when the photo changes**: an advance, "previous", a group switch or
-  a promotion the renderer made on its own. A layout re-bake, a freeze/resume, an
-  off switch, a lock or a failure keeps the same entry and adds no row.
+  a promotion the renderer made on its own. A layout re-bake, an off switch, a
+  lock or a failure keeps the same entry and adds no row.
 - **Per photo, per group**: the unique key is `(entryId, groupId)`, so showing the
   same photo again only moves its `usedAt` to the front, while the same photo in
   another group is a different wallpaper and keeps its own row. The row stores the
@@ -316,15 +321,39 @@ page and again in the controller): its range is read-only, so a copy would clone
 what the user froze. The copy is a draft change like any other, so it disappears
 on "discard changes".
 
-### Freezing
+### Group lock from the notification
 
-`groupedPaused` (AppMeta, `wallpaper.groupedPaused`) freezes the wallpaper on the
-current photo. It is separate from the group's visible-range lock and from the
-off switch: the frame stays, but the renderer refuses to promote on a tap and the
-notification shows the closed lock. The notification's freeze button toggles it;
-an explicit "next photo" resumes it, and switching group also resumes. The flag
-travels in `state.json` (`paused`, v4), so the native renderer knows about it
-without asking Flutter.
+The bar's lock button is the group-switch lock, not a playback pause: the
+wallpaper never stops rotating on its own, and there is no freeze to resume.
+
+- **Unlocked**: the button shows an open lock and locks the group on screen
+  immediately. The bar greys its group buttons and closes the icon in the same
+  frame, while the receiver writes `lock_request.json` (the group id) and sends
+  the `lockGroup` command. The app persists the lock in AppMeta and rewrites
+  `state.json` (`switchLocked`, `switchLockedGroupId`); the headless refill
+  worker adopts the request when the app was not listening, so a tap is never
+  lost. The request stays until Dart clears it.
+- **Locked**: the button shows a closed lock and opens
+  `/wallpaper_groups/unlock`, which is the group page with the PIN sheet already
+  open. Cancelling leaves the locked group on screen; unlocking with the PIN
+  restores the group buttons.
+- A lock the app never confirmed only shows for 30 seconds: the bar must not
+  claim a protection the guard would not enforce.
+
+Locking is the same state the group page's 「Lock the current group」 writes, and
+the page still owns the menu entry for it.
+
+### Group switch feedback
+
+The bar switches groups itself from the rotation carried by `state.json`
+(`groups`: id, number and display name of every enabled group, refreshed on
+every state write). On a tap it computes the target exactly as the engine does
+(group 0 moves to the first enabled group, the rotation wraps), then shows
+「Switching groups」 / 「From group 3 DCIM to group 4 Camera」 with the target
+number in the badge and the group buttons greyed, and only then sends the
+command. The overlay ends when a state naming the target arrives, or after 20
+seconds if the bake failed; `contentKey` includes it, so the bar re-posts once
+when it starts and once when it ends.
 
 ### The view page
 
@@ -388,11 +417,11 @@ on screen is never re-baked just because the interval changed.
 Scheduling reuses the shared native WorkManager chain
 (`LiveWallpaperRefillScheduler`, per target) through the grouped channel's
 `scheduleAutoAdvance`; a finished interval run reschedules itself. The engine
-applies the interval on every non-advance run, on freeze/resume and when the page
-edits it, and schedules **nothing** while the wallpaper is frozen, turned off or
-on group 0, so a frozen wallpaper does not wake up for a frame it would refuse to
-show. A frozen wallpaper also ignores an interval run (`refill(advance: true)`
-does not promote), while an explicit "next photo" resumes it.
+applies the interval on every non-advance run and when the page edits it, and
+schedules **nothing** while the wallpaper is turned off or on group 0, so it does
+not wake up for a frame it would refuse to show. The interval and ordering are
+still group-level and shared by both surfaces; their row lives in the effects
+page, next to the effects they belong with.
 
 ## Turning it on and off
 
@@ -405,11 +434,11 @@ would otherwise look like a fresh activation.
 - **Set this group as wallpaper** (a real group) makes it current, turns the
   feature on and prepares the frame. The system chooser is only opened the first
   time, when the grouped service is not the system wallpaper yet.
-- **Turn off grouped wallpaper** (group 0) sets the flag and freezes: the last
-  frame stays and nothing follows the group. Disabling never changes the wallpaper
-  the system is already showing.
-- **Deleting or disabling the group that was playing** freezes and turns the
-  feature off; it never switches to another group.
+- **Turn off grouped wallpaper** (group 0) sets the flag and keeps the last
+  frame on screen: nothing follows the group any more. Disabling never changes
+  the wallpaper the system is already showing.
+- **Deleting or disabling the group that was playing** keeps its last frame and
+  turns the feature off; it never switches to another group.
 - **Activation with no group current** (the service starting while nothing is
   selected and the feature was not turned off) adopts the first enabled group, so
   turning the wallpaper on never leaves the placeholder.
@@ -466,8 +495,8 @@ So the restore has two channels, and both start from one decision:
   answer is re-read on every resume, so a committed switch drops the strip.
 
 The decision only fires when the wallpaper was in use (`state.json` recent and
-not `disabled`/paused), the component is not ours, no *other* live wallpaper is
-bound, and no static wallpaper file exists. That last pair is what keeps the
+not `disabled`), the component is not ours, no *other* live wallpaper is bound,
+and no static wallpaper file exists. That last pair is what keeps the
 notice from nagging a user who picked another wallpaper, and the OEM's fallback
 is distinguishable because after a reset the system keeps no wallpaper file.
 
@@ -594,12 +623,14 @@ page publishes another group. The switcher shows the availability label under it
 gallery range narrows browsing; temporarily ignoring the gallery range forces the
 first, because browsing is then unrestricted.
 
-Locking a group (`group_lock_rules.dart`, persisted in AppMeta) freezes the
+Locking a group (`group_lock_rules.dart`, persisted in AppMeta) pins the
 switcher to group 0 and the locked group, disables edits to the locked group's
 range, group management and pinning into groups, and makes the engine write
-`switchLocked` into `state.json` so the notification's group buttons grey out. It
-does not prevent closing the page: that only removes the browsing scope, while the
-lock and its group survive a restart until the password unlocks them.
+`switchLocked` (and the locked group's id) into `state.json` so the notification
+greys its group buttons and shows the closed lock. The notification's lock button
+is the same state. Locking does not prevent closing the page: that only removes
+the browsing scope, while the lock and its group survive a restart until the
+password unlocks them.
 
 
 ## Media set

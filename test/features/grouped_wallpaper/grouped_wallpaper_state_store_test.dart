@@ -174,15 +174,25 @@ void main() {
 
   test('the lock request names its group until it is cleared', () async {
     await store.ensureLayout();
+    final now = DateTime.now().millisecondsSinceEpoch;
     // Written by the native side: the app was not listening when the bar was
     // tapped, so the group has to survive until it is started.
-    await store.lockRequestFile.writeAsString('{"groupId":"group.2","at":7}');
+    await store.lockRequestFile.writeAsString('{"groupId":"group.2","at":$now}');
 
-    expect(await store.readLockRequest(), 'group.2');
+    expect(await store.readLockRequest(nowMillis: now), 'group.2');
 
     await store.clearLockRequest();
 
-    expect(await store.readLockRequest(), isNull);
+    expect(await store.readLockRequest(nowMillis: now), isNull);
+  });
+
+  test('a stale lock request is ignored', () async {
+    await store.ensureLayout();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final stale = now - GroupedWallpaperStateStore.lockRequestMaxAge.inMilliseconds - 1;
+    await store.lockRequestFile.writeAsString('{"groupId":"group.2","at":$stale}');
+
+    expect(await store.readLockRequest(nowMillis: now), isNull);
   });
 
   test('a broken lock request reads as none', () async {

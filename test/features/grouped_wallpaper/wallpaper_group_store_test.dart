@@ -9,6 +9,7 @@ import 'package:aves/features/visible_range/model/visible_range_usage.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/path.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -123,6 +124,21 @@ void main() {
 
     await store.writeScrollEffect(true);
     expect(await store.readScrollEffect(), isTrue);
+  });
+
+  test('a group written before the scroll switch takes the legacy value', () async {
+    await store.saveGroups([group('a')]);
+    // What an older build stored: the per-group effects, without the switch that
+    // later moved next to them.
+    await (db.update(db.wallpaperGroupRows)..where((t) => t.id.equals('a'))).write(
+      const WallpaperGroupRowsCompanion(effects: Value('{"home":{},"lock":{},"link":false}')),
+    );
+
+    await store.writeScrollEffect(false);
+    expect((await store.loadGroups()).single.effects.homeScrollEffect, isFalse);
+
+    await store.writeScrollEffect(true);
+    expect((await store.loadGroups()).single.effects.homeScrollEffect, isTrue);
   });
 
   test('the current flag is stored as one flag per group', () async {

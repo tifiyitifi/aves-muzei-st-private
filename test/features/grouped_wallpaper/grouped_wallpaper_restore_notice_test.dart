@@ -142,12 +142,6 @@ class _FakeConnection implements WallpaperEngineConnection {
   Future<void> setNotification(bool enabled) async {}
 
   @override
-  Future<bool> isScrollEffectEnabled() async => false;
-
-  @override
-  Future<void> setScrollEffect(bool enabled) async {}
-
-  @override
   Future<void> setHistoryLimit(int limit) async {}
 
   @override

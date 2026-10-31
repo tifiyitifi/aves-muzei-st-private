@@ -16,6 +16,9 @@ void main() {
     final db = AppDatabase(
       NativeDatabase.memory(
         setup: (raw) {
+          // A real database has had this table since v1; only the tables the
+          // migration touches are recreated here.
+          raw.execute('CREATE TABLE appMeta (key TEXT NOT NULL PRIMARY KEY, value TEXT)');
           raw.execute(
             'CREATE TABLE wallpaper_groups ('
             'id TEXT NOT NULL PRIMARY KEY, '

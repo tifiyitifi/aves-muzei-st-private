@@ -92,11 +92,16 @@ class WallpaperGroupStore {
   new(this.db);
 
   /// Groups in display order; the number is derived from that order.
+  ///
+  /// A group written before the scroll switch moved into its effects reads the
+  /// old app-wide value, so an upgrade never silently changes how the wallpaper
+  /// pans.
   Future<List<WallpaperGroup>> loadGroups() async {
     final query = db.select(db.wallpaperGroupRows)..orderBy([(t) => OrderingTerm.asc(t.position)]);
     final rows = await query.get();
+    final legacyScrollEffect = await readScrollEffect();
     return [
-      for (var i = 0; i < rows.length; i++) _toGroup(rows[i], i + 1),
+      for (var i = 0; i < rows.length; i++) _toGroup(rows[i], i + 1, legacyScrollEffect: legacyScrollEffect),
     ];
   }
 
@@ -276,7 +281,7 @@ class WallpaperGroupStore {
     });
   }
 
-  static WallpaperGroup _toGroup(WallpaperGroupRow row, int number) => WallpaperGroup(
+  static WallpaperGroup _toGroup(WallpaperGroupRow row, int number, {required bool legacyScrollEffect}) => WallpaperGroup(
         id: row.id,
         number: number,
         name: row.name,
@@ -285,23 +290,26 @@ class WallpaperGroupStore {
         current: row.current,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
-        effects: _effects(row.effects),
+        effects: _effects(row.effects, legacyScrollEffect: legacyScrollEffect),
         interval: WallpaperInterval.tryFromSeconds(row.interval) ?? WallpaperInterval.never,
         ordering: GroupedWallpaperOrdering.tryParse(row.ordering),
       );
 
   /// Parses the stored effects, falling back to identity when the value is from a
   /// newer build or was truncated.
-  static WallpaperEffectsConfig _effects(String raw) {
-    if (raw.isEmpty) return const WallpaperEffectsConfig();
+  static WallpaperEffectsConfig _effects(String raw, {required bool legacyScrollEffect}) {
+    if (raw.isEmpty) return WallpaperEffectsConfig(homeScrollEffect: legacyScrollEffect);
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map) {
-        return WallpaperEffectsConfig.fromJsonMap(decoded.map((key, value) => MapEntry(key.toString(), value)));
+        return WallpaperEffectsConfig.fromJsonMap(
+          decoded.map((key, value) => MapEntry(key.toString(), value)),
+          legacyScrollEffect: legacyScrollEffect,
+        );
       }
     } catch (_) {
       // A corrupt value must not cost the user their wallpaper.
     }
-    return const WallpaperEffectsConfig();
+    return WallpaperEffectsConfig(homeScrollEffect: legacyScrollEffect);
   }
 }

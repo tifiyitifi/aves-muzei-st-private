@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
-import 'package:aves/features/drift_db/app_database_provider.dart';
-import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
@@ -16,7 +14,6 @@ import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_c
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
-import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_effects_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
@@ -26,7 +23,6 @@ import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_filter.dart
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_section_key.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_availability_label.dart';
-import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_history_limit_dialog.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_tile.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
@@ -41,7 +37,6 @@ import 'package:aves/features/visible_range/view/visible_range_destination.dart'
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/features/visible_range/view/visible_range_section_key.dart';
-import 'package:aves/features/visible_range/view/widgets/visible_range_lock_dialog.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_rule_actions.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_tile.dart';
 import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
@@ -51,7 +46,6 @@ import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/selection.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
-import 'package:aves/services/common/services.dart';
 import 'package:aves/theme/format.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
@@ -120,8 +114,6 @@ enum _PageAction {
   add,
   delete,
   order,
-  lock,
-  lockDetailed,
   about,
   applyToMediaSet,
   editRule,
@@ -137,14 +129,10 @@ enum _PageAction {
   disableWallpaper,
   viewCurrent,
   effects,
-  autoAdvance,
   gestures,
   history,
-  historyLimit,
   duplicateGroup,
-  engineStatus,
   toggleNotification,
-  toggleScrollEffect,
   cancelGalleryRange,
   lockGroup,
   unlockGroup,
@@ -216,9 +204,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   ///
   /// Two independent locks: the range's own lock and the group switch lock.
   bool get _canEditRange => canEditWallpaperGroupRange(rangeLocked: !_controller.canEdit, groupLocked: _groupLocked);
-
-  /// What the live wallpaper last baked, read when the page opens or resumes.
-  GroupedWallpaperState? _engineState;
 
   @override
   void initState() {
@@ -331,10 +316,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final active = await wallpaperEngineLink.refreshActive();
     await wallpaperEngineLink.refreshDisabled();
     await wallpaperEngineLink.refreshNotification();
-    await wallpaperEngineLink.refreshScrollEffect();
     final state = await wallpaperEngineLink.readState();
     if (!mounted) return;
-    setState(() => _engineState = active ? state : null);
     await _warnIfOverwritten(state, active: active);
   }
 
@@ -409,16 +392,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         ),
       ),
     );
-  }
-
-  /// Turns the home-screen scroll effect on or off.
-  ///
-  /// Global to the grouped wallpaper: the engine re-bakes the frame on screen so
-  /// the change applies at once instead of waiting for the next photo.
-  Future<void> _toggleScrollEffect() async {
-    final enabled = !wallpaperEngineLink.scrollEffectEnabled;
-    await wallpaperEngineLink.setScrollEffect(enabled);
-    await _refreshEngine();
   }
 
   /// Re-bakes the saved frame when the group list or a range changed.
@@ -1373,20 +1346,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     await AvesNavItem(route: CollectionPage.routeName, filters: target).goTo(context, topLevel: false);
   }
 
-  /// Locks the group's range with per-permission control.
-  ///
-  /// The group page has no "last preset" of its own, so the dialog opens on the
-  /// most restrictive one; the user can still pick another or toggle each
-  /// permission.
-  Future<void> _lockDetailed() async {
-    final permissions = await showDialog<VisibleRangePermissions>(
-      context: context,
-      builder: (context) => const VisibleRangeLockDialog(initialPreset: VisibleRangeLockPreset.readOnly),
-    );
-    if (permissions == null) return;
-    await _controller.lock(permissions: permissions);
-  }
-
   List<PopupMenuEntry<_PageAction>> _menuEntries(BuildContext context) {
     final l10n = context.l10n;
     final group = _selectedGroup;
@@ -1407,6 +1366,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         l10n.wallpaperGroupSaveChanges,
         enabled: _controller.dirty && !_groupLocked,
         subtitle: _groupLocked ? l10n.wallpaperGroupLockedSubtitle : _controller.dirty ? l10n.wallpaperGroupDraftUnsaved : null,
+      ),
+      // Discarding is the exact counterpart of saving, so the two stay together.
+      _menuItem(
+        _PageAction.discardChanges,
+        AIcons.discard,
+        l10n.wallpaperGroupDiscardChanges,
+        enabled: _controller.dirty && !_groupLocked,
       ),
       // One action, following the group the page is viewing: a real group
       // becomes the wallpaper, group 0 turns the feature off. The system picker
@@ -1439,13 +1405,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         subtitle: engineActive ? null : l10n.wallpaperGroupSyncInactive,
       ),
       _menuItem(
-        _PageAction.engineStatus,
-        AIcons.wallpaper,
-        l10n.wallpaperGroupEngineStatus,
-        enabled: false,
-        subtitle: _engineStatusText(context),
-      ),
-      _menuItem(
         _PageAction.viewCurrent,
         AIcons.wallpaperPlaying,
         l10n.wallpaperGroupViewCurrent,
@@ -1458,31 +1417,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         l10n.muzeiWallpaperEffects,
         enabled: group != null,
       ),
-      _menuItem(
-        _PageAction.autoAdvance,
-        AIcons.autoAdvance,
-        l10n.muzeiWallpaperAutoAdvance,
-        enabled: group != null,
-        subtitle: group == null ? null : groupedWallpaperAutoAdvanceSummary(context, group),
-      ),
       _menuItem(_PageAction.gestures, AIcons.gestures, l10n.wallpaperGroupGestures),
       _menuItem(_PageAction.history, AIcons.history, l10n.wallpaperGroupHistoryTitle),
-      _menuItem(_PageAction.historyLimit, AIcons.count, l10n.wallpaperGroupHistoryLimit),
-      _menuItemChecked(
-        _PageAction.toggleScrollEffect,
-        l10n.wallpaperUseScrollEffect,
-        checked: wallpaperEngineLink.scrollEffectEnabled,
-      ),
       _menuItemChecked(
         _PageAction.toggleNotification,
         l10n.wallpaperGroupNotification,
         checked: wallpaperEngineLink.notificationEnabled,
-      ),
-      _menuItem(
-        _PageAction.discardChanges,
-        AIcons.discard,
-        l10n.wallpaperGroupDiscardChanges,
-        enabled: _controller.dirty && !_groupLocked,
       ),
       const PopupMenuDivider(),
       // The wallpaper page shares one bottom-bar entry with the visible-range
@@ -1538,8 +1478,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       const PopupMenuDivider(),
       if (range != null) ...[
         _menuItem(_PageAction.order, AIcons.sortOrder, l10n.visibleRangeOrder, enabled: !_groupLocked),
-        _menuItem(_PageAction.lock, locked ? AIcons.locked : AIcons.unlocked, locked ? l10n.visibleRangeUnlock : l10n.visibleRangeLock, enabled: !_groupLocked),
-        _menuItem(_PageAction.lockDetailed, AIcons.locked, l10n.visibleRangeLockSheetTitle, enabled: !_groupLocked),
         const PopupMenuDivider(),
       ],
       _menuItem(_PageAction.about, AIcons.info, l10n.aboutWallpaperTitle),
@@ -1617,22 +1555,14 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         await _viewCurrent();
       case _PageAction.effects:
         if (group != null) await _openEffects(group);
-      case _PageAction.autoAdvance:
-        if (group != null) await _openAutoAdvance(group);
       case _PageAction.gestures:
         await _openGestures();
       case _PageAction.history:
         await _openHistory();
-      case _PageAction.historyLimit:
-        await _editHistoryLimit();
       case _PageAction.duplicateGroup:
         if (group != null) await _duplicateGroup(group);
       case _PageAction.toggleNotification:
         await _toggleNotification();
-      case _PageAction.toggleScrollEffect:
-        await _toggleScrollEffect();
-      case _PageAction.engineStatus:
-        break;
       case _PageAction.cancelGalleryRange:
         await _toggleGallerySuspension();
       case _PageAction.lockGroup:
@@ -1656,10 +1586,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         if (group != null) await _deleteGroup(group);
       case _PageAction.order:
         await _pickOrder();
-      case _PageAction.lock:
-        await _toggleLock();
-      case _PageAction.lockDetailed:
-        await _lockDetailed();
       case _PageAction.about:
         await _openAbout();
       case _PageAction.applyToMediaSet:
@@ -1810,21 +1736,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     await _refreshEngine();
   }
 
-  /// Opens the auto-advance editor for [group], bound to that group's own values.
-  Future<void> _openAutoAdvance(WallpaperGroup group) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: GroupedWallpaperAutoAdvancePage.routeName),
-        builder: (_) => GroupedWallpaperAutoAdvancePage(
-          groupId: group.id,
-          controller: _controller,
-        ),
-      ),
-    );
-    // The schedule changed, so the engine status row can have changed too.
-    await _refreshEngine();
-  }
-
   /// Opens the global gesture bindings.
   Future<void> _openGestures() async {
     await Navigator.of(context).push(
@@ -1850,21 +1761,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     );
   }
 
-  /// Changes how many photos the usage history keeps.
-  ///
-  /// The store is the source of truth; the engine call only carries the value
-  /// into `state.json`, so the notification greys "previous" without waiting for
-  /// the next photo.
-  Future<void> _editHistoryLimit() async {
-    final store = WallpaperGroupStore(await getIt<AppDatabaseProvider>().open());
-    final limit = await store.readHistoryLimit();
-    if (!mounted) return;
-    final value = await showGroupedWallpaperHistoryLimitDialog(context, limit: limit);
-    if (value == null) return;
-    await store.writeHistoryLimit(value);
-    await wallpaperEngineLink.setHistoryLimit(value);
-  }
-
   /// Copies [group] into a new group and opens the copy.
   ///
   /// A locked group is refused here and again in the controller: its range is
@@ -1880,30 +1776,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final copy = await _controller.duplicateGroup(group.id, name: name);
     if (!mounted) return;
     if (copy == null) _showMessage(context.l10n.visibleRangeManagementBlocked);
-  }
-
-  /// One line describing what the live wallpaper is doing, for the menu.
-  String _engineStatusText(BuildContext context) {
-    final l10n = context.l10n;
-    if (!wallpaperEngineLink.isAttached) return l10n.wallpaperGroupEngineUnavailable;
-    if (!wallpaperEngineLink.isActive) return l10n.wallpaperGroupSyncInactive;
-    final state = _engineState;
-    if (wallpaperEngineLink.isDisabled) {
-      return state == null || state.groupId.isEmpty
-          ? l10n.wallpaperGroupEngineDisabled
-          : l10n.wallpaperGroupEngineDisabledGroup(state.groupNumber, state.groupName);
-    }
-    if (state == null) return l10n.wallpaperGroupEngineNeverSynced;
-    return switch (state.status) {
-      GroupedWallpaperStatus.ready =>
-        state.entryTitle.isEmpty
-            ? l10n.visibleRangeOwnerWithNumber(state.groupNumber, state.groupName)
-            : l10n.wallpaperGroupEngineShowing(state.groupNumber, state.groupName, state.entryTitle),
-      GroupedWallpaperStatus.locked => l10n.wallpaperGroupEngineLocked(state.groupNumber, state.groupName),
-      GroupedWallpaperStatus.disabled => l10n.wallpaperGroupEngineDisabledGroup(state.groupNumber, state.groupName),
-      GroupedWallpaperStatus.emptyGroup => l10n.wallpaperGroupEngineEmpty(state.groupName),
-      GroupedWallpaperStatus.unavailable => l10n.wallpaperGroupEngineFailed,
-    };
   }
 
   void _showMessage(String message) {
@@ -2058,16 +1930,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         ],
       ),
     );
-  }
-
-  Future<void> _toggleLock() async {
-    final range = _controller.range;
-    if (range == null) return;
-    if (range.locked) {
-      await _controller.unlock();
-      return;
-    }
-    await _controller.lockWithPreset(VisibleRangeLockPreset.readOnly);
   }
 
   void _showBlocked() {

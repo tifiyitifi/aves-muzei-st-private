@@ -3,8 +3,10 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_effects_sync_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
@@ -130,6 +132,86 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
       _dirty = true;
     });
     _apply();
+  }
+
+  /// Turns the home scroll effect on or off for this group.
+  ///
+  /// It is a layout change, so the save re-bakes the frame on screen: the very
+  /// next look at the home screen shows the wider photo instead of waiting for
+  /// another one.
+  void _setHomeScrollEffect(bool enabled) {
+    setState(() {
+      _effects = _effects.copyWith(homeScrollEffect: enabled);
+      _dirty = true;
+    });
+    _apply();
+  }
+
+  /// Opens the group's auto-advance editor.
+  ///
+  /// The interval and the ordering stay group-level and shared by both surfaces,
+  /// so this is one row instead of a per-tab switch.
+  Future<void> _openAutoAdvance(WallpaperGroup group) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: GroupedWallpaperAutoAdvancePage.routeName),
+        builder: (_) => GroupedWallpaperAutoAdvancePage(
+          groupId: group.id,
+          controller: _controller,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  /// The settings that belong to the wallpaper rather than to one surface.
+  ///
+  /// The scroll switch is offered on the home tab only: the lock screen centers
+  /// its frame instead of panning, so a lock switch would record a value nothing
+  /// draws. Auto-advance is shared, so its row is shown on both tabs.
+  Widget _settingsPanel(BuildContext context, WallpaperGroup group) {
+    final l10n = context.l10n;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .42),
+        borderRadius: const BorderRadius.all(Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!_editingLock)
+            Padding(
+              padding: const EdgeInsets.only(left: 12, right: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      l10n.wallpaperUseScrollEffect,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  Switch(
+                    value: _effects.homeScrollEffect,
+                    onChanged: _setHomeScrollEffect,
+                  ),
+                ],
+              ),
+            ),
+          ListTile(
+            title: Text(l10n.muzeiWallpaperAutoAdvance, style: const TextStyle(color: Colors.white)),
+            subtitle: Text(
+              groupedWallpaperAutoAdvanceSummary(context, group),
+              style: const TextStyle(color: Colors.white70),
+            ),
+            trailing: const Icon(AIcons.next, color: Colors.white70),
+            onTap: () => unawaited(_openAutoAdvance(group)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openSync() async {
@@ -285,6 +367,7 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
                   ],
                 ),
                 const SizedBox(height: 2),
+                if (group != null) _settingsPanel(context, group),
                 Expanded(
                   // The panel must stay reachable on a short screen without
                   // pushing the tabs off; it only scrolls when it has to.

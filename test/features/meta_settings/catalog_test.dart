@@ -141,8 +141,8 @@ void main() {
       expect(keys, hasLength(12));
       expect(keys, containsAll([
         WallpaperGroupStore.keyNavMode,
-        WallpaperLockStore.keyVisibleRangeEnabled,
-        WallpaperLockStore.keyGroupSwitchEnabled,
+        WallpaperLockStore.keyVisibleRangeLockId,
+        WallpaperLockStore.keyGroupSwitchLocked,
         WallpaperGroupStore.keyNotification,
         WallpaperGroupStore.keyHistoryLimit,
         WallpaperGroupStore.keyScrollEffect,

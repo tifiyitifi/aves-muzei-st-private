@@ -487,7 +487,7 @@ final List<SettingDef> _wallpaperDefs = [
     sortOrder: 10,
   ),
   SettingDef(
-    key: WallpaperLockStore.keyVisibleRangeEnabled,
+    key: WallpaperLockStore.keyVisibleRangeLockId,
     category: SettingsCategory.wallpaper,
     widgetKind: SettingWidgetKind.custom,
     title: (context) => context.l10n.settingsWallpaperLockVisibleRange,
@@ -495,7 +495,7 @@ final List<SettingDef> _wallpaperDefs = [
     sortOrder: 15,
   ),
   SettingDef(
-    key: WallpaperLockStore.keyGroupSwitchEnabled,
+    key: WallpaperLockStore.keyGroupSwitchLocked,
     category: SettingsCategory.wallpaper,
     widgetKind: SettingWidgetKind.custom,
     title: (context) => context.l10n.settingsWallpaperLockGroupSwitch,

@@ -1314,7 +1314,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final locked = range?.locked ?? false;
     final canDelete = _controller.groups.length > 1;
     final gallery = visibleRangeController.gallery;
-    final canSuspendGallery = gallery.isRestricted && !gallery.locked && (_gallerySuspended || !wallpaperLockService.visibleRangeLocked);
+    // Ignoring the gallery range is what the range's lock protects, so the entry
+    // stays available and asks for the PIN; restoring never needs one.
+    final canSuspendGallery = gallery.isRestricted;
     final engineActive = wallpaperEngineLink.isActive;
     return [
       // Draft actions come first: nothing below reaches the database until the
@@ -1420,11 +1422,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           gallery.locked ? AIcons.locked : AIcons.visibleRangeActive,
           _gallerySuspended ? l10n.wallpaperGroupRestoreGalleryRange : l10n.wallpaperGroupCancelGalleryRange,
           enabled: canSuspendGallery,
-          subtitle: gallery.locked
-              ? l10n.visibleRangeWhenLocked
-              : !_gallerySuspended && wallpaperLockService.visibleRangeLocked
-                  ? l10n.wallpaperLockVisibleRangeLocked
-                  : null,
+          subtitle: gallery.locked && !_gallerySuspended ? l10n.visibleRangeWhenLocked : null,
         ),
       const PopupMenuDivider(),
       if (group != null) ...[
@@ -1618,8 +1616,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// before the chooser opens, so the picker shows a photo instead of the
   /// placeholder while the system commits the change.
   Future<void> _setCurrentAsWallpaper(WallpaperGroup group) async {
-    if (!await ensureGroupSwitchUnlocked(context)) return;
-    if (!mounted) return;
+    // A locked group cannot leave itself: the menu entry is greyed, and this
+    // guard covers a stale menu or a notification action.
+    if (wallpaperLockService.groupSwitchLocked) return;
     // The notification is the only way to control the wallpaper from the lock
     // screen, so ask for the permission at the moment it first becomes useful.
     try {
@@ -1819,14 +1818,15 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   /// Temporarily stops applying the gallery range to browsing.
   ///
-  /// It is a view choice only: nothing is written, and [dispose] restores it.
+  /// It is a view choice only: nothing is written, and closing the page restores
+  /// it. Ignoring a locked range needs the range's PIN; restoring never does.
   /// The value is published in the browsing overlay, so the media set's strip
   /// flips the same switch and its listener repaints this page.
   Future<void> _toggleGallerySuspension() async {
-    // Restoring is always allowed; ignoring the gallery range is what the lock
-    // protects, so only that direction asks for the PIN.
-    if (!_gallerySuspended && !await ensureVisibleRangeUnlocked(context)) return;
-    if (!mounted) return;
+    if (!_gallerySuspended && visibleRangeController.gallery.locked) {
+      if (!await ensureVisibleRangeUnlocked(context)) return;
+      if (!mounted) return;
+    }
     VisibleRangeGate.setGallerySuspended(!_gallerySuspended);
   }
 

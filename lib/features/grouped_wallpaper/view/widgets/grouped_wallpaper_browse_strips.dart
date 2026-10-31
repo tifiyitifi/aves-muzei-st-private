@@ -185,8 +185,8 @@ class _ScopeHintBar extends StatefulWidget {
 
   /// Whether the gallery range is locked.
   ///
-  /// A lock means "do not lift this range, not even temporarily", so the strip
-  /// still explains the empty result but offers no way out.
+  /// A lock means "do not lift this range without proving the PIN", so the strip
+  /// still offers the way out and asks for the PIN first.
   final bool locked;
 
   /// Whether this strip owns the inset the page below would otherwise add.
@@ -226,9 +226,10 @@ class _ScopeHintBarState extends State<_ScopeHintBar> {
     return stats.values.firstOrNull?.count;
   }
 
-  /// Asks for the visible-range PIN before ignoring the gallery range.
+  /// Asks for the visible-range PIN before ignoring a locked gallery range.
   Future<void> _ignore(BuildContext context) async {
-    if (!await ensureVisibleRangeUnlocked(context) || !mounted) return;
+    if (widget.locked && !await ensureVisibleRangeUnlocked(context)) return;
+    if (!mounted) return;
     VisibleRangeGate.setGallerySuspended(true);
   }
 
@@ -264,20 +265,20 @@ class _ScopeHintBarState extends State<_ScopeHintBar> {
               ),
             ),
             const SizedBox(width: 8),
-            if (widget.locked)
-              Padding(
-                padding: const EdgeInsetsDirectional.only(start: 4, end: 12),
-                child: Text(
-                  context.l10n.visibleRangeWhenLocked,
-                  style: theme.textTheme.labelLarge?.copyWith(color: colors.onSurfaceVariant),
-                ),
-              )
-            else
-              TextButton(
-                onPressed: () => unawaited(_ignore(context)),
-                style: TextButton.styleFrom(foregroundColor: colors.primary),
-                child: Text(context.l10n.groupedWallpaperScopeIgnore),
+            TextButton(
+              onPressed: () => unawaited(_ignore(context)),
+              style: TextButton.styleFrom(foregroundColor: colors.primary),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.locked) ...[
+                    const Icon(AIcons.locked, size: 16),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(context.l10n.groupedWallpaperScopeIgnore),
+                ],
               ),
+            ),
           ],
         ),
       ),

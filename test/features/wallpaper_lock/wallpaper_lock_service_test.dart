@@ -4,13 +4,12 @@ import 'package:aves/features/wallpaper_lock/model/wallpaper_lock_kind.dart';
 import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/services/security_service.dart';
 import 'package:drift/native.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/sqlite3_loader.dart';
 
-/// The PIN gates: what verifies, what unlocks only for the session, and what
-/// stays untouched when the other lock changes.
+/// The PIN locks: the visible range's state is the range row, and the group
+/// switch lock is the persisted flag tested here.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -41,29 +40,28 @@ void main() {
     expect(await service.verify(WallpaperLockKind.groupSwitch, WallpaperLockService.defaultPin), isTrue);
   });
 
-  test('both locks start off', () {
-    expect(service.visibleRangeLocked, isFalse);
+  test('the group switch starts unlocked', () {
     expect(service.groupSwitchLocked, isFalse);
-    expect(service.isEnabled(WallpaperLockKind.visibleRange), isFalse);
+    expect(service.groupSwitchGroupId, isNull);
   });
 
-  test('enabling locks, unlocking is session-only, backgrounding relocks', () async {
-    await service.enable(WallpaperLockKind.visibleRange);
-    expect(service.visibleRangeLocked, isTrue);
+  test('locking records the group without asking for a PIN', () async {
+    await service.lockGroup('wallpaper.group.dcim');
 
-    expect(await service.unlock(WallpaperLockKind.visibleRange, '0000'), isFalse);
-    expect(service.visibleRangeLocked, isTrue);
+    expect(service.groupSwitchLocked, isTrue);
+    expect(service.groupSwitchGroupId, 'wallpaper.group.dcim');
+  });
 
-    expect(await service.unlock(WallpaperLockKind.visibleRange, WallpaperLockService.defaultPin), isTrue);
-    expect(service.visibleRangeLocked, isFalse);
-    expect(service.isUnlocked(WallpaperLockKind.visibleRange), isTrue);
+  test('unlocking needs the PIN and keeps the lock when it is wrong', () async {
+    await service.lockGroup('wallpaper.group.dcim');
 
-    // Leaving the app ends the unlocked session; coming back must ask again.
-    service.didChangeAppLifecycleState(AppLifecycleState.paused);
-    expect(service.visibleRangeLocked, isTrue);
+    expect(await service.unlockGroup('0000'), isFalse);
+    expect(service.groupSwitchLocked, isTrue);
+    expect(service.groupSwitchGroupId, 'wallpaper.group.dcim');
 
-    service.relock(WallpaperLockKind.visibleRange);
-    expect(service.visibleRangeLocked, isTrue);
+    expect(await service.unlockGroup(WallpaperLockService.defaultPin), isTrue);
+    expect(service.groupSwitchLocked, isFalse);
+    expect(service.groupSwitchGroupId, isNull);
   });
 
   test('changing the PIN needs the current one', () async {
@@ -73,7 +71,6 @@ void main() {
     expect(await service.changePin(WallpaperLockKind.visibleRange, currentPin: WallpaperLockService.defaultPin, nextPin: '2468'), isTrue);
     expect(await service.verify(WallpaperLockKind.visibleRange, WallpaperLockService.defaultPin), isFalse);
     expect(await service.verify(WallpaperLockKind.visibleRange, '2468'), isTrue);
-    expect(await service.unlock(WallpaperLockKind.visibleRange, '2468'), isTrue);
   });
 
   test('the PIN must keep four digits', () async {
@@ -81,25 +78,15 @@ void main() {
     expect(await service.verify(WallpaperLockKind.groupSwitch, WallpaperLockService.defaultPin), isTrue);
   });
 
-  test('disabling needs the PIN and keeps the lock on when it is wrong', () async {
-    await service.enable(WallpaperLockKind.groupSwitch);
+  test('the lock survives a new service over the same store', () async {
+    await service.lockGroup('wallpaper.group.pictures');
 
-    expect(await service.disable(WallpaperLockKind.groupSwitch, '0000'), isFalse);
-    expect(service.groupSwitchLocked, isTrue);
+    final reloaded = WallpaperLockService(security: security, store: store);
+    await reloaded.init();
+    addTearDown(reloaded.dispose);
 
-    expect(await service.disable(WallpaperLockKind.groupSwitch, WallpaperLockService.defaultPin), isTrue);
-    expect(service.groupSwitchLocked, isFalse);
-    expect(service.isEnabled(WallpaperLockKind.groupSwitch), isFalse);
-  });
-
-  test('the two locks are independent', () async {
-    await service.enable(WallpaperLockKind.groupSwitch);
-
-    expect(await service.unlock(WallpaperLockKind.visibleRange, WallpaperLockService.defaultPin), isTrue);
-    expect(service.groupSwitchLocked, isTrue);
-
-    expect(await service.disable(WallpaperLockKind.visibleRange, WallpaperLockService.defaultPin), isFalse);
-    expect(service.isEnabled(WallpaperLockKind.groupSwitch), isTrue);
+    expect(reloaded.groupSwitchLocked, isTrue);
+    expect(reloaded.groupSwitchGroupId, 'wallpaper.group.pictures');
   });
 
   test('each PIN is stored under its own key', () async {
@@ -110,15 +97,13 @@ void main() {
     expect(security.values[WallpaperLockStore.pinKeyOf(WallpaperLockKind.groupSwitch)], '2222');
   });
 
-  test('flags survive a new service over the same store', () async {
-    await service.enable(WallpaperLockKind.visibleRange);
-    final reloaded = WallpaperLockService(security: security, store: store);
-    await reloaded.init();
-    addTearDown(reloaded.dispose);
+  test('unlocking the group uses the group PIN only', () async {
+    await service.changePin(WallpaperLockKind.visibleRange, currentPin: WallpaperLockService.defaultPin, nextPin: '1111');
+    await service.lockGroup('wallpaper.group.dcim');
 
-    expect(reloaded.visibleRangeLocked, isTrue);
-    // A session unlock is memory only.
-    expect(reloaded.isUnlocked(WallpaperLockKind.visibleRange), isFalse);
+    // The visible range's PIN must not open the wallpaper lock.
+    expect(await service.unlockGroup('1111'), isFalse);
+    expect(await service.unlockGroup(WallpaperLockService.defaultPin), isTrue);
   });
 }
 

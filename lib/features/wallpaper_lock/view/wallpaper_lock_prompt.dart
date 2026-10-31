@@ -7,15 +7,15 @@ import 'package:aves/widgets/dialogs/aves_dialog.dart';
 import 'package:aves/widgets/dialogs/filter_editors/pin_dialog.dart';
 import 'package:material_ui/material_ui.dart';
 
-/// Asks for the PIN before an action guarded by [kind].
+/// Asks for the PIN of [kind] and checks it.
 ///
-/// Returns true when the action may proceed: the lock is off, already unlocked
-/// this session, or the user entered the right PIN. A cancelled dialog and a
-/// wrong PIN both return false, so the caller simply does nothing.
+/// Returns true when the user entered the right PIN. A cancelled dialog and a
+/// wrong PIN both return false, so the caller simply does nothing. Nothing is
+/// remembered: proving the PIN allows the one action that asked, which is what
+/// makes locking and unlocking independent of a foreground session.
 ///
 /// The prompt is a gate, not security: it only makes a stray tap harmless.
-Future<bool> ensureWallpaperUnlocked(BuildContext context, WallpaperLockKind kind) async {
-  if (!wallpaperLockService.isLocked(kind)) return true;
+Future<bool> confirmWallpaperPin(BuildContext context, WallpaperLockKind kind) async {
   final pin = await showAvesDialog<String>(
     context: context,
     builder: (context) => PinDialog(
@@ -25,14 +25,16 @@ Future<bool> ensureWallpaperUnlocked(BuildContext context, WallpaperLockKind kin
     routeSettings: const RouteSettings(name: PinDialog.routeName),
   );
   if (pin == null || !context.mounted) return false;
-  final unlocked = await wallpaperLockService.unlock(kind, pin);
+  final valid = await wallpaperLockService.verify(kind, pin);
   if (!context.mounted) return false;
-  if (!unlocked) {
+  if (!valid) {
     unawaited(showWarningDialog(context: context, message: context.l10n.wallpaperLockPinWrong));
   }
-  return unlocked;
+  return valid;
 }
 
-Future<bool> ensureVisibleRangeUnlocked(BuildContext context) => ensureWallpaperUnlocked(context, WallpaperLockKind.visibleRange);
-
-Future<bool> ensureGroupSwitchUnlocked(BuildContext context) => ensureWallpaperUnlocked(context, WallpaperLockKind.groupSwitch);
+/// Proves the visible-range PIN before touching a locked range.
+///
+/// Used both to unlock the range and to temporarily ignore it: both lift a
+/// restriction the lock protects, so both require the PIN.
+Future<bool> ensureVisibleRangeUnlocked(BuildContext context) => confirmWallpaperPin(context, WallpaperLockKind.visibleRange);

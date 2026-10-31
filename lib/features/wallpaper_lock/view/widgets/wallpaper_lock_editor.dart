@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:aves/features/meta_settings/model/setting_def.dart';
+import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/wallpaper_lock/model/wallpaper_lock_kind.dart';
 import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
-import 'package:aves/features/wallpaper_lock/view/wallpaper_lock_prompt.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/common/identity/aves_list_subtitle.dart';
@@ -13,9 +13,11 @@ import 'package:material_ui/material_ui.dart';
 
 /// One settings row per lock: state, and the sheet that changes it.
 ///
-/// The row follows [wallpaperLockService] instead of reading the store, so
-/// unlocking in the sheet immediately changes what the row (and every guarded
-/// page) offers.
+/// The row follows the state that actually guards the action, not a copy: the
+/// visible range's own `locked` column, and the group switch flag in this
+/// service. Locking needs no PIN; unlocking, and changing a PIN, do. This page
+/// manages the locks' passwords; the locks themselves are also reachable where
+/// they matter (the range padlock and the wallpaper page's menu).
 class WallpaperLockEditor extends StatelessWidget {
   final SettingDef def;
 
@@ -23,35 +25,30 @@ class WallpaperLockEditor extends StatelessWidget {
 
   const new({super.key, required this.def, required this.kind});
 
+  bool get _isRangeLock => kind == WallpaperLockKind.visibleRange;
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: wallpaperLockService,
+        listenable: Listenable.merge([wallpaperLockService, visibleRangeController]),
         builder: (context, _) {
-          final enabled = wallpaperLockService.isEnabled(kind);
-          final unlocked = wallpaperLockService.isUnlocked(kind);
+          final locked = _isRangeLock ? visibleRangeController.gallery.locked : wallpaperLockService.groupSwitchLocked;
           final l10n = context.l10n;
-          final subtitle = !enabled
-              ? l10n.wallpaperLockSubtitleDisabled
-              : unlocked
-                  ? l10n.wallpaperLockSubtitleUnlocked
-                  : l10n.wallpaperLockSubtitleEnabled;
           return ListTile(
             title: Text(def.title(context)),
-            subtitle: AvesListSubtitle(subtitle),
-            trailing: Icon(enabled && !unlocked ? AIcons.locked : AIcons.unlocked, size: 20),
+            subtitle: AvesListSubtitle(locked ? l10n.wallpaperLockSubtitleLocked : l10n.wallpaperLockSubtitleUnlocked),
+            trailing: Icon(locked ? AIcons.locked : AIcons.unlocked, size: 20),
             onTap: () => unawaited(_openSheet(context)),
           );
         },
       );
 
   Future<void> _openSheet(BuildContext context) async {
+    final locked = _isRangeLock ? visibleRangeController.gallery.locked : wallpaperLockService.groupSwitchLocked;
     final action = await showModalBottomSheet<_LockAction>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) {
         final l10n = sheetContext.l10n;
-        final enabled = wallpaperLockService.isEnabled(kind);
-        final unlocked = wallpaperLockService.isUnlocked(kind);
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -60,36 +57,31 @@ class WallpaperLockEditor extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Text(l10n.wallpaperLockPinHint, style: Theme.of(sheetContext).textTheme.bodySmall),
               ),
-              if (!enabled)
+              if (locked)
+                ListTile(
+                  leading: const Icon(AIcons.unlocked),
+                  title: Text(_isRangeLock ? l10n.visibleRangeUnlock : l10n.wallpaperLockUnlock),
+                  onTap: () => Navigator.pop(sheetContext, _LockAction.unlock),
+                )
+              else if (_isRangeLock)
                 ListTile(
                   leading: const Icon(AIcons.locked),
-                  title: Text(l10n.wallpaperLockEnable),
-                  onTap: () => Navigator.pop(sheetContext, _LockAction.enable),
+                  title: Text(l10n.visibleRangeLock),
+                  onTap: () => Navigator.pop(sheetContext, _LockAction.lock),
                 )
-              else ...[
-                if (unlocked)
-                  ListTile(
-                    leading: const Icon(AIcons.locked),
-                    title: Text(l10n.wallpaperLockRelock),
-                    onTap: () => Navigator.pop(sheetContext, _LockAction.relock),
-                  )
-                else
-                  ListTile(
-                    leading: const Icon(AIcons.unlocked),
-                    title: Text(l10n.wallpaperLockUnlock),
-                    onTap: () => Navigator.pop(sheetContext, _LockAction.unlock),
-                  ),
+              else
+                // The group lock needs to know which group to freeze, so it is
+                // set from the wallpaper page where that group is on screen.
                 ListTile(
-                  leading: const Icon(AIcons.pin),
-                  title: Text(l10n.wallpaperLockChangePin),
-                  onTap: () => Navigator.pop(sheetContext, _LockAction.changePin),
+                  leading: const Icon(AIcons.locked),
+                  title: Text(l10n.wallpaperLockGroupLockHint),
+                  enabled: false,
                 ),
-                ListTile(
-                  leading: const Icon(AIcons.unselected),
-                  title: Text(l10n.wallpaperLockDisable),
-                  onTap: () => Navigator.pop(sheetContext, _LockAction.disable),
-                ),
-              ],
+              ListTile(
+                leading: const Icon(AIcons.pin),
+                title: Text(l10n.wallpaperLockChangePin),
+                onTap: () => Navigator.pop(sheetContext, _LockAction.changePin),
+              ),
             ],
           ),
         );
@@ -97,16 +89,29 @@ class WallpaperLockEditor extends StatelessWidget {
     );
     if (action == null || !context.mounted) return;
     switch (action) {
-      case _LockAction.enable:
-        await wallpaperLockService.enable(kind);
+      case _LockAction.lock:
+        // Locking is direct: it only adds protection.
+        await visibleRangeController.lockWithPreset(visibleRangeController.lastLockPreset);
       case _LockAction.unlock:
-        await ensureWallpaperUnlocked(context, kind);
-      case _LockAction.relock:
-        wallpaperLockService.relock(kind);
+        await _unlock(context);
       case _LockAction.changePin:
         await _changePin(context);
-      case _LockAction.disable:
-        await _disable(context);
+    }
+  }
+
+  Future<void> _unlock(BuildContext context) async {
+    final l10n = context.l10n;
+    final pin = await _askPin(context, needConfirmation: false, title: l10n.wallpaperLockNeededTitle);
+    if (pin == null || !context.mounted) return;
+    if (_isRangeLock) {
+      if (!await wallpaperLockService.verify(kind, pin)) {
+        if (context.mounted) unawaited(showWarningDialog(context: context, message: l10n.wallpaperLockPinWrong));
+        return;
+      }
+      await visibleRangeController.unlock();
+    } else {
+      final unlocked = await wallpaperLockService.unlockGroup(pin);
+      if (!unlocked && context.mounted) unawaited(showWarningDialog(context: context, message: l10n.wallpaperLockPinWrong));
     }
   }
 
@@ -128,14 +133,6 @@ class WallpaperLockEditor extends StatelessWidget {
     if (!changed && context.mounted) unawaited(showWarningDialog(context: context, message: l10n.wallpaperLockPinWrong));
   }
 
-  Future<void> _disable(BuildContext context) async {
-    final l10n = context.l10n;
-    final pin = await _askPin(context, needConfirmation: false, title: l10n.wallpaperLockNeededTitle);
-    if (pin == null) return;
-    final disabled = await wallpaperLockService.disable(kind, pin);
-    if (!disabled && context.mounted) unawaited(showWarningDialog(context: context, message: l10n.wallpaperLockPinWrong));
-  }
-
   Future<String?> _askPin(BuildContext context, {required bool needConfirmation, required String title}) => showAvesDialog<String>(
         context: context,
         builder: (context) => PinDialog(needConfirmation: needConfirmation, title: title),
@@ -143,4 +140,4 @@ class WallpaperLockEditor extends StatelessWidget {
       );
 }
 
-enum _LockAction { enable, unlock, relock, changePin, disable }
+enum _LockAction { lock, unlock, changePin }

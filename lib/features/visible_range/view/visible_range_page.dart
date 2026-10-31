@@ -21,7 +21,6 @@ import 'package:aves/features/visible_range/view/visible_range_section_key.dart'
 import 'package:aves/features/visible_range/view/widgets/visible_range_lock_dialog.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_rule_actions.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_tile.dart';
-import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/features/wallpaper_lock/view/wallpaper_lock_prompt.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/selection.dart';
@@ -173,15 +172,15 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   /// Whether this page may write the range.
   ///
-  /// Two gates: the range's own lock (an unlocked range with the edit
-  /// permission), and the optional PIN that freezes the whole page. The PIN is
-  /// checked here rather than in every action, so no entry point can forget it.
-  bool get _canEdit => _controller.canEdit && !wallpaperLockService.visibleRangeLocked;
+  /// The range's own lock is the only gate: an unlocked range (or a locked one
+  /// with the edit permission) can be edited. There is no second, session-wide
+  /// freeze — a lock is unlocked by proving its PIN, and that is all.
+  bool get _canEdit => _controller.canEdit;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([_controller, wallpaperLockService]),
+      animation: _controller,
       builder: (context, _) {
         final source = context.read<CollectionSource>();
         final sections = _buildSections(context);
@@ -247,15 +246,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
             ),
           ),
         );
-        if (!wallpaperLockService.visibleRangeLocked) return page;
-        return Column(
-          children: [
-            _VisibleRangeLockBanner(
-              onUnlock: () => unawaited(ensureVisibleRangeUnlocked(context)),
-            ),
-            Expanded(child: page),
-          ],
-        );
+        return page;
       },
     );
   }
@@ -542,16 +533,15 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   // actions
 
   Future<void> _toggleLock() async {
-    // Locking the range and unlocking it are both edits to the range: the PIN
-    // guards either direction, so this button cannot lift the range's own lock
-    // behind the PIN's back.
-    if (wallpaperLockService.visibleRangeLocked && !await ensureVisibleRangeUnlocked(context)) return;
-    if (!mounted) return;
     final range = _controller.gallery;
     if (range.locked) {
+      // Unlocking protects the user's chosen restriction: prove the PIN first.
+      if (!await ensureVisibleRangeUnlocked(context)) return;
+      if (!mounted) return;
       await _controller.unlock();
       return;
     }
+    // Locking only adds protection, so it needs no PIN.
     await _controller.lockWithPreset(_controller.lastLockPreset);
   }
 
@@ -863,8 +853,8 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   Future<void> _lockDetailed() async {
-    // Changing the range's lock permissions is as much an edit as locking it.
-    if (wallpaperLockService.visibleRangeLocked && !await ensureVisibleRangeUnlocked(context)) return;
+    // Changing a locked range's permissions is as much an edit as unlocking it.
+    if (_controller.gallery.locked && !await ensureVisibleRangeUnlocked(context)) return;
     if (!mounted) return;
     final permissions = await showDialog<VisibleRangePermissions>(
       context: context,
@@ -881,44 +871,3 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 }
 
-/// Says the page is frozen by its PIN and offers the one-tap way in.
-///
-/// Greyed tiles alone would read as a broken page: the lock is optional and was
-/// turned on in the settings, so this strip names it and unlocks in place.
-class _VisibleRangeLockBanner extends StatelessWidget {
-  final VoidCallback onUnlock;
-
-  const new({required this.onUnlock});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    return Material(
-      color: colors.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsetsDirectional.only(start: 16, end: 4),
-        child: Row(
-          children: [
-            Icon(AIcons.locked, size: 18, color: colors.onSurfaceVariant),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                context.l10n.wallpaperLockVisibleRangeLocked,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-              ),
-            ),
-            const SizedBox(width: 8),
-            TextButton(
-              onPressed: onUnlock,
-              style: TextButton.styleFrom(foregroundColor: colors.primary),
-              child: Text(context.l10n.wallpaperLockUnlock),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

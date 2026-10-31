@@ -7,25 +7,33 @@ import 'package:aves/features/wallpaper_lock/log.dart';
 import 'package:aves/features/wallpaper_lock/model/wallpaper_lock_kind.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/services/security_service.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
 
-/// The two optional PIN gates of the wallpaper surfaces.
+/// The PIN-protected locks of the wallpaper surfaces.
 ///
 /// **This is not a security boundary.** The PIN only stops a casual tap from
-/// editing the visible range or switching the playing group; any app with the
-/// same access, `adb` or a rooted device can read or bypass the store. It exists
-/// so the app cannot be knocked into a state its owner did not want while
-/// someone else is holding the phone.
+/// editing the visible range, temporarily ignoring it, or leaving the locked
+/// wallpaper group; any app with the same access, `adb` or a rooted device can
+/// read or bypass the store. It exists so the app cannot be knocked into a state
+/// its owner did not want while someone else is holding the phone.
 ///
-/// - Each kind has its own 4-digit PIN, defaulting to [defaultPin] until one is
-///   written. The PINs live in the platform's encrypted preferences (the vault's
-///   store) and are never part of settings import/export.
-/// - There is no "forgot PIN" flow: clearing the app's data is the only reset,
-///   which also removes the encrypted store and returns both locks to off.
-/// - A correct PIN unlocks that kind for the current foreground session only.
-///   Backgrounding the app (`paused`) locks it again; a process restart starts
-///   locked.
-class WallpaperLockService extends ChangeNotifier with WidgetsBindingObserver {
+/// The two locks are independent data:
+///
+/// - **Visible range lock** lives on the range row itself
+///   (`visible_ranges.locked`), exactly like the gallery's own padlock. This
+///   service therefore has no state for it: it only verifies the PIN when a
+///   locked range is unlocked or a locked range is temporarily ignored.
+/// - **Group switch lock** lives here: one flag plus the id of the group that was
+///   locked. It is persisted in AppMeta, so it survives closing the page, leaving
+///   the app and a process restart; only unlocking (with the PIN), clearing the
+///   app's data or reinstalling clears it.
+///
+/// Each kind has its own 4-digit PIN, defaulting to [defaultPin] until one is
+/// written. The PINs live in the platform's encrypted preferences (the vault's
+/// store) and are never part of settings import/export. There is no "forgot PIN"
+/// flow: clearing the app's data is the only reset, which also removes the
+/// encrypted store and returns both PINs to the default.
+class WallpaperLockService extends ChangeNotifier {
   static const String defaultPin = '1234';
 
   /// Injected by tests; production reads the app-wide services.
@@ -34,33 +42,27 @@ class WallpaperLockService extends ChangeNotifier with WidgetsBindingObserver {
 
   WallpaperLockStore? _store;
   Future<void>? _initFuture;
-  bool _observing = false;
 
-  final Set<WallpaperLockKind> _enabled = {};
-  final Set<WallpaperLockKind> _unlocked = {};
+  bool _groupSwitchLocked = false;
+  String? _groupSwitchGroupId;
 
   new({SecurityService? security, WallpaperLockStore? store}) : _injectedSecurity = security, _injectedStore = store;
 
   SecurityService get _security => _injectedSecurity ?? securityService;
 
-  /// Loads both flags and starts following the app's lifecycle.
+  /// Loads the persisted group lock.
   ///
-  /// Runs before the first frame, so a page never reads "off" for a lock that is
-  /// actually on. A failed read leaves both locks off: a database error must not
-  /// lock the user out of their own settings.
+  /// Runs before the first frame, so a page never reads "unlocked" for a lock
+  /// that is actually on. A failed read leaves the lock off: a database error
+  /// must not lock the user out of their own settings.
   Future<void> init() => _initFuture ??= _init();
 
   Future<void> _init() async {
     try {
       _store = _injectedStore ?? WallpaperLockStore(await getIt<AppDatabaseProvider>().open());
-      final enabled = await _store!.readEnabled();
-      _enabled
-        ..clear()
-        ..addAll(enabled);
-      if (!_observing) {
-        WidgetsBinding.instance.addObserver(this);
-        _observing = true;
-      }
+      final lock = await _store!.readGroupLock();
+      _groupSwitchLocked = lock.locked;
+      _groupSwitchGroupId = lock.groupId;
       notifyListeners();
       // The bar baked before this app run may predate the lock: refresh it once.
       unawaited(_refreshBar());
@@ -69,16 +71,11 @@ class WallpaperLockService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  bool isEnabled(WallpaperLockKind kind) => _enabled.contains(kind);
+  /// Whether switching the wallpaper group is locked.
+  bool get groupSwitchLocked => _groupSwitchLocked;
 
-  bool isUnlocked(WallpaperLockKind kind) => _unlocked.contains(kind);
-
-  /// Whether [kind] is on and has not been unlocked this session.
-  bool isLocked(WallpaperLockKind kind) => isEnabled(kind) && !isUnlocked(kind);
-
-  bool get visibleRangeLocked => isLocked(WallpaperLockKind.visibleRange);
-
-  bool get groupSwitchLocked => isLocked(WallpaperLockKind.groupSwitch);
+  /// The group that was showing when the switch lock was set, if any.
+  String? get groupSwitchGroupId => _groupSwitchGroupId;
 
   /// Whether [pin] is the current PIN of [kind].
   ///
@@ -94,51 +91,15 @@ class WallpaperLockService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Unlocks [kind] for this foreground session when [pin] matches.
-  Future<bool> unlock(WallpaperLockKind kind, String pin) async {
-    if (!await verify(kind, pin)) return false;
-    _unlocked.add(kind);
-    _changed(kind);
-    return true;
-  }
-
-  /// Locks [kind] again without leaving the app.
-  void relock(WallpaperLockKind kind) {
-    if (!_unlocked.remove(kind)) return;
-    _changed(kind);
-  }
-
-  /// Turns [kind] on, locked from the start.
-  ///
-  /// Enabling needs no PIN: it only adds protection, and the user proves the PIN
-  /// the first time a protected action asks for one. The current PIN is kept, so
-  /// turning the lock off and on again keeps a changed PIN.
-  Future<void> enable(WallpaperLockKind kind) async {
-    final store = _store;
-    if (store == null || _enabled.contains(kind)) return;
-    await store.writeEnabled(kind, true);
-    _enabled.add(kind);
-    _unlocked.remove(kind);
-    _changed(kind);
-  }
-
-  /// Turns [kind] off when [pin] matches.
-  Future<bool> disable(WallpaperLockKind kind, String pin) async {
-    final store = _store;
-    if (store == null || !_enabled.contains(kind)) return false;
-    if (!await verify(kind, pin)) return false;
-    await store.writeEnabled(kind, false);
-    _enabled.remove(kind);
-    _unlocked.remove(kind);
-    _changed(kind);
-    return true;
-  }
-
   /// Replaces the PIN of [kind], after proving the current one.
   Future<bool> changePin(WallpaperLockKind kind, {required String currentPin, required String nextPin}) async {
-    if (nextPin.length != 4 || !await verify(kind, currentPin)) return false;
+    if (nextPin.length != 4 || !await verify(kind, currentPin)) {
+      wallpaperLockLog.w('pin change refused kind=$kind reason=${nextPin.length != 4 ? 'invalid-length' : 'wrong-current'}');
+      return false;
+    }
     try {
       await _security.writeValue<String>(WallpaperLockStore.pinKeyOf(kind), nextPin);
+      wallpaperLockLog.i('pin changed kind=$kind');
       return true;
     } catch (error, stack) {
       wallpaperLockLog.w('failed to write the pin of $kind', error, stack);
@@ -146,9 +107,40 @@ class WallpaperLockService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  void _changed(WallpaperLockKind kind) {
+  /// Locks the group switching, recording the group on screen.
+  ///
+  /// Locking needs no PIN: it only adds protection, and the user proves the PIN
+  /// the first time an unlock is asked for. A lock with no group id (group 0) is
+  /// refused, because there would be nothing to browse.
+  Future<void> lockGroup(String groupId) async {
+    final store = _store;
+    if (store == null || groupId.isEmpty) return;
+    await store.writeGroupLock(locked: true, groupId: groupId);
+    _groupSwitchLocked = true;
+    _groupSwitchGroupId = groupId;
+    wallpaperLockLog.i('group lock set group=$groupId');
+    _changed();
+  }
+
+  /// Clears the group lock when [pin] matches.
+  Future<bool> unlockGroup(String pin) async {
+    final store = _store;
+    if (store == null || !_groupSwitchLocked) return false;
+    if (!await verify(WallpaperLockKind.groupSwitch, pin)) {
+      wallpaperLockLog.w('group unlock refused: wrong pin');
+      return false;
+    }
+    await store.writeGroupLock(locked: false);
+    _groupSwitchLocked = false;
+    _groupSwitchGroupId = null;
+    wallpaperLockLog.i('group lock cleared');
+    _changed();
+    return true;
+  }
+
+  void _changed() {
     notifyListeners();
-    if (kind == WallpaperLockKind.groupSwitch) unawaited(_refreshBar());
+    unawaited(_refreshBar());
   }
 
   /// Makes the notification grey or re-enable its group buttons.
@@ -161,26 +153,6 @@ class WallpaperLockService extends ChangeNotifier with WidgetsBindingObserver {
     } catch (error, stack) {
       wallpaperLockLog.w('failed to refresh the wallpaper bar', error, stack);
     }
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.paused) return;
-    if (_unlocked.isEmpty) return;
-    // Leaving the app ends the unlocked session: the next person to pick the
-    // phone must prove the PIN again.
-    _unlocked.clear();
-    notifyListeners();
-    unawaited(_refreshBar());
-  }
-
-  @override
-  void dispose() {
-    if (_observing) {
-      WidgetsBinding.instance.removeObserver(this);
-      _observing = false;
-    }
-    super.dispose();
   }
 }
 

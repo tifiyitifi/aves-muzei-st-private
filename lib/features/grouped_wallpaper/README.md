@@ -559,22 +559,31 @@ moves the page to the first remaining one.
 
 ## Browsing scopes
 
-The gallery range and a group range are independent data sets. The group page
-publishes the range of the group it shows through `VisibleRangeGate`, so browsing
-— the page itself and any page pushed over it — sees the gallery range **and** the
-group range, exactly the photos the wallpaper may use. The intersection is the
-default on purpose: a user may have restricted the gallery for privacy and still
-hand the phone over to show the wallpaper, so the page must not widen what the
-gallery hides. The page can temporarily ignore the gallery range while it is
-open, but only while the gallery range is unlocked; that choice is page-local and
-is restored on leaving.
+The gallery range and a group range are independent data sets, and both constrain
+browsing. The group page publishes the range of the group it shows through
+`VisibleRangeGate`, so the media set, albums, search and every other browsing
+surface see the gallery range **and** the group range — exactly the photos the
+wallpaper may use. The intersection is the default on purpose: a user may have
+restricted the gallery for privacy and still hand the phone over to show the
+wallpaper, so the page must not widen what the gallery hides. It is also the way
+to see which photos the configured groups actually contain, so it does not depend
+on the live wallpaper running or on which group is playing: only on the group the
+page has selected.
 
-The scope lives exactly as long as the page: `dispose` clears the overlay, so the
-rest of the app returns to the gallery range as soon as the page is closed. It is
-in-memory only, so a process restart returns to the gallery range alone too. The
-live wallpaper never reads the gate: it uses the saved group range through
+The scope is app-wide, like the gallery range, and lives until the user selects
+group 0, closes the page or its entry, or the process dies. A destination switch
+removes the page but keeps the scope: the navigation layer marks that `dispose`,
+which is what lets the media set resolve against the group. The scope is
+in-memory only, so a process restart starts on group 0 (or adopts the group the
+wallpaper is running) and never leaves browsing unexpectedly restricted. The live
+wallpaper never reads the gate: it uses the saved group range through
 `wallpaperMediaSetFilter`, so gallery browsing can never narrow the wallpaper
 result.
+
+The page can temporarily ignore the gallery range while it is open; that choice
+is published in the same overlay, so the media set's strip flips the same switch.
+Ignoring a locked gallery range asks for its password first, and restoring never
+does. It is a view choice, never a write: clearing the scope restores the range.
 
 All three browsing paths ask the same gate — the paged predicate, the summary
 query and the legacy in-memory scan — so the album list, the album counts and a
@@ -584,6 +593,14 @@ page publishes another group. The switcher shows the availability label under it
 「Available wallpaper」, or 「Available wallpaper (browsing restricted)」 while the
 gallery range narrows browsing; temporarily ignoring the gallery range forces the
 first, because browsing is then unrestricted.
+
+Locking a group (`group_lock_rules.dart`, persisted in AppMeta) freezes the
+switcher to group 0 and the locked group, disables edits to the locked group's
+range, group management and pinning into groups, and makes the engine write
+`switchLocked` into `state.json` so the notification's group buttons grey out. It
+does not prevent closing the page: that only removes the browsing scope, while the
+lock and its group survive a restart until the password unlocks them.
+
 
 ## Media set
 

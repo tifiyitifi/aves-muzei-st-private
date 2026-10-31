@@ -5,6 +5,7 @@ import 'package:aves/features/collection_paging/view/collection_view_hooks.dart'
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
+import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -96,6 +97,11 @@ class AvesNavItem extends Equatable {
     }
     final route = routeBuilder(context, topLevel: topLevel, collectionFilters: targetFilters);
     if (topLevel) {
+      // A bottom-bar destination replaces the page stack. The wallpaper page's
+      // group scope constrains browsing like the gallery range does, so it must
+      // survive that switch: the mark tells its `dispose` this is navigation,
+      // not a close.
+      VisibleRangeGate.preserveWallpaperScopeOnNextDispose();
       await Navigator.maybeOf(context)?.pushAndRemoveUntil(
         route,
         (route) => false,

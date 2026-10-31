@@ -46,11 +46,12 @@ abstract final class VisibleRangeGate {
 
   /// The wallpaper page's browsing overlay.
   ///
-  /// It follows the group the page shows and lives exactly as long as the page:
-  /// the page publishes it while open (and any page pushed over it keeps it), and
-  /// drops it when closed, so the rest of the app returns to the gallery range.
-  /// It is in-memory only, so a process restart returns to the gallery range
-  /// alone. Selecting group 0 clears it as well.
+  /// It follows the group the page shows and lives until the user closes the
+  /// page or its entry, selects group 0, or the process dies. Switching to
+  /// another destination keeps it (a navigation mark tells the page's `dispose`
+  /// apart from a real close), because the group range constrains browsing the
+  /// same way the gallery range does. It is in-memory only, so a process restart
+  /// returns to the gallery range alone.
   ///
   /// The live wallpaper never reads this gate: it uses the saved group range
   /// through `wallpaperMediaSetFilter`, so gallery browsing can never narrow the
@@ -132,6 +133,44 @@ abstract final class VisibleRangeGate {
   /// one, so browsing falls back to the gallery range alone.
   static void setWallpaperScope(CollectionFilter? groupFilter) {
     overlay = groupFilter == null ? null : VisibleRangeBrowsingOverlay(groupFilter: groupFilter);
+  }
+
+  /// When the next wallpaper page `dispose` must keep the scope, in epoch ms.
+  ///
+  /// The page's scope is a browsing constraint, not a property of the screen:
+  /// switching to the media set (or any other bottom-bar destination) removes
+  /// the page but must keep the group range, or the media set would resolve
+  /// against the gallery range alone. The navigation layer therefore marks the
+  /// dispose that its own switch causes. The mark is short-lived so a page
+  /// popped for another reason — or a switch that never disposes the page —
+  /// cannot silently keep a scope the user asked to clear.
+  static int _preserveUntilMs = 0;
+
+  /// How long a navigation mark stays valid, in milliseconds.
+  static const int _preserveWindowMs = 2500;
+
+  /// Marks the next wallpaper page `dispose` as a destination switch.
+  static void preserveWallpaperScopeOnNextDispose() {
+    _preserveUntilMs = DateTime.now().millisecondsSinceEpoch + _preserveWindowMs;
+  }
+
+  /// Consumes the navigation mark, if it is still valid.
+  static bool takeWallpaperScopePreserve() {
+    if (DateTime.now().millisecondsSinceEpoch > _preserveUntilMs) return false;
+    _preserveUntilMs = 0;
+    return true;
+  }
+
+  /// Drops the wallpaper scope and releases its owner.
+  ///
+  /// Called when the user closes the page or its entry, or selects group 0.
+  /// The clear is deferred because `dispose` can call it while the widget tree
+  /// is locked, where notifying listeners would throw.
+  static void clearWallpaperScope() {
+    scheduleMicrotask(() {
+      _overlayOwner = _unowned;
+      overlay = null;
+    });
   }
 
   /// Temporarily stops (or resumes) applying the gallery range to browsing.

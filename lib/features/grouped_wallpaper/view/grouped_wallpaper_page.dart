@@ -13,6 +13,7 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.d
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
+import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_effects_page.dart';
@@ -181,6 +182,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// the scope a newer page published with the same group.
   Object? _scopeOwner;
 
+  /// Whether the page last published a non-null group scope, for logging only.
+  bool _scopeActive = false;
+
   /// What the live wallpaper last baked, read when the page opens or resumes.
   GroupedWallpaperState? _engineState;
 
@@ -190,7 +194,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     WidgetsBinding.instance.addObserver(this);
     _controller = WallpaperGroupRangeController();
     _controller.addListener(_onControllerChanged);
-    _syncBrowsingOverlay();
+    // Publishing notifies every browsing surface, so it must wait for the first
+    // frame: doing it here notified widgets that were still being built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncBrowsingOverlay();
+    });
     // The browsing scope is shared with the pages pushed over this one, so a
     // strip there can suspend the gallery range and this page must follow.
     VisibleRangeGate.overlayListenable.addListener(_onBrowseScopeChanged);
@@ -199,40 +207,60 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     unawaited(_refreshEngine());
   }
 
-  /// Loads the groups, then honours [GroupedWallpaperPage.selectCurrent].
+  /// Loads the groups, then picks the group the page should show.
   ///
-  /// The controller resumes the browsing session or group 1 by default; a page
-  /// opened as the backdrop of the wallpaper view starts on the playing group
-  /// instead, so the two pages describe the same group.
+  /// The browsing session wins when it has one. On the first open in a process
+  /// the page starts on group 0 (no browsing constraint), unless a group is
+  /// actually running — the page entered from the wallpaper's own view, or left
+  /// open while the app restarts. Adopting the running group keeps the page and
+  /// the wallpaper describing the same photos. [GroupedWallpaperPage.selectCurrent]
+  /// is the explicit version of that for the view page's backdrop.
   Future<void> _initController() async {
+    final hadSession = wallpaperGroupPageSession.initialized;
     await _controller.init();
-    if (!mounted || !widget.selectCurrent) return;
-    final current = _controller.current;
-    if (current.isNone || _controller.selectedGroupId == current.id) return;
-    if (_controller.groups.any((group) => group.id == current.id)) {
-      await _controller.selectGroup(current.id);
+    if (!mounted) return;
+    if (hadSession && !widget.selectCurrent) return;
+    final runningId = await _runningGroupId();
+    if (!mounted || runningId == null) return;
+    if (_controller.selectedGroupId == runningId) return;
+    if (_controller.groups.any((group) => group.id == runningId)) {
+      await _controller.selectGroup(runningId);
     }
+  }
+
+  /// The group the live wallpaper is drawing, or null when it is not running.
+  ///
+  /// Turned-off wallpaper is not "running": its last frame stays but no group is
+  /// in play, so the page must not adopt it as a browsing constraint.
+  Future<String?> _runningGroupId() async {
+    if (!await wallpaperEngineLink.refreshActive()) return null;
+    final state = await wallpaperEngineLink.readState();
+    if (state == null || state.status == GroupedWallpaperStatus.disabled) return null;
+    final id = state.groupId;
+    if (id.isEmpty || id == wallpaperGroupNoneId) return null;
+    return id;
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // The group's scope is a browsing aid for this page only: it applies while
-    // the page is open (and to any page pushed over it) and is dropped here, so
-    // the rest of the app returns to the gallery range. The live wallpaper reads
-    // the saved group range itself and is never affected. The listeners go first:
-    // clearing the scope notifies, and a disposed page must not react. The clear
-    // is deferred, because `dispose` runs with the widget tree locked.
+    // The group's scope constrains browsing exactly like the gallery range, so
+    // switching to another destination keeps it: the navigation layer marks that
+    // case, and the mark is what separates it from a real close. A close (back to
+    // home, the entry's own toggle, group 0) clears it so the rest of the app
+    // returns to the gallery range. The listeners go first: clearing the scope
+    // notifies, and a disposed page must not react. The clear is deferred,
+    // because `dispose` runs with the widget tree locked.
     VisibleRangeGate.overlayListenable.removeListener(_onBrowseScopeChanged);
     visibleRangeController.removeListener(_onBrowseScopeChanged);
     final groupId = _controller.selectedGroupId;
-    final released = VisibleRangeGate.releaseWallpaperScope(_scopeOwner);
+    if (VisibleRangeGate.takeWallpaperScopePreserve()) {
+      groupedWallpaperLog.i('scope.keep group=$groupId reason=destination');
+    } else {
+      VisibleRangeGate.clearWallpaperScope();
+      groupedWallpaperLog.i('scope.clear group=$groupId reason=page-dispose');
+    }
     _scopeOwner = null;
-    unawaited(
-      released.then((applied) {
-        groupedWallpaperLog.i('scope.release group=$groupId stillCurrent=$applied');
-      }),
-    );
     _controller.removeListener(_onControllerChanged);
     _controller.dispose();
     _selection.dispose();
@@ -323,6 +351,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final closing = !groupedWallpaperNavController.entryClosed;
     await groupedWallpaperNavController.toggleEntryClosed();
     if (!closing || !mounted) return;
+    // The entry goes away, so does its browsing constraint: only an unlocked
+    // browse on another destination is left.
+    VisibleRangeGate.clearWallpaperScope();
+    groupedWallpaperLog.i('scope.clear reason=entry-closed');
     visibleRangeDestination.value = VisibleRangeDestination.range;
     unawaited(
       Navigator.of(context).pushReplacement(
@@ -356,20 +388,34 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   }
 
   /// Publishes the page's browsing scope: the group on screen joins the gallery
-  /// range while the wallpaper page is open. The live wallpaper never uses this;
-  /// it reads the saved group range alone.
+  /// range like a second visible range, app-wide. The live wallpaper never uses
+  /// this; it reads the saved group range alone.
   ///
   /// The suspension flag is read back from the overlay so a strip on a page
   /// pushed over this one keeps its choice when the group changes here.
   void _syncBrowsingOverlay() {
-    final next = VisibleRangeBrowsingOverlay(
-      groupFilter: _controller.range?.resolve(),
-      gallerySuspended: _gallerySuspended,
-    );
+    final groupFilter = _controller.range?.resolve();
+    // Group 0 means "no group restriction": the overlay is dropped rather than
+    // kept empty, so browsing falls back to the gallery range alone.
+    final next = groupFilter == null
+        ? null
+        : VisibleRangeBrowsingOverlay(
+            groupFilter: groupFilter,
+            gallerySuspended: _gallerySuspended,
+          );
     final owner = _scopeOwner;
-    final applied = owner == null || VisibleRangeGate.publishWallpaperScope(owner, next);
-    _scopeOwner ??= VisibleRangeGate.claimWallpaperScope(next);
-    if (!applied) return;
+    if (owner == null) {
+      _scopeOwner = VisibleRangeGate.claimWallpaperScope(next);
+    } else if (!VisibleRangeGate.publishWallpaperScope(owner, next)) {
+      // A newer page owns the scope and already describes the screen.
+      return;
+    }
+    final wasActive = _scopeActive;
+    _scopeActive = next != null;
+    if (next == null) {
+      if (wasActive) groupedWallpaperLog.i('scope.clear group=${_controller.selectedGroupId} reason=group-0');
+      return;
+    }
     final gallery = visibleRangeController.gallery;
     groupedWallpaperLog.i(
       'scope.publish group=${_controller.selectedGroupId} gallery=${gallery.isRestricted} locked=${gallery.locked} suspended=${next.gallerySuspended} filter=${next.groupFilter?.key}',
@@ -1462,6 +1508,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final group = _selectedGroup;
     switch (action) {
       case _PageAction.visibleRange:
+        // Switching the shared entry back to the range page closes this one: the
+        // group must stop constraining browsing.
+        VisibleRangeGate.clearWallpaperScope();
+        groupedWallpaperLog.i('scope.clear reason=wallpaper-page-closed');
         visibleRangeDestination.value = VisibleRangeDestination.range;
       case _PageAction.toggleNavEntry:
         await _toggleNavEntry();

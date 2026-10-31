@@ -89,12 +89,12 @@ class WallpaperGroupRangeController extends ChangeNotifier {
       _activeStyle = VisibleRangeActiveStyle.parse((await AppMetaStore(db).read({keyActiveStyle}))[keyActiveStyle]);
       _switcherStyle = WallpaperGroupSwitcherStyle.parse((await AppMetaStore(db).read({keySwitcherStyle}))[keySwitcherStyle]);
       _initialized = true;
-      // Resume the group the page showed before it was rebuilt; the first open
-      // in a process starts on group 1, since the wallpaper feature itself may
-      // never have been visited.
+      // Resume the group the page showed before it was rebuilt. The first open
+      // in a process starts on group 0 (no browsing constraint); the page may
+      // adopt the group the wallpaper is actually running afterwards.
       final session = wallpaperGroupPageSession;
       final sessionId = session.initialized && groups.any((group) => group.id == session.selectedGroupId) ? session.selectedGroupId : null;
-      await selectGroup(session.initialized ? sessionId : groups.firstOrNull?.id);
+      await selectGroup(session.initialized ? sessionId : null);
     } catch (error, stack) {
       groupedWallpaperLog.e('failed to open the wallpaper group page', error, stack);
       _initialized = true;

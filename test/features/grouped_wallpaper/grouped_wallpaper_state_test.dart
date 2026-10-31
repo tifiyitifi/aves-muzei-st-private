@@ -50,8 +50,13 @@ void main() {
     cursor: 5,
     newestEntryId: 9,
     ordering: GroupedWallpaperOrdering.inOrder,
-    paused: true,
     historyLimit: 500,
+    switchLocked: true,
+    switchLockedGroupId: 'wallpaper.group.dcim',
+    groups: [
+      GroupedWallpaperGroup(id: 'wallpaper.group.dcim', number: 1, name: 'DCIM'),
+      GroupedWallpaperGroup(id: 'wallpaper.group.camera', number: 2, name: 'Camera'),
+    ],
     bakedAt: 1234,
   );
 
@@ -70,16 +75,26 @@ void main() {
     expect(parsed.cursor, 5);
     expect(parsed.newestEntryId, 9);
     expect(parsed.ordering, GroupedWallpaperOrdering.inOrder);
-    expect(parsed.paused, isTrue);
     expect(parsed.historyLimit, 500);
+    expect(parsed.switchLocked, isTrue);
+    expect(parsed.switchLockedGroupId, 'wallpaper.group.dcim');
+    expect(parsed.groups.map((group) => group.id), ['wallpaper.group.dcim', 'wallpaper.group.camera']);
+    expect(parsed.groups.map((group) => group.name), ['DCIM', 'Camera']);
   });
 
   test('the group-switch lock travels with the state', () {
     final locked = state.copyWith(switchLocked: true);
     expect(GroupedWallpaperState.tryFromJsonMap(locked.toJsonMap())!.switchLocked, isTrue);
-    // A file written before the lock existed reads as unlocked.
-    final json = state.toJsonMap()..remove('switchLocked');
-    expect(GroupedWallpaperState.tryFromJsonMap(json)!.switchLocked, isFalse);
+    // A file written before the lock existed reads as unlocked, with no group
+    // named and no rotation to offer.
+    final json = state.toJsonMap()
+      ..remove('switchLocked')
+      ..remove('switchLockedGroupId')
+      ..remove('groups');
+    final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
+    expect(parsed.switchLocked, isFalse);
+    expect(parsed.switchLockedGroupId, isEmpty);
+    expect(parsed.groups, isEmpty);
   });
 
   test('a file written before the history limit existed records at the default', () {
@@ -93,12 +108,10 @@ void main() {
   test('a v3 file reads as playing, with no group on its history', () {
     final json = state.toJsonMap()
       ..['version'] = 3
-      ..remove('paused')
       ..['recent'] = [
         {'entryId': 7, 'uri': 'content://media/7', 'title': 'IMG_7'},
       ];
     final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
-    expect(parsed.paused, isFalse);
     expect(parsed.recent.single.groupId, isEmpty);
   });
 

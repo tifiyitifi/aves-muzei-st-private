@@ -85,6 +85,13 @@ import 'package:provider/provider.dart';
 class GroupedWallpaperPage extends StatefulWidget {
   static const routeName = '/wallpaper_groups';
 
+  /// The route the notification's lock button opens while the group is locked.
+  ///
+  /// It is a route of its own so a cold start lands on the page with the PIN
+  /// prompt already open, instead of an extra the app would have to thread
+  /// through every entry point.
+  static const unlockRouteName = '/wallpaper_groups/unlock';
+
   /// Whether the page opens on the group the wallpaper is playing.
   ///
   /// A wallpaper gesture opens the view page over the playing group's page, so
@@ -92,7 +99,14 @@ class GroupedWallpaperPage extends StatefulWidget {
   /// user browsed. The bottom-bar destination keeps the browsing session instead.
   final bool selectCurrent;
 
-  const new({super.key, this.selectCurrent = false});
+  /// Whether the page asks for the group PIN as soon as it opens.
+  ///
+  /// The notification's lock button opens this page while the group is locked, so
+  /// the prompt is the reason to be there: cancelling leaves the locked group on
+  /// screen, exactly like opening the page by hand and using its menu.
+  final bool promptUnlock;
+
+  const new({super.key, this.selectCurrent = false, this.promptUnlock = false});
 
   @override
   State<GroupedWallpaperPage> createState() => _GroupedWallpaperPageState();
@@ -214,8 +228,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     _controller.addListener(_onControllerChanged);
     // Publishing notifies every browsing surface, so it must wait for the first
     // frame: doing it here notified widgets that were still being built.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncBrowsingOverlay();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      _syncBrowsingOverlay();
+      if (!mounted || !widget.promptUnlock || !_groupLocked) return;
+      await promptGroupSwitchUnlock(context);
     });
     // The browsing scope is shared with the pages pushed over this one, so a
     // strip there can suspend the gallery range and this page must follow.

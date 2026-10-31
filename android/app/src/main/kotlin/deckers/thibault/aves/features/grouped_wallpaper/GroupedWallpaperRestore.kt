@@ -212,7 +212,6 @@ object GroupedWallpaperRestore {
     private fun wasInUse(context: Context): Boolean {
         val state = GroupedWallpaperStateFile.read(context) ?: return false
         if (state.status !in inUseStatuses) return false
-        if (state.paused) return false
         val written = GroupedWallpaperStateFile.stateFile(context).lastModified()
         return System.currentTimeMillis() - written <= MAX_AGE_MILLIS
     }

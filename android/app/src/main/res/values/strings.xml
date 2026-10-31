@@ -22,8 +22,10 @@
     <string name="grouped_wallpaper_action_next">Next photo</string>
     <string name="grouped_wallpaper_action_previous_group">Previous group</string>
     <string name="grouped_wallpaper_action_next_group">Next group</string>
-    <string name="grouped_wallpaper_action_freeze">Freeze current wallpaper</string>
-    <string name="grouped_wallpaper_action_resume">Resume wallpaper</string>
+    <string name="grouped_wallpaper_action_lock">Lock the current group</string>
+    <string name="grouped_wallpaper_action_unlock">Unlock the group</string>
+    <string name="grouped_wallpaper_switching_title">Switching groups</string>
+    <string name="grouped_wallpaper_switching_text">From group %1$d %2$s to group %3$d %4$s</string>
     <string name="grouped_wallpaper_action_switch_actions">Switch actions</string>
     <string name="grouped_wallpaper_action_copy">Copy and share (coming soon)</string>
     <string name="grouped_wallpaper_action_used">Usage history (coming soon)</string>

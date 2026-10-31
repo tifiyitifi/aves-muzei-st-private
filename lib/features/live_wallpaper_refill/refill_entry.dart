@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:aves/features/grouped_wallpaper/entry/background_refill.dart';
 import 'package:aves/features/live_wallpaper_refill/log.dart';
 import 'package:aves/features/muzei_wallpaper/entry/background_refill.dart';
+import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/model/device.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/vaults/vaults.dart';
@@ -62,6 +63,9 @@ Future<void> liveWallpaperRefillMain() async {
     await device.init();
     await vaults.init();
     await settings.init(monitorPlatformSettings: false, shouldSanitize: false);
+    // A lock sent from the notification is handled here too: the worker has no
+    // page, so the lock service has to be loaded before the command runs.
+    await wallpaperLockService.init();
   } catch (error, stack) {
     liveWallpaperRefillLog.e('refill.entry failed to initialize services', error, stack);
     rethrow;

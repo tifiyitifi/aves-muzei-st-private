@@ -321,7 +321,7 @@ class GroupedWallpaperRenderer(
      */
     fun canQueueAdvance(): Boolean {
         val current = state ?: return false
-        return current.status == GroupedWallpaperFileState.STATUS_READY && !current.paused
+        return current.status == GroupedWallpaperFileState.STATUS_READY
     }
 
     /** The slot on screen, for the notification's title. */

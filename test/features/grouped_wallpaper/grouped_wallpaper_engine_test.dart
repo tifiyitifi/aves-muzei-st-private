@@ -810,33 +810,6 @@ void main() {
     expect(state.currentSlot?.entryId, 1);
   });
 
-  test('pausing writes the flag without baking and survives a refill', () async {
-    serve(entries(12));
-    await engine.prepare();
-    final bakes = baker.bakeCount;
-
-    await engine.setPaused(true);
-
-    final paused = (await store.readState())!;
-    expect(paused.paused, isTrue);
-    expect(baker.bakeCount, bakes);
-    expect(planStore.pausedWrites, [true]);
-
-    expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
-    expect((await store.readState())!.paused, isTrue);
-  });
-
-  test('resuming writes the flag back', () async {
-    serve(entries(12));
-    await engine.prepare();
-    await engine.setPaused(true);
-
-    await engine.setPaused(false);
-
-    expect((await store.readState())!.paused, isFalse);
-    expect(planStore.pausedWrites, [true, false]);
-  });
-
   test('turning the notification off reaches the state and refreshes the bar', () async {
     serve(entries(12));
     await engine.prepare();
@@ -929,17 +902,14 @@ void main() {
     expect(after.current, before.current);
   });
 
-  test('next photo resumes a frozen wallpaper and advances the queue', () async {
+  test('next photo advances the queue', () async {
     serve(entries(12));
     await engine.prepare();
-    await engine.setPaused(true);
     expect((await store.readState())!.currentSlot?.entryId, 50);
 
     expect(await engine.nextArtwork(), GroupedWallpaperSyncResult.baked);
 
     final state = (await store.readState())!;
-    expect(state.paused, isFalse);
-    expect(planStore.pausedWrites, [true, false]);
     expect(state.currentSlot?.entryId, 49);
     expect(state.recent.map((entry) => entry.entryId), [49, 50]);
   });
@@ -984,17 +954,6 @@ void main() {
     expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.baked);
 
     expect((await store.readState())!.currentSlot?.entryId, 49);
-  });
-
-  test('a notification command pauses and resumes the wallpaper', () async {
-    serve(entries(2));
-    await engine.prepare();
-
-    await engine.handleCommand('pause');
-    expect((await store.readState())!.paused, isTrue);
-
-    await engine.handleCommand('resume');
-    expect((await store.readState())!.paused, isFalse);
   });
 
   test('a bake records the group-switch lock in the state', () async {
@@ -1066,41 +1025,6 @@ void main() {
       expect(platform.scheduledSeconds.last, WallpaperInterval.m15.seconds);
     });
 
-    test('a frozen wallpaper schedules no auto-advance', () async {
-      serve(entries(12));
-      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperInterval.h1, paused: true);
-
-      await engine.prepare();
-
-      expect(platform.scheduledSeconds.last, 0);
-    });
-
-    test('freezing cancels the interval and resuming restarts it', () async {
-      serve(entries(12));
-      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperInterval.m30);
-      await engine.prepare();
-      expect(platform.scheduledSeconds.last, WallpaperInterval.m30.seconds);
-
-      await engine.handleCommand('pause');
-      expect(platform.scheduledSeconds.last, 0);
-
-      await engine.handleCommand('resume');
-      expect(platform.scheduledSeconds.last, WallpaperInterval.m30.seconds);
-    });
-
-    test('an interval run keeps the photo while the wallpaper is frozen', () async {
-      serve(entries(12));
-      await engine.prepare();
-      final before = (await store.readState())!;
-      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, paused: true, scrollEffect: false);
-
-      expect(await engine.refill(advance: true), GroupedWallpaperSyncResult.unchanged);
-
-      final after = (await store.readState())!;
-      expect(after.entryId, before.entryId);
-      expect(after.current, before.current);
-    });
-
     test('refreshSchedule re-applies an edited interval without baking', () async {
       serve(entries(12));
       await engine.prepare();
@@ -1156,16 +1080,6 @@ void main() {
       expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.baked);
 
       expect(historyRecorder.rows.map((row) => row.entryId), [50, 49, 50]);
-    });
-
-    test('freezing and resuming add no row', () async {
-      serve(entries(12));
-      await engine.prepare();
-
-      await engine.setPaused(true);
-      await engine.setPaused(false);
-
-      expect(historyRecorder.rows, hasLength(1));
     });
 
     test('a zero limit records nothing and makes previous inert', () async {
@@ -1354,7 +1268,6 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   Object? error;
   int adoptCount = 0;
   final List<bool> disabledWrites = [];
-  final List<bool> pausedWrites = [];
   final List<int> switchDeltas = [];
 
   new(this.plan) : adopted = plan;
@@ -1376,24 +1289,18 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setDisabled(bool disabled) async {
     disabledWrites.add(disabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification, scrollEffect: plan.scrollEffect);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, scrollEffect: plan.scrollEffect);
   }
 
   @override
   Future<void> setGestures(GroupedWallpaperGestures gestures) async {
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification, scrollEffect: plan.scrollEffect);
-  }
-
-  @override
-  Future<void> setPaused(bool paused) async {
-    pausedWrites.add(paused);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: paused, notification: plan.notification, scrollEffect: plan.scrollEffect);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, scrollEffect: plan.scrollEffect);
   }
 
   @override
   Future<void> setNotification(bool enabled) async {
     notificationWrites.add(enabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: enabled, scrollEffect: plan.scrollEffect);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: enabled, scrollEffect: plan.scrollEffect);
   }
 
   final List<bool> notificationWrites = [];
@@ -1401,7 +1308,7 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setScrollEffect(bool enabled) async {
     scrollEffectWrites.add(enabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification, scrollEffect: enabled);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, scrollEffect: enabled);
   }
 
   final List<bool> scrollEffectWrites = [];
@@ -1409,7 +1316,7 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setHistoryLimit(int limit) async {
     historyLimitWrites.add(limit);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, paused: plan.paused, notification: plan.notification, scrollEffect: plan.scrollEffect, historyLimit: limit);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, scrollEffect: plan.scrollEffect, historyLimit: limit);
   }
 
   final List<int> historyLimitWrites = [];

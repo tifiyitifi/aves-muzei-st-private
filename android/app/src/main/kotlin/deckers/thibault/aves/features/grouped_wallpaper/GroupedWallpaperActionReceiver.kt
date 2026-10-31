@@ -40,17 +40,16 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
         const val COMMAND_NEXT_ARTWORK = "nextArtwork"
         const val COMMAND_PREVIOUS_GROUP = "previousGroup"
         const val COMMAND_NEXT_GROUP = "nextGroup"
-        const val COMMAND_PAUSE = "pause"
-        const val COMMAND_RESUME = "resume"
+        const val COMMAND_LOCK_GROUP = "lockGroup"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             GroupedWallpaperNotification.ACTION_NEXT_ARTWORK -> nextArtwork(context)
             GroupedWallpaperNotification.ACTION_PREVIOUS_ARTWORK -> command(context, COMMAND_PREVIOUS_ARTWORK)
-            GroupedWallpaperNotification.ACTION_PREVIOUS_GROUP -> command(context, COMMAND_PREVIOUS_GROUP)
-            GroupedWallpaperNotification.ACTION_NEXT_GROUP -> command(context, COMMAND_NEXT_GROUP)
-            GroupedWallpaperNotification.ACTION_TOGGLE_PAUSE -> togglePause(context)
+            GroupedWallpaperNotification.ACTION_PREVIOUS_GROUP -> switchGroup(context, -1)
+            GroupedWallpaperNotification.ACTION_NEXT_GROUP -> switchGroup(context, 1)
+            GroupedWallpaperNotification.ACTION_TOGGLE_GROUP_LOCK -> toggleGroupLock(context)
             GroupedWallpaperNotification.ACTION_SWITCH_ACTIONS -> switchActions(context)
         }
     }
@@ -90,9 +89,32 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
         command(context, COMMAND_NEXT_ARTWORK)
     }
 
-    private fun togglePause(context: Context) {
-        val paused = GroupedWallpaperStateFile.read(context)?.paused == true
-        command(context, if (paused) COMMAND_RESUME else COMMAND_PAUSE)
+    /**
+     * Switches the playing group and shows the target at once.
+     *
+     * The bake takes a moment, so the bar says what it is doing instead of
+     * keeping the group it is leaving; the command is still owned by the app.
+     */
+    private fun switchGroup(context: Context, delta: Int) {
+        GroupedWallpaperNotification.beginGroupSwitch(context, delta)
+        command(context, if (delta > 0) COMMAND_NEXT_GROUP else COMMAND_PREVIOUS_GROUP)
+    }
+
+    /**
+     * Locks the group on screen, or opens the page that unlocks it.
+     *
+     * Locking needs no PIN, so it is applied to the bar at once and persisted in
+     * the background. A locked bar has nothing to lock, so its tap opens the
+     * group page and asks for the PIN there.
+     */
+    private fun toggleGroupLock(context: Context) {
+        val locked = GroupedWallpaperStateFile.read(context)?.switchLocked == true
+        if (locked) {
+            GroupedWallpaperAppBridge.requestGroupUnlock()
+            return
+        }
+        if (!GroupedWallpaperNotification.beginGroupLock(context)) return
+        command(context, COMMAND_LOCK_GROUP)
     }
 
     private fun command(context: Context, command: String) {

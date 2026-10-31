@@ -40,13 +40,6 @@ class WallpaperGroupStore {
   /// it any more.
   static const keyLegacyOrdering = 'wallpaper.groupedOrdering';
 
-  /// AppMeta key of the freeze switch.
-  ///
-  /// Freezing keeps the current photo and stops advancing it, without turning
-  /// the grouped wallpaper off (which is [keyDisabled]) and without locking the
-  /// group's visible range.
-  static const keyPaused = 'wallpaper.groupedPaused';
-
   /// AppMeta key of the notification bar switch.
   ///
   /// It is the user's answer to "may this wallpaper keep a notification around":
@@ -182,14 +175,6 @@ class WallpaperGroupStore {
       ),
     );
   }
-
-  /// Whether the wallpaper is frozen on its current photo.
-  Future<bool> readPaused() async {
-    final values = await AppMetaStore(db).read({keyPaused});
-    return values[keyPaused] == 'true';
-  }
-
-  Future<void> writePaused(bool paused) => AppMetaStore(db).write({keyPaused: paused ? 'true' : 'false'});
 
   /// Whether the wallpaper may show its notification bar.
   Future<bool> readNotification() async {

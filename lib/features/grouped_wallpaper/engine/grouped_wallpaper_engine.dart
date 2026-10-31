@@ -112,6 +112,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     final store = GroupedWallpaperStateStore(Directory(root));
     await store.ensureLayout();
     _store = store;
+    // The bar can lock without the app running, so its request is persisted on
+    // disk: adopting it here is what keeps a tap from being lost between the tap
+    // and the next start.
+    final adoptedLock = await _adoptLockRequest();
     // The service asks for a frame when it starts, and that moment is also the
     // activation: the system picker may not have committed the switch yet, so
     // the request must not be filtered by `isActive`.
@@ -122,6 +126,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     link.attach(this);
     final active = await link.refreshActive();
     await link.refreshDisabled();
+    // The bar was showing a pending lock; the persisted one has to replace it,
+    // or the group buttons stay greyed until the next bake.
+    if (adoptedLock) await refreshLock();
     // A service the system killed never runs its cleanup, so its bar can outlive
     // the wallpaper. When this is no longer the system wallpaper, drop it now
     // instead of leaving it until the next boot.
@@ -282,19 +289,6 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// already uploaded and simply stops promoting. The notification reads the new
   /// flag on the reload it gets from the same write. A frozen wallpaper also stops
   /// waking up for auto-advance; resuming starts a fresh countdown.
-  Future<void> setPaused(bool paused) {
-    return _serialize(() async {
-      await planStore.setPaused(paused);
-      await _scheduleAutoAdvance(await planStore.load());
-      final store = _store;
-      if (store == null) return;
-      final previous = await store.readState();
-      if (previous == null || previous.paused == paused) return;
-      await store.writeState(previous.copyWith(generation: previous.generation + 1, paused: paused));
-      await platform.reload();
-    });
-  }
-
   /// Re-applies the current group's auto-advance interval to the scheduler.
   ///
   /// The page calls this after editing a group's interval or ordering: the values
@@ -316,9 +310,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final state = await store.readState();
       if (state == null) return;
       final locked = _groupSwitchLocked();
-      final changed = state.switchLocked != locked;
+      final lockedGroupId = wallpaperLockService.groupSwitchLockedGroupId ?? '';
+      final changed = state.switchLocked != locked || state.switchLockedGroupId != lockedGroupId;
       if (changed) {
-        await store.writeState(state.copyWith(generation: state.generation + 1, switchLocked: locked));
+        await store.writeState(state.copyWith(generation: state.generation + 1, switchLocked: locked, switchLockedGroupId: lockedGroupId));
         await platform.reload();
         await platform.refreshNotification();
       }
@@ -345,16 +340,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   @override
   Future<GroupedWallpaperSyncResult> previousArtwork() => _enqueue(_runPrevious);
 
-  /// Shows the next photo of the group, resuming a frozen wallpaper first.
+  /// Shows the next photo of the group, starting the queue over when it ended.
   ///
-  /// An explicit "next" is the user asking the wallpaper to play again, like the
-  /// notification's next: the freeze is cleared before the queue advances. The
-  /// two runs are queued separately on purpose, as [handleCommand] does.
+  /// An explicit "next" is the user asking the wallpaper to move, so the queue
+  /// advances before the refill even when nothing was promoted yet.
   @override
-  Future<GroupedWallpaperSyncResult> nextArtwork() async {
-    await setPaused(false);
-    return refill(advance: true);
-  }
+  Future<GroupedWallpaperSyncResult> nextArtwork() => refill(advance: true);
 
   /// Refuses a group switch sent by the notification while its lock is on.
   ///
@@ -384,11 +375,48 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       case GroupedWallpaperCommand.previousGroup:
         if (_refuseLockedGroupSwitch()) return;
         await switchGroup(-1);
-      case GroupedWallpaperCommand.pause:
-        await setPaused(true);
-      case GroupedWallpaperCommand.resume:
-        await setPaused(false);
+      case GroupedWallpaperCommand.lockGroup:
+        await _lockGroupFromBar();
     }
+  }
+
+  /// Locks the group on screen, as the notification's lock button asks.
+  ///
+  /// The bar already shows the lock and greys the group buttons, so this only
+  /// persists it: the app's own guard is what refuses the next switch, and the
+  /// refreshed state tells the bar that the lock is real instead of pending.
+  Future<void> _lockGroupFromBar() async {
+    if (await _adoptLockRequest()) {
+      await refreshLock();
+      return;
+    }
+    final groupId = (await _store?.readState())?.groupId ?? '';
+    if (groupId.isEmpty) {
+      groupedWallpaperLog.w('ignoring a group lock with no group on screen');
+      return;
+    }
+    await wallpaperLockService.init();
+    await wallpaperLockService.lockGroup(groupId);
+    await refreshLock();
+    groupedWallpaperLog.i('lock.bar applied group=$groupId');
+  }
+
+  /// Persists a lock the notification recorded while the app was not listening.
+  ///
+  /// The request names the group that was on screen at tap time, so a group switch
+  /// that completed in between cannot move the lock to another group.
+  ///
+  /// @return whether a request was waiting.
+  Future<bool> _adoptLockRequest() async {
+    final store = _store;
+    if (store == null) return false;
+    final groupId = await store.readLockRequest();
+    if (groupId == null) return false;
+    await wallpaperLockService.init();
+    await wallpaperLockService.lockGroup(groupId);
+    await store.clearLockRequest();
+    groupedWallpaperLog.i('lock.request adopted group=$groupId');
+    return true;
   }
 
   Future<GroupedWallpaperSyncResult> _enqueue(Future<GroupedWallpaperSyncResult> Function() body) => _serialize(body);
@@ -469,7 +497,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final rebakeComplete = !groupStale && layoutStale && rebake.isNotEmpty;
       // A frozen wallpaper keeps the photo on screen, even when the interval or a
       // sync asks for the next one.
-      final (seed, advanced) = advance && !stale && !plan.paused ? _promote(adopted) : (adopted, false);
+      final (seed, advanced) = advance && !stale ? _promote(adopted) : (adopted, false);
       final total = await entrySource.count(plan.range);
       // A promoted slot must be recorded even when nothing is baked, so the
       // runtime stops matching and the next run starts from the new current.
@@ -544,11 +572,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         newestEntryId: entry.id > state.newestEntryId ? entry.id : state.newestEntryId,
         ordering: plan.ordering,
         gestures: plan.gestures,
-        paused: plan.paused,
         surfaceWidth: surface.width.round(),
         surfaceHeight: surface.height.round(),
         scrollEffect: scrollEffect,
         historyLimit: plan.historyLimit,
+        switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
+        groups: _groupSnapshot(plan),
         bakedAt: now(),
       );
       await store.writeState(nextState);
@@ -753,13 +782,14 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       newestEntryId: newestEntryId,
       ordering: plan.ordering,
       gestures: plan.gestures,
-      paused: plan.paused,
       notification: plan.notification,
       surfaceWidth: surface.width.round(),
       surfaceHeight: surface.height.round(),
       scrollEffect: scrollEffect,
       historyLimit: plan.historyLimit,
       switchLocked: _groupSwitchLocked(),
+      switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
+      groups: _groupSnapshot(plan),
       bakedAt: now(),
     );
     await store.writeState(nextState);
@@ -1004,7 +1034,14 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   Future<void> _recordLocked(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, GroupedWallpaperState? previous) async {
     if (previous?.status == GroupedWallpaperStatus.locked && previous?.groupId == plan.group.id) return;
     final state = previous != null
-        ? previous.copyWith(generation: previous.generation + 1, status: GroupedWallpaperStatus.locked, paused: plan.paused, historyLimit: plan.historyLimit, switchLocked: _groupSwitchLocked())
+        ? previous.copyWith(
+            generation: previous.generation + 1,
+            status: GroupedWallpaperStatus.locked,
+            historyLimit: plan.historyLimit,
+            switchLocked: _groupSwitchLocked(),
+            switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
+            groups: _groupSnapshot(plan),
+          )
         : GroupedWallpaperState(
             generation: 1,
             status: GroupedWallpaperStatus.locked,
@@ -1013,10 +1050,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             groupName: _resolveName(plan.group),
             ordering: plan.ordering,
             gestures: plan.gestures,
-            paused: plan.paused,
             notification: plan.notification,
             historyLimit: plan.historyLimit,
             switchLocked: _groupSwitchLocked(),
+            switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
+            groups: _groupSnapshot(plan),
             bakedAt: now(),
           );
     await store.writeState(state);
@@ -1046,10 +1084,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               groupNumber: plan.group.number,
               groupName: _resolveName(plan.group),
               gestures: plan.gestures,
-              paused: plan.paused,
               notification: plan.notification,
               historyLimit: plan.historyLimit,
               switchLocked: _groupSwitchLocked(),
+              switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
+              groups: _groupSnapshot(plan),
               bakedAt: now(),
             )
           : GroupedWallpaperState(
@@ -1059,10 +1098,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               groupNumber: previous?.groupNumber ?? 0,
               groupName: previous?.groupName ?? '',
               gestures: previous?.gestures ?? const GroupedWallpaperGestures(),
-              paused: previous?.paused ?? false,
               notification: previous?.notification ?? true,
               historyLimit: previous?.historyLimit ?? GroupedWallpaperHistoryLimit.defaultLimit,
               switchLocked: _groupSwitchLocked(),
+              switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
+              groups: previous?.groups ?? const [],
               bakedAt: now(),
             );
       await store.writeState(state);
@@ -1080,7 +1120,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// wake up for a frame it would refuse to show. The scheduler keeps an
   /// unchanged interval's pending run, so this is safe to call on every run.
   Future<void> _scheduleAutoAdvance(GroupedWallpaperPlan plan) async {
-    final seconds = plan.disabled || plan.paused || plan.isNone ? 0 : plan.interval.seconds;
+    final seconds = plan.disabled || plan.isNone ? 0 : plan.interval.seconds;
     await platform.scheduleAutoAdvance(seconds);
   }
 
@@ -1093,6 +1133,14 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       return group.name;
     }
   }
+
+  /// The rotation the bar switches through, with names it can display.
+  ///
+  /// Resolved on write so the native side never has to know an `@arbKey` or the
+  /// app language: the bar keeps working while the app is not running.
+  List<GroupedWallpaperGroup> _groupSnapshot(GroupedWallpaperPlan plan) => [
+        for (final group in plan.groups) GroupedWallpaperGroup(id: group.id, number: group.number, name: _resolveName(group)),
+      ];
 
   Future<Size> _resolveTargetSize() async {
     final requested = await _targetSize();

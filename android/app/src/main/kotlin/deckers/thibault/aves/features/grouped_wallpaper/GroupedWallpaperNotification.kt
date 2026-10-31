@@ -23,6 +23,9 @@ import android.app.WallpaperManager
 import android.content.Context
 import android.content.Intent
 import android.media.RingtoneManager
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import android.widget.RemoteViews
@@ -37,11 +40,16 @@ import deckers.thibault.aves.R
  *
  * The layout family follows the keyguard: unlocked shows photo actions
  * (previous/next photo, plus the two copy/record placeholders), locked shows
- * group actions (previous/next group, freeze, next photo). The expanded bar's
+ * group actions (previous/next group, lock, next photo). The expanded bar's
  * first button switches between the two sets, like the reference bar, so group
  * actions are reachable while unlocked too. The badge carries the group number,
  * the title the group name and the subtitle the photo on screen, so the
  * notification is useful without opening the app.
+ *
+ * A group switch and a lock are decided here, before the app has done any work:
+ * switching only needs the rotation carried by `state.json`, and locking only
+ * needs the group on screen. Both are shown at once and persisted in the
+ * background, so the bar never appears to ignore a tap.
  *
  * The notification is posted by [GroupedLiveWallpaperService] only while it is
  * the system wallpaper; turning the grouped wallpaper off cancels it.
@@ -93,10 +101,71 @@ object GroupedWallpaperNotification {
     const val ACTION_NEXT_ARTWORK = "deckers.thibault.aves.grouped_wallpaper.NEXT_ARTWORK"
     const val ACTION_PREVIOUS_GROUP = "deckers.thibault.aves.grouped_wallpaper.PREVIOUS_GROUP"
     const val ACTION_NEXT_GROUP = "deckers.thibault.aves.grouped_wallpaper.NEXT_GROUP"
-    const val ACTION_TOGGLE_PAUSE = "deckers.thibault.aves.grouped_wallpaper.TOGGLE_PAUSE"
+
+    /** Locks the group on screen, or opens the group that is already locked. */
+    const val ACTION_TOGGLE_GROUP_LOCK = "deckers.thibault.aves.grouped_wallpaper.TOGGLE_GROUP_LOCK"
 
     /** Switches the button set; it no longer opens the group page. */
     const val ACTION_SWITCH_ACTIONS = "deckers.thibault.aves.grouped_wallpaper.SWITCH_ACTIONS"
+
+    /**
+     * How long a switch feedback stays when the new frame never arrives.
+     *
+     * A bake can fail; without a deadline the bar would keep saying "switching"
+     * forever instead of returning to the group that is really drawing.
+     */
+    private const val PENDING_SWITCH_TIMEOUT_MILLIS = 20_000L
+
+    /**
+     * How long a lock may stay pending before the bar stops claiming it.
+     *
+     * The request file is the source of truth and is adopted on the next start,
+     * so the flag only decides what the bar shows in the meantime.
+     */
+    private const val PENDING_LOCK_TIMEOUT_MILLIS = 30_000L
+
+    private class PendingSwitch(
+        val targetGroupId: String,
+        val targetNumber: Int,
+        val targetName: String,
+        val fromNumber: Int,
+        val fromName: String,
+    )
+
+    @Volatile
+    private var pendingSwitch: PendingSwitch? = null
+
+    @Volatile
+    private var pendingSwitchAt = 0L
+
+    @Volatile
+    private var pendingLockGroupId: String? = null
+
+    @Volatile
+    private var pendingLockAt = 0L
+
+    private val handler = Handler(Looper.getMainLooper())
+
+    /** Used to re-post from the timeout, when no service is holding a context. */
+    @Volatile
+    private var appContext: Context? = null
+
+    private val clearStaleState = Runnable {
+        val now = SystemClock.elapsedRealtime()
+        var changed = false
+        if (pendingSwitch != null && now - pendingSwitchAt > PENDING_SWITCH_TIMEOUT_MILLIS) {
+            pendingSwitch = null
+            changed = true
+        }
+        if (pendingLockGroupId != null && now - pendingLockAt > PENDING_LOCK_TIMEOUT_MILLIS) {
+            pendingLockGroupId = null
+            changed = true
+        }
+        if (changed) {
+            Log.d(TAG, "notification.pending cleared by timeout")
+            appContext?.let { refresh(it) }
+        }
+    }
 
     /** Badge colours; the group number picks one, so a group keeps its colour. */
     private val badgeColors = intArrayOf(
@@ -155,6 +224,115 @@ object GroupedWallpaperNotification {
         groupActionsOverride = null
     }
 
+    /**
+     * Shows a group switch at once and returns the target group, or null.
+     *
+     * The app still owns the switch (it has to move the current group and bake
+     * the next frame), but that takes a bake. Showing the target here is what
+     * makes the tap feel acknowledged instead of ignored.
+     */
+    fun beginGroupSwitch(context: Context, delta: Int): GroupedWallpaperGroupFile? {
+        val state = GroupedWallpaperStateFile.read(context) ?: return null
+        val target = targetGroup(state, delta) ?: return null
+        if (target.id == state.groupId) return null
+        pendingSwitch = PendingSwitch(
+            targetGroupId = target.id,
+            targetNumber = target.number,
+            targetName = target.name,
+            fromNumber = state.groupNumber,
+            fromName = state.groupName,
+        )
+        pendingSwitchAt = SystemClock.elapsedRealtime()
+        scheduleTimeout()
+        Log.i(TAG, "notification.switch from=${state.groupId} to=${target.id}")
+        refresh(context)
+        return target
+    }
+
+    /**
+     * Shows the lock at once and records the request for the app.
+     *
+     * @return whether there is a group to lock.
+     */
+    fun beginGroupLock(context: Context): Boolean {
+        val state = GroupedWallpaperStateFile.read(context) ?: return false
+        if (state.groupId.isEmpty()) return false
+        // The file is the durable half: the app adopts it even if it was not
+        // listening, so a lock tapped while it slept is never lost.
+        GroupedWallpaperStateFile.writeLockRequest(context, state.groupId)
+        pendingLockGroupId = state.groupId
+        pendingLockAt = SystemClock.elapsedRealtime()
+        scheduleTimeout()
+        Log.i(TAG, "notification.lock group=${state.groupId}")
+        refresh(context)
+        return true
+    }
+
+    /** Re-posts the bar from the state on disk. */
+    fun refresh(context: Context) {
+        if (GroupedLiveWallpaperService.isRunning) {
+            GroupedLiveWallpaperService.refreshNotification()
+            return
+        }
+        val state = GroupedWallpaperStateFile.read(context) ?: return
+        update(context, state, state.currentSlot)
+    }
+
+    private fun scheduleTimeout() {
+        handler.removeCallbacks(clearStaleState)
+        handler.postDelayed(clearStaleState, PENDING_SWITCH_TIMEOUT_MILLIS)
+    }
+
+    /** The group a switch from [state] lands on, skipping disabled ones. */
+    private fun targetGroup(state: GroupedWallpaperFileState, delta: Int): GroupedWallpaperGroupFile? {
+        val groups = state.groups
+        if (groups.isEmpty()) return null
+        val index = groups.indexOfFirst { it.id == state.groupId }
+        // From group 0, "next" enters at the first group and "previous" at the last,
+        // exactly like the engine's own rotation.
+        val start = if (index >= 0) index else if (delta > 0) -1 else 0
+        val raw = (start + delta) % groups.size
+        return groups[if (raw < 0) raw + groups.size else raw]
+    }
+
+    /**
+     * The switch the bar should still show, or null once it has arrived.
+     *
+     * Cleared here (not only on a timer) so a state that names the target ends the
+     * feedback in the same pass that reads it.
+     */
+    private fun pendingSwitchFor(state: GroupedWallpaperFileState): PendingSwitch? {
+        val pending = pendingSwitch ?: return null
+        if (state.groupId == pending.targetGroupId || SystemClock.elapsedRealtime() - pendingSwitchAt > PENDING_SWITCH_TIMEOUT_MILLIS) {
+            pendingSwitch = null
+            return null
+        }
+        return pending
+    }
+
+    /** Whether the bar should offer the locked or the unlocked lock icon. */
+    private fun lockedFor(state: GroupedWallpaperFileState): Boolean {
+        if (state.switchLocked) {
+            // The lock is persisted: a pending one for the same group has done its
+            // job and must not outlive it.
+            pendingLockGroupId = null
+            return true
+        }
+        if (pendingLockGroupId == null) return false
+        if (SystemClock.elapsedRealtime() - pendingLockAt > PENDING_LOCK_TIMEOUT_MILLIS) {
+            pendingLockGroupId = null
+            return false
+        }
+        return true
+    }
+
+    /** Drops the pending overlays, so a fresh service starts from the state. */
+    fun resetPending() {
+        pendingSwitch = null
+        pendingLockGroupId = null
+        handler.removeCallbacks(clearStaleState)
+    }
+
     private fun isKeyguardLocked(context: Context): Boolean = (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
 
     /** The button set on screen: the user's switch, or the keyguard's default. */
@@ -173,12 +351,15 @@ object GroupedWallpaperNotification {
         append(state.status).append('|')
         append(state.groupNumber).append('|')
         append(state.groupName).append('|')
-        append(state.paused).append('|')
         // The limit greys the "previous" button, so it is part of what the bar
         // shows: without it a changed limit would not re-post the bar.
         append(state.historyLimit).append('|')
         // The lock greys the group buttons, so it is part of what the bar shows.
-        append(state.switchLocked).append('|')
+        // A pending lock is part of it too: the tap has to show at once.
+        append(lockedFor(state)).append('|')
+        // The switch feedback lasts a bake, and ends when the target arrives.
+        val pending = pendingSwitchFor(state)
+        append(pending?.targetGroupId ?: "").append('|')
         append(usesGroupActions(context)).append('|')
         append(slot?.id ?: -1).append('|')
         append(slot?.entryId ?: -1).append('|')
@@ -218,6 +399,7 @@ object GroupedWallpaperNotification {
     fun build(context: Context, state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?): Notification? {
         if (state.status == GroupedWallpaperFileState.STATUS_DISABLED) return null
         ensureChannel(context)
+        appContext = context.applicationContext
 
         val groupActions = usesGroupActions(context)
         return NotificationCompat.Builder(context, CHANNEL_ID)
@@ -353,29 +535,46 @@ object GroupedWallpaperNotification {
     ): RemoteViews {
         val layout = if (big) R.layout.grouped_wallpaper_notification_big else R.layout.grouped_wallpaper_notification_normal
         val views = RemoteViews(context.packageName, layout)
-        val ready = state.status == GroupedWallpaperFileState.STATUS_READY
+        val pending = pendingSwitchFor(state)
+        val switching = pending != null
+        val ready = state.status == GroupedWallpaperFileState.STATUS_READY && !switching
+        val fallback = context.getString(R.string.grouped_wallpaper_notification_fallback_title)
 
-        val number = state.groupNumber
+        val badge = when {
+            pending != null -> pending.targetNumber
+            slot == null -> null
+            else -> state.groupNumber
+        }
         views.setTextViewText(
             R.id.grouped_notification_status,
-            if (slot == null) context.getString(R.string.grouped_wallpaper_notification_badge_empty) else number.toString(),
+            if (badge == null) context.getString(R.string.grouped_wallpaper_notification_badge_empty) else badge.toString(),
         )
-        views.setInt(R.id.grouped_notification_status, "setBackgroundColor", badgeColor(number))
+        views.setInt(R.id.grouped_notification_status, "setBackgroundColor", badgeColor(badge ?: state.groupNumber))
         views.setTextViewText(
             R.id.grouped_notification_title,
-            state.groupName.ifBlank { context.getString(R.string.grouped_wallpaper_notification_fallback_title) },
+            if (switching) {
+                context.getString(R.string.grouped_wallpaper_switching_title)
+            } else {
+                state.groupName.ifBlank { fallback }
+            },
         )
         views.setTextViewText(
             R.id.grouped_notification_text,
-            if (slot == null) {
-                context.getString(R.string.grouped_wallpaper_notification_no_photo)
-            } else {
-                slot.title.ifBlank { context.getString(R.string.grouped_wallpaper_notification_fallback_title) }
+            when {
+                pending != null -> context.getString(
+                    R.string.grouped_wallpaper_switching_text,
+                    pending.fromNumber,
+                    pending.fromName.ifBlank { fallback },
+                    pending.targetNumber,
+                    pending.targetName.ifBlank { fallback },
+                )
+                slot == null -> context.getString(R.string.grouped_wallpaper_notification_no_photo)
+                else -> slot.title.ifBlank { fallback }
             },
         )
 
         val buttons = if (groupActions) {
-            levelButtons(context, big, state, ready)
+            levelButtons(context, big, state, ready, switching)
         } else {
             // With recording off the engine refuses "previous", so the bar greys
             // the button instead of offering an action that does nothing.
@@ -472,33 +671,36 @@ object GroupedWallpaperNotification {
     }
 
     /**
-     * Locked layout: group actions and the freeze toggle.
+     * Locked layout: group actions and the group lock.
      *
-     * A frozen wallpaper shows the closed lock, so the same button resumes it;
-     * a playing wallpaper shows the open lock and freezes it, like Aves-ST's
-     * guard-level lock.
+     * The lock is the group-switch lock, not a freeze: tapping it while unlocked
+     * locks the group at once, and tapping it while locked opens the page that
+     * asks for the PIN. The group buttons grey out as soon as the lock is set, so
+     * the bar never offers a switch the app would refuse.
      */
-    private fun levelButtons(context: Context, big: Boolean, state: GroupedWallpaperFileState, ready: Boolean): List<NotificationButton> {
+    private fun levelButtons(context: Context, big: Boolean, state: GroupedWallpaperFileState, ready: Boolean, switching: Boolean): List<NotificationButton> {
+        val locked = lockedFor(state)
+        val canSwitch = !locked && !switching
         val previousGroup = NotificationButton(
             R.id.grouped_notification_button_1,
             R.drawable.baseline_arrow_downward_24,
             ACTION_PREVIOUS_GROUP,
             context.getString(R.string.grouped_wallpaper_action_previous_group),
-            enabled = !state.switchLocked,
+            enabled = canSwitch,
         )
         val nextGroup = NotificationButton(
             R.id.grouped_notification_button_2,
             R.drawable.baseline_arrow_upward_24,
             ACTION_NEXT_GROUP,
             context.getString(R.string.grouped_wallpaper_action_next_group),
-            enabled = !state.switchLocked,
+            enabled = canSwitch,
         )
-        val freeze = NotificationButton(
+        val lock = NotificationButton(
             R.id.grouped_notification_button_3,
-            if (state.paused) R.drawable.baseline_lock_24 else R.drawable.baseline_lock_open_24,
-            ACTION_TOGGLE_PAUSE,
-            context.getString(if (state.paused) R.string.grouped_wallpaper_action_resume else R.string.grouped_wallpaper_action_freeze),
-            enabled = ready,
+            if (locked) R.drawable.baseline_lock_24 else R.drawable.baseline_lock_open_24,
+            ACTION_TOGGLE_GROUP_LOCK,
+            context.getString(if (locked) R.string.grouped_wallpaper_action_unlock else R.string.grouped_wallpaper_action_lock),
+            enabled = locked || ready,
         )
         val next = NotificationButton(
             R.id.grouped_notification_button_4,
@@ -507,7 +709,7 @@ object GroupedWallpaperNotification {
             context.getString(R.string.grouped_wallpaper_action_next),
             enabled = ready,
         )
-        if (!big) return listOf(previousGroup, nextGroup, freeze, next)
+        if (!big) return listOf(previousGroup, nextGroup, lock, next)
         return listOf(
             NotificationButton(
                 R.id.grouped_notification_button_1,
@@ -520,21 +722,21 @@ object GroupedWallpaperNotification {
                 R.drawable.baseline_arrow_downward_24,
                 ACTION_PREVIOUS_GROUP,
                 context.getString(R.string.grouped_wallpaper_action_previous_group),
-                enabled = !state.switchLocked,
+                enabled = canSwitch,
             ),
             NotificationButton(
                 R.id.grouped_notification_button_3,
                 R.drawable.baseline_arrow_upward_24,
                 ACTION_NEXT_GROUP,
                 context.getString(R.string.grouped_wallpaper_action_next_group),
-                enabled = !state.switchLocked,
+                enabled = canSwitch,
             ),
             NotificationButton(
                 R.id.grouped_notification_button_4,
-                if (state.paused) R.drawable.baseline_lock_24 else R.drawable.baseline_lock_open_24,
-                ACTION_TOGGLE_PAUSE,
-                context.getString(if (state.paused) R.string.grouped_wallpaper_action_resume else R.string.grouped_wallpaper_action_freeze),
-                enabled = ready,
+                if (locked) R.drawable.baseline_lock_24 else R.drawable.baseline_lock_open_24,
+                ACTION_TOGGLE_GROUP_LOCK,
+                context.getString(if (locked) R.string.grouped_wallpaper_action_unlock else R.string.grouped_wallpaper_action_lock),
+                enabled = locked || ready,
             ),
             NotificationButton(
                 R.id.grouped_notification_button_5,
@@ -551,7 +753,7 @@ object GroupedWallpaperNotification {
         ACTION_NEXT_ARTWORK -> 2
         ACTION_PREVIOUS_GROUP -> 3
         ACTION_NEXT_GROUP -> 4
-        ACTION_TOGGLE_PAUSE -> 5
+        ACTION_TOGGLE_GROUP_LOCK -> 5
         else -> 6
     }
 

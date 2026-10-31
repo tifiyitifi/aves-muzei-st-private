@@ -18,11 +18,8 @@ enum GroupedWallpaperCommand {
   /// Makes the previous enabled group current.
   previousGroup,
 
-  /// Stops advancing the wallpaper, keeping the current frame.
-  pause,
-
-  /// Resumes advancing from the current frame.
-  resume;
+  /// Locks the group on screen, as the notification's lock button asks.
+  lockGroup;
 
   static GroupedWallpaperCommand? tryParse(Object? value) {
     if (value is! String) return null;

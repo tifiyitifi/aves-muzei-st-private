@@ -195,6 +195,43 @@ class GroupedWallpaperRecentEntry extends Equatable {
   List<Object?> get props => [entryId, uri, title, groupId];
 }
 
+/// One group of the rotation, as `state.json` carries it.
+///
+/// The notification switches groups natively, so it needs the ordered rotation
+/// and the display names without asking the app; [name] is already localized
+/// text, not the stored `@arbKey`, because the native side cannot resolve one.
+@immutable
+class GroupedWallpaperGroup extends Equatable {
+  final String id;
+  final int number;
+  final String name;
+
+  const new({
+    required this.id,
+    this.number = 0,
+    this.name = '',
+  });
+
+  Map<String, Object?> toJsonMap() => {
+        'id': id,
+        'number': number,
+        'name': name,
+      };
+
+  static GroupedWallpaperGroup? tryFromJsonMap(Map<String, Object?> json) {
+    final id = GroupedWallpaperSlot._slotString(json['id']);
+    if (id.isEmpty) return null;
+    return GroupedWallpaperGroup(
+      id: id,
+      number: GroupedWallpaperSlot._slotInt(json['number']) ?? 0,
+      name: GroupedWallpaperSlot._slotString(json['name']),
+    );
+  }
+
+  @override
+  List<Object?> get props => [id, number, name];
+}
+
 /// Dart-owned `state.json` of the grouped wallpaper.
 ///
 /// This is the contract between the Flutter engine and the native renderer: only
@@ -213,12 +250,13 @@ class GroupedWallpaperRecentEntry extends Equatable {
 @immutable
 class GroupedWallpaperState extends Equatable {
   /// v2 added the slot queue; v3 added the ordering metadata ([recent],
-  /// [cursor], [newestEntryId]); v4 added [paused] and the group id of a recent
-  /// entry. Older files are read with those at their defaults, so an upgrade
-  /// never loses the frame on screen. [notification], the [surfaceWidth] /
-  /// [surfaceHeight] layout and [scrollEffect] were added afterwards without a
-  /// version bump: a file without them means "on" for the bar and "unknown" for
-  /// the layout, which re-bakes once.
+  /// [cursor], [newestEntryId]); v4 added the group id of a recent entry. Older
+  /// files are read with those at their defaults, so an upgrade never loses the
+  /// frame on screen. [notification], the [surfaceWidth] / [surfaceHeight]
+  /// layout, [scrollEffect], [historyLimit], [switchLocked], [switchLockedGroupId]
+  /// and [groups] were added afterwards without a version bump: a file without
+  /// them means "on" for the bar and "unknown" for the layout, which re-bakes
+  /// once.
   static const int currentVersion = 4;
 
   /// How many recently shown photos are remembered.
@@ -266,13 +304,6 @@ class GroupedWallpaperState extends Equatable {
   /// Gestures the renderer acts on without asking Dart.
   final GroupedWallpaperGestures gestures;
 
-  /// Whether the wallpaper is frozen: it keeps the current photo and the
-  /// renderer refuses to promote, so neither a tap nor an interval advances it.
-  ///
-  /// This is deliberately separate from [GroupedWallpaperStatus.locked], which
-  /// is the visible range's own lock.
-  final bool paused;
-
   /// Whether the user lets the wallpaper show its notification bar.
   ///
   /// It travels with the state because the service owns the bar: with this off it
@@ -308,6 +339,20 @@ class GroupedWallpaperState extends Equatable {
   /// every bake records the current value.
   final bool switchLocked;
 
+  /// The group the lock was set on, or blank when nothing is locked.
+  ///
+  /// The bar compares it with the group on screen: a lock set on another group
+  /// still protects switching, but the lock button then offers to lock the group
+  /// actually showing instead of pretending it already is.
+  final String switchLockedGroupId;
+
+  /// The rotation the bar cycles, in display order.
+  ///
+  /// The notification switches groups natively so a tap changes the bar at once;
+  /// it needs the enabled groups and their display names to do that without
+  /// waking the app.
+  final List<GroupedWallpaperGroup> groups;
+
   final int bakedAt;
 
   const new({
@@ -327,13 +372,14 @@ class GroupedWallpaperState extends Equatable {
     this.newestEntryId = 0,
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
     this.gestures = const GroupedWallpaperGestures(),
-    this.paused = false,
     this.notification = true,
     this.surfaceWidth = 0,
     this.surfaceHeight = 0,
     this.scrollEffect = false,
     this.historyLimit = GroupedWallpaperHistoryLimit.defaultLimit,
     this.switchLocked = false,
+    this.switchLockedGroupId = '',
+    this.groups = const [],
     this.bakedAt = 0,
   });
 
@@ -392,13 +438,14 @@ class GroupedWallpaperState extends Equatable {
     int? newestEntryId,
     GroupedWallpaperOrdering? ordering,
     GroupedWallpaperGestures? gestures,
-    bool? paused,
     bool? notification,
     int? surfaceWidth,
     int? surfaceHeight,
     bool? scrollEffect,
     int? historyLimit,
     bool? switchLocked,
+    String? switchLockedGroupId,
+    List<GroupedWallpaperGroup>? groups,
     int? bakedAt,
   }) => GroupedWallpaperState(
         version: version ?? this.version,
@@ -417,13 +464,14 @@ class GroupedWallpaperState extends Equatable {
         newestEntryId: newestEntryId ?? this.newestEntryId,
         ordering: ordering ?? this.ordering,
         gestures: gestures ?? this.gestures,
-        paused: paused ?? this.paused,
         notification: notification ?? this.notification,
         surfaceWidth: surfaceWidth ?? this.surfaceWidth,
         surfaceHeight: surfaceHeight ?? this.surfaceHeight,
         scrollEffect: scrollEffect ?? this.scrollEffect,
         historyLimit: historyLimit ?? this.historyLimit,
         switchLocked: switchLocked ?? this.switchLocked,
+        switchLockedGroupId: switchLockedGroupId ?? this.switchLockedGroupId,
+        groups: groups ?? this.groups,
         bakedAt: bakedAt ?? this.bakedAt,
       );
 
@@ -462,13 +510,14 @@ class GroupedWallpaperState extends Equatable {
         'newestEntryId': newestEntryId,
         'ordering': ordering.name,
         'gestures': gestures.toJsonMap(),
-        'paused': paused,
         'notification': notification,
         'surfaceWidth': surfaceWidth,
         'surfaceHeight': surfaceHeight,
         'scrollEffect': scrollEffect,
         'historyLimit': historyLimit,
         'switchLocked': switchLocked,
+        'switchLockedGroupId': switchLockedGroupId,
+        'groups': groups.map((group) => group.toJsonMap()).toList(),
         'bakedAt': bakedAt,
       };
 
@@ -540,6 +589,17 @@ class GroupedWallpaperState extends Equatable {
       return id != null && id >= 0 ? id : -1;
     }
 
+    final groups = <GroupedWallpaperGroup>[];
+    final seenGroups = <String>{};
+    final rawGroups = json['groups'];
+    if (rawGroups is List) {
+      for (final rawGroup in rawGroups) {
+        if (rawGroup is! Map) continue;
+        final group = GroupedWallpaperGroup.tryFromJsonMap(rawGroup.map((key, value) => MapEntry(key.toString(), value)));
+        if (group != null && seenGroups.add(group.id)) groups.add(group);
+      }
+    }
+
     final state = GroupedWallpaperState(
       generation: _int(json['generation']) ?? 0,
       status: status,
@@ -556,7 +616,6 @@ class GroupedWallpaperState extends Equatable {
       newestEntryId: _int(json['newestEntryId']) ?? 0,
       ordering: GroupedWallpaperOrdering.tryParse(json['ordering']),
       gestures: GroupedWallpaperGestures.fromJsonMap(_map(json['gestures']) ?? const {}),
-      paused: json['paused'] == true,
       // Files written before the setting existed kept the bar on, which is what
       // those builds did.
       notification: json['notification'] != false,
@@ -568,6 +627,8 @@ class GroupedWallpaperState extends Equatable {
       // the store's default still does.
       historyLimit: GroupedWallpaperHistoryLimit.sanitize(_int(json['historyLimit']) ?? GroupedWallpaperHistoryLimit.defaultLimit),
       switchLocked: json['switchLocked'] == true,
+      switchLockedGroupId: _string(json['switchLockedGroupId']),
+      groups: List.unmodifiable(groups),
       bakedAt: _int(json['bakedAt']) ?? 0,
     );
     // `ready` without a frame is a contradiction: show the placeholder instead
@@ -589,7 +650,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, paused, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, switchLocked, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, switchLocked, switchLockedGroupId, groups, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

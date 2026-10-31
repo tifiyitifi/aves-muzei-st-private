@@ -42,6 +42,9 @@ object GroupedWallpaperAppBridge {
     /** The app route of the wallpaper group page. */
     private const val GroupedWallpaperPageRoute = "/wallpaper_groups"
 
+    /** The app route of the group page that asks for the PIN at once. */
+    private const val GroupedWallpaperUnlockRoute = "/wallpaper_groups/unlock"
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
     @Volatile
@@ -135,6 +138,16 @@ object GroupedWallpaperAppBridge {
     /** Opens the wallpaper group page, which is also the notification's target. */
     fun requestGroupPage() {
         requestPage(GroupedWallpaperPageRoute)
+    }
+
+    /**
+     * Opens the wallpaper group page and asks for the PIN.
+     *
+     * The lock button is the way into the lock, so tapping it while locked is the
+     * user asking to unlock: the page prompts instead of waiting for the menu.
+     */
+    fun requestGroupUnlock() {
+        requestPage(GroupedWallpaperUnlockRoute)
     }
 
     private fun requestPage(route: String) {

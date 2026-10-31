@@ -12,6 +12,7 @@ import 'package:path/path.dart' as p;
 /// ```
 /// <root>/state.json              # Dart-owned, read by the native renderer
 /// <root>/runtime.json            # native-owned: the slot the renderer promoted to
+/// <root>/lock_request.json       # native-owned: a lock tapped while the app slept
 /// <root>/slots/<id>/photo.png    # one baked photo per queue slot
 /// <root>/tmp/                    # atomic-write staging
 /// ```
@@ -23,6 +24,7 @@ import 'package:path/path.dart' as p;
 class GroupedWallpaperStateStore {
   static const String stateFileName = 'state.json';
   static const String runtimeFileName = 'runtime.json';
+  static const String lockRequestFileName = 'lock_request.json';
   static const String slotsDirName = 'slots';
   static const String slotPhotoFileName = 'photo.png';
 
@@ -41,6 +43,31 @@ class GroupedWallpaperStateStore {
   File get stateFile => File(p.join(root.path, stateFileName));
 
   File get runtimeFile => File(p.join(root.path, runtimeFileName));
+
+  File get lockRequestFile => File(p.join(root.path, lockRequestFileName));
+
+  /// The group a notification lock request names, or null when none is waiting.
+  ///
+  /// The request is written by the native side when the user taps the bar's lock
+  /// while the app is not listening, so the tap is persisted before anything
+  /// else can fail.
+  Future<String?> readLockRequest() async {
+    if (!await lockRequestFile.exists()) return null;
+    try {
+      final raw = await lockRequestFile.readAsString();
+      if (raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final groupId = decoded['groupId'];
+      return groupId is String && groupId.isNotEmpty ? groupId : null;
+    } catch (error, stack) {
+      groupedWallpaperLog.w('failed to read $lockRequestFileName', error, stack);
+      return null;
+    }
+  }
+
+  /// Drops the request once the lock is persisted.
+  Future<void> clearLockRequest() => _deleteQuietly(lockRequestFile);
 
   Directory get slotsDir => Directory(p.join(root.path, slotsDirName));
 

@@ -40,6 +40,13 @@ data class GroupedWallpaperSlotFile(
     }
 }
 
+/** One group of the notification rotation. */
+data class GroupedWallpaperGroupFile(
+    val id: String,
+    val number: Int,
+    val name: String,
+)
+
 /**
  * What the native side needs from the Dart-owned `state.json`.
  *
@@ -60,8 +67,6 @@ data class GroupedWallpaperFileState(
     val slots: List<GroupedWallpaperSlotFile>,
     val doubleTap: String,
     val threeFinger: String,
-    /** The wallpaper is frozen: the renderer must not promote a slot. */
-    val paused: Boolean,
     /**
      * Whether the user lets the wallpaper show its notification bar.
      *
@@ -84,6 +89,20 @@ data class GroupedWallpaperFileState(
      * the command anyway, so an enabled button would only do nothing.
      */
     val switchLocked: Boolean = false,
+    /**
+     * The group the switch lock was set on, or empty when nothing is locked.
+     *
+     * The bar compares it with the group on screen, so a lock set elsewhere is
+     * never reported as this group's own.
+     */
+    val switchLockedGroupId: String = "",
+    /**
+     * The rotation the bar cycles, in display order.
+     *
+     * The notification switches groups itself, so a tap changes the bar before
+     * the app has baked the next frame; [name] is display text, not an ARB key.
+     */
+    val groups: List<GroupedWallpaperGroupFile> = emptyList(),
 ) {
     fun slot(id: Int): GroupedWallpaperSlotFile? = slots.firstOrNull { it.id == id }
 
@@ -93,7 +112,7 @@ data class GroupedWallpaperFileState(
 
     /** Whether the wallpaper may follow its group, i.e. may promote a slot. */
     val canPromote: Boolean
-        get() = status == STATUS_READY && next >= 0 && !paused
+        get() = status == STATUS_READY && next >= 0
 
     companion object {
         const val STATUS_READY = "ready"
@@ -121,6 +140,14 @@ object GroupedWallpaperStateFile {
     const val DIR_NAME = "grouped_wallpaper"
     const val STATE_FILE_NAME = "state.json"
     const val RUNTIME_FILE_NAME = "runtime.json"
+
+    /**
+     * A lock tapped on the bar while the app was not listening.
+     *
+     * The lock itself is persisted by the app (AppMeta), which the native side
+     * cannot write, so the tap is recorded here and adopted on the next start.
+     */
+    const val LOCK_REQUEST_FILE_NAME = "lock_request.json"
 
     fun root(context: Context): File = File(context.filesDir, DIR_NAME)
 
@@ -188,7 +215,6 @@ object GroupedWallpaperStateFile {
             slots = slots,
             doubleTap = GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,
             threeFinger = GroupedWallpaperFileState.ACTION_VIEW_ARTWORK,
-            paused = false,
         )
     }
 
@@ -216,6 +242,22 @@ object GroupedWallpaperStateFile {
             }
         }
         val gestures = json.optJSONObject("gestures")
+        val groups = mutableListOf<GroupedWallpaperGroupFile>()
+        val rawGroups = json.optJSONArray("groups")
+        if (rawGroups != null) {
+            for (i in 0 until rawGroups.length()) {
+                val raw = rawGroups.optJSONObject(i) ?: continue
+                val id = raw.optString("id", "")
+                if (id.isEmpty()) continue
+                groups.add(
+                    GroupedWallpaperGroupFile(
+                        id = id,
+                        number = raw.optInt("number", 0),
+                        name = raw.optString("name", ""),
+                    ),
+                )
+            }
+        }
         return GroupedWallpaperFileState(
             generation = json.optInt("generation", 0),
             status = status,
@@ -231,14 +273,41 @@ object GroupedWallpaperStateFile {
                 ?: GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,
             threeFinger = gestures?.optString("threeFinger", GroupedWallpaperFileState.ACTION_VIEW_ARTWORK)
                 ?: GroupedWallpaperFileState.ACTION_VIEW_ARTWORK,
-            paused = json.optBoolean("paused", false),
             // A file written before the setting existed means "on", which is
             // what those builds did.
             notification = json.optBoolean("notification", true),
             historyLimit = json.optInt("historyLimit", 200),
             switchLocked = json.optBoolean("switchLocked", false),
+            switchLockedGroupId = json.optString("switchLockedGroupId", ""),
+            groups = groups,
         )
     }
+
+    /**
+     * Records a lock request, atomically, so the app can adopt it on the next start.
+     *
+     * A failed write only costs the immediate persistence: the app's own state
+     * still answers the next lock tap.
+     */
+    fun writeLockRequest(context: Context, groupId: String) {
+        try {
+            val root = ensureRoot(context)
+            val json = JSONObject()
+                .put("groupId", groupId)
+                .put("at", System.currentTimeMillis())
+            val tmp = File(root, "$LOCK_REQUEST_FILE_NAME.tmp")
+            tmp.writeText(json.toString())
+            val target = lockRequestFile(context)
+            if (!tmp.renameTo(target)) {
+                target.delete()
+                tmp.renameTo(target)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "failed to write $LOCK_REQUEST_FILE_NAME", t)
+        }
+    }
+
+    fun lockRequestFile(context: Context): File = File(root(context), LOCK_REQUEST_FILE_NAME)
 
     /**
      * Records the slot the renderer promoted to.

@@ -181,25 +181,15 @@ void main() {
     expect(plan.range?.baseFilters, {PathFilter('/dcim')});
   });
 
-  test('paused survives a reload without touching the current group', () async {
-    await groups.saveGroups([group('a', current: true)]);
-    expect((await planStore.load()).paused, isFalse);
+  test('the plan carries the enabled rotation for the notification', () async {
+    await groups.saveGroups([group('a', current: true), group('b', enabled: false), group('c')]);
 
-    await planStore.setPaused(true);
+    final plan = await planStore.load();
 
-    final paused = await planStore.load();
-    expect(paused.paused, isTrue);
-    expect(paused.group.id, 'a');
-  });
-
-  test('activation resumes a frozen wallpaper', () async {
-    await groups.saveGroups([group('a', current: true)]);
-    await planStore.setPaused(true);
-
-    final plan = await planStore.adoptFirstEnabledGroup();
-
-    expect(plan.paused, isFalse);
-    expect((await planStore.load()).paused, isFalse);
+    expect(plan.groups.map((group) => group.id), ['a', 'c']);
+    // Numbers follow the stored order, which normalizing compacts to the enabled
+    // segment first: the bar shows the same number the state already carries.
+    expect(plan.groups.map((group) => group.number), [1, 2]);
   });
 
   test('next group skips disabled groups and wraps around', () async {
@@ -229,15 +219,13 @@ void main() {
     expect((await planStore.switchGroup(-1)).group.id, 'c');
   });
 
-  test('switching group resumes a frozen wallpaper', () async {
+  test('switching group carries the new rotation', () async {
     await groups.saveGroups([group('a', current: true), group('b')]);
-    await planStore.setPaused(true);
 
     final plan = await planStore.switchGroup(1);
 
     expect(plan.group.id, 'b');
-    expect(plan.paused, isFalse);
-    expect((await planStore.load()).paused, isFalse);
+    expect(plan.groups.map((group) => group.id), ['a', 'b']);
   });
 
   test('switching with no enabled group keeps group 0', () async {

@@ -20,8 +20,10 @@
     <string name="grouped_wallpaper_action_next">下一张</string>
     <string name="grouped_wallpaper_action_previous_group">上一组</string>
     <string name="grouped_wallpaper_action_next_group">下一组</string>
-    <string name="grouped_wallpaper_action_freeze">冻结当前壁纸</string>
-    <string name="grouped_wallpaper_action_resume">恢复轮换</string>
+    <string name="grouped_wallpaper_action_lock">锁定当前分组</string>
+    <string name="grouped_wallpaper_action_unlock">解锁分组</string>
+    <string name="grouped_wallpaper_switching_title">切换分组中</string>
+    <string name="grouped_wallpaper_switching_text">由 %1$d 组 %2$s 切换至 %3$d 组 %4$s</string>
     <string name="grouped_wallpaper_action_switch_actions">切换操作</string>
     <string name="grouped_wallpaper_action_copy">复制分享（稍后提供）</string>
     <string name="grouped_wallpaper_action_used">使用记录（稍后提供）</string>

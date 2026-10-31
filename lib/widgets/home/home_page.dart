@@ -102,6 +102,7 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
     MapPage.routeName,
     MuzeiWallpaperPage.routeName,
     GroupedWallpaperPage.routeName,
+    GroupedWallpaperPage.unlockRouteName,
     GroupedWallpaperViewPage.routeName,
     GroupedWallpaperHistoryPage.routeName,
     VisibleRangePage.routeName,
@@ -673,6 +674,10 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
         // Pushed as the backdrop of a gesture-opened view: start on the playing
         // group so the page describes what the view shows.
         return buildRoute((context) => const GroupedWallpaperPage(selectCurrent: true));
+      case GroupedWallpaperPage.unlockRouteName:
+        // The notification's lock button: the page opens on the locked group and
+        // asks for the PIN at once, which is the reason the user tapped.
+        return buildRoute((context) => const GroupedWallpaperPage(selectCurrent: true, promptUnlock: true));
       case GroupedWallpaperViewPage.routeName:
         // A gesture always pushes the playing group's page below the view.
         return buildRoute((context) => const GroupedWallpaperViewPage(groupPageBelow: true));

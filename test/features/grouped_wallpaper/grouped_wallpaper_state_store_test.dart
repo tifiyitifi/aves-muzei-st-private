@@ -167,4 +167,35 @@ void main() {
     expect(runtime.next, -1);
     expect(runtime.refillRequested, isTrue);
   });
+
+  test('a missing lock request reads as none', () async {
+    expect(await store.readLockRequest(), isNull);
+  });
+
+  test('the lock request names its group until it is cleared', () async {
+    await store.ensureLayout();
+    // Written by the native side: the app was not listening when the bar was
+    // tapped, so the group has to survive until it is started.
+    await store.lockRequestFile.writeAsString('{"groupId":"group.2","at":7}');
+
+    expect(await store.readLockRequest(), 'group.2');
+
+    await store.clearLockRequest();
+
+    expect(await store.readLockRequest(), isNull);
+  });
+
+  test('a broken lock request reads as none', () async {
+    await store.ensureLayout();
+    await store.lockRequestFile.writeAsString('{"groupId":');
+
+    expect(await store.readLockRequest(), isNull);
+  });
+
+  test('a lock request without a group is ignored', () async {
+    await store.ensureLayout();
+    await store.lockRequestFile.writeAsString('{"groupId":""}');
+
+    expect(await store.readLockRequest(), isNull);
+  });
 }

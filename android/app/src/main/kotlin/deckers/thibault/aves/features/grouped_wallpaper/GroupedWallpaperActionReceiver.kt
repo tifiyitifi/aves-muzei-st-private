@@ -80,7 +80,11 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
      * command takes over and the action is never silently lost.
      */
     private fun nextArtwork(context: Context) {
-        if (GroupedWallpaperRenderBus.advance()) {
+        // A rewound state must walk the stack through the engine. The prefetched
+        // slot is a fresh photo and would reset the anchor, which is the double
+        // tap's and the interval's job, not the notification's "next".
+        val rewound = (GroupedWallpaperStateFile.read(context)?.rewindCursor ?: 0) > 0
+        if (!rewound && GroupedWallpaperRenderBus.advance()) {
             if (!GroupedWallpaperAppBridge.requestSync()) {
                 LiveWallpaperRefillScheduler.enqueueTapRefill(context, LiveWallpaperTarget.GROUPED)
             }

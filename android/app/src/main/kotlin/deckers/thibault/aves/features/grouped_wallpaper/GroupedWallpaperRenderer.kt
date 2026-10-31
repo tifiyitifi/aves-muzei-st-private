@@ -485,6 +485,10 @@ class GroupedWallpaperRenderer(
      */
     private fun keepDisplayedSlot(newState: GroupedWallpaperFileState, previousGeneration: Int): GroupedWallpaperFileState {
         if (newState.generation <= previousGeneration) return newState
+        // A previous/next history step deliberately shows a photo that is older
+        // than the one on screen; its queue also starts with the old frame, so
+        // the promotion heuristic below would wrongly keep it.
+        if (newState.navigated) return newState
         val onScreen = displayed
         if (onScreen < 0) return newState
         val queue = listOf(newState.current, newState.next, newState.next2)

@@ -195,6 +195,29 @@ class GroupedWallpaperRecentEntry extends Equatable {
   List<Object?> get props => [entryId, uri, title, groupId];
 }
 
+/// One photo "previous" can step back to.
+///
+/// Only the id is kept: a slot is recycled, and the entry is read from the
+/// group's range again when it is shown, so a deleted photo never blocks the
+/// walk. The list is capped by the usage history limit.
+@immutable
+class GroupedWallpaperRewindEntry extends Equatable {
+  final int entryId;
+
+  const new({required this.entryId});
+
+  Map<String, Object?> toJsonMap() => {'entryId': entryId};
+
+  static GroupedWallpaperRewindEntry? tryFromJsonMap(Map<String, Object?> json) {
+    final entryId = GroupedWallpaperSlot._slotInt(json['entryId']);
+    if (entryId == null || entryId <= 0) return null;
+    return GroupedWallpaperRewindEntry(entryId: entryId);
+  }
+
+  @override
+  List<Object?> get props => [entryId];
+}
+
 /// One group of the rotation, as `state.json` carries it.
 ///
 /// The notification switches groups natively, so it needs the ordered rotation
@@ -250,14 +273,16 @@ class GroupedWallpaperGroup extends Equatable {
 @immutable
 class GroupedWallpaperState extends Equatable {
   /// v2 added the slot queue; v3 added the ordering metadata ([recent],
-  /// [cursor], [newestEntryId]); v4 added the group id of a recent entry. Older
+  /// [cursor], [newestEntryId]); v4 added the group id of a recent entry; v5
+  /// added the rewind stack ([rewind], [rewindCursor]) and [navigated]. Older
   /// files are read with those at their defaults, so an upgrade never loses the
   /// frame on screen. [notification], the [surfaceWidth] / [surfaceHeight]
   /// layout, [scrollEffect], [historyLimit], [switchLocked], [switchLockedGroupId]
   /// and [groups] were added afterwards without a version bump: a file without
   /// them means "on" for the bar and "unknown" for the layout, which re-bakes
-  /// once.
-  static const int currentVersion = 4;
+  /// once. A v4 file seeds [rewind] from [recent], so "previous" works right
+  /// after the update.
+  static const int currentVersion = 5;
 
   /// How many recently shown photos are remembered.
   ///
@@ -291,6 +316,31 @@ class GroupedWallpaperState extends Equatable {
 
   /// Photos the wallpaper has shown, newest first.
   final List<GroupedWallpaperRecentEntry> recent;
+
+  /// Photos "previous" can walk back through, newest first.
+  ///
+  /// It is the usage history as the wallpaper navigates it: a new photo goes to
+  /// the front and resets [rewindCursor], while "previous"/"next" only move the
+  /// cursor. It is capped by [historyLimit], so the walk never goes further back
+  /// than the records the user keeps.
+  final List<GroupedWallpaperRewindEntry> rewind;
+
+  /// Position of the current photo in [rewind]; `0` is the newest.
+  final int rewindCursor;
+
+  /// Whether this state was written by an explicit history step.
+  ///
+  /// The native renderer keeps the slot on screen when a newer state still
+  /// queues it after `current` (a promotion it made itself). A previous/next
+  /// bake looks the same in the queue, so [navigated] tells the renderer to
+  /// honor the new `current` instead of keeping the old frame.
+  final bool navigated;
+
+  /// Whether this state was parsed from a file written before the rewind stack.
+  ///
+  /// Not serialized: a write always produces a current state. It only tells the
+  /// engine to rewrite `state.json` once, so the native bar sees `canPrevious`.
+  final bool needsUpgrade;
 
   /// Position of the next in-order pick within the group.
   final int cursor;
@@ -368,6 +418,10 @@ class GroupedWallpaperState extends Equatable {
     this.next2 = -1,
     this.slots = const [],
     this.recent = const [],
+    this.rewind = const [],
+    this.rewindCursor = 0,
+    this.navigated = false,
+    this.needsUpgrade = false,
     this.cursor = 0,
     this.newestEntryId = 0,
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
@@ -399,6 +453,18 @@ class GroupedWallpaperState extends Equatable {
   /// Whether the state points at a baked frame, whatever the status: a locked or
   /// turned-off group keeps showing the photo it stopped on.
   bool get hasPhoto => currentSlot != null;
+
+  /// Whether "previous" would change the frame.
+  ///
+  /// A locked range still navigates (the lock protects editing, not the photos),
+  /// while a turned-off or unavailable wallpaper has nothing to show. The walk
+  /// stops at the usage history limit and at the last recorded photo.
+  bool get canGoPrevious =>
+      hasPhoto &&
+      historyLimit > 0 &&
+      (status == GroupedWallpaperStatus.ready || status == GroupedWallpaperStatus.locked) &&
+      rewindCursor + 1 < rewind.length &&
+      rewindCursor + 1 < historyLimit;
 
   /// How many slots are queued, current included.
   int get queueLength => [current, next, next2].where((id) => id >= 0).length;
@@ -434,6 +500,10 @@ class GroupedWallpaperState extends Equatable {
     int? next2,
     List<GroupedWallpaperSlot>? slots,
     List<GroupedWallpaperRecentEntry>? recent,
+    List<GroupedWallpaperRewindEntry>? rewind,
+    int? rewindCursor,
+    bool? navigated,
+    bool? needsUpgrade,
     int? cursor,
     int? newestEntryId,
     GroupedWallpaperOrdering? ordering,
@@ -460,6 +530,10 @@ class GroupedWallpaperState extends Equatable {
         next2: next2 ?? this.next2,
         slots: slots ?? this.slots,
         recent: recent ?? this.recent,
+        rewind: rewind ?? this.rewind,
+        rewindCursor: rewindCursor ?? this.rewindCursor,
+        navigated: navigated ?? this.navigated,
+        needsUpgrade: needsUpgrade ?? this.needsUpgrade,
         cursor: cursor ?? this.cursor,
         newestEntryId: newestEntryId ?? this.newestEntryId,
         ordering: ordering ?? this.ordering,
@@ -506,6 +580,10 @@ class GroupedWallpaperState extends Equatable {
         'next2': next2,
         'slots': slots.map((slot) => slot.toJsonMap()).toList(),
         'recent': recent.map((entry) => entry.toJsonMap()).toList(),
+        'rewind': rewind.map((entry) => entry.toJsonMap()).toList(),
+        'rewindCursor': rewindCursor,
+        'canPrevious': canGoPrevious,
+        'navigated': navigated,
         'cursor': cursor,
         'newestEntryId': newestEntryId,
         'ordering': ordering.name,
@@ -527,7 +605,8 @@ class GroupedWallpaperState extends Equatable {
     if (status == null) return null;
     return switch (version) {
       1 => _fromV1(json, status),
-      2 || 3 || 4 => _fromQueued(json, status),
+      2 || 3 || 4 => _fromQueued(json, status, needsUpgrade: true),
+      5 => _fromQueued(json, status, needsUpgrade: false),
       _ => null,
     };
   }
@@ -539,6 +618,7 @@ class GroupedWallpaperState extends Equatable {
     final drawsFrame = status == GroupedWallpaperStatus.ready || status.keepsFrame;
     final hasFrame = drawsFrame && photo.isNotEmpty && entryId != null;
     return GroupedWallpaperState(
+      needsUpgrade: true,
       generation: _int(json['generation']) ?? 0,
       status: status == GroupedWallpaperStatus.ready && !hasFrame ? GroupedWallpaperStatus.unavailable : status,
       groupId: _string(json['groupId']),
@@ -563,7 +643,7 @@ class GroupedWallpaperState extends Equatable {
     );
   }
 
-  static GroupedWallpaperState _fromQueued(Map<String, Object?> json, GroupedWallpaperStatus status) {
+  static GroupedWallpaperState _fromQueued(Map<String, Object?> json, GroupedWallpaperStatus status, {required bool needsUpgrade}) {
     final slots = <GroupedWallpaperSlot>[];
     final seenIds = <int>{};
     final rawSlots = json['slots'];
@@ -600,10 +680,36 @@ class GroupedWallpaperState extends Equatable {
       }
     }
 
+    // The limit bounds the walk, so it is read before the stack.
+    final historyLimit = GroupedWallpaperHistoryLimit.sanitize(_int(json['historyLimit']) ?? GroupedWallpaperHistoryLimit.defaultLimit);
+    final groupId = _string(json['groupId']);
+    final rewind = <GroupedWallpaperRewindEntry>[];
+    final seenRewind = <int>{};
+    final hasRewind = json.containsKey('rewind');
+    final rawRewind = json['rewind'];
+    if (rawRewind is List) {
+      for (final rawEntry in rawRewind) {
+        if (rawEntry is! Map || rewind.length >= historyLimit) continue;
+        final entry = GroupedWallpaperRewindEntry.tryFromJsonMap(rawEntry.map((key, value) => MapEntry(key.toString(), value)));
+        if (entry != null && seenRewind.add(entry.entryId)) rewind.add(entry);
+      }
+    }
+    if (!hasRewind && historyLimit > 0) {
+      // A v4 file predates the stack: its recent list is already newest first,
+      // so "previous" works on the first tap after the update.
+      for (final entry in recent) {
+        if (rewind.length >= historyLimit) break;
+        if (entry.groupId.isNotEmpty && entry.groupId != groupId) continue;
+        if (seenRewind.add(entry.entryId)) rewind.add(GroupedWallpaperRewindEntry(entryId: entry.entryId));
+      }
+    }
+    final rewindCursor = (_int(json['rewindCursor']) ?? 0).clamp(0, rewind.isEmpty ? 0 : rewind.length - 1);
+
     final state = GroupedWallpaperState(
+      needsUpgrade: needsUpgrade,
       generation: _int(json['generation']) ?? 0,
       status: status,
-      groupId: _string(json['groupId']),
+      groupId: groupId,
       groupNumber: _int(json['groupNumber']) ?? 0,
       groupName: _string(json['groupName']),
       count: _int(json['count']) ?? 0,
@@ -612,6 +718,9 @@ class GroupedWallpaperState extends Equatable {
       next2: readSlotId(json['next2']),
       slots: List.unmodifiable(slots),
       recent: List.unmodifiable(recent),
+      rewind: List.unmodifiable(rewind),
+      rewindCursor: rewindCursor,
+      navigated: json['navigated'] == true,
       cursor: _int(json['cursor']) ?? 0,
       newestEntryId: _int(json['newestEntryId']) ?? 0,
       ordering: GroupedWallpaperOrdering.tryParse(json['ordering']),
@@ -625,7 +734,7 @@ class GroupedWallpaperState extends Equatable {
       scrollEffect: json['scrollEffect'] == true,
       // Files written before the limit existed recorded everything, which is what
       // the store's default still does.
-      historyLimit: GroupedWallpaperHistoryLimit.sanitize(_int(json['historyLimit']) ?? GroupedWallpaperHistoryLimit.defaultLimit),
+      historyLimit: historyLimit,
       switchLocked: json['switchLocked'] == true,
       switchLockedGroupId: _string(json['switchLockedGroupId']),
       groups: List.unmodifiable(groups),
@@ -650,7 +759,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, switchLocked, switchLockedGroupId, groups, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, switchLocked, switchLockedGroupId, groups, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

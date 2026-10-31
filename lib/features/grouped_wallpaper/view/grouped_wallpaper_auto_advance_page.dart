@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
-import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
+import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
@@ -23,7 +23,7 @@ class GroupedWallpaperAutoAdvancePage extends StatelessWidget {
   static const routeName = '/wallpaper_groups/auto_advance';
 
   final String groupId;
-  final WallpaperGroupRangeController controller;
+  final WallpaperGroupController controller;
 
   const new({
     super.key,
@@ -101,12 +101,12 @@ class GroupedWallpaperAutoAdvancePage extends StatelessWidget {
   /// Writes the ordering, then re-applies the schedule: the interval is what the
   /// scheduler stores, but the engine re-reads the whole contract.
   Future<void> _setOrdering(GroupedWallpaperOrdering ordering) async {
-    await controller.groupController.setAutoAdvance(groupId, ordering: ordering);
+    await controller.setAutoAdvance(groupId, ordering: ordering);
     await wallpaperEngineLink.refreshSchedule();
   }
 
   Future<void> _setInterval(WallpaperInterval interval) async {
-    await controller.groupController.setAutoAdvance(groupId, interval: interval);
+    await controller.setAutoAdvance(groupId, interval: interval);
     await wallpaperEngineLink.refreshSchedule();
   }
 

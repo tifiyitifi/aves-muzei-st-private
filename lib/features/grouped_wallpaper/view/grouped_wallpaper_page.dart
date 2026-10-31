@@ -14,6 +14,7 @@ import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_c
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_effects_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
@@ -129,10 +130,10 @@ enum _PageAction {
   disableWallpaper,
   viewCurrent,
   effects,
+  autoAdvance,
   gestures,
   history,
   duplicateGroup,
-  toggleNotification,
   cancelGalleryRange,
   lockGroup,
   unlockGroup,
@@ -347,27 +348,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     if (choice.reapply) {
       await _setWallpaper();
     }
-  }
-
-  /// Turns the wallpaper's notification bar on or off.
-  ///
-  /// Off drops the foreground service too, so the wallpaper can be reclaimed more
-  /// eagerly on some devices: the snackbar offers the documented re-apply instead
-  /// of leaving the user with a stopped wallpaper and no hint.
-  Future<void> _toggleNotification() async {
-    final enabled = !wallpaperEngineLink.notificationEnabled;
-    await wallpaperEngineLink.setNotification(enabled);
-    await _refreshEngine();
-    if (!mounted || enabled) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(context.l10n.wallpaperNotificationOffHint),
-        action: SnackBarAction(
-          label: context.l10n.wallpaperGroupReapply,
-          onPressed: () => unawaited(_setWallpaper()),
-        ),
-      ),
-    );
   }
 
   /// Closes or reopens the bottom bar's own entry for this page.
@@ -1417,13 +1397,15 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         l10n.muzeiWallpaperEffects,
         enabled: group != null,
       ),
+      _menuItem(
+        _PageAction.autoAdvance,
+        AIcons.autoAdvance,
+        l10n.muzeiWallpaperAutoAdvance,
+        enabled: group != null,
+        subtitle: group == null ? null : groupedWallpaperAutoAdvanceSummary(context, group),
+      ),
       _menuItem(_PageAction.gestures, AIcons.gestures, l10n.wallpaperGroupGestures),
       _menuItem(_PageAction.history, AIcons.history, l10n.wallpaperGroupHistoryTitle),
-      _menuItemChecked(
-        _PageAction.toggleNotification,
-        l10n.wallpaperGroupNotification,
-        checked: wallpaperEngineLink.notificationEnabled,
-      ),
       const PopupMenuDivider(),
       // The wallpaper page shares one bottom-bar entry with the visible-range
       // page in the shared mode; this switches that destination for the rest of
@@ -1491,12 +1473,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       );
 
   /// A menu entry whose checkmark is the setting's state, not an action icon.
-  PopupMenuItem<_PageAction> _menuItemChecked(_PageAction value, String text, {required bool checked}) => CheckedPopupMenuItem<_PageAction>(
-        value: value,
-        checked: checked,
-        child: _menuRow(null, text),
-      );
-
   Widget _menuRow(IconData? icon, String text, {String? subtitle}) {
     return Row(
       children: [
@@ -1555,14 +1531,14 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         await _viewCurrent();
       case _PageAction.effects:
         if (group != null) await _openEffects(group);
+      case _PageAction.autoAdvance:
+        if (group != null) await _openAutoAdvance(group);
       case _PageAction.gestures:
         await _openGestures();
       case _PageAction.history:
         await _openHistory();
       case _PageAction.duplicateGroup:
         if (group != null) await _duplicateGroup(group);
-      case _PageAction.toggleNotification:
-        await _toggleNotification();
       case _PageAction.cancelGalleryRange:
         await _toggleGallerySuspension();
       case _PageAction.lockGroup:
@@ -1733,6 +1709,21 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       ),
     );
     // The page may have re-baked the frame, so the status row can have changed.
+    await _refreshEngine();
+  }
+
+  /// Opens the auto-advance editor for [group], bound to that group's own values.
+  Future<void> _openAutoAdvance(WallpaperGroup group) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: GroupedWallpaperAutoAdvancePage.routeName),
+        builder: (_) => GroupedWallpaperAutoAdvancePage(
+          groupId: group.id,
+          controller: _controller.groupController,
+        ),
+      ),
+    );
+    // The schedule changed, so the engine status row can have changed too.
     await _refreshEngine();
   }
 

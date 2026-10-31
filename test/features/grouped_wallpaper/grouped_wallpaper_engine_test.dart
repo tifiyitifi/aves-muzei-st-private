@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
+import 'dart:convert';
+
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_baker.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_bridge.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_engine.dart';
@@ -140,6 +142,31 @@ void main() {
     expect(replacedPlatform.notificationCancels, 1);
     expect(replacedLink.isActive, isFalse);
     replaced.detach();
+  });
+
+  test('attach upgrades a state from before the rewind stack', () async {
+    serve(entries(12));
+    await engine.prepare();
+    await engine.syncNow();
+    final baked = (await store.readState())!;
+    // What an older build left on disk.
+    await store.writeState(baked.copyWith(version: 4));
+
+    final freshPlatform = _FakePlatform(dir.path);
+    final freshLink = WallpaperEngineLink();
+    final freshEngine = GroupedWallpaperEngine(
+      platform: freshPlatform,
+      planStore: _FakePlanStore(plan),
+      link: freshLink,
+    );
+    await freshEngine.attach();
+
+    final raw = jsonDecode(await store.stateFile.readAsString()) as Map<String, Object?>;
+    expect(raw['version'], GroupedWallpaperState.currentVersion);
+    expect(raw['rewind'], isA<List>());
+    // The stack travels with the state, so the bar stops greying "previous".
+    expect(raw['canPrevious'], isTrue);
+    freshEngine.detach();
   });
 
   test('a host without the service stays inert', () async {
@@ -879,10 +906,10 @@ void main() {
     expect(state.hasPhoto, isTrue);
   });
 
-  test('previous photo re-bakes the last shown photo and queues the current after it', () async {
+  test('previous photo steps back and refills the queue forward', () async {
     serve(entries(12));
     await engine.prepare();
-    // One forward step: 50 → 49, so 50 becomes the previous photo.
+    // One forward step: 50 → 49, so 50 is the recorded photo before it.
     await engine.syncNow();
     final advanced = (await store.readState())!;
     expect(advanced.currentSlot?.entryId, 49);
@@ -891,13 +918,76 @@ void main() {
 
     final state = (await store.readState())!;
     expect(state.currentSlot?.entryId, 50);
-    expect(state.nextSlot?.entryId, 49);
-    expect(state.next2Slot, isNotNull);
-    expect(state.queueLength, 3);
-    expect(state.recent.first.entryId, 50);
+    expect(state.rewind.map((entry) => entry.entryId), [49, 50]);
+    expect(state.rewindCursor, 1);
+    expect(state.navigated, isTrue);
+    // The queue ahead is rebuilt from fresh photos, so a double tap (which
+    // promotes natively) keeps moving forward like the auto-advance.
+    expect(state.nextSlot?.entryId, isNot(49));
+    expect(state.queueLength, GroupedWallpaperEngine.prefetchAhead + 1);
     for (final slot in state.slots) {
       expect(store.slotPhotoOf(slot)?.existsSync(), isTrue);
     }
+  });
+
+  test('previous photo walks the whole stack instead of bouncing', () async {
+    serve(entries(12));
+    await engine.prepare();
+    await engine.syncNow(); // 50 → 49
+    await engine.syncNow(); // 49 → 48
+
+    expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.baked);
+    var state = (await store.readState())!;
+    expect(state.currentSlot?.entryId, 49);
+    expect(state.rewindCursor, 1);
+    expect(state.canGoPrevious, isTrue);
+
+    expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.baked);
+    state = (await store.readState())!;
+    expect(state.currentSlot?.entryId, 50);
+    expect(state.rewindCursor, 2);
+    // Only three photos were shown: the walk stops at the oldest one.
+    expect(state.canGoPrevious, isFalse);
+    expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.unchanged);
+  });
+
+  test('next while rewound walks forward through the stack', () async {
+    serve(entries(12));
+    await engine.prepare();
+    await engine.syncNow(); // 50 → 49
+    await engine.syncNow(); // 49 → 48
+    await engine.previousArtwork(); // 48 → 49
+    await engine.previousArtwork(); // 49 → 50
+    expect((await store.readState())!.rewindCursor, 2);
+
+    expect(await engine.nextArtwork(), GroupedWallpaperSyncResult.baked);
+    var state = (await store.readState())!;
+    expect(state.currentSlot?.entryId, 49);
+    expect(state.rewindCursor, 1);
+    expect(state.navigated, isTrue);
+
+    expect(await engine.nextArtwork(), GroupedWallpaperSyncResult.baked);
+    state = (await store.readState())!;
+    expect(state.currentSlot?.entryId, 48);
+    expect(state.rewindCursor, 0);
+
+    // Back at the newest photo, the next step picks a new one.
+    expect(await engine.nextArtwork(), GroupedWallpaperSyncResult.baked);
+    state = (await store.readState())!;
+    expect(state.currentSlot?.entryId, isNot(anyOf(48, 49, 50)));
+    expect(state.rewindCursor, 0);
+  });
+
+  test('previous photo restarts the auto-advance timer', () async {
+    planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperInterval.m15);
+    serve(entries(12));
+    await engine.prepare();
+    await engine.syncNow();
+    platform.restartedSeconds.clear();
+
+    await engine.previousArtwork();
+
+    expect(platform.restartedSeconds, [WallpaperInterval.m15.seconds]);
   });
 
   test('previous photo without history is a no-op', () async {
@@ -928,7 +1018,7 @@ void main() {
     serve(entries(12));
     await engine.prepare();
     await engine.syncNow();
-    // The previous photo (50) is now hidden, e.g. by a locked vault.
+    // The recorded photo (50) is now hidden, e.g. by a locked vault.
     entrySource.entries = entries(12).where((entry) => entry.id != 50).toList();
 
     expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.unchanged);
@@ -936,34 +1026,52 @@ void main() {
     expect((await store.readState())!.currentSlot?.entryId, 49);
   });
 
-  test('previous photo does not cross into another group history', () async {
+  test('the history limit caps how far previous walks', () async {
+    planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, historyLimit: 2);
     serve(entries(12));
     await engine.prepare();
-    final state = (await store.readState())!;
-    await store.writeState(state.copyWith(
-      recent: [
-        const GroupedWallpaperRecentEntry(entryId: 50, groupId: 'group.1'),
-        const GroupedWallpaperRecentEntry(entryId: 49, groupId: 'group.2'),
-      ],
-    ));
+    await engine.syncNow();
+    await engine.syncNow();
 
+    // The stack keeps the two most recent photos, so only one step is possible.
+    expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.baked);
+    expect((await store.readState())!.canGoPrevious, isFalse);
     expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.unchanged);
   });
 
-  test('a v3 history entry with no group id still counts as this group', () async {
+  test('clearRewind keeps the current photo as the only anchor', () async {
     serve(entries(12));
     await engine.prepare();
+    await engine.syncNow();
+
+    await engine.clearRewind();
+
     final state = (await store.readState())!;
-    await store.writeState(state.copyWith(
-      recent: [
-        GroupedWallpaperRecentEntry(entryId: state.entryId!),
-        const GroupedWallpaperRecentEntry(entryId: 49),
-      ],
-    ));
+    expect(state.rewind.map((entry) => entry.entryId), [state.entryId]);
+    expect(state.rewindCursor, 0);
+    expect(state.canGoPrevious, isFalse);
+  });
 
-    expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.baked);
+  test('a native promotion resets the previous anchor like auto-advance', () async {
+    serve(entries(12));
+    await engine.prepare();
+    await engine.syncNow();
+    await engine.previousArtwork();
+    final rewound = (await store.readState())!;
+    expect(rewound.rewindCursor, 1);
+    // The renderer promoted the next queued photo on a double tap.
+    await store.runtimeFile.writeAsString(
+      '{"generation":${rewound.generation},"current":${rewound.next},"next":-1,"refillRequested":true}',
+    );
 
-    expect((await store.readState())!.currentSlot?.entryId, 49);
+    expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+    final state = (await store.readState())!;
+    // The promoted photo is the new anchor: it goes to the front and the walk
+    // starts over from it.
+    expect(state.rewindCursor, 0);
+    expect(state.rewind.first.entryId, state.entryId);
+    expect(state.rewind.map((entry) => entry.entryId), contains(rewound.entryId));
   });
 
   test('a bake records the group-switch lock in the state', () async {
@@ -1199,6 +1307,13 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   @override
   Future<void> scheduleAutoAdvance(int seconds) async {
     scheduledSeconds.add(seconds);
+  }
+
+  final List<int> restartedSeconds = [];
+
+  @override
+  Future<void> restartAutoAdvance(int seconds) async {
+    restartedSeconds.add(seconds);
   }
 
   @override

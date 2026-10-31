@@ -9,13 +9,14 @@ void main() {
 
   GroupedWallpaperState state({
     bool hasPhoto = true,
+    GroupedWallpaperStatus status = GroupedWallpaperStatus.ready,
     int count = 3,
     int historyLimit = 200,
-    String groupId = 'wallpaper.group.dcim',
-    List<GroupedWallpaperRecentEntry> recent = const [],
+    List<int> rewind = const [],
+    int rewindCursor = 0,
   }) => GroupedWallpaperState(
-    status: hasPhoto ? GroupedWallpaperStatus.ready : GroupedWallpaperStatus.unavailable,
-    groupId: groupId,
+    status: hasPhoto ? status : GroupedWallpaperStatus.unavailable,
+    groupId: 'wallpaper.group.dcim',
     groupName: 'DCIM',
     count: count,
     current: hasPhoto ? 0 : -1,
@@ -24,35 +25,38 @@ void main() {
             GroupedWallpaperSlot(id: 0, entryId: currentEntry, uri: 'content://media/$currentEntry', title: 'IMG_$currentEntry', photo: 'slots/0/photo.png', width: 1080, height: 2400),
           ]
         : const [],
-    recent: recent,
+    rewind: [for (final entryId in rewind) GroupedWallpaperRewindEntry(entryId: entryId)],
+    rewindCursor: rewindCursor,
     historyLimit: historyLimit,
   );
 
-  GroupedWallpaperRecentEntry recent(int entryId, {String groupId = 'wallpaper.group.dcim'}) => GroupedWallpaperRecentEntry(entryId: entryId, uri: 'content://media/$entryId', title: 'IMG_$entryId', groupId: groupId);
-
   group('previous', () {
     test('needs a photo on screen', () {
-      expect(groupedWallpaperCanGoPrevious(state(hasPhoto: false, recent: [recent(6)])), isFalse);
+      expect(groupedWallpaperCanGoPrevious(state(hasPhoto: false, rewind: [currentEntry, 6])), isFalse);
     });
 
     test('is off when the history records nothing', () {
-      expect(groupedWallpaperCanGoPrevious(state(historyLimit: 0, recent: [recent(6)])), isFalse);
+      expect(groupedWallpaperCanGoPrevious(state(historyLimit: 0, rewind: [currentEntry, 6])), isFalse);
     });
 
-    test('is off when the history only holds the current photo', () {
-      expect(groupedWallpaperCanGoPrevious(state(recent: [recent(currentEntry)])), isFalse);
+    test('is off when the stack only holds the current photo', () {
+      expect(groupedWallpaperCanGoPrevious(state(rewind: [currentEntry])), isFalse);
     });
 
-    test('accepts another entry of the same group', () {
-      expect(groupedWallpaperCanGoPrevious(state(recent: [recent(6)])), isTrue);
+    test('is on when an older record is after the cursor', () {
+      expect(groupedWallpaperCanGoPrevious(state(rewind: [currentEntry, 6])), isTrue);
     });
 
-    test('ignores another group history', () {
-      expect(groupedWallpaperCanGoPrevious(state(recent: [recent(6, groupId: 'wallpaper.group.pictures')])), isFalse);
+    test('is off once the cursor reached the oldest record', () {
+      expect(groupedWallpaperCanGoPrevious(state(rewind: [currentEntry, 6], rewindCursor: 1)), isFalse);
     });
 
-    test('accepts an entry recorded before the group id existed', () {
-      expect(groupedWallpaperCanGoPrevious(state(recent: [recent(6, groupId: '')])), isTrue);
+    test('is off while the wallpaper is turned off', () {
+      expect(groupedWallpaperCanGoPrevious(state(status: GroupedWallpaperStatus.disabled, rewind: [currentEntry, 6])), isFalse);
+    });
+
+    test('is on while the range is locked', () {
+      expect(groupedWallpaperCanGoPrevious(state(status: GroupedWallpaperStatus.locked, rewind: [currentEntry, 6])), isTrue);
     });
   });
 

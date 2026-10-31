@@ -50,6 +50,12 @@ void main() {
     cursor: 5,
     newestEntryId: 9,
     ordering: GroupedWallpaperOrdering.inOrder,
+    rewind: [
+      GroupedWallpaperRewindEntry(entryId: 7),
+      GroupedWallpaperRewindEntry(entryId: 6),
+    ],
+    rewindCursor: 1,
+    navigated: true,
     historyLimit: 500,
     switchLocked: true,
     switchLockedGroupId: 'wallpaper.group.dcim',
@@ -75,11 +81,43 @@ void main() {
     expect(parsed.cursor, 5);
     expect(parsed.newestEntryId, 9);
     expect(parsed.ordering, GroupedWallpaperOrdering.inOrder);
+    expect(parsed.rewind.map((entry) => entry.entryId), [7, 6]);
+    expect(parsed.rewindCursor, 1);
+    expect(parsed.navigated, isTrue);
     expect(parsed.historyLimit, 500);
     expect(parsed.switchLocked, isTrue);
     expect(parsed.switchLockedGroupId, 'wallpaper.group.dcim');
     expect(parsed.groups.map((group) => group.id), ['wallpaper.group.dcim', 'wallpaper.group.camera']);
     expect(parsed.groups.map((group) => group.name), ['DCIM', 'Camera']);
+  });
+
+  test('a v4 state seeds the rewind stack from its recent list', () {
+    final json = state.toJsonMap()
+      ..['version'] = 4
+      ..remove('rewind')
+      ..remove('rewindCursor')
+      ..remove('canPrevious')
+      ..remove('navigated');
+    final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
+    expect(parsed.rewind.map((entry) => entry.entryId), [7, 6]);
+    expect(parsed.rewindCursor, 0);
+    expect(parsed.navigated, isFalse);
+    expect(parsed.needsUpgrade, isTrue);
+    expect(parsed.canGoPrevious, isTrue);
+  });
+
+  test('an explicitly empty rewind stack is not reseeded after a clear', () {
+    final json = state.toJsonMap()..['rewind'] = <Object?>[];
+    final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
+    expect(parsed.rewind, isEmpty);
+    expect(parsed.canGoPrevious, isFalse);
+  });
+
+  test('the rewind stack is capped by the history limit', () {
+    final json = state.toJsonMap()..['historyLimit'] = 1;
+    final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
+    expect(parsed.rewind, hasLength(1));
+    expect(parsed.rewindCursor, 0);
   });
 
   test('the group-switch lock travels with the state', () {

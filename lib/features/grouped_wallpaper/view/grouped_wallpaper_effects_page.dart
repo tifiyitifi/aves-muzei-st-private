@@ -157,7 +157,7 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
         settings: const RouteSettings(name: GroupedWallpaperAutoAdvancePage.routeName),
         builder: (_) => GroupedWallpaperAutoAdvancePage(
           groupId: group.id,
-          controller: _controller,
+          controller: _controller.groupController,
         ),
       ),
     );

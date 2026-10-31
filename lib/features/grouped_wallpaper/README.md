@@ -14,6 +14,8 @@ of the Muzei-style live wallpaper mechanism.
   baking + native slot queue), global gestures, the immersive view page, per-group
   home/lock effects with a copy-to-other-groups grid, per-group auto-advance
   (interval + ordering, scheduled through the shared WorkManager chain), the
+  rewind stack behind the notification's previous/next controls (capped by the
+  usage-history limit and reset by auto-advance), the
   four-layout notification with photo, group and lock actions, the
   availability label under the group switcher, the per-group home-screen scroll
   effect (edited in the effects page), the full set of rule actions on the group page (move to
@@ -189,8 +191,9 @@ layout's first button switches between the two sets:
 `*` copy keeps Aves-ST's icon but stays disabled (dimmed, no action) until that
 feature exists. **history** opens the usage-history page through the app's
 cold-start route, like the notification's content intent. **previous** is greyed
-out while the history limit is 0: recording is off, so the engine refuses to step
-back and the button would do nothing.
+out when the rewind stack has no older record: recording is off, the stack is
+empty, or the cursor already reached the oldest photo. **next** stays enabled as
+long as the group has another photo or the cursor can move forward in the stack.
 
 The channel is `grouped_wallpaper_v3`, `IMPORTANCE_HIGH`, no badge, with the
 system's default sound and no vibration, like Aves-ST's bar: MIUI hides a silent
@@ -208,19 +211,20 @@ too.
 
 The bar is re-read from `state.json` on every frame load, so the service posts
 only when `contentKey` changes: status, group number/name, lock state, the
-history limit (it greys "previous"), the pending switch feedback, button set and
-the photo on screen.
+history limit and `canPrevious` (they grey "previous"), the pending switch
+feedback, button set and the photo on screen.
 Re-posting an unchanged bar (hundreds of times a day)
 is what made MIUI rate-limit the app and then hide its notifications on the lock
 screen (`post_frequency` demoted every post).
 
 `wallpaper.groupedNotification` (AppMeta, default on) is the user's switch. It
 travels to the service in `state.json` as `notification`: off means no bar **and no
-foreground service**, not a hidden one. The page's More menu toggles it, rewrites
-the state and calls the `refreshNotification` channel method, so it applies
-without waiting for the next bake. The About page documents that a device may
-reclaim a wallpaper with no notification more eagerly, and offers to set the
-wallpaper again while it is off.
+foreground service**, not a hidden one. The switch lives in Settings → 「Visible &
+wallpaper」 and in the view page's More menu (never in the group page's menu);
+either one rewrites the state and calls the `refreshNotification` channel method,
+so it applies without waiting for the next bake. The About page documents that a
+device may reclaim a wallpaper with no notification more eagerly, and offers to
+set the wallpaper again while it is off.
 
 While a real (non-preview) engine is attached, the service promotes the bar to
 its own foreground-service notification (`specialUse`, Android 14+), because MIUI
@@ -269,8 +273,24 @@ notification.
 "Previous photo" re-bakes the remembered entry instead of restoring its old file
 (slots are recycled), and re-checks it against the group's media set: locking a
 vault or hiding a filter between two photos can never bring the hidden photo
-back. A v3 state's history has no group id, so its entries are treated as
-belonging to the current group.
+back.
+
+`state.json` carries the rewind stack (`rewind`, `rewindCursor`) and the
+`navigated` hint. A new photo (auto-advance, double tap, first bake, group
+switch) becomes the new anchor: it goes to the front and the cursor resets, so
+the first "previous" is the photo it replaced. "Previous"/"next" then move the
+cursor through the stack without reordering it; the queue ahead is rebuilt from
+fresh photos, so a native double tap or the interval keeps moving forward
+instead of walking the same stack. The walk is capped by the usage-history
+limit, and the bar greys "previous" through `canPrevious` when it is exhausted.
+The `navigated` flag makes the renderer honor the new `current`: without it,
+`keepDisplayedSlot()` would mistake the history step for a promotion and keep
+the old frame. Every explicit step also restarts the auto-advance countdown
+(`restartAutoAdvance`, replacing the pending WorkManager run), so the next
+automatic change is a full interval away.
+
+A v4 state has no rewind stack; it is seeded from `recent`, so "previous" works
+on the first tap after the update.
 
 ### Usage history
 
@@ -288,8 +308,10 @@ screen, so the user can look back at them and step to the previous one.
 - **Limit**: `wallpaper.groupedHistoryLimit` (AppMeta, 0–1000, default 200). `0`
   turns recording off and greys the notification's "previous" button, and the
   engine's `previousArtwork()` becomes a no-op. Changing the number **never
-  deletes** anything: the next recorded photo prunes the oldest rows beyond the
-  limit, and only "clear history" removes rows.
+  deletes** history rows: the next recorded photo prunes the oldest beyond the
+  limit, and only "clear history" removes rows. The rewind stack is trimmed at
+  the same time, and clearing the history clears it too, so "previous" never
+  walks a private copy of records the user removed.
 - **Where it lives**: `/grouped_wallpaper/history`, reachable from the group
   page's More, the view page's More and the notification's "history" button (an
   activity intent, not a broadcast). Rows whose photo left the library are
@@ -410,9 +432,12 @@ opens or resumes.
 
 Each group also owns its interval (`wallpaper_groups.interval`, seconds; `0` is
 off, the default). The values are Muzei's (`15 min` … `3 days`), edited from the
-group page's More → 「Auto-advance」, which writes immediately like effects and
-does not bump `updatedAt`: the contract only affects future picks, so the frame
-on screen is never re-baked just because the interval changed.
+group page's More → 「Auto-advance」, the effects page's row, or the view page's
+More; all three write immediately like effects and do not bump `updatedAt`: the
+contract only affects future picks, so the frame on screen is never re-baked just
+because the interval changed. An explicit previous/next step restarts the
+countdown (`restartAutoAdvance`, replacing the pending run) instead of keeping
+the old one.
 
 Scheduling reuses the shared native WorkManager chain
 (`LiveWallpaperRefillScheduler`, per target) through the grouped channel's

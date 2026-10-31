@@ -6,6 +6,7 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_actions.dart';
@@ -58,6 +59,8 @@ enum _ViewAction {
   toggleGalleryRange,
   share,
   history,
+  autoAdvance,
+  toggleNotification,
 }
 
 class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
@@ -276,7 +279,37 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
             builder: (_) => GroupedWallpaperHistoryPage(groupId: _state?.groupId),
           ),
         );
+      case _ViewAction.autoAdvance:
+        await _openAutoAdvance();
+      case _ViewAction.toggleNotification:
+        await _toggleNotification();
     }
+  }
+
+  /// Opens the playing group's auto-advance editor.
+  ///
+  /// The interval belongs to the group, not to the surface, so this is the same
+  /// page the effects editor and the wallpaper page open.
+  Future<void> _openAutoAdvance() async {
+    final groupId = _state?.groupId ?? '';
+    if (groupId.isEmpty || groupId == wallpaperGroupNoneId) return;
+    // A gesture can cold-start the app, so the group list may not be loaded yet.
+    await wallpaperGroupController.init();
+    if (!mounted) return;
+    await _pushImmersive(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: GroupedWallpaperAutoAdvancePage.routeName),
+        builder: (_) => GroupedWallpaperAutoAdvancePage(groupId: groupId, controller: wallpaperGroupController),
+      ),
+    );
+  }
+
+  Future<void> _toggleNotification() async {
+    final enabled = _state?.notification ?? true;
+    await wallpaperEngineLink.setNotification(!enabled);
+    await _load();
+    if (!mounted || enabled) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.wallpaperNotificationOffHint)));
   }
 
   @override
@@ -440,6 +473,18 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
                           PopupMenuItem(
                             value: _ViewAction.history,
                             child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
+                          ),
+                          if (canOpenGroup)
+                            PopupMenuItem(
+                              value: _ViewAction.autoAdvance,
+                              child: _menuRow(AIcons.autoAdvance, l10n.muzeiWallpaperAutoAdvance),
+                            ),
+                          PopupMenuItem(
+                            value: _ViewAction.toggleNotification,
+                            child: _menuRow(
+                              (state?.notification ?? true) ? AIcons.checked : AIcons.unselected,
+                              l10n.wallpaperGroupNotification,
+                            ),
                           ),
                         ];
                       },

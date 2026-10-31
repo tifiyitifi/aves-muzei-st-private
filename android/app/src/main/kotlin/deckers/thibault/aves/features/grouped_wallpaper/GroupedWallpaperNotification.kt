@@ -354,6 +354,8 @@ object GroupedWallpaperNotification {
         // The limit greys the "previous" button, so it is part of what the bar
         // shows: without it a changed limit would not re-post the bar.
         append(state.historyLimit).append('|')
+        // The stack can be exhausted without the limit changing.
+        append(state.canPrevious).append('|')
         // The lock greys the group buttons, so it is part of what the bar shows.
         // A pending lock is part of it too: the tap has to show at once.
         append(lockedFor(state)).append('|')
@@ -578,7 +580,7 @@ object GroupedWallpaperNotification {
         } else {
             // With recording off the engine refuses "previous", so the bar greys
             // the button instead of offering an action that does nothing.
-            entryButtons(context, big, ready, canPrevious = ready && state.historyLimit > 0)
+            entryButtons(context, big, ready, canPrevious = ready && state.canPrevious)
         }
         for (button in buttons) {
             views.setImageViewResource(button.viewId, button.iconRes)

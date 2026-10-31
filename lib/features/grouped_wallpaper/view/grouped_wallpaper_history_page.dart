@@ -159,6 +159,9 @@ class _GroupedWallpaperHistoryPageState extends State<GroupedWallpaperHistoryPag
       // "clear" that left the other groups' records behind would surprise the
       // user, and the confirmation says so.
       await GroupedWallpaperHistoryStore(db).clear();
+      // The rewind stack is the same history as far as "previous" is concerned:
+      // with no records left, the button must not keep walking a private copy.
+      await wallpaperEngineLink.clearRewind();
     } catch (error, stack) {
       groupedWallpaperLog.e('failed to clear the wallpaper history', error, stack);
     }

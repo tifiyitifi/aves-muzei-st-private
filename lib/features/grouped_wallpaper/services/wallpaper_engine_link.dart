@@ -57,6 +57,9 @@ abstract interface class WallpaperEngineConnection {
   /// Records how many photos the usage history keeps.
   Future<void> setHistoryLimit(int limit);
 
+  /// Drops the rewind stack after the usage history was cleared.
+  Future<void> clearRewind();
+
   /// Makes the wallpaper bar reflect the group-switch lock.
   Future<void> refreshLock();
 
@@ -203,6 +206,8 @@ class WallpaperEngineLink {
   }
 
   Future<void> setHistoryLimit(int limit) async => await _connection?.setHistoryLimit(limit);
+
+  Future<void> clearRewind() async => await _connection?.clearRewind();
 
   Future<void> refreshLock() async => await _connection?.refreshLock();
 

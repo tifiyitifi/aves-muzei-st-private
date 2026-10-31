@@ -46,6 +46,12 @@ abstract interface class GroupedWallpaperPlatform {
   /// Applies the current group's auto-advance interval; `0` turns it off.
   Future<void> scheduleAutoAdvance(int seconds);
 
+  /// Restarts the interval from now, replacing any pending run.
+  ///
+  /// Used after an explicit previous/next step: the countdown starts over from
+  /// the photo the user chose instead of firing right after it.
+  Future<void> restartAutoAdvance(int seconds);
+
   /// Asks the running service to re-post or drop the bar from `state.json`.
   Future<void> refreshNotification();
 
@@ -125,6 +131,9 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
 
   @override
   Future<void> scheduleAutoAdvance(int seconds) => _invoke<void>('scheduleAutoAdvance', {'seconds': seconds});
+
+  @override
+  Future<void> restartAutoAdvance(int seconds) => _invoke<void>('restartAutoAdvance', {'seconds': seconds});
 
   @override
   Future<void> refreshNotification() => _invoke<void>('refreshNotification');

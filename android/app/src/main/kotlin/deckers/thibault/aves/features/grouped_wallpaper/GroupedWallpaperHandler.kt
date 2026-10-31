@@ -59,6 +59,7 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
             "stateRoot" -> safe(call, result, ::stateRoot)
             "setRequestHandler" -> safe(call, result, ::setRequestHandler)
             "scheduleAutoAdvance" -> safe(call, result, ::scheduleAutoAdvance)
+            "restartAutoAdvance" -> safe(call, result, ::restartAutoAdvance)
             "refreshNotification" -> safe(call, result, ::refreshNotification)
             "cancelNotification" -> safe(call, result, ::cancelNotification)
             else -> result.notImplemented()
@@ -194,6 +195,18 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
     private fun scheduleAutoAdvance(call: MethodCall, result: MethodChannel.Result) {
         val seconds = call.argument<Int>("seconds") ?: 0
         LiveWallpaperRefillScheduler.scheduleAutoAdvance(context, LiveWallpaperTarget.GROUPED, seconds)
+        result.success(null)
+    }
+
+    /**
+     * Restarts the interval after a manual previous/next step.
+     *
+     * It replaces the pending run instead of keeping it, so the user's step is
+     * followed by a full interval rather than an immediate automatic change.
+     */
+    private fun restartAutoAdvance(call: MethodCall, result: MethodChannel.Result) {
+        val seconds = call.argument<Int>("seconds") ?: 0
+        LiveWallpaperRefillScheduler.restartAutoAdvance(context, LiveWallpaperTarget.GROUPED, seconds)
         result.success(null)
     }
 

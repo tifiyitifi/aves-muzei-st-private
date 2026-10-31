@@ -78,8 +78,8 @@ data class GroupedWallpaperFileState(
     /**
      * How many photos the usage history keeps; `0` means recording is off.
      *
-     * The bar greys its "previous" button when this is `0`: the engine stops
-     * stepping back and no new history is written, so the button would do nothing.
+     * The bar greys its "previous" button through [canPrevious]; with recording
+     * off the engine stops stepping back and no new history is written.
      */
     val historyLimit: Int = 200,
     /**
@@ -103,6 +103,29 @@ data class GroupedWallpaperFileState(
      * the app has baked the next frame; [name] is display text, not an ARB key.
      */
     val groups: List<GroupedWallpaperGroupFile> = emptyList(),
+    /**
+     * Whether "previous" has another recorded photo to step back to.
+     *
+     * The rewind stack lives in `state.json`; the bar only needs this flag to
+     * grey the button, exactly when the engine would refuse the step.
+     */
+    val canPrevious: Boolean = false,
+    /**
+     * The state was written by an explicit previous/next history step.
+     *
+     * The renderer normally keeps the slot on screen when a newer state still
+     * queues it after `current` (a promotion it made itself). A history step
+     * looks the same in the queue, so this flag tells it to honor `current`.
+     */
+    val navigated: Boolean = false,
+    /**
+     * Position of the current photo in the rewind stack.
+     *
+     * The notification's "next" must walk the same stack while this is past the
+     * newest photo; the prefetched slot is a fresh photo and would reset the
+     * anchor, which only the double tap and the interval do.
+     */
+    val rewindCursor: Int = 0,
 ) {
     fun slot(id: Int): GroupedWallpaperSlotFile? = slots.firstOrNull { it.id == id }
 
@@ -180,7 +203,7 @@ object GroupedWallpaperStateFile {
             if (status.isEmpty()) return null
             when (version) {
                 1 -> readV1(json, status)
-                2, 3, 4 -> readQueued(json, status)
+                2, 3, 4, 5 -> readQueued(json, status)
                 else -> {
                     Log.w(TAG, "ignoring state.json of another version")
                     null
@@ -280,6 +303,9 @@ object GroupedWallpaperStateFile {
             switchLocked = json.optBoolean("switchLocked", false),
             switchLockedGroupId = json.optString("switchLockedGroupId", ""),
             groups = groups,
+            canPrevious = json.optBoolean("canPrevious", false),
+            navigated = json.optBoolean("navigated", false),
+            rewindCursor = json.optInt("rewindCursor", 0),
         )
     }
 

@@ -147,6 +147,36 @@ object LiveWallpaperRefillScheduler {
     }
 
     /**
+     * Starts a fresh countdown after the user stepped previous/next by hand.
+     *
+     * Unlike [scheduleAutoAdvance], an unchanged interval is replaced: the step
+     * is the user changing the wallpaper now, so the next automatic change must
+     * be a full interval away instead of firing right after it.
+     */
+    fun restartAutoAdvance(context: Context, target: LiveWallpaperTarget, seconds: Int) {
+        val prefs = context.getSharedPreferences(SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
+        val key = intervalKey(target)
+        if (seconds <= 0) {
+            prefs.edit().putInt(key, 0).apply()
+            WorkManager.getInstance(context).cancelUniqueWork(autoWorkName(target))
+            Log.d(TAG, "auto.restart target=${target.id} off")
+            return
+        }
+        prefs.edit().putInt(key, seconds).apply()
+        val request = OneTimeWorkRequestBuilder<LiveWallpaperRefillWorker>()
+            .setInputData(
+                workDataOf(
+                    LiveWallpaperRefillWorker.KEY_TARGET to target.id,
+                    LiveWallpaperRefillWorker.KEY_ADVANCE to true,
+                ),
+            )
+            .setInitialDelay(seconds.toLong(), TimeUnit.SECONDS)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(autoWorkName(target), ExistingWorkPolicy.REPLACE, request)
+        Log.d(TAG, "auto.restart target=${target.id} seconds=$seconds")
+    }
+
+    /**
      * Starts the next countdown after a run.
      *
      * The finished run still owns the unique name, so this appends rather than

@@ -145,6 +145,9 @@ class _FakeConnection implements WallpaperEngineConnection {
   Future<void> setHistoryLimit(int limit) async {}
 
   @override
+  Future<void> clearRewind() async {}
+
+  @override
   Future<void> refreshLock() async {}
 
   @override

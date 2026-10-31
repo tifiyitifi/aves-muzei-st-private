@@ -32,7 +32,6 @@ import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.SurfaceHolder
-import android.view.ViewConfiguration
 import androidx.core.app.ServiceCompat
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillScheduler
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperTarget
@@ -53,6 +52,14 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
         /** A three-finger tap fires once per gesture, not once per pointer event. */
         private const val THREE_FINGER_TAP_INTERVAL_MS = 500L
+
+        /**
+         * Window used to treat `onDoubleTap` and `COMMAND_TAP` as one gesture.
+         *
+         * Wider than the platform double-tap timeout because some launchers
+         * deliver the command noticeably later than the touch.
+         */
+        private const val DOUBLE_TAP_DEDUPE_MS = 350L
 
         /** Whether the system currently keeps this service alive. */
         @Volatile
@@ -303,14 +310,17 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         private lateinit var renderer: GroupedWallpaperRenderer
 
         /**
-         * A wallpaper tap arrives as `COMMAND_TAP` after the gesture detector has
-         * already seen the double tap, so the command only fires the gesture when
-         * a double tap just happened. A single tap does nothing, like Muzei.
+         * Both the gesture detector's `onDoubleTap` and the launcher's
+         * `COMMAND_TAP` describe the same physical double tap, and either may
+         * arrive on its own: some launchers delay or drop `COMMAND_TAP`, and some
+         * surfaces only deliver the command without touch events. Firing from
+         * both paths and deduplicating by time makes a double tap work in every
+         * case; the window is wider than the platform double-tap timeout so a
+         * late command still counts as the same gesture.
          */
-        private var validDoubleTap = false
+        private var lastDoubleTapAt = 0L
         private var lastThreeFingerTap = 0L
         private val gestureHandler = Handler(Looper.getMainLooper())
-        private val clearDoubleTap = Runnable { validDoubleTap = false }
 
         /**
          * The engine draws the same surface for home and lock, so the surface is
@@ -337,9 +347,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
                 override fun onDown(e: MotionEvent): Boolean = true
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
-                    validDoubleTap = true
-                    gestureHandler.removeCallbacks(clearDoubleTap)
-                    gestureHandler.postDelayed(clearDoubleTap, ViewConfiguration.getDoubleTapTimeout().toLong())
+                    performDoubleTap()
                     return true
                 }
             },
@@ -433,9 +441,8 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             extras: Bundle?,
             resultRequested: Boolean,
         ): Bundle? {
-            if (WallpaperManager.COMMAND_TAP == action && validDoubleTap) {
-                validDoubleTap = false
-                performGesture(threeFinger = false)
+            if (WallpaperManager.COMMAND_TAP == action) {
+                performDoubleTap()
             }
             return super.onCommand(action, x, y, z, extras, resultRequested)
         }
@@ -450,6 +457,20 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
                     performGesture(threeFinger = true)
                 }
             }
+        }
+
+        /**
+         * Fires one double-tap gesture, deduplicating the two delivery paths.
+         *
+         * The gesture detector sees the touch and the launcher sends the command
+         * for the same tap; whichever arrives first performs the gesture and the
+         * other is ignored inside the window.
+         */
+        private fun performDoubleTap() {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastDoubleTapAt < DOUBLE_TAP_DEDUPE_MS) return
+            lastDoubleTapAt = now
+            performGesture(threeFinger = false)
         }
 
         private fun performGesture(threeFinger: Boolean) {
@@ -471,7 +492,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
          * advancing instead of stopping after the prefetched queue.
          */
         private fun advance() {
-            if (!renderer.canAdvance()) {
+            if (!renderer.canQueueAdvance()) {
                 Log.d(TAG, "advance ignored: the wallpaper cannot move")
                 return
             }
@@ -479,6 +500,8 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
                 notifyAdvance()
                 return
             }
+            // The wallpaper may move but the next slot is still baking: keep the
+            // tap and ask for the refill that lets `drainPendingAdvance` serve it.
             renderer.enqueueAdvance()
             requestRefill()
         }
@@ -508,7 +531,6 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
         override fun onDestroy() {
             Log.d(TAG, "engine.destroy")
-            gestureHandler.removeCallbacks(clearDoubleTap)
             try {
                 applicationContext.unregisterReceiver(lockScreenReceiver)
             } catch (e: IllegalArgumentException) {

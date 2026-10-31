@@ -311,6 +311,19 @@ class GroupedWallpaperRenderer(
      */
     fun canAdvance(): Boolean = state?.canPromote == true
 
+    /**
+     * Whether a tap may be buffered while the prefetched slot is being baked.
+     *
+     * [canAdvance] is false both for a wallpaper that must not move at all and
+     * for one that is merely waiting for the next slot to upload. Only the
+     * latter should queue: a request buffered across a freeze would fire long
+     * after the user tapped, while a slot that is baking arrives in milliseconds.
+     */
+    fun canQueueAdvance(): Boolean {
+        val current = state ?: return false
+        return current.status == GroupedWallpaperFileState.STATUS_READY && !current.paused
+    }
+
     /** The slot on screen, for the notification's title. */
     fun displayedSlotId(): Int = displayed
 

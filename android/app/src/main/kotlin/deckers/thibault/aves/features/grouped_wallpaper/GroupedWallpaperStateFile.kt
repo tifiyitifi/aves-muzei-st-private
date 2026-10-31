@@ -62,8 +62,10 @@ data class GroupedWallpaperFileState(
     val groupName: String,
     val count: Int,
     val current: Int,
+    /** The older usage record, or -1 at the end of the walk. */
+    val previous: Int,
+    /** The newer record, or the fresh photo a forward step will show. */
     val next: Int,
-    val next2: Int,
     val slots: List<GroupedWallpaperSlotFile>,
     val doubleTap: String,
     val threeFinger: String,
@@ -121,9 +123,8 @@ data class GroupedWallpaperFileState(
     /**
      * Position of the current photo in the rewind stack.
      *
-     * The notification's "next" must walk the same stack while this is past the
-     * newest photo; the prefetched slot is a fresh photo and would reset the
-     * anchor, which only the double tap and the interval do.
+     * Only part of the bar's content key: it tells the user which record is on
+     * screen, while [previous] and [next] decide what the buttons can do.
      */
     val rewindCursor: Int = 0,
 ) {
@@ -133,9 +134,13 @@ data class GroupedWallpaperFileState(
     val currentSlot: GroupedWallpaperSlotFile?
         get() = if (status == STATUS_READY || status == STATUS_LOCKED || status == STATUS_DISABLED) slot(current) else null
 
-    /** Whether the wallpaper may follow its group, i.e. may promote a slot. */
+    /** Whether a forward step has a queued frame to show. */
     val canPromote: Boolean
         get() = status == STATUS_READY && next >= 0
+
+    /** Whether the bar's "previous" has a queued frame to show. */
+    val canRegress: Boolean
+        get() = status == STATUS_READY && previous >= 0 && canPrevious
 
     companion object {
         const val STATUS_READY = "ready"
@@ -203,7 +208,7 @@ object GroupedWallpaperStateFile {
             if (status.isEmpty()) return null
             when (version) {
                 1 -> readV1(json, status)
-                2, 3, 4, 5 -> readQueued(json, status)
+                2, 3, 4, 5, 6 -> readQueued(json, status)
                 else -> {
                     Log.w(TAG, "ignoring state.json of another version")
                     null
@@ -233,8 +238,8 @@ object GroupedWallpaperStateFile {
             groupName = json.optString("groupName", ""),
             count = json.optInt("count", 0),
             current = if (slots.isEmpty()) -1 else 0,
+            previous = -1,
             next = -1,
-            next2 = -1,
             slots = slots,
             doubleTap = GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,
             threeFinger = GroupedWallpaperFileState.ACTION_VIEW_ARTWORK,
@@ -289,8 +294,8 @@ object GroupedWallpaperStateFile {
             groupName = json.optString("groupName", ""),
             count = json.optInt("count", 0),
             current = json.optInt("current", -1),
+            previous = json.optInt("previous", -1),
             next = json.optInt("next", -1),
-            next2 = json.optInt("next2", -1),
             slots = slots,
             doubleTap = gestures?.optString("doubleTap", GroupedWallpaperFileState.ACTION_NEXT_ARTWORK)
                 ?: GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,

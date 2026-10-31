@@ -63,64 +63,99 @@ void main() {
     expect(await store.readState(), isNull);
   });
 
-  test('writes one photo per slot', () async {
-    final photo = await store.writeSlotPhoto(3, Uint8List.fromList([1, 2, 3]));
+  test('writes a frame under its entry id, not its slot id', () async {
+    final photo = await store.writeFramePhoto(42, '100x200-abcd', Uint8List.fromList([1, 2, 3]));
 
-    expect(photo, 'slots/3/photo.png');
-    expect(await store.slotPhoto(3).readAsBytes(), [1, 2, 3]);
+    expect(photo, 'frames/42/100x200-abcd/photo.png');
+    expect(await store.frameFile(42, '100x200-abcd', GroupedWallpaperStateStore.slotPhotoFileName).readAsBytes(), [1, 2, 3]);
   });
 
   test('writes home and lock effect photos next to the sharp one', () async {
-    final sharp = await store.writeSlotPhoto(3, Uint8List.fromList([1]));
-    final home = await store.writeSlotPhoto(3, Uint8List.fromList([2]), name: GroupedWallpaperStateStore.slotEffectHomeFileName);
-    final lock = await store.writeSlotPhoto(3, Uint8List.fromList([3]), name: GroupedWallpaperStateStore.slotEffectLockFileName);
+    const key = '100x200-abcd';
+    final sharp = await store.writeFramePhoto(42, key, Uint8List.fromList([1]));
+    final home = await store.writeFramePhoto(42, key, Uint8List.fromList([2]), name: GroupedWallpaperStateStore.slotEffectHomeFileName);
+    final lock = await store.writeFramePhoto(42, key, Uint8List.fromList([3]), name: GroupedWallpaperStateStore.slotEffectLockFileName);
 
-    expect(home, 'slots/3/home.png');
-    expect(lock, 'slots/3/lock.png');
-    final slot = GroupedWallpaperSlot(id: 3, entryId: 1, uri: '', photo: sharp, effectHome: home, effectLock: lock);
+    expect(home, 'frames/42/$key/home.png');
+    expect(lock, 'frames/42/$key/lock.png');
+    final slot = GroupedWallpaperSlot(id: 3, entryId: 42, uri: '', photo: sharp, effectHome: home, effectLock: lock);
     expect(store.slotEffectPhotoOf(slot, lock: false)?.readAsBytesSync(), [2]);
     expect(store.slotEffectPhotoOf(slot, lock: true)?.readAsBytesSync(), [3]);
   });
 
   test('an identity or missing effect falls back to the sharp photo', () async {
-    final sharp = await store.writeSlotPhoto(3, Uint8List.fromList([1]));
-    final identity = GroupedWallpaperSlot(id: 3, entryId: 1, uri: '', photo: sharp);
-    expect(store.slotEffectPhotoOf(identity, lock: false)?.path, store.slotPhoto(3).path);
-    expect(store.slotEffectPhotoOf(identity, lock: true)?.path, store.slotPhoto(3).path);
+    const key = '100x200-abcd';
+    final sharp = await store.writeFramePhoto(42, key, Uint8List.fromList([1]));
+    final identity = GroupedWallpaperSlot(id: 3, entryId: 42, uri: '', photo: sharp);
+    expect(store.slotEffectPhotoOf(identity, lock: false)?.path, store.frameFile(42, key, GroupedWallpaperStateStore.slotPhotoFileName).path);
+    expect(store.slotEffectPhotoOf(identity, lock: true)?.path, store.frameFile(42, key, GroupedWallpaperStateStore.slotPhotoFileName).path);
 
-    final missing = GroupedWallpaperSlot(id: 3, entryId: 1, uri: '', photo: sharp, effectHome: 'slots/3/gone.png');
-    expect(store.slotEffectPhotoOf(missing, lock: false)?.path, store.slotPhoto(3).path);
+    final missing = GroupedWallpaperSlot(id: 3, entryId: 42, uri: '', photo: sharp, effectHome: 'frames/42/$key/gone.png');
+    expect(store.slotEffectPhotoOf(missing, lock: false)?.path, store.frameFile(42, key, GroupedWallpaperStateStore.slotPhotoFileName).path);
   });
 
-  test('pruning drops the slots that left the queue', () async {
-    await store.writeSlotPhoto(0, Uint8List.fromList([1]));
-    await store.writeSlotPhoto(1, Uint8List.fromList([2]));
-    await store.writeSlotPhoto(2, Uint8List.fromList([3]));
+  test('a cached frame is read back with its metadata', () async {
+    const key = '100x200-abcd';
+    await store.writeFramePhoto(42, key, Uint8List.fromList([1]));
+    await store.writeFrameMeta(42, key, width: 100, height: 200, darkness: 0.25, title: 'IMG_42', uri: 'content://42');
 
-    await store.pruneSlots({0, 2});
-
-    expect(await store.slotPhoto(0).exists(), isTrue);
-    expect(await store.slotPhoto(1).exists(), isFalse);
-    expect(await store.slotPhoto(2).exists(), isTrue);
+    final frame = store.cachedFrame(42, key)!;
+    expect(frame.photo, 'frames/42/$key/photo.png');
+    expect(frame.effectHome, isEmpty);
+    expect(frame.width, 100);
+    expect(frame.height, 200);
+    expect(frame.darkness, 0.25);
   });
 
-  test('clearing removes every photo and the legacy one', () async {
-    await store.writeSlotPhoto(0, Uint8List.fromList([1]));
+  test('another layout key misses the cache', () async {
+    await store.writeFramePhoto(42, '100x200-abcd', Uint8List.fromList([1]));
+    await store.writeFrameMeta(42, '100x200-abcd', width: 100, height: 200, darkness: 0.5, title: '', uri: '');
+
+    expect(store.cachedFrame(42, '100x200-abcd'), isNotNull);
+    expect(store.cachedFrame(42, '300x200-abcd'), isNull);
+    expect(store.cachedFrame(42, '100x200-eeff'), isNull);
+  });
+
+  test('pruning keeps the referenced frames and drops the oldest', () async {
+    for (var entryId = 1; entryId <= 4; entryId++) {
+      await store.writeFramePhoto(entryId, '100x200-k', Uint8List.fromList([entryId]));
+      await store.writeFrameMeta(entryId, '100x200-k', width: 100, height: 200, darkness: 0.5, title: '', uri: '');
+      // Distinct ages, so the eviction order is deterministic.
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+    }
+    // Entry 1 is the one on screen: it must survive even as the oldest.
+    await store.pruneFrames(keep: {'frames/1/100x200-k/photo.png'}, maxFrames: 2);
+
+    expect(await store.frameFile(1, '100x200-k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isTrue);
+    expect(await store.frameFile(4, '100x200-k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isTrue);
+    expect(await store.frameFile(2, '100x200-k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isFalse);
+    expect(await store.frameFile(3, '100x200-k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isFalse);
+  });
+
+  test('clearing the history drops every unreferenced frame', () async {
+    await store.writeFramePhoto(1, 'k', Uint8List.fromList([1]));
+    await store.writeFramePhoto(2, 'k', Uint8List.fromList([2]));
     final legacy = File('${dir.path}/${GroupedWallpaperState.photoFileNameV1}');
     await legacy.writeAsBytes([9]);
 
+    await store.clearFrames(keep: {'frames/1/k/photo.png'});
+
+    expect(await store.frameFile(1, 'k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isTrue);
+    expect(await store.frameFile(2, 'k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isFalse);
+    expect(await legacy.exists(), isTrue);
+
     await store.clearSlots();
 
-    expect(await store.slotPhoto(0).exists(), isFalse);
+    expect(await store.frameFile(1, 'k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isFalse);
     expect(await legacy.exists(), isFalse);
-    // Clearing a photo that is already gone is not an error.
+    // Clearing a frame that is already gone is not an error.
     await store.clearSlots();
   });
 
   test('a rewrite replaces the previous file instead of appending', () async {
-    await store.writeSlotPhoto(0, Uint8List.fromList([1, 2, 3, 4]));
-    await store.writeSlotPhoto(0, Uint8List.fromList([9]));
-    expect(await store.slotPhoto(0).readAsBytes(), [9]);
+    await store.writeFramePhoto(42, 'k', Uint8List.fromList([1, 2, 3, 4]));
+    await store.writeFramePhoto(42, 'k', Uint8List.fromList([9]));
+    expect(await store.frameFile(42, 'k', GroupedWallpaperStateStore.slotPhotoFileName).readAsBytes(), [9]);
 
     await store.writeState(state);
     await store.writeState(state.copyWith(generation: 3));

@@ -46,7 +46,7 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             GroupedWallpaperNotification.ACTION_NEXT_ARTWORK -> nextArtwork(context)
-            GroupedWallpaperNotification.ACTION_PREVIOUS_ARTWORK -> command(context, COMMAND_PREVIOUS_ARTWORK)
+            GroupedWallpaperNotification.ACTION_PREVIOUS_ARTWORK -> previousArtwork(context)
             GroupedWallpaperNotification.ACTION_PREVIOUS_GROUP -> switchGroup(context, -1)
             GroupedWallpaperNotification.ACTION_NEXT_GROUP -> switchGroup(context, 1)
             GroupedWallpaperNotification.ACTION_TOGGLE_GROUP_LOCK -> toggleGroupLock(context)
@@ -80,17 +80,31 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
      * command takes over and the action is never silently lost.
      */
     private fun nextArtwork(context: Context) {
-        // A rewound state must walk the stack through the engine. The prefetched
-        // slot is a fresh photo and would reset the anchor, which is the double
-        // tap's and the interval's job, not the notification's "next".
-        val rewound = (GroupedWallpaperStateFile.read(context)?.rewindCursor ?: 0) > 0
-        if (!rewound && GroupedWallpaperRenderBus.advance()) {
+        if (GroupedWallpaperRenderBus.advance()) {
             if (!GroupedWallpaperAppBridge.requestSync()) {
                 LiveWallpaperRefillScheduler.enqueueTapRefill(context, LiveWallpaperTarget.GROUPED)
             }
             return
         }
         command(context, COMMAND_NEXT_ARTWORK)
+    }
+
+    /**
+     * Steps to the older usage record without waiting for a bake.
+     *
+     * The neighbour is queued and its texture already uploaded, so this is the
+     * same instant path as a forward tap; the app only has to refill the frame it
+     * left behind. When the renderer cannot move (no engine, or the neighbour was
+     * not baked yet) the engine's own command takes over.
+     */
+    private fun previousArtwork(context: Context) {
+        if (GroupedWallpaperRenderBus.previous()) {
+            if (!GroupedWallpaperAppBridge.requestSync()) {
+                LiveWallpaperRefillScheduler.enqueueTapRefill(context, LiveWallpaperTarget.GROUPED)
+            }
+            return
+        }
+        command(context, COMMAND_PREVIOUS_ARTWORK)
     }
 
     /**

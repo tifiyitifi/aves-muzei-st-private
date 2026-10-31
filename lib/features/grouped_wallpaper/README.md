@@ -14,8 +14,8 @@ of the Muzei-style live wallpaper mechanism.
   baking + native slot queue), global gestures, the immersive view page, per-group
   home/lock effects with a copy-to-other-groups grid, per-group auto-advance
   (interval + ordering, scheduled through the shared WorkManager chain), the
-  rewind stack behind the notification's previous/next controls (capped by the
-  usage-history limit and reset by auto-advance), the
+  history walk behind the notification's previous/next controls (both neighbours
+  baked and cached, so a step never waits for a bake), the
   four-layout notification with photo, group and lock actions, the
   availability label under the group switcher, the per-group home-screen scroll
   effect (edited in the effects page), the full set of rule actions on the group page (move to
@@ -106,23 +106,55 @@ the saved group, is newer than the group's and the range's `updatedAt`, and was
 baked for the current layout (surface size and scroll effect). An app start on an
 untouched install costs a database read and a file stat, not a bake.
 
-### The promotion queue
+### The navigation queue
 
-`state.json` carries `current → next → next2`, so the renderer can move to the
-next photo on a double tap without waiting for Flutter: it switches to the
-texture it already uploaded, writes the promotion to `runtime.json`
-synchronously, and asks the app (or the shared background worker) to bake the
-freed slot. A tap that arrives before the slot is uploaded is buffered (capacity
-5, 10 s expiry) and replayed as prefetched slots land, so a burst of taps keeps
-advancing instead of stopping after two.
+`state.json` carries `previous → current → next`, both neighbours baked, so the
+renderer can step in *either* direction without waiting for Flutter: a wallpaper
+tap goes forward, the bar's "previous" goes back, and each switch draws a texture
+it already uploaded. The renderer writes the step to `runtime.json` synchronously
+and asks the app (or the shared background worker) to refill the frame it left
+behind. A tap that arrives before the neighbour is uploaded is buffered (capacity
+5, 10 s expiry) and replayed as slots land.
 
-A promotion is forward-only on both sides. Dart adopts a runtime only when it
-points at a slot queued after the current one, and re-reads it just before
-writing `state.json` so a tap that landed during a bake is not rewound. The
-renderer does the same on reload: if the new state's queue still contains the
-slot on screen after its current, it keeps that slot, shifts the queue to it and
-rewrites the runtime with the new generation. Without that, a tap could show the
-next photo and then snap back to the one it just left.
+Dart adopts a runtime only when it names a queued neighbour of the state it knows,
+and re-reads it just before writing `state.json`, so a step that landed during a
+bake is not rewound. The renderer does the same on reload: if the new state's
+`next` is the slot on screen, it keeps that slot and rewrites the runtime with the
+new generation. Without that, a tap could show the next photo and then snap back
+to the one it just left.
+
+The walk itself is the usage history (see below): a forward step returns through
+the records the user already saw and only creates a new photo at the newest one.
+Both directions are the same code path ([`_moveTo`]), so stepping back and forth
+can never reorder the records or skip one.
+
+### Frame cache
+
+Every baked frame is stored under `frames/<entryId>/<key>/`, where `key` is the
+target size plus a fingerprint of the group's effects. A frame is therefore owned
+by *the photo at that layout*, not by the slot that happens to draw it, so any
+step back to a photo shown before is a file reference instead of a decode, an
+effect pass and a PNG encode. The cache keeps the 24 most recent frames (or the
+history limit when smaller), never evicts the three frames the queue references,
+and is trimmed when the limit changes and cleared with the history. Two extra
+measures keep a switch invisible: the renderer skips decoding a slot whose
+`(entryId, photo)` it already uploaded, and the engine reuses the queued slot's
+id, so a back-and-forth between two records is a texture swap.
+
+A slot that left the queue is still on disk in the cache: this is why "previous"
+is instant while the frames are within the cache depth, and only the frame beyond
+it is baked once more.
+
+### Tap detection
+
+`onCommand(COMMAND_TAP)` fires for *every* tap, single ones included, so a
+launcher's command cannot tell a single tap from a double tap on its own. The
+service feeds both that command and the gesture detector's `onDoubleTap` into
+`GroupedTapGate`, which only fires when a second signal arrives inside the
+platform's double-tap window and stays closed for 400 ms afterwards. A single tap
+therefore never changes the wallpaper, a real double tap fires once whichever
+path reports second, and a launcher that delivers no touch events still works
+through its two commands.
 
 ### Scroll effect
 
@@ -164,10 +196,12 @@ and keeps its photos sharp.
 
 The baker applies the same math as Muzei (blur at a quarter of the surface
 height then upscale, greyscale matrix, dim from the artwork's own darkness) and
-writes `slots/<id>/home.png` / `slots/<id>/lock.png` next to the sharp
-`photo.png`. An identity effect points at the sharp file instead of writing a
-second copy. The native renderer picks the file for the surface being drawn,
-using the keyguard state, so only one texture per slot is uploaded.
+writes `frames/<entryId>/<key>/home.png` / `lock.png` next to the sharp
+`photo.png`. An identity effect leaves the path empty, so the renderer falls back
+to the sharp file instead of a second copy. The native renderer picks the file for
+the surface being drawn, using the keyguard state, so only one texture per slot is
+uploaded. The `key` includes the effects, so editing them re-bakes every frame at
+the new rendering instead of showing a stale one.
 
 The effects page is bound to the viewed group and applies as the sliders move,
 bypassing the range draft: effects are display preferences, and the live
@@ -263,43 +297,37 @@ family and the home/lock effect image together, and return the button set to the
 keyguard's default.
 
 Actions are broadcasts to `GroupedWallpaperActionReceiver`, so they work without
-an Activity. "Next photo" first promotes the prefetched slot in the live renderer
-(instant, like a double tap); every other action goes to the mounted app when its
-engine listens and to the headless worker when it does not. The commands are the
-names of `GroupedWallpaperCommand` (`previousArtwork`, `nextGroup`, ...), so both
-sides share one vocabulary. Turning the grouped wallpaper off cancels the
-notification.
+an Activity. "Next" and "previous" both first promote the queued neighbour in the
+live renderer (instant, like a double tap) and only fall back to the app's command
+when the renderer has nothing to show. The commands are the names of
+`GroupedWallpaperCommand` (`previousArtwork`, `nextGroup`, ...), so both sides
+share one vocabulary. Turning the grouped wallpaper off cancels the notification.
 
-"Previous photo" re-bakes the remembered entry instead of restoring its old file
-(slots are recycled), and re-checks it against the group's media set: locking a
-vault or hiding a filter between two photos can never bring the hidden photo
-back.
-
-`state.json` carries the rewind stack (`rewind`, `rewindCursor`) and the
-`navigated` hint. A new photo (auto-advance, double tap, first bake, group
-switch) becomes the new anchor: it goes to the front and the cursor resets, so
-the first "previous" is the photo it replaced. "Previous"/"next" then move the
-cursor through the stack without reordering it; the queue ahead is rebuilt from
-fresh photos, so a native double tap or the interval keeps moving forward
-instead of walking the same stack. The walk is capped by the usage-history
-limit, and the bar greys "previous" through `canPrevious` when it is exhausted.
-The `navigated` flag makes the renderer honor the new `current`: without it,
-`keepDisplayedSlot()` would mistake the history step for a promotion and keep
-the old frame. Every explicit step also restarts the auto-advance countdown
+`state.json` carries the walk (`rewind`, `rewindCursor`) and the two baked
+neighbours (`previous`, `next`). A photo the walk has never shown becomes the
+newest record and resets the cursor; stepping forward through the records moves
+the cursor instead, and only from the newest record does a forward step create a
+new photo. The walk is capped by the usage-history limit, and the bar greys
+"previous" through `canPrevious` (the `previous` slot is queued) when it is
+exhausted. The `navigated` flag makes the renderer honor the new `current`:
+without it, `keepDisplayedSlot()` would mistake a step back for a promotion and
+keep the old frame. Every explicit step also restarts the auto-advance countdown
 (`restartAutoAdvance`, replacing the pending WorkManager run), so the next
 automatic change is a full interval away.
 
-A v4 state has no rewind stack; it is seeded from `recent`, so "previous" works
-on the first tap after the update.
+A v5 state has no baked neighbours; the first run after the update writes them
+from the rewind stack and the frame cache.
 
 ### Usage history
 
 `grouped_wallpaper_history` (schema v12) records the photos the wallpaper put on
 screen, so the user can look back at them and step to the previous one.
 
-- **Recorded when the photo changes**: an advance, "previous", a group switch or
-  a promotion the renderer made on its own. A layout re-bake, an off switch, a
-  lock or a failure keeps the same entry and adds no row.
+- **Recorded when a new photo is shown**: advancing from the newest record, a
+  forward step that had to pick a fresh photo, or a group switch. Stepping back
+  and forth through the records adds no row: browsing is not "using" a photo
+  again, and rewriting `usedAt` would reorder the very walk it is based on. A
+  layout re-bake, an off switch, a lock or a failure adds no row either.
 - **Per photo, per group**: the unique key is `(entryId, groupId)`, so showing the
   same photo again only moves its `usedAt` to the front, while the same photo in
   another group is a different wallpaper and keeps its own row. The row stores the
@@ -310,8 +338,8 @@ screen, so the user can look back at them and step to the previous one.
   engine's `previousArtwork()` becomes a no-op. Changing the number **never
   deletes** history rows: the next recorded photo prunes the oldest beyond the
   limit, and only "clear history" removes rows. The rewind stack is trimmed at
-  the same time, and clearing the history clears it too, so "previous" never
-  walks a private copy of records the user removed.
+  the same time, and clearing the history clears it too (with its cached
+  frames), so "previous" never walks a private copy of records the user removed.
 - **Where it lives**: `/grouped_wallpaper/history`, reachable from the group
   page's More, the view page's More and the notification's "history" button (an
   activity intent, not a broadcast). Rows whose photo left the library are
@@ -437,7 +465,9 @@ More; all three write immediately like effects and do not bump `updatedAt`: the
 contract only affects future picks, so the frame on screen is never re-baked just
 because the interval changed. An explicit previous/next step restarts the
 countdown (`restartAutoAdvance`, replacing the pending run) instead of keeping
-the old one.
+the old one. The interval itself is a forward step through the usage records, so
+a wallpaper left on a photo the user stepped back to returns through the records
+first and only creates a new photo at the newest one.
 
 Scheduling reuses the shared native WorkManager chain
 (`LiveWallpaperRefillScheduler`, per target) through the grouped channel's

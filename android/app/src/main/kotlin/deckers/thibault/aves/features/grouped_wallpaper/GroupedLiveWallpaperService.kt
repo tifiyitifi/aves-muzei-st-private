@@ -53,14 +53,6 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         /** A three-finger tap fires once per gesture, not once per pointer event. */
         private const val THREE_FINGER_TAP_INTERVAL_MS = 500L
 
-        /**
-         * Window used to treat `onDoubleTap` and `COMMAND_TAP` as one gesture.
-         *
-         * Wider than the platform double-tap timeout because some launchers
-         * deliver the command noticeably later than the touch.
-         */
-        private const val DOUBLE_TAP_DEDUPE_MS = 350L
-
         /** Whether the system currently keeps this service alive. */
         @Volatile
         var isRunning = false
@@ -310,15 +302,14 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         private lateinit var renderer: GroupedWallpaperRenderer
 
         /**
-         * Both the gesture detector's `onDoubleTap` and the launcher's
-         * `COMMAND_TAP` describe the same physical double tap, and either may
-         * arrive on its own: some launchers delay or drop `COMMAND_TAP`, and some
-         * surfaces only deliver the command without touch events. Firing from
-         * both paths and deduplicating by time makes a double tap work in every
-         * case; the window is wider than the platform double-tap timeout so a
-         * late command still counts as the same gesture.
+         * Decides when a tap is really a double tap.
+         *
+         * The launcher sends `COMMAND_TAP` for every tap, single ones included, so
+         * the command alone cannot tell them apart; the gate fires only when a
+         * second signal arrives inside the double-tap window. See
+         * [GroupedTapGate].
          */
-        private var lastDoubleTapAt = 0L
+        private val tapGate = GroupedTapGate(clock = SystemClock::elapsedRealtime)
         private var lastThreeFingerTap = 0L
         private val gestureHandler = Handler(Looper.getMainLooper())
 
@@ -347,7 +338,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
                 override fun onDown(e: MotionEvent): Boolean = true
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
-                    performDoubleTap()
+                    if (tapGate.onTapSignal()) performGesture(threeFinger = false)
                     return true
                 }
             },
@@ -442,7 +433,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             resultRequested: Boolean,
         ): Bundle? {
             if (WallpaperManager.COMMAND_TAP == action) {
-                performDoubleTap()
+                // Only a tap the gesture detector already saw twice acts: a single
+                // tap must never change the wallpaper.
+                if (tapGate.onTapSignal()) performGesture(threeFinger = false)
             }
             return super.onCommand(action, x, y, z, extras, resultRequested)
         }
@@ -457,20 +450,6 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
                     performGesture(threeFinger = true)
                 }
             }
-        }
-
-        /**
-         * Fires one double-tap gesture, deduplicating the two delivery paths.
-         *
-         * The gesture detector sees the touch and the launcher sends the command
-         * for the same tap; whichever arrives first performs the gesture and the
-         * other is ignored inside the window.
-         */
-        private fun performDoubleTap() {
-            val now = SystemClock.elapsedRealtime()
-            if (now - lastDoubleTapAt < DOUBLE_TAP_DEDUPE_MS) return
-            lastDoubleTapAt = now
-            performGesture(threeFinger = false)
         }
 
         private fun performGesture(threeFinger: Boolean) {

@@ -201,10 +201,11 @@ void main() {
       final state = (await store.readState())!;
       expect(state.status, GroupedWallpaperStatus.ready);
       expect(state.groupId, dcimGroup.id);
-      expect(state.queueLength, GroupedWallpaperEngine.prefetchAhead + 1);
+      // One neighbour each way, and the walk has no older record yet.
+      expect(state.queueLength, 2);
       expect(state.currentSlot?.entryId, 50);
       expect(state.nextSlot?.entryId, 49);
-      expect(state.next2Slot?.entryId, 48);
+      expect(state.previous, -1);
       expect(state.count, 12);
       expect(state.width, 100);
       expect(state.height, 200);
@@ -222,7 +223,7 @@ void main() {
 
       expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
 
-      expect(baker.bakeCount, 3);
+      expect(baker.bakeCount, 2);
       expect((await store.readState())!.current, first.current);
     });
 
@@ -231,23 +232,29 @@ void main() {
       await engine.prepare();
 
       planStore.plan = GroupedWallpaperPlan(
-        group: dcimGroup,
+        group: noScrollGroup,
         range: VisibleRange(id: 'group.1.range', scope: VisibleRangeScope.wallpaper, ownerId: dcimGroup.id, updatedAt: 2000),
       );
       expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
 
-      expect(baker.bakeCount, 6);
+      // A range change starts the walk over, but the frames it already baked are
+      // reused: only the photo queued ahead is new.
+      expect(baker.bakeCount, 3);
     });
 
     test('re-bakes when a slot photo is gone from disk', () async {
       serve(entries(12));
       await engine.prepare();
       final state = (await store.readState())!;
-      await store.slotPhoto(state.next).delete();
+      await store.slotPhotoOf(state.nextSlot!)!.delete();
 
       expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
 
-      expect((await store.readState())!.queueLength, 3);
+      final healed = (await store.readState())!;
+      expect(healed.queueLength, 2);
+      for (final slot in healed.slots) {
+        expect(store.slotPhotoOf(slot)?.existsSync(), isTrue);
+      }
     });
 
     test('re-bakes when a slot effect file is gone from disk', () async {
@@ -264,11 +271,31 @@ void main() {
       await engine.prepare();
       final state = (await store.readState())!;
       expect(state.slots.map((slot) => slot.effectHome).toList(), everyElement(isNotEmpty));
-      await store.slotPhoto(state.next, name: GroupedWallpaperStateStore.slotEffectHomeFileName).delete();
+      await store.slotEffectPhotoOf(state.nextSlot!, lock: false)!.delete();
 
       expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
 
-      expect((await store.readState())!.queueLength, 3);
+      expect((await store.readState())!.queueLength, 2);
+    });
+
+    test('neighbours that share one slot id settle into two frames', () async {
+      serve(entries(12));
+      await engine.prepare();
+      await engine.syncNow(); // 50 -> 49, so 50 becomes the older neighbour
+      final before = (await store.readState())!;
+      expect(before.previousSlot?.entryId, 50);
+      expect(before.nextSlot?.entryId, 48);
+      // What an upgraded file can look like: both sides point at the freed slot
+      // id. Reusing it for both would leave the walk with one frame and no move.
+      await store.writeState(before.copyWith(previous: before.next));
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      final state = (await store.readState())!;
+      expect(state.previous, isNot(state.next));
+      expect(state.previousSlot?.entryId, 50);
+      expect(state.nextSlot?.entryId, 48);
+      expect(state.currentSlot?.entryId, 49);
     });
 
     test('a small group keeps fewer slots instead of repeating an image', () async {
@@ -343,9 +370,12 @@ void main() {
       await engine.prepare();
 
       final state = (await store.readState())!;
+      // An identity effect writes no second file: the renderer falls back to the
+      // sharp photo, which is the same pixels.
       for (final slot in state.slots) {
-        expect(slot.effectHome, slot.photo);
-        expect(slot.effectLock, slot.photo);
+        expect(slot.effectHome, isEmpty);
+        expect(slot.effectLock, isEmpty);
+        expect(store.slotEffectPhotoOf(slot, lock: false)?.path, store.slotPhotoOf(slot)!.path);
       }
     });
 
@@ -394,8 +424,7 @@ void main() {
       final state = (await store.readState())!;
       expect(state.currentSlot?.entryId, 60);
       expect(state.nextSlot?.entryId, 61);
-      // Nothing new is left: the third slot falls back to random.
-      expect(state.next2Slot?.entryId, 50);
+      expect(state.previous, -1);
     });
 
     test('a tap keeps advancing through the whole group instead of cycling', () async {
@@ -531,10 +560,10 @@ void main() {
       // the image on screen.
       expect(toggled.entryId, first.entryId);
       expect(toggled.width, 600);
-      expect(baker.bakeCount, 6);
+      expect(baker.bakeCount, 4);
 
       expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
-      expect(baker.bakeCount, 6);
+      expect(baker.bakeCount, 4);
     });
 
     test('a surface change re-bakes once', () async {
@@ -567,9 +596,11 @@ void main() {
       final state = (await store.readState())!;
       expect(state.currentSlot?.entryId, 49);
       expect(state.queueLength, 3);
-      expect(state.slots.map((slot) => slot.entryId).toSet(), {47, 48, 49});
-      // Only the freed slot is baked again: the other two keep their files.
-      expect(baker.bakeCount, 4);
+      expect(state.slots.map((slot) => slot.entryId).toSet(), {48, 49, 50});
+      // Only the frame ahead is baked: the photo it replaced stays queued as the
+      // older neighbour, so stepping back is instant.
+      expect(baker.bakeCount, 3);
+      expect(state.previousSlot?.entryId, 50);
       expect(state.recent.map((entry) => entry.entryId), [49, 50]);
     });
 
@@ -604,23 +635,21 @@ void main() {
       serve(entries(12));
       await engine.prepare();
       final first = (await store.readState())!;
-      // The renderer promoted once before this run...
-      await store.runtimeFile.writeAsString(
-        '{"generation":${first.generation},"current":${first.next},"next":${first.next2},"refillRequested":true}',
-      );
-      // ...and once more while Dart bakes the freed slot.
+      // A missing frame forces a bake; the renderer promotes the queued
+      // neighbour while that bake runs.
+      await store.slotPhotoOf(first.nextSlot!)!.delete();
       baker.onBake = () => store.runtimeFile.writeAsString(
-        '{"generation":${first.generation},"current":${first.next2},"next":-1,"refillRequested":true}',
+        '{"generation":${first.generation},"current":${first.next},"next":-1,"refillRequested":true}',
       );
 
       expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
 
       final state = (await store.readState())!;
-      expect(state.currentSlot?.entryId, 48);
-      expect(state.nextSlot?.entryId, 47);
-      expect(state.next2, -1);
-      // Both photos the renderer showed are kept out of the next picks.
-      expect(state.recent.map((entry) => entry.entryId), [48, 49, 50]);
+      expect(state.currentSlot?.entryId, 49);
+      // The promoted photo is the new record and the one it replaced is its
+      // neighbour, so the walk stays consistent with what was on screen.
+      expect(state.previousSlot?.entryId, 50);
+      expect(state.recent.map((entry) => entry.entryId), containsAll([49, 50]));
     });
 
     test('a runtime pointing at the current slot is not a promotion', () async {
@@ -697,7 +726,7 @@ void main() {
       expect(state.current, frozen.current);
       expect(state.hasPhoto, isTrue);
       expect(state.generation, frozen.generation + 1);
-      expect(baker.bakeCount, 3);
+      expect(baker.bakeCount, 2);
     });
 
     test('the link reports it is no longer playing', () async {
@@ -720,7 +749,7 @@ void main() {
       final state = (await store.readState())!;
       expect(state.status, GroupedWallpaperStatus.disabled);
       expect(state.hasPhoto, isTrue);
-      expect(baker.bakeCount, 3);
+      expect(baker.bakeCount, 2);
     });
   });
 
@@ -737,7 +766,7 @@ void main() {
     expect(state.status, GroupedWallpaperStatus.emptyGroup);
     expect(state.queueLength, 0);
     expect(state.hasPhoto, isFalse);
-    expect(await store.slotsDir.exists(), isFalse);
+    expect(await store.framesDir.exists(), isFalse);
   });
 
   test('a locked group keeps its queue and bakes nothing', () async {
@@ -785,9 +814,8 @@ void main() {
 
     final state = (await store.readState())!;
     expect(state.currentSlot?.entryId, 49);
-    expect(state.nextSlot?.entryId, 48);
     // The freed slot stays empty rather than showing a broken photo.
-    expect(state.next2, -1);
+    expect(state.next, -1);
   });
 
   test('a bake failure on the first frame clears the photos and shows the placeholder', () async {
@@ -799,7 +827,7 @@ void main() {
     final state = (await store.readState())!;
     expect(state.status, GroupedWallpaperStatus.unavailable);
     expect(state.hasPhoto, isFalse);
-    expect(await store.slotsDir.exists(), isFalse);
+    expect(await store.framesDir.exists(), isFalse);
     expect(state.groupId, dcimGroup.id);
   });
 
@@ -906,13 +934,15 @@ void main() {
     expect(state.hasPhoto, isTrue);
   });
 
-  test('previous photo steps back and refills the queue forward', () async {
+  test('previous photo steps back and keeps the frame it replaced', () async {
     serve(entries(12));
     await engine.prepare();
     // One forward step: 50 → 49, so 50 is the recorded photo before it.
     await engine.syncNow();
     final advanced = (await store.readState())!;
     expect(advanced.currentSlot?.entryId, 49);
+    expect(advanced.previousSlot?.entryId, 50);
+    final bakes = baker.bakeCount;
 
     expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.baked);
 
@@ -921,10 +951,9 @@ void main() {
     expect(state.rewind.map((entry) => entry.entryId), [49, 50]);
     expect(state.rewindCursor, 1);
     expect(state.navigated, isTrue);
-    // The queue ahead is rebuilt from fresh photos, so a double tap (which
-    // promotes natively) keeps moving forward like the auto-advance.
-    expect(state.nextSlot?.entryId, isNot(49));
-    expect(state.queueLength, GroupedWallpaperEngine.prefetchAhead + 1);
+    // Both frames were already queued, so the step is a swap: no bake at all.
+    expect(baker.bakeCount, bakes);
+    expect(state.nextSlot?.entryId, 49);
     for (final slot in state.slots) {
       expect(store.slotPhotoOf(slot)?.existsSync(), isTrue);
     }
@@ -971,11 +1000,15 @@ void main() {
     expect(state.currentSlot?.entryId, 48);
     expect(state.rewindCursor, 0);
 
-    // Back at the newest photo, the next step picks a new one.
+    // Back at the newest photo, the next step creates a new record and the one it
+    // replaced stays as its neighbour.
     expect(await engine.nextArtwork(), GroupedWallpaperSyncResult.baked);
     state = (await store.readState())!;
     expect(state.currentSlot?.entryId, isNot(anyOf(48, 49, 50)));
     expect(state.rewindCursor, 0);
+    expect(state.rewind.first.entryId, state.entryId);
+    expect(state.rewind[1].entryId, 48);
+    expect(state.previousSlot?.entryId, 48);
   });
 
   test('previous photo restarts the auto-advance timer', () async {
@@ -1023,7 +1056,10 @@ void main() {
 
     expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.unchanged);
 
-    expect((await store.readState())!.currentSlot?.entryId, 49);
+    final state = (await store.readState())!;
+    expect(state.currentSlot?.entryId, 49);
+    // The dead record is dropped, so the bar stops offering it.
+    expect(state.canGoPrevious, isFalse);
   });
 
   test('the history limit caps how far previous walks', () async {
@@ -1052,14 +1088,14 @@ void main() {
     expect(state.canGoPrevious, isFalse);
   });
 
-  test('a native promotion resets the previous anchor like auto-advance', () async {
+  test('a native promotion walks the history forward', () async {
     serve(entries(12));
     await engine.prepare();
     await engine.syncNow();
     await engine.previousArtwork();
     final rewound = (await store.readState())!;
     expect(rewound.rewindCursor, 1);
-    // The renderer promoted the next queued photo on a double tap.
+    // The renderer promoted the queued neighbour on a double tap.
     await store.runtimeFile.writeAsString(
       '{"generation":${rewound.generation},"current":${rewound.next},"next":-1,"refillRequested":true}',
     );
@@ -1067,11 +1103,11 @@ void main() {
     expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
 
     final state = (await store.readState())!;
-    // The promoted photo is the new anchor: it goes to the front and the walk
-    // starts over from it.
+    // It is the same walk: a forward step from a rewound photo moves the cursor
+    // back towards the newest record, it does not create a new one.
+    expect(state.currentSlot?.entryId, rewound.nextSlot?.entryId);
     expect(state.rewindCursor, 0);
-    expect(state.rewind.first.entryId, state.entryId);
-    expect(state.rewind.map((entry) => entry.entryId), contains(rewound.entryId));
+    expect(state.rewind.map((entry) => entry.entryId), rewound.rewind.map((entry) => entry.entryId));
   });
 
   test('a bake records the group-switch lock in the state', () async {
@@ -1190,14 +1226,16 @@ void main() {
       expect(historyRecorder.rows.map((row) => row.entryId), [50, 49]);
     });
 
-    test('previous records the photo it steps back to', () async {
+    test('previous reuses a record instead of writing a new one', () async {
       serve(entries(12));
       await engine.prepare();
       await engine.syncNow();
 
       expect(await engine.previousArtwork(), GroupedWallpaperSyncResult.baked);
 
-      expect(historyRecorder.rows.map((row) => row.entryId), [50, 49, 50]);
+      // Browsing is not "using" a photo again: rewriting `usedAt` would reorder
+      // the very history the walk is based on.
+      expect(historyRecorder.rows.map((row) => row.entryId), [50, 49]);
     });
 
     test('a zero limit records nothing and makes previous inert', () async {
@@ -1505,7 +1543,7 @@ class _FakeEntrySource implements GroupedWallpaperEntrySource {
 
   @override
   Future<AvesEntry?> entryById(VisibleRange? range, int id) async {
-    for (final entry in entries) {
+    for (final entry in [...entries, ...fresh]) {
       if (entry.id == id) return entry;
     }
     return null;

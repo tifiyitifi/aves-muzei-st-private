@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -36,17 +37,12 @@ import 'package:flutter/painting.dart';
 /// - [syncNow] is the user asking for the next photo, and only applies while the
 ///   service really is the system wallpaper.
 ///
-/// The queue is `current → next → next2`: the renderer promotes `next` on a
-/// wallpaper tap without waiting for Flutter, records what it did in
-/// `runtime.json`, and Dart bakes the slot it left behind. Two consecutive taps
-/// therefore need no bake.
+/// The queue is `previous → current → next`, both neighbours baked: the renderer
+/// promotes either side without waiting for Flutter (a wallpaper tap goes
+/// forward, the bar's "previous" goes back), records what it did in
+/// `runtime.json`, and Dart refills the frame it left behind from the cache. So
+/// stepping through the usage history needs no bake, in either direction.
 class GroupedWallpaperEngine implements WallpaperEngineConnection {
-  /// How many photos are baked ahead of the one on screen.
-  ///
-  /// Two matches Muzei's default: the first two taps are instant, and the
-  /// renderer buffers the rest until Dart catches up.
-  static const int prefetchAhead = 2;
-
   /// How many candidates one slot tries before giving up.
   ///
   /// A decode failure steps to the next photo instead of leaving the slot empty.
@@ -247,7 +243,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final rewind = currentKept || current == null ? kept : <GroupedWallpaperRewindEntry>[GroupedWallpaperRewindEntry(entryId: current.entryId)];
       final rewindCursor = currentKept ? state.rewindCursor : 0;
       if (state.historyLimit == value && state.rewind.length == rewind.length && state.rewindCursor == rewindCursor) return;
-      await store.writeState(state.copyWith(historyLimit: value, rewind: rewind, rewindCursor: rewindCursor));
+      final updated = state.copyWith(historyLimit: value, rewind: rewind, rewindCursor: rewindCursor);
+      await store.writeState(updated);
+      await store.pruneFrames(keep: _framePaths(updated), maxFrames: value <= 0 ? 6 : value);
       await platform.refreshNotification();
     });
   }
@@ -267,7 +265,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final current = state.currentSlot;
       final rewind = current == null ? const <GroupedWallpaperRewindEntry>[] : [GroupedWallpaperRewindEntry(entryId: current.entryId)];
       if (state.rewind.length == rewind.length && state.rewindCursor == 0) return;
-      await store.writeState(state.copyWith(rewind: rewind, rewindCursor: 0));
+      final cleared = state.copyWith(generation: state.generation + 1, rewind: rewind, rewindCursor: 0, previous: -1);
+      await store.writeState(cleared);
+      // The frames of the cleared records are the same private copy: dropping the
+      // records must drop them too, not just hide the button.
+      await store.clearFrames(keep: _framePaths(cleared));
+      await platform.reload();
       await platform.refreshNotification();
     });
   }
@@ -350,30 +353,13 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     });
   }
 
-  /// Shows the photo before the current one, when the rewind stack remembers it.
-  ///
-  /// The previous photo is re-baked instead of restored from disk: slots are
-  /// recycled, so the old file may already show another image. The queue ahead is
-  /// refilled with new photos, so a double tap or an interval keeps moving
-  /// forward instead of walking back into the same stack.
+  /// Shows the older usage record when the walk still has one.
   @override
   Future<GroupedWallpaperSyncResult> previousArtwork() => _enqueue(() => _runRewind(1));
 
-  /// Shows the next photo of the group.
-  ///
-  /// While the rewind cursor is inside the stack, the notification's "next" walks
-  /// forward through it; once back at the newest photo it picks a new one. The
-  /// native double tap and the interval are different on purpose: they always
-  /// move to a fresh photo and reset the anchor.
+  /// Shows the newer usage record, or a new photo from the newest one.
   @override
-  Future<GroupedWallpaperSyncResult> nextArtwork() => _enqueue(_runNext);
-
-  Future<GroupedWallpaperSyncResult> _runNext() async {
-    final store = _store;
-    final state = store == null ? null : await store.readState();
-    if (state != null && state.rewindCursor > 0) return _runRewind(-1);
-    return _run(advance: true, requireActive: false, activation: false);
-  }
+  Future<GroupedWallpaperSyncResult> nextArtwork() => _enqueue(() => _run(advance: true, requireActive: false, activation: false));
 
   /// Refuses a group switch sent by the notification while its lock is on.
   ///
@@ -531,43 +517,57 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       // promotion that triggered this run.
       final runtime = await store.readRuntime();
       final adopted = _adoptRuntime(previous, runtime);
-      final promoted = !identical(adopted, previous);
+      final promoted = adopted != null && !identical(adopted.state, previous);
       final surface = await _resolveTargetSize();
       final scrollEffect = await _effectiveScrollEffect(plan);
-      final groupStale = _isStale(plan, adopted);
-      final layoutStale = _isLayoutStale(adopted, surface, scrollEffect);
-      final stale = groupStale || layoutStale;
-      // A layout change re-bakes the photos already queued into the same slots,
-      // so a rotation or the switch keeps the photo on screen (and a freeze)
-      // instead of restarting the group.
-      final rebake = !groupStale && layoutStale ? await _layoutRebake(plan, adopted) : const <int, AvesEntry>{};
-      final rebakeComplete = !groupStale && layoutStale && rebake.isNotEmpty;
-      // A frozen wallpaper keeps the photo on screen, even when the interval or a
-      // sync asks for the next one.
-      final (seed, advanced) = advance && !stale ? _promote(adopted) : (adopted, false);
+      final groupStale = _isStale(plan, adopted?.state ?? previous);
+      final layoutStale = _isLayoutStale(adopted?.state ?? previous, surface, scrollEffect);
       final total = await entrySource.count(plan.range);
-      // A state written before the rewind stack has to be rewritten once so the
-      // native bar learns `canPrevious` instead of staying greyed until the next
-      // photo.
+      // A state written before the entry-keyed cache has to be rewritten once so
+      // the native bar learns `canPrevious` instead of staying greyed.
       final migrated = previous?.needsUpgrade == true;
+
+      // A group change, or a photo that left the range, starts the walk over.
+      final current = adopted?.state ?? previous;
+      if (groupStale || current == null || !current.hasPhoto) {
+        return await _startOver(store, plan, previous, total: total, surface: surface, scrollEffect: scrollEffect);
+      }
+
+      // A forward step walks the usage history: both neighbours are already
+      // baked, so a double tap, the interval and the bar's "next" are the same
+      // move, and only the newest record creates a new photo.
+      final move = advance ? _moveTo(current, current.next, navigated: true) : null;
+      if (move != null) {
+        final result = await _settle(
+          store,
+          plan,
+          move.state,
+          total: total,
+          surface: surface,
+          scrollEffect: scrollEffect,
+          newPhoto: move.newPhoto,
+          navigated: true,
+        );
+        if (result == GroupedWallpaperSyncResult.baked) await _restartAutoAdvance(plan);
+        return result;
+      }
+
       // A promoted slot must be recorded even when nothing is baked, so the
       // runtime stops matching and the next run starts from the new current.
-      if (!advance && !stale && !promoted && !migrated && await _isQueueReady(store, total, adopted)) {
+      if (!layoutStale && !promoted && !migrated && await _isQueueReady(store, total, current)) {
         return GroupedWallpaperSyncResult.unchanged;
       }
-      return await _bakeQueue(
+      return await _settle(
         store,
         plan,
+        current,
         total: total,
-        previous: previous,
-        // A group change starts over; a layout-only change keeps the queue. A
-        // normal run must clear the history-step hint: the seed is derived from
-        // the previous state, whose `navigated` only described that write.
-        seed: groupStale || (layoutStale && !rebakeComplete) ? null : seed?.copyWith(navigated: false),
-        mustWrite: promoted || advanced || migrated,
         surface: surface,
         scrollEffect: scrollEffect,
-        rebakeEntries: rebakeComplete ? rebake : const {},
+        newPhoto: adopted?.newPhoto ?? false,
+        // The renderer may have kept a frame; a plain settle must not claim it
+        // was a history step, or it would override that decision.
+        navigated: false,
       );
     } catch (error, stack) {
       groupedWallpaperLog.e('sync failed', error, stack);
@@ -576,13 +576,14 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     }
   }
 
-  /// Steps the wallpaper through the rewind stack by [delta].
+  /// Steps the wallpaper through the usage history by [delta].
   ///
-  /// `+1` is "previous" and `-1` is "next" while the cursor is inside the stack.
-  /// The photo is re-baked into a new slot, and the queue ahead is rebuilt from
-  /// fresh photos, so a native double tap or an interval keeps moving forward
-  /// instead of walking the same stack. A record that left the range is skipped;
-  /// when nothing is left, the stack is trimmed so the bar greys its button.
+  /// `+1` is "previous" and `-1` is "next". The step only changes which queued
+  /// frame is drawn: both neighbours are already baked, so a tap never waits for
+  /// a bake, and the frame that left the queue is refilled afterwards from the
+  /// cache. A record that left the media set is skipped; at the end of the walk
+  /// the stack is trimmed so the bar greys its button instead of offering a step
+  /// that does nothing.
   Future<GroupedWallpaperSyncResult> _runRewind(int delta) async {
     final store = _store;
     if (store == null) return GroupedWallpaperSyncResult.notActive;
@@ -590,304 +591,409 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final plan = await planStore.load();
       final state = await store.readState();
       if (plan.disabled || plan.isNone || state == null || !state.hasPhoto) return GroupedWallpaperSyncResult.unchanged;
-      // Recording off means the history is off: the walk would reach photos the
-      // usage history no longer keeps.
       if (plan.historyLimit <= 0) return GroupedWallpaperSyncResult.unchanged;
-      final target = await _resolveRewindTarget(plan, state, delta);
-      if (target == null) {
-        if (delta > 0) await _trimRewind(store, state);
+      final target = delta > 0 ? state.previous : state.next;
+      final targetSlot = state.slotById(target);
+      // The queued frame may belong to a photo that left the media set since it
+      // was baked (a locked vault, a hidden filter): stepping to it would bring a
+      // hidden photo back, so the walk stops here instead.
+      final entry = targetSlot == null ? null : await entrySource.entryById(plan.range, targetSlot.entryId);
+      if (targetSlot == null || entry == null) {
+        if (delta > 0 && state.previous >= 0) await _trimRewind(store, state, entryId: targetSlot?.entryId);
         return GroupedWallpaperSyncResult.unchanged;
       }
-
+      final move = _moveTo(state, target, navigated: true);
+      if (move == null) return GroupedWallpaperSyncResult.unchanged;
       final surface = await _resolveTargetSize();
       final scrollEffect = await _effectiveScrollEffect(plan);
-      // Every slot carries the old geometry after a rotation or a switch change:
-      // re-bake the queue instead of stacking one new-layout photo in front of
-      // stale ones the renderer would promote next.
-      if (_isLayoutStale(state, surface, scrollEffect)) {
-        return await _run(advance: false, requireActive: false, activation: false);
-      }
-
-      final id = _nextSlotId({for (final slot in state.slots) slot.id});
-      final slot = await _bakeSlot(store, plan, target.entry, id, surface, scrollEffect);
-      final seed = state.copyWith(
-        status: GroupedWallpaperStatus.ready,
-        current: slot.id,
-        next: -1,
-        next2: -1,
-        slots: [slot],
-        rewindCursor: target.index,
-        navigated: true,
-      );
-      final result = await _bakeQueue(
+      // A layout change must never swallow the step: the frames are re-baked for
+      // the new surface as part of settling.
+      final result = await _settle(
         store,
         plan,
+        move.state,
         total: await entrySource.count(plan.range),
-        previous: state,
-        seed: seed,
-        mustWrite: true,
         surface: surface,
         scrollEffect: scrollEffect,
+        newPhoto: move.newPhoto,
+        navigated: true,
       );
       if (result == GroupedWallpaperSyncResult.baked) await _restartAutoAdvance(plan);
-      groupedWallpaperLog.d('queue.rewind delta=$delta entry=${target.entry.id} current=${slot.id} cursor=${target.index}');
+      groupedWallpaperLog.d('queue.step delta=$delta current=${move.state.current} cursor=${move.state.rewindCursor} newPhoto=${move.newPhoto}');
       return result;
     } on GroupedWallpaperBakeException catch (error, stack) {
-      groupedWallpaperLog.w('rewind failed', error, stack);
+      groupedWallpaperLog.w('history step failed', error, stack);
       return GroupedWallpaperSyncResult.failed;
     } catch (error, stack) {
-      groupedWallpaperLog.e('rewind failed', error, stack);
+      groupedWallpaperLog.e('history step failed', error, stack);
       return GroupedWallpaperSyncResult.failed;
     }
   }
 
-  /// The entry [delta] steps away from the current one, skipping records that
-  /// left the range.
-  Future<({AvesEntry entry, int index})?> _resolveRewindTarget(GroupedWallpaperPlan plan, GroupedWallpaperState state, int delta) async {
-    var index = state.rewindCursor + delta;
-    while (index >= 0 && index < state.rewind.length && index < plan.historyLimit) {
-      final entry = await entrySource.entryById(plan.range, state.rewind[index].entryId);
-      if (entry != null) return (entry: entry, index: index);
-      index += delta;
-    }
-    return null;
-  }
-
-  /// Drops the records past the current photo that no longer resolve.
+  /// Drops the older records after a queued frame can no longer be shown.
   ///
-  /// The bar reads `canPrevious` from `state.json`; without this write it would
-  /// keep offering a "previous" the engine refuses.
-  Future<void> _trimRewind(GroupedWallpaperStateStore store, GroupedWallpaperState state) async {
-    final keep = state.rewind.take(state.rewindCursor + 1).toList(growable: false);
+  /// Without the write the bar would keep offering a "previous" the engine
+  /// refuses, which is exactly the dead button this walk exists to avoid.
+  Future<void> _trimRewind(GroupedWallpaperStateStore store, GroupedWallpaperState state, {int? entryId}) async {
+    var keep = state.rewind.take(state.rewindCursor + 1).toList(growable: false);
+    if (entryId != null) keep = keep.where((record) => record.entryId != entryId).toList(growable: false);
     if (keep.length == state.rewind.length) return;
-    await store.writeState(state.copyWith(rewind: keep, rewindCursor: keep.isEmpty ? 0 : keep.length - 1));
+    // A generation bump makes the renderer drop the in-memory neighbour it can no
+    // longer show, instead of promoting a dead record on the next tap.
+    await store.writeState(state.copyWith(generation: state.generation + 1, rewind: keep, rewindCursor: keep.isEmpty ? 0 : keep.length - 1, previous: -1));
+    await platform.reload();
     await platform.refreshNotification();
   }
 
-  /// The rewind stack after a photo was shown by a forward move.
+  /// Moves to the queued slot [target], keeping the frame it replaces as the
+  /// opposite neighbour.
   ///
-  /// The photo becomes the new anchor: it goes to the front and the cursor
-  /// resets, so the next "previous" is the photo it replaced. A layout re-bake
-  /// or a sync of the same photo keeps the current position, and a group switch
-  /// drops the old group's records.
-  static ({List<GroupedWallpaperRewindEntry> rewind, int cursor}) _rewindForNewPhoto(
-    GroupedWallpaperState? previous,
-    GroupedWallpaperPlan plan,
-    GroupedWallpaperSlot? slot,
-  ) {
-    final limit = plan.historyLimit;
-    if (slot == null || limit <= 0) return (rewind: const [], cursor: 0);
-    final entry = GroupedWallpaperRewindEntry(entryId: slot.entryId);
-    final base = previous != null && previous.groupId == plan.group.id ? previous : null;
-    if (base != null && base.currentSlot?.entryId == slot.entryId) {
-      final stack = base.rewind;
-      if (stack.isNotEmpty) return (rewind: stack, cursor: base.rewindCursor.clamp(0, stack.length - 1));
-      return (rewind: [entry], cursor: 0);
+  /// Both directions are one code path: the old frame is always the neighbour of
+  /// the new one, and the side that is not [target] is left to [_settle]. The
+  /// cursor follows the entry id, so a photo already in the walk moves the cursor
+  /// instead of creating a record, exactly like stepping back and forth.
+  static ({GroupedWallpaperState state, bool newPhoto})? _moveTo(GroupedWallpaperState state, int target, {required bool navigated}) {
+    if (target < 0 || target == state.current) return null;
+    final slot = state.slotById(target);
+    if (slot == null) return null;
+    final back = target == state.previous;
+    final index = state.rewind.indexWhere((entry) => entry.entryId == slot.entryId);
+    var newPhoto = false;
+    var rewind = state.rewind;
+    var cursor = state.rewindCursor;
+    if (index >= 0) {
+      cursor = index;
+    } else {
+      // A photo the walk has never seen becomes the newest record.
+      newPhoto = true;
+      final limit = state.historyLimit;
+      rewind = limit <= 0
+          ? const <GroupedWallpaperRewindEntry>[]
+          : [
+              GroupedWallpaperRewindEntry(entryId: slot.entryId),
+              ...state.rewind.where((entry) => entry.entryId != slot.entryId),
+            ].take(limit).toList(growable: false);
+      cursor = 0;
     }
-    final stack = [
-      entry,
-      if (base != null) ...base.rewind.where((candidate) => candidate.entryId != slot.entryId),
-    ].take(limit).toList(growable: false);
-    return (rewind: stack, cursor: 0);
+    final moved = state.copyWith(
+      generation: state.generation + 1,
+      status: GroupedWallpaperStatus.ready,
+      current: target,
+      previous: back ? -1 : state.current,
+      next: back ? state.current : -1,
+      rewind: rewind,
+      rewindCursor: cursor,
+      navigated: navigated,
+    );
+    return (state: moved, newPhoto: newPhoto);
   }
 
-  /// Bakes every missing slot of the queue for [plan].
+  /// Starts the walk over with a fresh photo as the newest record.
   ///
-  /// [seed] is the queue and the ordering metadata to keep (current/next
-  /// survive), or null to start the group over. [mustWrite] forces a state write
-  /// even when nothing was baked, because the renderer already promoted a slot
-  /// and its runtime must stop matching.
-  Future<GroupedWallpaperSyncResult> _bakeQueue(
+  /// A group change drops the old group's records; a photo that left the range
+  /// keeps them, so "previous" still reaches what the user saw before it went
+  /// away.
+  Future<GroupedWallpaperSyncResult> _startOver(
     GroupedWallpaperStateStore store,
-    GroupedWallpaperPlan plan, {
+    GroupedWallpaperPlan plan,
+    GroupedWallpaperState? previous, {
     required int total,
-    GroupedWallpaperState? previous,
-    GroupedWallpaperState? seed,
-    required bool mustWrite,
     required Size surface,
     required bool scrollEffect,
-    Map<int, AvesEntry> rebakeEntries = const {},
+    Set<int> exclude = const {},
   }) async {
-    final state = seed;
-    var current = state?.current ?? -1;
-    var next = state?.next ?? -1;
-    var next2 = state?.next2 ?? -1;
-    final slots = <GroupedWallpaperSlot>[
-      for (final slot in state?.slots ?? const <GroupedWallpaperSlot>[])
-        // A slot whose file disappeared is not part of the queue any more: it
-        // must be re-baked, not kept as an empty frame. The effect files are part
-        // of the frame too: a missing one would make the renderer skip the slot.
-        if ((slot.id == current || slot.id == next || slot.id == next2) &&
-            store.slotPhotoOf(slot) != null &&
-            (slot.effectHome.isEmpty || store.effectPhotoExists(slot.effectHome)) &&
-            (slot.effectLock.isEmpty || store.effectPhotoExists(slot.effectLock)))
-          slot,
-    ];
-    if (!slots.any((slot) => slot.id == current)) current = -1;
-    if (!slots.any((slot) => slot.id == next)) next = -1;
-    if (!slots.any((slot) => slot.id == next2)) next2 = -1;
-
-    var cursor = state?.cursor ?? 0;
-    var newestEntryId = state?.newestEntryId ?? 0;
-    var recent = state?.recent ?? const <GroupedWallpaperRecentEntry>[];
-    // Muzei starts its "new photos" marker at zero and walks the whole feed; an
-    // Aves group can hold thousands of photos, so "new" means "added after the
-    // wallpaper was set up" instead of "not shown yet".
-    if (newestEntryId <= 0 && total > 0) {
-      newestEntryId = await entrySource.newPhotoMarker(plan.range);
-    }
-    // The queue plus everything recently shown, so neither a random pick nor the
-    // "new photos" walk returns the photo that just left the screen.
-    final excluded = <int>{
-      for (final slot in slots) slot.entryId,
-      for (final entry in recent) entry.entryId,
-    };
-
-    // A slot keeps its id while it stays in the queue, so the renderer can keep
-    // the texture it already uploaded.
-    final usedIds = {for (final slot in slots) slot.id};
-    var bakedAny = false;
-    Future<GroupedWallpaperSlot?> bakeInto() async {
-      for (var attempt = 0; attempt < maxBakeAttempts; attempt++) {
-        final pick = await entrySource.pick(
-          plan.range,
-          ordering: plan.ordering,
-          cursor: cursor,
-          attempt: attempt,
-          newestEntryId: newestEntryId,
-          excludeEntryIds: excluded,
+    final sameGroup = previous != null && previous.groupId == plan.group.id;
+    final base = previous?.copyWith(
+          status: GroupedWallpaperStatus.ready,
+          current: -1,
+          previous: -1,
+          next: -1,
+          slots: const [],
+          rewind: sameGroup ? previous.rewind : const [],
+          rewindCursor: sameGroup ? previous.rewindCursor : 0,
+          navigated: false,
+        ) ??
+        GroupedWallpaperState(
+          status: GroupedWallpaperStatus.ready,
+          groupId: plan.group.id,
+          groupNumber: plan.group.number,
         );
-        final entry = pick.entry;
-        if (entry == null) return null;
-        // A real offset advances the in-order walk; a "new photo" pick leaves it
-        // alone, exactly like Muzei's repository.
-        if (pick.offset >= 0) cursor = pick.offset + 1;
-        final id = _nextSlotId(usedIds);
-        usedIds.add(id);
-        try {
-          final slot = await _bakeSlot(store, plan, entry, id, surface, scrollEffect);
-          bakedAny = true;
-          excluded.add(entry.id);
-          return slot;
-        } on GroupedWallpaperBakeException catch (error, stack) {
-          // Step to the next candidate rather than leaving the slot empty.
-          groupedWallpaperLog.w('bake failed entry=${entry.id} slot=$id attempt=$attempt', error, stack);
+    if (total <= 0) {
+      return await _settle(store, plan, base, total: total, surface: surface, scrollEffect: scrollEffect, newPhoto: false, navigated: false);
+    }
+    // [exclude] holds the entry that just failed to resolve: picking it again
+    // would loop between "the photo is gone" and "start over".
+    final excluded = <int>{for (final entry in base.recent) entry.entryId, ...exclude};
+    for (var attempt = 0; attempt < maxBakeAttempts; attempt++) {
+      final pick = await entrySource.pick(
+        plan.range,
+        ordering: plan.ordering,
+        cursor: base.cursor,
+        attempt: attempt,
+        newestEntryId: base.newestEntryId,
+        excludeEntryIds: excluded,
+      );
+      final entry = pick.entry;
+      if (entry == null) break;
+      try {
+        final slot = await _slotForEntry(store, plan, entry, _nextSlotId(const {}), surface, scrollEffect);
+        final limit = plan.historyLimit;
+        final rewind = limit <= 0
+            ? const <GroupedWallpaperRewindEntry>[]
+            : [
+                GroupedWallpaperRewindEntry(entryId: entry.id),
+                ...base.rewind.where((record) => record.entryId != entry.id),
+              ].take(limit).toList(growable: false);
+        final seeded = base.copyWith(
+          generation: base.generation + 1,
+          status: GroupedWallpaperStatus.ready,
+          current: slot.id,
+          previous: -1,
+          next: -1,
+          slots: [slot],
+          rewind: rewind,
+          rewindCursor: 0,
+          cursor: pick.offset >= 0 ? pick.offset + 1 : base.cursor,
+          count: total,
+          newestEntryId: entry.id > base.newestEntryId ? entry.id : base.newestEntryId,
+          ordering: plan.ordering,
+          bakedAt: now(),
+        );
+        final newPhoto = previous?.entryId != entry.id || !sameGroup;
+        return await _settle(store, plan, seeded, total: total, surface: surface, scrollEffect: scrollEffect, newPhoto: newPhoto, navigated: false);
+      } on GroupedWallpaperBakeException catch (error, stack) {
+        groupedWallpaperLog.w('start bake failed entry=${entry.id} attempt=$attempt', error, stack);
+        excluded.add(entry.id);
+      }
+    }
+    throw const GroupedWallpaperBakeException('no usable photo in the group');
+  }
+
+  /// Makes [state] drawable, adopting a promotion the user made while it baked.
+  ///
+  /// The renderer can promote a neighbour at any time and records it in
+  /// `runtime.json`. A bake is long enough for that to happen, so the queue is
+  /// settled again from the promoted frame instead of writing a state that would
+  /// visibly rewind the wallpaper.
+  Future<GroupedWallpaperSyncResult> _settle(
+    GroupedWallpaperStateStore store,
+    GroupedWallpaperPlan plan,
+    GroupedWallpaperState state, {
+    required int total,
+    required Size surface,
+    required bool scrollEffect,
+    required bool newPhoto,
+    required bool navigated,
+  }) async {
+    var current = state;
+    var recordsNewPhoto = newPhoto;
+    var isNavigated = navigated;
+    var result = GroupedWallpaperSyncResult.unchanged;
+    // A tap during the first bake, then another during the refill: bounded so a
+    // very fast double tap cannot spin here.
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final outcome = await _settleOnce(
+        store,
+        plan,
+        current,
+        total: total,
+        surface: surface,
+        scrollEffect: scrollEffect,
+        newPhoto: recordsNewPhoto,
+        navigated: isNavigated,
+      );
+      result = outcome.result;
+      final move = outcome.promoted;
+      if (move == null) return result;
+      current = move.state;
+      recordsNewPhoto = move.newPhoto;
+      isNavigated = true;
+    }
+    return result;
+  }
+
+  /// Makes [state] drawable: the current frame at the latest layout, plus a baked
+  /// neighbour on each side of the cursor.
+  ///
+  /// At most one frame is baked: the side the move walked away from. Every other
+  /// frame comes from the queue or from the cache, which is what makes stepping
+  /// through the usage history feel instant.
+  Future<({GroupedWallpaperSyncResult result, ({GroupedWallpaperState state, bool newPhoto})? promoted})> _settleOnce(
+    GroupedWallpaperStateStore store,
+    GroupedWallpaperPlan plan,
+    GroupedWallpaperState state, {
+    required int total,
+    required Size surface,
+    required bool scrollEffect,
+    required bool newPhoto,
+    required bool navigated,
+  }) async {
+    final layoutStale = _isLayoutStale(state, surface, scrollEffect);
+    final slots = <int, GroupedWallpaperSlot>{};
+    final usedIds = <int>{};
+
+    var currentSlot = state.currentSlot;
+    if (currentSlot == null) {
+      final empty = GroupedWallpaperState(
+        generation: state.generation + 1,
+        status: total <= 0 ? GroupedWallpaperStatus.emptyGroup : GroupedWallpaperStatus.unavailable,
+        groupId: plan.group.id,
+        groupNumber: plan.group.number,
+        groupName: _resolveName(plan.group),
+        count: total,
+        ordering: plan.ordering,
+        gestures: plan.gestures,
+        notification: plan.notification,
+        surfaceWidth: surface.width.round(),
+        surfaceHeight: surface.height.round(),
+        scrollEffect: scrollEffect,
+        historyLimit: plan.historyLimit,
+        switchLocked: _groupSwitchLocked(),
+        switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
+        groups: _groupSnapshot(plan),
+        bakedAt: now(),
+      );
+      await store.clearSlots();
+      await store.writeState(empty);
+      await platform.reload();
+      return (result: total <= 0 ? GroupedWallpaperSyncResult.empty : GroupedWallpaperSyncResult.unchanged, promoted: null);
+    }
+    final currentEntry = await entrySource.entryById(plan.range, currentSlot.entryId);
+    if (currentEntry == null) {
+      // The photo is gone: start the group over instead of keeping a frame the
+      // range no longer contains.
+      final result = await _startOver(store, plan, state, total: total, surface: surface, scrollEffect: scrollEffect, exclude: {currentSlot.entryId});
+      return (result: result, promoted: null);
+    }
+    if (layoutStale || !_slotUsable(store, currentSlot)) {
+      currentSlot = await _slotForEntry(store, plan, currentEntry, currentSlot.id, surface, scrollEffect);
+    }
+    slots[currentSlot.id] = currentSlot;
+    usedIds.add(currentSlot.id);
+
+    var rewind = state.rewind;
+    var cursor = state.rewindCursor.clamp(0, rewind.isEmpty ? 0 : rewind.length - 1);
+    GroupedWallpaperSlot? previousSlot = state.previousSlot;
+    GroupedWallpaperSlot? nextSlot = state.nextSlot;
+
+    /// The id a re-baked neighbour takes: its own while it is free, a fresh one
+    /// otherwise. Reusing an id the other side already claimed would make both
+    /// neighbours the same slot.
+    int claimId(GroupedWallpaperSlot? queued) {
+      final id = queued?.id;
+      if (id != null && !usedIds.contains(id)) return id;
+      return _nextSlotId(usedIds);
+    }
+    var pickCursor = state.cursor;
+    var newestEntryId = state.newestEntryId;
+
+    if (cursor + 1 >= rewind.length || cursor + 1 >= plan.historyLimit) {
+      previousSlot = null;
+    } else {
+      final entryId = rewind[cursor + 1].entryId;
+      final queued = previousSlot;
+      if (queued != null && queued.entryId == entryId && !usedIds.contains(queued.id) && !layoutStale && _slotUsable(store, queued)) {
+        slots[queued.id] = queued;
+        usedIds.add(queued.id);
+      } else {
+        final entry = await entrySource.entryById(plan.range, entryId);
+        if (entry == null) {
+          // It left the range: drop it and everything older, so "previous"
+          // stops here instead of failing.
+          rewind = rewind.take(cursor + 1).toList(growable: false);
+          previousSlot = null;
+        } else {
+          previousSlot = await _slotForEntry(store, plan, entry, claimId(queued), surface, scrollEffect);
+          usedIds.add(previousSlot.id);
+          slots[previousSlot.id] = previousSlot;
         }
       }
-      return null;
     }
 
-    // `current` first: it is what the user sees, so it must never be the slot
-    // left empty while the queue ahead is filled.
-    GroupedWallpaperSlot? kept(int id) {
-      // A slot queued for a layout re-bake must not be kept as it is: its file
-      // still has the old geometry.
-      if (rebakeEntries.containsKey(id)) return null;
-      for (final slot in slots) {
-        if (slot.id == id) return slot;
-      }
-      return null;
-    }
-
-    /// Re-bakes a queued slot's own photo into the same id for the new layout.
-    Future<GroupedWallpaperSlot?> bakeSame(int id) async {
-      final entry = rebakeEntries[id];
-      if (entry == null) return null;
-      try {
-        final slot = await _bakeSlot(store, plan, entry, id, surface, scrollEffect);
-        bakedAny = true;
-        return slot;
-      } on GroupedWallpaperBakeException catch (error, stack) {
-        groupedWallpaperLog.w('layout re-bake failed entry=${entry.id} slot=$id', error, stack);
-        return null;
+    if (cursor > 0) {
+      final entryId = rewind[cursor - 1].entryId;
+      final queued = nextSlot;
+      if (queued != null && queued.entryId == entryId && !usedIds.contains(queued.id) && !layoutStale && _slotUsable(store, queued)) {
+        slots[queued.id] = queued;
+        usedIds.add(queued.id);
+      } else {
+        final entry = await entrySource.entryById(plan.range, entryId);
+        if (entry == null) {
+          // The newer record died: it becomes the head, so the next step
+          // creates a fresh photo instead of a hole in the walk.
+          rewind = rewind.sublist(cursor);
+          cursor = 0;
+          nextSlot = null;
+        } else {
+          nextSlot = await _slotForEntry(store, plan, entry, claimId(queued), surface, scrollEffect);
+          usedIds.add(nextSlot.id);
+          slots[nextSlot.id] = nextSlot;
+        }
       }
     }
-
-    GroupedWallpaperSlot? currentSlot = kept(current) ?? await bakeSame(current);
-    if (currentSlot == null) {
-      currentSlot = await bakeInto();
-      current = currentSlot?.id ?? -1;
-      // The group has images but none could be picked or decoded: show the
-      // placeholder and report a failure, instead of claiming an empty group.
-      // A failed prefetch, on the other hand, keeps the frame and the queue.
-      if (currentSlot == null && total > 0) {
-        throw const GroupedWallpaperBakeException('no usable photo in the group');
+    if (cursor == 0) {
+      // The newest record is on screen, so the forward step creates a new one.
+      final queued = nextSlot;
+      if (queued != null && !usedIds.contains(queued.id) && !layoutStale && _slotUsable(store, queued)) {
+        slots[queued.id] = queued;
+        usedIds.add(queued.id);
+      } else {
+        final picked = await _pickNext(store, plan, state, currentSlot, previousSlot, slots, usedIds, surface: surface, scrollEffect: scrollEffect);
+        nextSlot = picked?.slot;
+        if (picked != null) {
+          pickCursor = picked.cursor;
+          slots[picked.slot.id] = picked.slot;
+        }
       }
     }
-    final byId = {for (final slot in slots) slot.id: slot};
-    if (currentSlot != null) byId[currentSlot.id] = currentSlot;
 
-    if (prefetchAhead >= 1) {
-      var nextSlot = kept(next) ?? await bakeSame(next);
-      nextSlot ??= await bakeInto();
-      next = nextSlot?.id ?? -1;
-      if (nextSlot != null) byId[nextSlot.id] = nextSlot;
-    } else {
-      next = -1;
-    }
-    if (prefetchAhead >= 2) {
-      var next2Slot = kept(next2) ?? await bakeSame(next2);
-      next2Slot ??= await bakeInto();
-      next2 = next2Slot?.id ?? -1;
-      if (next2Slot != null) byId[next2Slot.id] = next2Slot;
-    } else {
-      next2 = -1;
-    }
-
-    // A tap can promote while this run bakes. The renderer writes the runtime
-    // with the seed generation, so reading it again keeps the promoted photo
-    // instead of writing a state that rewinds to the seed's current.
-    final promotion = await _adoptPromotionDuringBake(store, state, byId, current, next, next2);
-    if (promotion != null) {
-      // The seed's current was on screen until that tap.
-      recent = GroupedWallpaperState.promoteRecent(recent, currentSlot, groupId: plan.group.id);
-      current = promotion.$1;
-      next = promotion.$2;
-      next2 = promotion.$3;
-      currentSlot = byId[current];
+    // A tap can promote one of the neighbours while this run bakes. The renderer
+    // writes the runtime with the seed generation, so a matching one that names a
+    // queued slot is exactly that: the user moved on, and the queue must follow.
+    final runtime = await store.readRuntime();
+    if (runtime != null && runtime.matches(state) && runtime.current != state.current && slots.containsKey(runtime.current)) {
+      final move = _moveTo(
+        state.copyWith(
+          current: currentSlot.id,
+          previous: previousSlot?.id ?? -1,
+          next: nextSlot?.id ?? -1,
+          slots: [for (final slot in slots.values) slot],
+        ),
+        runtime.current,
+        navigated: true,
+      );
+      if (move != null) {
+        groupedWallpaperLog.d('queue.adopt during bake current=${runtime.current}');
+        return (result: GroupedWallpaperSyncResult.baked, promoted: move);
+      }
     }
 
-    // Only the photo on screen is "recently shown"; the queued ones are excluded
-    // through the queue itself.
-    recent = GroupedWallpaperState.promoteRecent(recent, currentSlot, groupId: plan.group.id);
-    if (currentSlot != null && currentSlot.entryId > newestEntryId) {
-      newestEntryId = currentSlot.entryId;
-    }
+    if (previousSlot != null && nextSlot != null && previousSlot.id == nextSlot.id) nextSlot = null;
+    if (previousSlot != null && previousSlot.id == currentSlot.id) previousSlot = null;
+    if (nextSlot != null && nextSlot.id == currentSlot.id) nextSlot = null;
 
-    // The rewind stack is the usage history as "previous" walks it. A history
-    // step keeps the cursor its caller chose; any other write treats a changed
-    // photo as a new anchor, so the double tap and the interval restart the walk
-    // from the photo they just showed.
-    final navigated = state?.navigated == true;
-    final rewindState = navigated
-        ? (rewind: state!.rewind, cursor: state.rewindCursor)
-        : _rewindForNewPhoto(previous, plan, currentSlot);
-
-    final ordered = [current, next, next2].where((id) => id >= 0).toList();
-    // An empty group must still record its empty state, even though nothing was
-    // baked.
-    if (!bakedAny && !mustWrite && promotion == null && current >= 0) return GroupedWallpaperSyncResult.unchanged;
-    if (ordered.isEmpty) {
-      await store.clearSlots();
-    } else {
-      await store.pruneSlots(ordered);
-    }
+    if (currentSlot.entryId > newestEntryId) newestEntryId = currentSlot.entryId;
+    final ordered = <int>{
+      if (previousSlot != null) previousSlot.id,
+      currentSlot.id,
+      if (nextSlot != null) nextSlot.id,
+    }.toList();
     final nextState = GroupedWallpaperState(
-      generation: (state?.generation ?? 0) + 1,
-      status: current < 0 ? GroupedWallpaperStatus.emptyGroup : GroupedWallpaperStatus.ready,
+      generation: state.generation + 1,
+      status: GroupedWallpaperStatus.ready,
       groupId: plan.group.id,
       groupNumber: plan.group.number,
       groupName: _resolveName(plan.group),
       count: total,
-      current: current,
-      next: next,
-      next2: next2,
-      slots: [for (final id in ordered) byId[id]!],
-      recent: recent,
-      rewind: rewindState.rewind,
-      rewindCursor: rewindState.cursor,
+      current: currentSlot.id,
+      previous: previousSlot?.id ?? -1,
+      next: nextSlot?.id ?? -1,
+      slots: [for (final id in ordered) slots[id]!],
+      recent: GroupedWallpaperState.promoteRecent(state.recent, currentSlot, groupId: plan.group.id),
+      rewind: rewind,
+      rewindCursor: cursor,
       navigated: navigated,
-      cursor: cursor,
+      cursor: pickCursor,
       newestEntryId: newestEntryId,
       ordering: plan.ordering,
       gestures: plan.gestures,
@@ -902,47 +1008,167 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       bakedAt: now(),
     );
     await store.writeState(nextState);
-    await _recordShown(plan, currentSlot, previous);
+    await store.pruneFrames(keep: _framePaths(nextState), maxFrames: _frameCacheDepth(plan));
+    // Frames written before the entry-keyed cache lived under `slots/`.
+    await store.pruneSlots(const []);
+    if (newPhoto) await _recordShown(plan, currentSlot);
     await platform.reload();
-    groupedWallpaperLog.d('queue.baked current=$current next=$next next2=$next2 count=$total cursor=$cursor surface=${surface.width.round()}x${surface.height.round()} scrollEffect=$scrollEffect');
-    return current < 0 ? GroupedWallpaperSyncResult.empty : GroupedWallpaperSyncResult.baked;
+    groupedWallpaperLog.d('queue.settled current=${nextState.current} previous=${nextState.previous} next=${nextState.next} cursor=${nextState.rewindCursor}/${rewind.length} count=$total');
+    return (result: GroupedWallpaperSyncResult.baked, promoted: null);
   }
 
-  /// Bakes [entry] into slot [id], including the group's effect images.
+  /// Picks the photo a forward step from the newest record will show.
   ///
-  /// Shared by the forward queue and "previous photo", so both write exactly the
-  /// same file set and the renderer never sees a half-baked slot.
-  Future<GroupedWallpaperSlot> _bakeSlot(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, AvesEntry entry, int id, Size surface, bool scrollEffect) async {
-    final targetSize = scrollEffect ? _scrollTarget(surface, entry) : surface;
+  /// It is baked now, so the next double tap or interval is instant. A photo that
+  /// already belongs to the walk is not a new record: [_moveTo] then moves the
+  /// cursor to it instead.
+  Future<({GroupedWallpaperSlot slot, int cursor})?> _pickNext(
+    GroupedWallpaperStateStore store,
+    GroupedWallpaperPlan plan,
+    GroupedWallpaperState state,
+    GroupedWallpaperSlot currentSlot,
+    GroupedWallpaperSlot? previousSlot,
+    Map<int, GroupedWallpaperSlot> slots,
+    Set<int> usedIds, {
+    required Size surface,
+    required bool scrollEffect,
+  }) async {
+    final excluded = <int>{
+      for (final slot in slots.values) slot.entryId,
+      currentSlot.entryId,
+      if (previousSlot != null) previousSlot.entryId,
+      for (final entry in state.recent) entry.entryId,
+    };
+    var cursor = state.cursor;
+    for (var attempt = 0; attempt < maxBakeAttempts; attempt++) {
+      final pick = await entrySource.pick(
+        plan.range,
+        ordering: plan.ordering,
+        cursor: cursor,
+        attempt: attempt,
+        newestEntryId: state.newestEntryId,
+        excludeEntryIds: excluded,
+      );
+      final entry = pick.entry;
+      if (entry == null) return null;
+      if (pick.offset >= 0) cursor = pick.offset + 1;
+      final id = _nextSlotId(usedIds);
+      try {
+        final slot = await _slotForEntry(store, plan, entry, id, surface, scrollEffect);
+        usedIds.add(id);
+        return (slot: slot, cursor: cursor);
+      } on GroupedWallpaperBakeException catch (error, stack) {
+        groupedWallpaperLog.w('neighbour bake failed entry=${entry.id} attempt=$attempt', error, stack);
+        excluded.add(entry.id);
+      }
+    }
+    return null;
+  }
+
+  /// Every file the state may draw, for the frame cache's eviction.
+  static Set<String> _framePaths(GroupedWallpaperState state) => {
+        for (final slot in state.slots) ...[
+          slot.photo,
+          if (slot.effectHome.isNotEmpty) slot.effectHome,
+          if (slot.effectLock.isNotEmpty) slot.effectLock,
+        ],
+      };
+
+  /// How many frames the cache keeps, so stepping back stays instant.
+  ///
+  /// Bounded so a long history does not turn into hundreds of megabytes of PNGs;
+  /// a frame beyond the cache is baked once more when it is reached.
+  static int _frameCacheDepth(GroupedWallpaperPlan plan) => math.max(6, math.min(plan.historyLimit, 24));
+
+  /// Whether a slot's files are all still on disk.
+  static bool _slotUsable(GroupedWallpaperStateStore store, GroupedWallpaperSlot slot) {
+    if (store.slotPhotoOf(slot) == null) return false;
+    if (slot.effectHome.isNotEmpty && !store.effectPhotoExists(slot.effectHome)) return false;
+    if (slot.effectLock.isNotEmpty && !store.effectPhotoExists(slot.effectLock)) return false;
+    return true;
+  }
+
+  /// The frame of [entry] for slot [id], from the cache when it was baked before.
+  ///
+  /// The cache key carries the target size and the effects, so a hit is exactly
+  /// the frame this slot would have produced: stepping back through the usage
+  /// history costs a file reference instead of a decode, an effect pass and an
+  /// encode.
+  Future<GroupedWallpaperSlot> _slotForEntry(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, AvesEntry entry, int id, Size surface, bool scrollEffect) async {
+    final target = scrollEffect ? _scrollTarget(surface, entry) : surface;
+    final key = _frameKey(plan, target, scrollEffect);
+    final title = entry.bestTitle ?? '';
+    final cached = store.cachedFrame(entry.id, key);
+    if (cached != null) {
+      return GroupedWallpaperSlot(
+        id: id,
+        entryId: entry.id,
+        uri: entry.uri,
+        title: title,
+        photo: cached.photo,
+        effectHome: cached.effectHome,
+        effectLock: cached.effectLock,
+        width: cached.width,
+        height: cached.height,
+        darkness: cached.darkness,
+      );
+    }
     final bake = await baker.bake(
       entry: entry,
-      targetSize: targetSize,
+      targetSize: target,
       home: plan.effects.home,
       lock: plan.effects.effectiveLock,
     );
-    final photo = await store.writeSlotPhoto(id, bake.sharpPng);
-    // An identity effect is byte-identical to the sharp photo: pointing at the
-    // same file avoids a second copy of a multi-megabyte PNG.
+    final photo = await store.writeFramePhoto(entry.id, key, bake.sharpPng);
+    // An identity effect is the sharp frame: leaving the path empty makes the
+    // renderer fall back to it instead of storing a second copy of the PNG.
     final effectHome = identical(bake.effectsHomePng, bake.sharpPng)
-        ? photo
-        : await store.writeSlotPhoto(id, bake.effectsHomePng, name: GroupedWallpaperStateStore.slotEffectHomeFileName);
+        ? ''
+        : await store.writeFramePhoto(entry.id, key, bake.effectsHomePng, name: GroupedWallpaperStateStore.slotEffectHomeFileName);
     final effectLock = identical(bake.effectsLockPng, bake.sharpPng)
-        ? photo
+        ? ''
         : identical(bake.effectsLockPng, bake.effectsHomePng)
             ? effectHome
-            : await store.writeSlotPhoto(id, bake.effectsLockPng, name: GroupedWallpaperStateStore.slotEffectLockFileName);
+            : await store.writeFramePhoto(entry.id, key, bake.effectsLockPng, name: GroupedWallpaperStateStore.slotEffectLockFileName);
+    final width = bake.size.width.round();
+    final height = bake.size.height.round();
+    await store.writeFrameMeta(entry.id, key, width: width, height: height, darkness: bake.darkness, title: title, uri: entry.uri);
     return GroupedWallpaperSlot(
       id: id,
       entryId: entry.id,
       uri: entry.uri,
-      title: entry.bestTitle ?? '',
+      title: title,
       photo: photo,
       effectHome: effectHome,
       effectLock: effectLock,
-      width: bake.size.width.round(),
-      height: bake.size.height.round(),
+      width: width,
+      height: height,
       darkness: bake.darkness,
     );
+  }
+
+  /// Cache key of one photo at one layout.
+  ///
+  /// The surface and the effects decide every pixel of a baked frame, so a change
+  /// to either must miss the cache instead of showing the previous rendering.
+  static String _frameKey(GroupedWallpaperPlan plan, Size target, bool scrollEffect) {
+    final effects = jsonEncode([
+      plan.effects.home.toJsonMap(),
+      plan.effects.effectiveLock.toJsonMap(),
+      scrollEffect,
+    ]);
+    return '${target.width.round()}x${target.height.round()}-${_fingerprint(effects)}';
+  }
+
+  /// A short, stable hash for a directory name.
+  ///
+  /// `String.hashCode` is randomized per process, so it cannot name a file.
+  static String _fingerprint(String value) {
+    var hash = 0x811c9dc5;
+    for (final unit in value.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
   }
 
   /// The smallest slot id not in use, so a freed slot is recycled instead of
@@ -953,71 +1179,17 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     }
   }
 
-  /// Moves the queue one step forward, as a tap on the wallpaper does natively.
-  ///
-  /// Returns whether anything was promoted: a group with fewer images than the
-  /// queue depth has no `next`, and a sync must then keep the current photo
-  /// instead of blanking the wallpaper.
-  static (GroupedWallpaperState?, bool) _promote(GroupedWallpaperState? state) {
-    if (state == null || state.next < 0) return (state, false);
-    return (
-      state.copyWith(
-        current: state.next,
-        next: state.next2,
-        next2: -1,
-        slots: [for (final slot in state.slots) if (slot.id == state.next || slot.id == state.next2) slot],
-      ),
-      true,
-    );
-  }
-
   /// Adopts the slot the native renderer promoted to, when the runtime still
   /// belongs to the state we know about.
   ///
-  /// Forward only: a promotion can only target a slot queued after [state]'s
-  /// current. A runtime pointing at the current slot, or at a slot that left the
-  /// queue, is not a promotion of this state and is ignored.
-  static GroupedWallpaperState? _adoptRuntime(GroupedWallpaperState? state, GroupedWallpaperRuntime? runtime) {
-    if (state == null || runtime == null) return state;
-    if (!runtime.matches(state)) return state;
-    final queue = [state.current, state.next, state.next2].where((id) => id >= 0).toList();
-    final index = queue.indexOf(runtime.current);
-    if (index <= 0) return state;
-    final next = index + 1 < queue.length ? queue[index + 1] : -1;
-    return state.copyWith(
-      current: queue[index],
-      next: next,
-      next2: -1,
-      slots: [for (final slot in state.slots) if (slot.id == queue[index] || slot.id == next) slot],
-    );
-  }
-
-  /// Adopts a promotion the renderer made while [seed]'s queue was baking.
-  ///
-  /// Returns the queue after the promotion, or null when the runtime is not a
-  /// promotion of [seed] or targets a slot this run has not baked. The renderer
-  /// writes the runtime synchronously with the seed generation, so a matching
-  /// generation is exactly "promoted while this bake was running".
-  Future<(int, int, int)?> _adoptPromotionDuringBake(
-    GroupedWallpaperStateStore store,
-    GroupedWallpaperState? seed,
-    Map<int, GroupedWallpaperSlot> baked,
-    int current,
-    int next,
-    int next2,
-  ) async {
-    if (seed == null) return null;
-    final runtime = await store.readRuntime();
-    if (runtime == null || !runtime.matches(seed)) return null;
-    // A promotion always targets a slot of the seed queue, ahead of its current.
-    // Checking the seed queue (not the rebuilt one) also rejects a slot id that
-    // the bake recycled for another photo.
-    final seedQueue = [seed.current, seed.next, seed.next2].where((id) => id >= 0).toList();
-    if (seedQueue.indexOf(runtime.current) <= 0) return null;
-    final queue = [current, next, next2].where((id) => id >= 0).toList();
-    final index = queue.indexOf(runtime.current);
-    if (index <= 0 || !baked.containsKey(runtime.current)) return null;
-    return (queue[index], index + 1 < queue.length ? queue[index + 1] : -1, -1);
+  /// The renderer only ever promotes one of the two queued neighbours, so the
+  /// move and its cursor are exactly what a page tap would have done: stepping
+  /// back and forth through the usage records, and creating a new record only
+  /// from the newest one.
+  static ({GroupedWallpaperState state, bool newPhoto})? _adoptRuntime(GroupedWallpaperState? state, GroupedWallpaperRuntime? runtime) {
+    if (state == null || runtime == null) return null;
+    if (!runtime.matches(state)) return null;
+    return _moveTo(state, runtime.current, navigated: true);
   }
 
   /// Whether [previous] is a frame of a real group, i.e. the wallpaper was
@@ -1049,22 +1221,6 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     return previous.scrollEffect != scrollEffect;
   }
 
-  /// The entries of the queue, so a layout change re-bakes them into the same
-  /// slots instead of picking other photos.
-  ///
-  /// Returns an empty map when a slot's entry is gone: the caller then restarts
-  /// the group rather than leave one frame at the old size.
-  Future<Map<int, AvesEntry>> _layoutRebake(GroupedWallpaperPlan plan, GroupedWallpaperState? state) async {
-    if (state == null) return const {};
-    final entries = <int, AvesEntry>{};
-    for (final slot in state.slots) {
-      final entry = await entrySource.entryById(plan.range, slot.entryId);
-      if (entry == null) return const {};
-      entries[slot.id] = entry;
-    }
-    return entries;
-  }
-
   /// Whether frames should keep the photo's whole width for the launcher to pan.
   ///
   /// The switch is the user's, but a launcher that never pans (`xOffsetStep` 0)
@@ -1089,40 +1245,34 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     return Size(math.min(width, GroupedWallpaperBaker.maxDimension.toDouble()), surface.height);
   }
 
-  /// Whether [previous] already holds the whole queue for the current media set,
-  /// with every baked photo on disk.
+  /// Whether [state] already has the neighbours its cursor implies, on disk.
   ///
-  /// The queue length is compared with what the group can actually provide, so a
-  /// two-image group is ready with two slots instead of re-baking forever. A state
-  /// written by an older build has one slot and therefore upgrades on the first
-  /// run.
-  Future<bool> _isQueueReady(GroupedWallpaperStateStore store, int total, GroupedWallpaperState? previous) async {
-    if (previous == null) return false;
-    if (previous.status == GroupedWallpaperStatus.emptyGroup && total == 0) return true;
-    if (previous.status != GroupedWallpaperStatus.ready || !previous.hasPhoto) return false;
-    final wanted = total < prefetchAhead + 1 ? total : prefetchAhead + 1;
-    if (previous.queueLength < wanted) return false;
-    for (final slot in previous.slots) {
-      // The files can be gone while the state still points at them (cache
-      // cleanup, manual wipe): a frame that is not on disk is not ready.
-      if (store.slotPhotoOf(slot) == null) return false;
-      if (slot.effectHome.isNotEmpty && !store.effectPhotoExists(slot.effectHome)) return false;
-      if (slot.effectLock.isNotEmpty && !store.effectPhotoExists(slot.effectLock)) return false;
+  /// A missing side normally means a bake is pending; the caller then settles
+  /// instead of writing a state the bar would have to refuse.
+  Future<bool> _isQueueReady(GroupedWallpaperStateStore store, int total, GroupedWallpaperState state) async {
+    if (state.status == GroupedWallpaperStatus.emptyGroup && total == 0) return true;
+    if (state.status != GroupedWallpaperStatus.ready || !state.hasPhoto) return false;
+    final wantsOlder = state.rewindCursor + 1 < state.rewind.length && state.rewindCursor + 1 < state.historyLimit;
+    if (wantsOlder != (state.previous >= 0)) return false;
+    if (state.next < 0) return false;
+    // Both sides must name different slots: a file that queues one id twice
+    // describes no move at all.
+    if (state.previous >= 0 && state.previous == state.next) return false;
+    if (state.previous == state.current || state.next == state.current) return false;
+    for (final slot in state.slots) {
+      if (!_slotUsable(store, slot)) return false;
     }
     return true;
   }
 
-  /// Records the photo now on screen, when it is not the one already there.
+  /// Records a photo the walk has never seen as the newest usage record.
   ///
-  /// Only a change of the visible photo is recorded: a layout re-bake, a freeze, a
-  /// resume, a disable or a lock all keep the same entry, so they add no row. A
-  /// group switch is a change even when the same photo happens to be in both
-  /// groups, because the history is per group.
-  Future<void> _recordShown(GroupedWallpaperPlan plan, GroupedWallpaperSlot? slot, GroupedWallpaperState? previous) async {
-    if (slot == null || slot.entryId <= 0) return;
+  /// Stepping back and forth through the records does not call this: browsing is
+  /// not "using" a photo again, and rewriting `usedAt` on every step would reorder
+  /// the history the walk is based on.
+  Future<void> _recordShown(GroupedWallpaperPlan plan, GroupedWallpaperSlot slot) async {
+    if (slot.entryId <= 0) return;
     if (plan.historyLimit <= 0) return;
-    final shown = previous?.currentSlot;
-    if (shown != null && shown.entryId == slot.entryId && previous?.groupId == plan.group.id) return;
     try {
       await history.record(
         entryId: slot.entryId,

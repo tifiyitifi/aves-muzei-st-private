@@ -580,7 +580,7 @@ object GroupedWallpaperNotification {
         } else {
             // With recording off the engine refuses "previous", so the bar greys
             // the button instead of offering an action that does nothing.
-            entryButtons(context, big, ready, canPrevious = ready && state.canPrevious)
+            entryButtons(context, big, ready, canPrevious = ready && state.canRegress)
         }
         for (button in buttons) {
             views.setImageViewResource(button.viewId, button.iconRes)

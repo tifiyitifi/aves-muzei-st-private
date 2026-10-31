@@ -263,9 +263,10 @@ class GroupedWallpaperGroup extends Equatable {
 /// count, status), so the service never has to ask the app for text it cannot
 /// localize itself.
 ///
-/// [current] → [next] → [next2] is the promotion queue. The renderer promotes
-/// [next] on a wallpaper tap and [next2] on the following one, so two consecutive
-/// taps need no bake; Dart refills the freed slots afterwards.
+/// [previous] → [current] → [next] is the navigation queue. Both neighbours are
+/// baked, so the renderer can step through the usage history in either direction
+/// without waiting for a bake: a wallpaper tap promotes [next], the bar's
+/// "previous" promotes [previous], and Dart refills what was left behind.
 ///
 /// Parsing is deliberately tolerant: a state file written by another version, or
 /// truncated by a crash, must leave the wallpaper on its placeholder instead of
@@ -274,15 +275,17 @@ class GroupedWallpaperGroup extends Equatable {
 class GroupedWallpaperState extends Equatable {
   /// v2 added the slot queue; v3 added the ordering metadata ([recent],
   /// [cursor], [newestEntryId]); v4 added the group id of a recent entry; v5
-  /// added the rewind stack ([rewind], [rewindCursor]) and [navigated]. Older
-  /// files are read with those at their defaults, so an upgrade never loses the
-  /// frame on screen. [notification], the [surfaceWidth] / [surfaceHeight]
-  /// layout, [scrollEffect], [historyLimit], [switchLocked], [switchLockedGroupId]
-  /// and [groups] were added afterwards without a version bump: a file without
-  /// them means "on" for the bar and "unknown" for the layout, which re-bakes
-  /// once. A v4 file seeds [rewind] from [recent], so "previous" works right
-  /// after the update.
-  static const int currentVersion = 5;
+  /// added the rewind stack ([rewind], [rewindCursor]) and [navigated]; v6 made
+  /// both neighbours explicit ([previous], [next]) so the native side can step
+  /// through the records without baking. Older files are read with those at
+  /// their defaults, so an upgrade never loses the frame on screen.
+  /// [notification], the [surfaceWidth] / [surfaceHeight] layout,
+  /// [scrollEffect], [historyLimit], [switchLocked], [switchLockedGroupId] and
+  /// [groups] were added afterwards without a version bump: a file without them
+  /// means "on" for the bar and "unknown" for the layout, which re-bakes once.
+  /// A v4 file seeds [rewind] from [recent], so "previous" works right after the
+  /// update.
+  static const int currentVersion = 6;
 
   /// How many recently shown photos are remembered.
   ///
@@ -309,9 +312,21 @@ class GroupedWallpaperState extends Equatable {
   /// Number of images the group currently resolves to.
   final int count;
 
+  /// The slot on screen.
   final int current;
+
+  /// The slot of the older history record, or `-1` when the walk reached its end.
+  final int previous;
+
+  /// The slot of the newer history record, or the freshly picked photo when the
+  /// cursor is at the newest record. `-1` when the group cannot move forward.
   final int next;
-  final int next2;
+
+  /// The baked neighbours ([previous], [current], [next]).
+  ///
+  /// Both directions are queued so the native side can step through the usage
+  /// history without waiting for a bake: the bar and a wallpaper gesture only
+  /// change which slot is drawn, and Dart refills the neighbour left behind.
   final List<GroupedWallpaperSlot> slots;
 
   /// Photos the wallpaper has shown, newest first.
@@ -414,8 +429,8 @@ class GroupedWallpaperState extends Equatable {
     this.groupName = '',
     this.count = 0,
     this.current = -1,
+    this.previous = -1,
     this.next = -1,
-    this.next2 = -1,
     this.slots = const [],
     this.recent = const [],
     this.rewind = const [],
@@ -446,9 +461,9 @@ class GroupedWallpaperState extends Equatable {
 
   GroupedWallpaperSlot? get currentSlot => slotById(current);
 
-  GroupedWallpaperSlot? get nextSlot => slotById(next);
+  GroupedWallpaperSlot? get previousSlot => slotById(previous);
 
-  GroupedWallpaperSlot? get next2Slot => slotById(next2);
+  GroupedWallpaperSlot? get nextSlot => slotById(next);
 
   /// Whether the state points at a baked frame, whatever the status: a locked or
   /// turned-off group keeps showing the photo it stopped on.
@@ -456,18 +471,24 @@ class GroupedWallpaperState extends Equatable {
 
   /// Whether "previous" would change the frame.
   ///
-  /// A locked range still navigates (the lock protects editing, not the photos),
-  /// while a turned-off or unavailable wallpaper has nothing to show. The walk
-  /// stops at the usage history limit and at the last recorded photo.
+  /// It mirrors what the native side can do without Dart: the older neighbour
+  /// must be baked and queued. A locked range still navigates (the lock protects
+  /// editing, not the photos), while a turned-off or unavailable wallpaper has
+  /// nothing to show.
   bool get canGoPrevious =>
       hasPhoto &&
       historyLimit > 0 &&
       (status == GroupedWallpaperStatus.ready || status == GroupedWallpaperStatus.locked) &&
-      rewindCursor + 1 < rewind.length &&
-      rewindCursor + 1 < historyLimit;
+      previous >= 0;
+
+  /// Whether "next" would change the frame.
+  bool get canGoNext =>
+      hasPhoto &&
+      (status == GroupedWallpaperStatus.ready || status == GroupedWallpaperStatus.locked) &&
+      next >= 0;
 
   /// How many slots are queued, current included.
-  int get queueLength => [current, next, next2].where((id) => id >= 0).length;
+  int get queueLength => [previous, current, next].where((id) => id >= 0).toSet().length;
 
   int? get entryId => currentSlot?.entryId;
 
@@ -496,8 +517,8 @@ class GroupedWallpaperState extends Equatable {
     String? groupName,
     int? count,
     int? current,
+    int? previous,
     int? next,
-    int? next2,
     List<GroupedWallpaperSlot>? slots,
     List<GroupedWallpaperRecentEntry>? recent,
     List<GroupedWallpaperRewindEntry>? rewind,
@@ -526,8 +547,8 @@ class GroupedWallpaperState extends Equatable {
         groupName: groupName ?? this.groupName,
         count: count ?? this.count,
         current: current ?? this.current,
+        previous: previous ?? this.previous,
         next: next ?? this.next,
-        next2: next2 ?? this.next2,
         slots: slots ?? this.slots,
         recent: recent ?? this.recent,
         rewind: rewind ?? this.rewind,
@@ -576,8 +597,8 @@ class GroupedWallpaperState extends Equatable {
         'groupName': groupName,
         'count': count,
         'current': current,
+        'previous': previous,
         'next': next,
-        'next2': next2,
         'slots': slots.map((slot) => slot.toJsonMap()).toList(),
         'recent': recent.map((entry) => entry.toJsonMap()).toList(),
         'rewind': rewind.map((entry) => entry.toJsonMap()).toList(),
@@ -606,7 +627,8 @@ class GroupedWallpaperState extends Equatable {
     return switch (version) {
       1 => _fromV1(json, status),
       2 || 3 || 4 => _fromQueued(json, status, needsUpgrade: true),
-      5 => _fromQueued(json, status, needsUpgrade: false),
+      5 => _fromQueued(json, status, needsUpgrade: true),
+      6 => _fromQueued(json, status, needsUpgrade: false),
       _ => null,
     };
   }
@@ -714,8 +736,8 @@ class GroupedWallpaperState extends Equatable {
       groupName: _string(json['groupName']),
       count: _int(json['count']) ?? 0,
       current: readSlotId(json['current']),
+      previous: readSlotId(json['previous']),
       next: readSlotId(json['next']),
-      next2: readSlotId(json['next2']),
       slots: List.unmodifiable(slots),
       recent: List.unmodifiable(recent),
       rewind: List.unmodifiable(rewind),
@@ -759,7 +781,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, next, next2, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, switchLocked, switchLockedGroupId, groups, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, previous, next, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, switchLocked, switchLockedGroupId, groups, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

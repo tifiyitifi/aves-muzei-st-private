@@ -12,8 +12,7 @@ void main() {
     GroupedWallpaperStatus status = GroupedWallpaperStatus.ready,
     int count = 3,
     int historyLimit = 200,
-    List<int> rewind = const [],
-    int rewindCursor = 0,
+    int previous = -1,
   }) => GroupedWallpaperState(
     status: hasPhoto ? status : GroupedWallpaperStatus.unavailable,
     groupId: 'wallpaper.group.dcim',
@@ -25,38 +24,37 @@ void main() {
             GroupedWallpaperSlot(id: 0, entryId: currentEntry, uri: 'content://media/$currentEntry', title: 'IMG_$currentEntry', photo: 'slots/0/photo.png', width: 1080, height: 2400),
           ]
         : const [],
-    rewind: [for (final entryId in rewind) GroupedWallpaperRewindEntry(entryId: entryId)],
-    rewindCursor: rewindCursor,
+    previous: previous,
     historyLimit: historyLimit,
   );
 
   group('previous', () {
     test('needs a photo on screen', () {
-      expect(groupedWallpaperCanGoPrevious(state(hasPhoto: false, rewind: [currentEntry, 6])), isFalse);
+      expect(groupedWallpaperCanGoPrevious(state(hasPhoto: false, previous: 0)), isFalse);
     });
 
     test('is off when the history records nothing', () {
-      expect(groupedWallpaperCanGoPrevious(state(historyLimit: 0, rewind: [currentEntry, 6])), isFalse);
+      expect(groupedWallpaperCanGoPrevious(state(historyLimit: 0, previous: 0)), isFalse);
     });
 
-    test('is off when the stack only holds the current photo', () {
-      expect(groupedWallpaperCanGoPrevious(state(rewind: [currentEntry])), isFalse);
+    test('is off until the older frame is baked', () {
+      expect(groupedWallpaperCanGoPrevious(state()), isFalse);
     });
 
-    test('is on when an older record is after the cursor', () {
-      expect(groupedWallpaperCanGoPrevious(state(rewind: [currentEntry, 6])), isTrue);
+    test('is on when the older record is baked and queued', () {
+      expect(groupedWallpaperCanGoPrevious(state(previous: 0)), isTrue);
     });
 
-    test('is off once the cursor reached the oldest record', () {
-      expect(groupedWallpaperCanGoPrevious(state(rewind: [currentEntry, 6], rewindCursor: 1)), isFalse);
+    test('is off once the walk reached the oldest record', () {
+      expect(groupedWallpaperCanGoPrevious(state(previous: -1)), isFalse);
     });
 
     test('is off while the wallpaper is turned off', () {
-      expect(groupedWallpaperCanGoPrevious(state(status: GroupedWallpaperStatus.disabled, rewind: [currentEntry, 6])), isFalse);
+      expect(groupedWallpaperCanGoPrevious(state(status: GroupedWallpaperStatus.disabled, previous: 0)), isFalse);
     });
 
     test('is on while the range is locked', () {
-      expect(groupedWallpaperCanGoPrevious(state(status: GroupedWallpaperStatus.locked, rewind: [currentEntry, 6])), isTrue);
+      expect(groupedWallpaperCanGoPrevious(state(status: GroupedWallpaperStatus.locked, previous: 0)), isTrue);
     });
   });
 

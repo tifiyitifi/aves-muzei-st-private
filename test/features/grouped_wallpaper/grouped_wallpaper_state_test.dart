@@ -26,8 +26,8 @@ void main() {
     groupName: 'DCIM',
     count: 42,
     current: 0,
+    previous: 2,
     next: 1,
-    next2: 2,
     slots: [
       GroupedWallpaperSlot(
         id: 0,
@@ -71,7 +71,9 @@ void main() {
     expect(parsed, state);
     expect(parsed.currentSlot?.entryId, 7);
     expect(parsed.nextSlot?.entryId, 8);
-    expect(parsed.next2Slot?.entryId, 9);
+    expect(parsed.previousSlot?.entryId, 9);
+    expect(parsed.canGoPrevious, isTrue);
+    expect(parsed.canGoNext, isTrue);
     expect(parsed.entryId, 7);
     expect(parsed.entryTitle, 'IMG_7');
     expect(parsed.currentSlot?.effectHome, 'slots/0/home.png');
@@ -97,20 +99,34 @@ void main() {
       ..remove('rewind')
       ..remove('rewindCursor')
       ..remove('canPrevious')
-      ..remove('navigated');
+      ..remove('navigated')
+      ..remove('previous');
     final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
     expect(parsed.rewind.map((entry) => entry.entryId), [7, 6]);
     expect(parsed.rewindCursor, 0);
     expect(parsed.navigated, isFalse);
     expect(parsed.needsUpgrade, isTrue);
-    expect(parsed.canGoPrevious, isTrue);
+    // The older neighbour is baked by the first run after the upgrade, not read
+    // from the file, so the button stays greyed until then.
+    expect(parsed.canGoPrevious, isFalse);
+  });
+
+  test('a v5 state reads without the baked neighbours and upgrades', () {
+    final json = state.toJsonMap()
+      ..['version'] = 5
+      ..remove('previous')
+      ..remove('canPrevious');
+    final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
+    expect(parsed.previous, -1);
+    expect(parsed.next, 1);
+    expect(parsed.needsUpgrade, isTrue);
+    expect(parsed.canGoPrevious, isFalse);
   });
 
   test('an explicitly empty rewind stack is not reseeded after a clear', () {
     final json = state.toJsonMap()..['rewind'] = <Object?>[];
     final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
     expect(parsed.rewind, isEmpty);
-    expect(parsed.canGoPrevious, isFalse);
   });
 
   test('the rewind stack is capped by the history limit', () {

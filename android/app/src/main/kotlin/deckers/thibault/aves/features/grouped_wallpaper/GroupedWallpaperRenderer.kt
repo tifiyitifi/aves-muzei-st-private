@@ -41,10 +41,11 @@ import kotlin.math.min
 /**
  * Draws the baked queue and promotes slots on a wallpaper tap.
  *
- * The engine bakes a small queue (`current → next → next2`), so a tap can move
- * to the next photo without waiting for Flutter: the renderer switches to the
- * texture it already uploaded, records what it did in `runtime.json`, and asks
- * the app (or the background worker) to bake the slot it left behind.
+ * The engine bakes `previous → current → next`, so a step in either direction
+ * switches to a texture that is already uploaded: the renderer records what it
+ * did in `runtime.json` and asks the app (or the background worker) to refill the
+ * frame it left behind. Neither a double tap nor the bar's "previous" waits for
+ * Flutter, and stepping back and forth through the usage history is instant.
  *
  * File reads and PNG decodes happen on a loader thread; the GL thread only
  * uploads the decoded bitmaps, so a slow disk never stalls a frame.
@@ -108,6 +109,16 @@ class GroupedWallpaperRenderer(
     /** Decoded by [loader], uploaded by the GL thread. */
     @Volatile
     private var pending: LoadedFrame? = null
+
+    /**
+     * What the GL thread already uploaded, as slot id to entry id and file.
+     *
+     * A history step changes `current` alone, so the loader must not decode the
+     * frames of the two neighbours again: that decode is the whole difference
+     * between an instant step and a visible one.
+     */
+    @Volatile
+    private var uploaded: Map<Int, Pair<Int, String>> = emptyMap()
 
     /** The last state read from disk, used for gestures and the runtime. */
     @Volatile
@@ -301,7 +312,18 @@ class GroupedWallpaperRenderer(
      * not been uploaded yet. The caller then buffers the tap instead of losing
      * it.
      */
-    fun promote(): Boolean = synchronized(advanceLock) { promoteLocked() }
+    fun promote(): Boolean = synchronized(advanceLock) {
+        val current = state ?: return@synchronized false
+        if (!current.canPromote) return@synchronized false
+        promoteLocked(current.next, back = false)
+    }
+
+    /** Steps to the older usage record, as the bar's "previous" asks. */
+    fun promotePrevious(): Boolean = synchronized(advanceLock) {
+        val current = state ?: return@synchronized false
+        if (!current.canRegress) return@synchronized false
+        promoteLocked(current.previous, back = true)
+    }
 
     /**
      * Whether the wallpaper may advance at all.
@@ -327,23 +349,29 @@ class GroupedWallpaperRenderer(
     /** The slot on screen, for the notification's title. */
     fun displayedSlotId(): Int = displayed
 
-    private fun promoteLocked(): Boolean {
+    /**
+     * Draws [target] and records the step.
+     *
+     * [back] tells which side is left empty: the frame on screen becomes the
+     * opposite neighbour, and Dart refills the side the step walked away from.
+     */
+    private fun promoteLocked(target: Int, back: Boolean): Boolean {
         val current = state ?: return false
-        if (!current.canPromote) return false
-        val nextId = current.next
-        if (!readySlots.contains(nextId)) {
-            Log.d(TAG, "promote skipped: slot $nextId is not uploaded yet")
+        if (target < 0) return false
+        if (!readySlots.contains(target)) {
+            Log.d(TAG, "promote skipped: slot $target is not uploaded yet")
             return false
         }
-        val nextNext = current.next2
-        displayed = nextId
-        state = current.copy(current = nextId, next = nextNext, next2 = -1)
+        val previous = if (back) -1 else current.current
+        val next = if (back) current.current else -1
+        displayed = target
+        state = current.copy(current = target, previous = previous, next = next)
         requestRender()
         // Written synchronously: the app reads the runtime as soon as it hears
         // about the tap, and an asynchronous write would let it bake from the
         // slot the tap already left.
-        GroupedWallpaperStateFile.writeRuntime(context, current.generation, nextId, nextNext, refillRequested = true)
-        Log.d(TAG, "promote generation=${current.generation} current=$nextId next=$nextNext")
+        GroupedWallpaperStateFile.writeRuntime(context, current.generation, target, next, refillRequested = true)
+        Log.d(TAG, "promote generation=${current.generation} back=$back current=$target next=$next")
         return true
     }
 
@@ -369,7 +397,7 @@ class GroupedWallpaperRenderer(
             if (advanceRequests.isEmpty || current == null) return@synchronized false
             if (!current.canPromote || !readySlots.contains(current.next)) return@synchronized false
             if (!advanceRequests.consume(SystemClock.elapsedRealtime())) return@synchronized false
-            promoteLocked()
+            promoteLocked(current.next, back = false)
         }
         if (!promoted) return
         Log.d(TAG, "advance.drain")
@@ -385,9 +413,15 @@ class GroupedWallpaperRenderer(
 
     private fun loadFrame(): LoadedFrame? {
         val state = GroupedWallpaperStateFile.read(context) ?: return null
+        val onScreen = uploaded
         val bitmaps = mutableMapOf<Int, Bitmap>()
         for (slot in state.slots) {
-            val file = GroupedWallpaperStateFile.photoFile(context, slot.photoFor(lockScreenVisible)) ?: continue
+            val photo = slot.photoFor(lockScreenVisible)
+            // The texture is already on the GPU and draws the same file: decoding
+            // it again would only delay the frame the user asked for.
+            val existing = onScreen[slot.id]
+            if (existing != null && existing.first == slot.entryId && existing.second == photo) continue
+            val file = GroupedWallpaperStateFile.photoFile(context, photo) ?: continue
             decode(file)?.let { bitmaps[slot.id] = it }
         }
         return LoadedFrame(state, bitmaps)
@@ -457,6 +491,7 @@ class GroupedWallpaperRenderer(
             textures.remove(id)?.let { deleteTexture(it.texture) }
         }
         readySlots = textures.keys.toSet()
+        uploaded = textures.mapValues { (_, slot) -> slot.entryId to slot.photo }
 
         synchronized(advanceLock) {
             // A newer state wins; an unchanged one must not undo a local
@@ -491,15 +526,11 @@ class GroupedWallpaperRenderer(
         if (newState.navigated) return newState
         val onScreen = displayed
         if (onScreen < 0) return newState
-        val queue = listOf(newState.current, newState.next, newState.next2)
-        val index = queue.indexOf(onScreen)
-        // Only a queued slot ahead of the new current is a promotion to keep.
-        if (index <= 0) return newState
-        val current = queue[index]
-        val next = if (index + 1 < queue.size) queue[index + 1] else -1
-        GroupedWallpaperStateFile.writeRuntime(context, newState.generation, current, next, refillRequested = true)
+        // Only the queued next slot can be a promotion this reload missed.
+        if (newState.next != onScreen) return newState
+        GroupedWallpaperStateFile.writeRuntime(context, newState.generation, onScreen, -1, refillRequested = true)
         Log.d(TAG, "reload kept displayed=$onScreen over current=${newState.current}")
-        return newState.copy(current = current, next = next, next2 = -1)
+        return newState.copy(current = onScreen, previous = newState.current, next = -1)
     }
 
     private fun drawQuad(vertices: FloatBuffer, coords: FloatBuffer, texture: Int) {

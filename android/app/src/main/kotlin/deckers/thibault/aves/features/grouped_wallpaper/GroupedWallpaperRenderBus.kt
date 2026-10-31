@@ -52,4 +52,12 @@ object GroupedWallpaperRenderBus {
      * or no prefetched slot), so the caller can fall back to a background run.
      */
     fun advance(): Boolean = rendererRef?.get()?.promote() == true
+
+    /**
+     * Steps to the older usage record, like the bar's "previous".
+     *
+     * Returns false when no engine is alive or the older neighbour is not queued,
+     * so the caller can fall back to the app's command.
+     */
+    fun previous(): Boolean = rendererRef?.get()?.promotePrevious() == true
 }

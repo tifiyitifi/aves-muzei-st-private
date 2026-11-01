@@ -100,12 +100,22 @@ class GroupedWallpaperRenderer(
 
         /** Temporary kill switch: false ships the plain, instant switch. */
         const val CROSSFADE_ENABLED = true
+
+        /**
+         * How often a reload may chase a slot whose file exists but whose texture
+         * is still missing. A corrupt bake must not reload in a loop forever.
+         */
+        const val MAX_RELOAD_RETRIES = 3
     }
 
     /** What the loader thread decoded for one reload. */
     private class LoadedFrame(
         val state: GroupedWallpaperFileState,
         val bitmaps: Map<Int, Bitmap>,
+        /** The surface epoch the `uploaded` snapshot belongs to. */
+        val epoch: Int,
+        /** The effect image picked when the bitmaps were decoded. */
+        val lockScreen: Boolean,
     )
 
     private class UploadedSlot(val entryId: Int, val photo: String, val texture: Int, val aspect: Float)
@@ -121,6 +131,24 @@ class GroupedWallpaperRenderer(
 
     @Volatile
     private var destroyed = false
+
+    /**
+     * Bumped whenever the EGL context is rebuilt.
+     *
+     * An in-flight reload captured `uploaded` from the old context; consuming it
+     * after the rebuild would make it skip slots the new context never uploaded.
+     */
+    @Volatile
+    private var surfaceEpoch = 0
+
+    /**
+     * Makes the [surfaceEpoch] and [uploaded] snapshot atomic.
+     *
+     * [loadFrame] reads both on the loader thread while [onSurfaceCreated] bumps
+     * the epoch and empties `uploaded` on the GL thread: reading them one at a
+     * time could pair a new epoch with the old snapshot.
+     */
+    private val surfaceLock = Any()
 
     /** Decoded by [loader], uploaded by the GL thread. */
     @Volatile
@@ -143,6 +171,28 @@ class GroupedWallpaperRenderer(
     /** The slot on screen; a local promotion moves it before Dart writes. */
     @Volatile
     private var displayed: Int = -1
+
+    /**
+     * The slot the latest state, or a local promotion, wants on screen.
+     *
+     * [displayed] may differ while that slot's texture is missing and the
+     * wallpaper falls back to a neighbour; keeping the intent separately is what
+     * makes the fallback temporary instead of sticky.
+     */
+    @Volatile
+    private var desired: Int = -1
+
+    /** [displayed] is a stand-in because [desired] was not drawable yet. */
+    @Volatile
+    private var fallback = false
+
+    /**
+     * The `(generation, desired)` a reload is chasing, and how many it tried.
+     *
+     * Guarded by [advanceLock]: a promotion resets it while a reload writes it.
+     */
+    private var retryKey: Pair<Int, Int>? = null
+    private var retryCount = 0
 
     /** Slot ids whose texture is uploaded, so a promotion never targets a hole. */
     @Volatile
@@ -225,14 +275,24 @@ class GroupedWallpaperRenderer(
         }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-        Log.d(TAG, "surface.created")
         destroyed = false
         // A new EGL context invalidates every texture id from the previous one,
         // and with them what the loader thinks it has already uploaded: keeping
         // `uploaded` would make the next reload skip every slot and leave the
         // wallpaper on the placeholder until the state changed.
+        //
+        // The epoch is bumped in the same critical section as the clearing, and
+        // [loadFrame] reads both under the same lock, so an in-flight reload sees
+        // either the old epoch (and is discarded) or the empty snapshot. The
+        // order alone is not enough: a loader could see the new epoch and still
+        // read the pre-clear `uploaded`.
+        val epoch = synchronized(surfaceLock) {
+            surfaceEpoch++
+            uploaded = emptyMap()
+            surfaceEpoch
+        }
+        Log.d(TAG, "surface.created epoch=$epoch")
         textures.clear()
-        uploaded = emptyMap()
         // The textures of a fading frame belong to the old context too; deleting
         // them now would free an id another context may reuse.
         fading = null
@@ -480,6 +540,12 @@ class GroupedWallpaperRenderer(
         // The GL thread starts the fade; the main thread must not touch textures.
         pendingFadeFrom = displayed
         displayed = target
+        // The tap is the newest intent: a reload that has not adopted the state
+        // the tap just wrote must not pull the wallpaper back to `current`.
+        desired = target
+        fallback = false
+        retryKey = null
+        retryCount = 0
         state = current.copy(current = target, previous = previous, next = next)
         requestRender()
         // Written synchronously: the app reads the runtime as soon as it hears
@@ -527,19 +593,41 @@ class GroupedWallpaperRenderer(
     }
 
     private fun loadFrame(): LoadedFrame? {
+        // Both must belong to the same surface: a rebuild between them would let
+        // this reload skip a slot the new context has not uploaded.
+        val epoch: Int
+        val onScreen: Map<Int, Pair<Int, String>>
+        synchronized(surfaceLock) {
+            epoch = surfaceEpoch
+            onScreen = uploaded
+        }
+        val lockScreen = lockScreenVisible
         val state = GroupedWallpaperStateFile.read(context) ?: return null
-        val onScreen = uploaded
         val bitmaps = mutableMapOf<Int, Bitmap>()
+        val skipped = mutableListOf<Int>()
+        val failed = mutableListOf<Int>()
         for (slot in state.slots) {
-            val photo = slot.photoFor(lockScreenVisible)
+            val photo = slot.photoFor(lockScreen)
             // The texture is already on the GPU and draws the same file: decoding
             // it again would only delay the frame the user asked for.
             val existing = onScreen[slot.id]
-            if (existing != null && existing.first == slot.entryId && existing.second == photo) continue
-            val file = GroupedWallpaperStateFile.photoFile(context, photo) ?: continue
-            decode(file)?.let { bitmaps[slot.id] = it }
+            if (existing != null && existing.first == slot.entryId && existing.second == photo) {
+                skipped.add(slot.id)
+                continue
+            }
+            val file = GroupedWallpaperStateFile.photoFile(context, photo)
+            if (file == null) {
+                failed.add(slot.id)
+                continue
+            }
+            val bitmap = decode(file)
+            if (bitmap == null) failed.add(slot.id) else bitmaps[slot.id] = bitmap
         }
-        return LoadedFrame(state, bitmaps)
+        // A slot that silently vanishes is what makes the wallpaper look like it
+        // went back a photo; the reload log makes the difference between "skipped
+        // because it is already on the GPU" and "nothing decoded" readable.
+        Log.d(TAG, "reload.loaded epoch=$epoch stateGen=${state.generation} skip=$skipped decode=${bitmaps.keys.sorted()} failed=$failed")
+        return LoadedFrame(state, bitmaps, epoch, lockScreen)
     }
 
     private fun decode(file: File): Bitmap? = try {
@@ -553,7 +641,11 @@ class GroupedWallpaperRenderer(
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        BitmapFactory.decodeFile(file.absolutePath, options)
+        val bitmap = BitmapFactory.decodeFile(file.absolutePath, options)
+        // A missing or corrupt file returns null without throwing, which used to
+        // leave no trace at all.
+        if (bitmap == null) Log.w(TAG, "decode.null path=${file.name}")
+        bitmap
     } catch (t: Throwable) {
         // A corrupt bake shows the placeholder instead of crashing the service.
         Log.w(TAG, "failed to decode ${file.name}", t)
@@ -563,21 +655,47 @@ class GroupedWallpaperRenderer(
     private fun consumePending() {
         val loaded = pending ?: return
         pending = null
+        if (GroupedDisplay.isStaleEpoch(loaded.epoch, surfaceEpoch)) {
+            // The loader read `uploaded` before the EGL context was rebuilt, so
+            // its skips describe texture ids that no longer exist. Re-loading
+            // reads the empty snapshot and decodes the current slot again.
+            loaded.bitmaps.values.forEach { it.recycle() }
+            Log.d(TAG, "reload.discard reason=epoch loaded=${loaded.epoch} current=$surfaceEpoch")
+            requestReload()
+            return
+        }
+
         val previousGeneration: Int
         val next: GroupedWallpaperFileState
+        var stale = false
         // Serialized with a promotion: the two threads must not swap the state
         // and the displayed slot under each other.
         synchronized(advanceLock) {
             previousGeneration = state?.generation ?: Int.MIN_VALUE
-            // A newer state can still point at the slot a local promotion just
-            // left; keep what is on screen instead of rewinding to it.
-            next = keepDisplayedSlot(loaded.state, previousGeneration)
-            state = next
+            // A reload can race a writer and read a file older than the state
+            // already on screen; adopting it would make retention treat the
+            // newer slots as garbage.
+            stale = GroupedDisplay.isStaleGeneration(loaded.state.generation, previousGeneration)
+            if (stale) {
+                next = loaded.state
+            } else {
+                // A newer state can still point at the slot a local promotion
+                // just left; keep what is on screen instead of rewinding to it.
+                next = keepDisplayedSlot(loaded.state, previousGeneration)
+                state = next
+            }
+        }
+        if (stale) {
+            // Every genuine write triggers its own reload, so there is nothing to
+            // chase; keeping the current frame is better than rewinding.
+            loaded.bitmaps.values.forEach { it.recycle() }
+            Log.d(TAG, "reload.discard reason=generation loaded=${loaded.state.generation} current=$previousGeneration")
+            return
         }
 
         for ((id, bitmap) in loaded.bitmaps) {
             val slot = next.slot(id)
-            val photo = slot?.photoFor(lockScreenVisible) ?: ""
+            val photo = slot?.photoFor(loaded.lockScreen) ?: ""
             val existing = textures[id]
             // A slot keeps its id while it stays in the queue, so an unchanged
             // file must not be uploaded again.
@@ -602,45 +720,103 @@ class GroupedWallpaperRenderer(
         // the frames this reload decoded, and the loader skips the ones already on
         // the GPU, so it cannot tell which frames are alive.
         val uploadedNow = textures.mapValues { (_, slot) -> slot.entryId to slot.photo }
-        val wanted = next.slots.associate { it.id to (it.entryId to it.photoFor(lockScreenVisible)) }
+        val wanted = next.slots.associate { it.id to (it.entryId to it.photoFor(loaded.lockScreen)) }
         // A frame on screen, or one still fading out, is never dropped: nothing
         // would replace it.
         val protected = listOfNotNull(displayed.takeIf { it >= 0 }, pendingFadeFrom.takeIf { it >= 0 }, fading?.id).toSet()
-        val stale = GroupedTextureRetention.staleIds(uploadedNow, wanted, protected)
-        for (id in stale) {
+        val dropped = GroupedTextureRetention.staleIds(uploadedNow, wanted, protected)
+        for (id in dropped) {
             textures.remove(id)?.let { deleteTexture(it.texture) }
         }
         readySlots = textures.keys.toSet()
         uploaded = textures.mapValues { (_, slot) -> slot.entryId to slot.photo }
-        Log.d(TAG, "textures.keep=${textures.keys.sorted()} drop=${stale.sorted()} displayed=$displayed")
 
+        var retry = false
+        var retryDesired = -1
         synchronized(advanceLock) {
-            // A newer state wins; an unchanged one must not undo a local
-            // promotion. A tap during the uploads already moved `state` on, and
-            // its displayed slot must survive.
-            if (state === next) {
-                if (next.generation > previousGeneration || !textures.containsKey(displayed)) {
-                    // Fade from whatever was on screen to the photo the app chose,
-                    // the same way a tap does.
-                    if (displayed != next.current) pendingFadeFrom = displayed
-                    displayed = next.current
-                }
+            // A tap during the uploads already moved `state` and `displayed` on;
+            // deciding from the latest of both keeps the promotion on screen.
+            val latest = state ?: next
+            val fresh = latest === next && next.generation > previousGeneration
+            val decision = GroupedDisplay.decide(
+                stateCurrent = latest.current,
+                statePrevious = latest.previous,
+                stateNext = latest.next,
+                displayed = displayed,
+                desired = desired,
+                fallback = fallback,
+                fresh = fresh,
+                drawable = textures.keys,
+            )
+            // A slot change fades, the way a tap does. The GL thread starts it,
+            // so the main thread must not touch the textures here.
+            if (decision.displayed != displayed && displayed >= 0) pendingFadeFrom = displayed
+            if (fallback && !decision.fallback && decision.desired >= 0) {
+                Log.d(TAG, "display.restore slot=${decision.desired}")
             }
-            // A frame that failed to decode must not blank the wallpaper: keep
-            // whatever is drawable on screen until something replaces it, the
-            // way Muzei's current picture set outlives a reload.
-            if (!textures.containsKey(displayed)) {
-                displayed = listOf(next.current, next.previous, next.next).firstOrNull { textures.containsKey(it) }
-                    ?: textures.keys.firstOrNull()
-                    ?: -1
-            }
+            displayed = decision.displayed
+            desired = decision.desired
+            fallback = decision.fallback
+            retry = decision.retry
+            retryDesired = decision.desired
         }
+        Log.d(TAG, "textures.keep=${textures.keys.sorted()} drop=${dropped.sorted()} desired=$desired fallback=$fallback displayed=$displayed")
+
+        scheduleRetry(next, retry, retryDesired, loaded.lockScreen)
         // A buffered tap may be servable now that the new slots are uploaded.
         drainPendingAdvance()
         // A dropped tap used to vanish without a trace; count it instead.
         val expired = synchronized(advanceLock) { advanceRequests.expire(SystemClock.elapsedRealtime()) }
         if (expired > 0) Log.d(TAG, "advance.expired dropped=$expired")
         onFrameLoaded()
+    }
+
+    /**
+     * Asks for another reload while the state's slot has no texture.
+     *
+     * A missing texture can be a decode that is still coming (the loader keeps
+     * one reload in flight), so retrying is what makes a fallback temporary. A
+     * corrupt file must not reload forever: the counter is per
+     * `(generation, desired)` and gives up after [MAX_RELOAD_RETRIES].
+     */
+    private fun scheduleRetry(
+        state: GroupedWallpaperFileState,
+        retry: Boolean,
+        desired: Int,
+        lockScreen: Boolean,
+    ) {
+        if (!retry || desired < 0) {
+            synchronized(advanceLock) {
+                retryKey = null
+                retryCount = 0
+            }
+            return
+        }
+        val file = state.slot(desired)?.let { GroupedWallpaperStateFile.photoFile(context, it.photoFor(lockScreen)) }
+        if (file == null) {
+            // No file will ever arrive through a reload; another bake has to
+            // write it first.
+            synchronized(advanceLock) {
+                retryKey = null
+                retryCount = 0
+            }
+            return
+        }
+        val key = state.generation to desired
+        val attempts = synchronized(advanceLock) {
+            if (retryKey != key) {
+                retryKey = key
+                retryCount = 0
+            }
+            retryCount += 1
+            retryCount
+        }
+        if (attempts > MAX_RELOAD_RETRIES) {
+            Log.w(TAG, "texture.giveup desired=$desired attempts=$attempts")
+            return
+        }
+        Log.d(TAG, "reload.retry desired=$desired attempt=$attempts")
+        requestReload()
     }
 
     /**
@@ -658,6 +834,9 @@ class GroupedWallpaperRenderer(
         // than the one on screen; its queue also starts with the old frame, so
         // the promotion heuristic below would wrongly keep it.
         if (newState.navigated) return newState
+        // A fallback is not a promotion: the slot on screen is a stand-in, and
+        // the new state's current is still the intended one.
+        if (fallback) return newState
         val onScreen = displayed
         if (onScreen < 0) return newState
         // Only the queued next slot can be a promotion this reload missed.

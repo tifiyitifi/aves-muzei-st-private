@@ -151,6 +151,28 @@ which textures are alive. The rule lives in `GroupedTextureRetention`:
 - a slot that left the queue, or whose `(entryId, photo)` changed (a re-bake, or
   a home↔lock effect switch), is dropped.
 
+The renderer keeps the state's intent (`desired`) apart from the slot it really
+draws (`displayed`, which is what `displayedSlotId()` and therefore the
+three-finger view and the bar report). When the wanted slot's texture is missing a
+reload falls back to a neighbour, but the fallback is temporary: the next reload
+that uploads the wanted slot restores it (`display.restore`). A slot whose file
+exists but whose texture still does not appear is retried at most three times per
+`(generation, desired)` and then logged as `texture.giveup`, so a corrupt bake
+cannot reload in a loop; a decode that returns nothing logs `decode.null` instead
+of disappearing silently.
+
+A reload can also race two things, and both used to leave the wallpaper on the
+previous photo:
+
+- **the state writer**: a state older than the one on screen (`generation` lower)
+  is discarded, so retention never treats the newer slots as garbage;
+- **the EGL context**: `onSurfaceCreated` bumps a surface epoch in the same
+  critical section that empties `uploaded`, and the loader reads both together.
+  A reload that started before the rebuild is discarded and re-read, because its
+  "already uploaded" snapshot describes texture ids the new context never had.
+  Without the epoch, the first reload after a rebuild could skip the slot being
+  drawn, fall back to a neighbour and stay there.
+
 `uploaded` must always match `textures`: a texture removed without updating it
 would be skipped by the next reload and leave a hole. `onSurfaceCreated` clears
 both, since a new EGL context invalidates the texture ids themselves.

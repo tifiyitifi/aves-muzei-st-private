@@ -105,7 +105,7 @@ void main() {
     controller.dispose();
   });
 
-  test('deleting customs removes only those and resets only their users', () async {
+  test('deleting options removes built-ins and customs alike and resets only their users', () async {
     await writeCatalog(
       defaults: bundled.intervals,
       customs: const [WallpaperAdvanceInterval(7200), WallpaperAdvanceInterval(10800)],
@@ -113,40 +113,58 @@ void main() {
     final controller = makeController();
     await controller.ensureLoaded();
 
-    await controller.deleteCustoms({const WallpaperAdvanceInterval(7200)});
+    // 3600 is built-in, 7200 is custom: every option but Off is deletable.
+    await controller.deleteOptions({const WallpaperAdvanceInterval(3600), const WallpaperAdvanceInterval(7200)});
 
-    expect(controller.catalog!.customs, [const WallpaperAdvanceInterval(10800)]);
+    final catalog = controller.catalog!;
+    expect(catalog.defaults, const [WallpaperAdvanceInterval.off, WallpaperAdvanceInterval(900), WallpaperAdvanceInterval(86400)]);
+    expect(catalog.customs, const [WallpaperAdvanceInterval(10800)]);
+    expect(catalog.missingDefaults, const [WallpaperAdvanceInterval(3600)], reason: 'a deleted built-in stays restorable');
     expect(resets, hasLength(1));
-    expect(resets.single.removed, {const WallpaperAdvanceInterval(7200)});
+    expect(resets.single.removed, {const WallpaperAdvanceInterval(3600), const WallpaperAdvanceInterval(7200)});
     expect(resets.single.all, isFalse);
     expect(resets.single.fallback, WallpaperAdvanceInterval.off);
+    controller.dispose();
+  });
+
+  test('Off is pinned: deleting it is ignored', () async {
+    await writeCatalog(defaults: bundled.intervals, customs: const []);
+    final controller = makeController();
+    await controller.ensureLoaded();
+    final before = controller.catalog;
+
+    await controller.deleteOptions({WallpaperAdvanceInterval.off});
+
+    expect(controller.catalog, before);
+    expect(controller.catalog!.options, contains(WallpaperAdvanceInterval.off));
+    expect(resets, isEmpty, reason: 'Off never counts as a removed value');
     controller.dispose();
   });
 
   test('deleting nothing is a no-op', () async {
     final controller = makeController();
     await controller.ensureLoaded();
-    await controller.deleteCustoms(const {});
+    await controller.deleteOptions(const {});
     expect(resets, isEmpty);
     controller.dispose();
   });
 
-  test('Clear empties the list without touching any selection', () async {
+  test('Clear keeps Off as the only option and touches no selection', () async {
     await writeCatalog(defaults: bundled.intervals, customs: const [WallpaperAdvanceInterval(7200)]);
     final controller = makeController();
     await controller.ensureLoaded();
 
     await controller.clearList();
 
-    expect(controller.catalog!.defaults, isEmpty);
+    expect(controller.catalog!.defaults, const [WallpaperAdvanceInterval.off]);
     expect(controller.catalog!.customs, isEmpty);
-    expect(controller.catalog!.options, isEmpty);
+    expect(controller.catalog!.options, const [WallpaperAdvanceInterval.off]);
     expect(resets, isEmpty, reason: 'Clear only edits the list');
 
-    // The empty state is persisted, not re-seeded.
+    // The cleared state is persisted, not re-seeded.
     final reloaded = makeController();
     await reloaded.ensureLoaded();
-    expect(reloaded.catalog!.options, isEmpty);
+    expect(reloaded.catalog!.options, const [WallpaperAdvanceInterval.off]);
     reloaded.dispose();
     controller.dispose();
   });
@@ -201,7 +219,7 @@ void main() {
 
     await controller.addCustom(const WallpaperAdvanceInterval(7200));
     expect(notifications, 1);
-    await controller.deleteCustoms({const WallpaperAdvanceInterval(7200)});
+    await controller.deleteOptions({const WallpaperAdvanceInterval(7200)});
     expect(notifications, 2);
     await controller.addMissingDefaults();
     // Everything is already present, so there is nothing to notify about.

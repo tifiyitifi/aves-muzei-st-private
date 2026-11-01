@@ -38,16 +38,19 @@ WallpaperIntervalCatalog  (defaultInterval, shippedDefaults, defaults, customs)
 
 | Action | Option list | Selections |
 |---|---|---|
-| Long-press → delete selected customs | remove those `customs` | only groups/Muzei using a removed value → reset target |
-| **Clear all intervals** | `defaults = []`, `customs = []` | unchanged (the current value keeps showing as a synthetic option) |
+| Long-press → delete selected options | remove those values from both `defaults` and `customs` (Off is pinned and ignored) | only groups/Muzei using a removed value → reset target |
+| **Clear all intervals** | `defaults = [off]`, `customs = []` | unchanged (the current value keeps showing as a synthetic option) |
 | **Reset all to default** | `defaults = shippedDefaults`, `customs = []` | every group and Muzei → reset target (off) |
 | **Add default intervals** | add the missing `shippedDefaults` | unchanged |
 | Add a custom interval | new value → `customs`; a missing shipped value → `defaults` | caller selects the returned option |
 
-- After Clear all the list can be empty. `WallpaperIntervalOptionList` still
+- Every option can be deleted except Off, which is the off switch and the reset
+  target. Deleting a built-in leaves it recoverable through Add default intervals.
+- Clear all keeps Off as the only remaining option: clearing it too would turn a
+  later add into a list with no way to switch auto-advance off. The picker still
   shows the caller's current value as a synthetic, non-deletable entry, so the
   radio group always has a valid selection.
-- Deleting a custom option resets only selections that used it. Reset all to
+- Deleting an option resets only selections that used it. Reset all to
   default is the only action that resets everything; Clear all only edits the
   list.
 - `WallpaperIntervalSelectionReset` is the seam to both wallpapers:
@@ -63,9 +66,9 @@ Both `GroupedWallpaperAutoAdvancePage` and
 `MuzeiWallpaperAutoAdvancePage` embed `WallpaperIntervalOptionList` and mount
 `WallpaperIntervalMoreButton` in the app bar. Normal mode is a radio list plus an
 「Add interval」 entry; the overflow menu holds Add default / Clear all / Reset all
-to default / About. A long press on a custom option enters multi-select mode;
-built-ins are shown disabled with a 「Built-in」 label and a SnackBar explains that
-they cannot be deleted individually.
+to default / About. A long press on any option except Off enters multi-select
+mode, where built-in and custom options are equally deletable; Off is shown
+disabled with a lock and a SnackBar explains that it always stays.
 
 `WallpaperIntervalAddSheet` edits four boxes — days, hours, minutes, seconds —
 each digits-only and capped at 1000, with a live total. It starts from the

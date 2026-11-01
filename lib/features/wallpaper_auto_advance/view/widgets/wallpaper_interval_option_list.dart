@@ -11,9 +11,9 @@ import 'package:material_ui/material_ui.dart';
 /// The shared interval picker used by both auto-advance pages.
 ///
 /// The option list is global while [selected] stays owned by the caller (one
-/// value per group, one for the Muzei wallpaper). A long press on a custom option
-/// enters multi-select deletion; built-ins can only be cleared as a block from
-/// the page's overflow menu, together with the other list actions.
+/// value per group, one for the Muzei wallpaper). A long press on any option
+/// except Off enters multi-select deletion: built-in and custom options can both
+/// be deleted, and only Off is pinned because it is the off switch.
 class WallpaperIntervalOptionList extends StatefulWidget {
   final WallpaperAdvanceInterval selected;
 
@@ -38,7 +38,7 @@ class _WallpaperIntervalOptionListState extends State<WallpaperIntervalOptionLis
   late final WallpaperIntervalOptionsController _controller = widget.controller ?? wallpaperIntervalOptionsController;
 
   bool _selecting = false;
-  final Set<WallpaperAdvanceInterval> _selectedCustoms = {};
+  final Set<WallpaperAdvanceInterval> _selectedOptions = {};
 
   @override
   void initState() {
@@ -49,7 +49,7 @@ class _WallpaperIntervalOptionListState extends State<WallpaperIntervalOptionLis
   void _enterSelection(WallpaperAdvanceInterval value) {
     setState(() {
       _selecting = true;
-      _selectedCustoms
+      _selectedOptions
         ..clear()
         ..add(value);
     });
@@ -58,13 +58,13 @@ class _WallpaperIntervalOptionListState extends State<WallpaperIntervalOptionLis
   void _cancelSelection() {
     setState(() {
       _selecting = false;
-      _selectedCustoms.clear();
+      _selectedOptions.clear();
     });
   }
 
-  void _toggleCustom(WallpaperAdvanceInterval value) {
+  void _toggleOption(WallpaperAdvanceInterval value) {
     setState(() {
-      if (!_selectedCustoms.remove(value)) _selectedCustoms.add(value);
+      if (!_selectedOptions.remove(value)) _selectedOptions.add(value);
     });
   }
 
@@ -77,7 +77,7 @@ class _WallpaperIntervalOptionListState extends State<WallpaperIntervalOptionLis
   }
 
   Future<void> _deleteSelected() async {
-    if (_selectedCustoms.isEmpty) return;
+    if (_selectedOptions.isEmpty) return;
     final l10n = context.l10n;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -101,9 +101,9 @@ class _WallpaperIntervalOptionListState extends State<WallpaperIntervalOptionLis
       },
     );
     if (confirmed != true || !mounted) return;
-    final removed = Set<WallpaperAdvanceInterval>.of(_selectedCustoms);
+    final removed = Set<WallpaperAdvanceInterval>.of(_selectedOptions);
     _cancelSelection();
-    await _controller.deleteCustoms(removed);
+    await _controller.deleteOptions(removed);
   }
 
   @override
@@ -136,12 +136,12 @@ class _WallpaperIntervalOptionListState extends State<WallpaperIntervalOptionLis
         children: [
           Expanded(
             child: Text(
-              l10n.wallpaperIntervalSelectedCount(_selectedCustoms.length),
+              l10n.wallpaperIntervalSelectedCount(_selectedOptions.length),
               style: Theme.of(context).textTheme.titleSmall,
             ),
           ),
           TextButton(
-            onPressed: _selectedCustoms.isEmpty ? null : () => unawaited(_deleteSelected()),
+            onPressed: _selectedOptions.isEmpty ? null : () => unawaited(_deleteSelected()),
             child: Text(l10n.wallpaperIntervalDelete),
           ),
           TextButton(
@@ -154,7 +154,6 @@ class _WallpaperIntervalOptionListState extends State<WallpaperIntervalOptionLis
   }
 
   List<Widget> _buildRadioOptions(BuildContext context, WallpaperIntervalCatalog catalog, List<WallpaperAdvanceInterval> options) {
-    final l10n = context.l10n;
     return [
       RadioGroup<WallpaperAdvanceInterval>(
         groupValue: widget.selected,
@@ -167,7 +166,7 @@ class _WallpaperIntervalOptionListState extends State<WallpaperIntervalOptionLis
               ListTile(
                 leading: Radio<WallpaperAdvanceInterval>(value: option),
                 title: Text(wallpaperAdvanceIntervalLabel(context, option)),
-                subtitle: catalog.isCustom(option) ? Text(l10n.wallpaperIntervalCustom) : null,
+                subtitle: _subtitle(context, catalog, option),
                 onTap: () => widget.onSelected(option),
                 onLongPress: () => _onLongPress(context, catalog, option),
               ),
@@ -181,25 +180,36 @@ class _WallpaperIntervalOptionListState extends State<WallpaperIntervalOptionLis
     final l10n = context.l10n;
     return [
       for (final option in options)
-        if (catalog.isCustom(option))
-          ListTile(
-            leading: Checkbox(
-              value: _selectedCustoms.contains(option),
-              onChanged: (_) => _toggleCustom(option),
-            ),
-            title: Text(wallpaperAdvanceIntervalLabel(context, option)),
-            subtitle: Text(l10n.wallpaperIntervalCustom),
-            onTap: () => _toggleCustom(option),
-          )
-        else
-          // Built-ins stay visible for context but take no part in the selection.
+        if (option.isOff || !catalog.contains(option))
+          // Off is pinned (it is the off switch) and a value that only survives
+          // as the caller's current selection is not an option of the list at
+          // all: both stay visible for context but take no part in the selection.
           ListTile(
             enabled: false,
             leading: const Icon(Icons.lock_outline),
             title: Text(wallpaperAdvanceIntervalLabel(context, option)),
-            subtitle: Text(l10n.wallpaperIntervalBuiltIn),
+            subtitle: option.isOff ? null : Text(l10n.wallpaperIntervalCurrent),
+          )
+        else
+          ListTile(
+            leading: Checkbox(
+              value: _selectedOptions.contains(option),
+              onChanged: (_) => _toggleOption(option),
+            ),
+            title: Text(wallpaperAdvanceIntervalLabel(context, option)),
+            subtitle: Text(catalog.isCustom(option) ? l10n.wallpaperIntervalCustom : l10n.wallpaperIntervalBuiltIn),
+            onTap: () => _toggleOption(option),
           ),
     ];
+  }
+
+  /// Tags the row: a value that is not in the list only survives as the caller's
+  /// current selection (after Clear all), and built-ins have no tag at all.
+  Widget? _subtitle(BuildContext context, WallpaperIntervalCatalog catalog, WallpaperAdvanceInterval option) {
+    final l10n = context.l10n;
+    if (!catalog.contains(option)) return Text(l10n.wallpaperIntervalCurrent);
+    if (catalog.isCustom(option)) return Text(l10n.wallpaperIntervalCustom);
+    return null;
   }
 
   List<Widget> _buildAddOption(BuildContext context) {
@@ -215,12 +225,14 @@ class _WallpaperIntervalOptionListState extends State<WallpaperIntervalOptionLis
   }
 
   void _onLongPress(BuildContext context, WallpaperIntervalCatalog catalog, WallpaperAdvanceInterval option) {
-    if (catalog.isCustom(option)) {
-      _enterSelection(option);
-    } else {
+    if (option.isOff) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.wallpaperIntervalBuiltInNotDeletable)),
+        SnackBar(content: Text(context.l10n.wallpaperIntervalOffNotDeletable)),
       );
+    } else if (catalog.contains(option)) {
+      _enterSelection(option);
     }
+    // Otherwise the value only survives as the caller's current selection: it is
+    // not an option of the list, so there is nothing to delete.
   }
 }

@@ -94,27 +94,37 @@ class WallpaperIntervalOptionsController extends ChangeNotifier {
     return interval;
   }
 
-  /// Deletes the selected custom options.
+  /// Deletes any of [removed] from the list, built-in or custom.
   ///
-  /// Only groups and the Muzei wallpaper currently using one of [removed] are
-  /// reset; everything else keeps its selection.
-  Future<void> deleteCustoms(Set<WallpaperAdvanceInterval> removed) async {
-    if (removed.isEmpty) return;
+  /// Off is pinned: it is the only way to turn auto-advance back off and the
+  /// value every reset falls back to, so it is always dropped from [removed].
+  /// A deleted built-in stays recoverable through [addMissingDefaults].
+  ///
+  /// Only groups and the Muzei wallpaper currently using one of the deleted
+  /// values are reset; everything else keeps its selection.
+  Future<void> deleteOptions(Set<WallpaperAdvanceInterval> removed) async {
+    final targets = {...removed}..remove(WallpaperAdvanceInterval.off);
+    if (targets.isEmpty) return;
     await ensureLoaded();
     final catalog = _catalog!;
-    await _write(catalog.copyWith(customs: [for (final value in catalog.customs) if (!removed.contains(value)) value]));
-    await selectionReset(removed: removed, all: false, fallback: catalog.defaultInterval);
+    await _write(catalog.copyWith(
+      defaults: [for (final value in catalog.defaults) if (!targets.contains(value)) value],
+      customs: [for (final value in catalog.customs) if (!targets.contains(value)) value],
+    ));
+    await selectionReset(removed: targets, all: false, fallback: catalog.defaultInterval);
   }
 
-  /// Clears the whole list, built-ins included, and leaves every selection alone.
+  /// Clears every option except Off and leaves every selection alone.
   ///
-  /// The pickers keep showing the caller's current value as an extra option, so
-  /// emptying the list never silently changes what a group plays. This is the
-  /// list-only half of the old Reset; [resetToDefaults] is the full one.
+  /// Clearing Off too would make a later add produce a list with no off switch
+  /// at all, so the pinned option survives as the only built-in left; 「Add
+  /// default intervals」 then restores the rest. The pickers keep showing the
+  /// caller's current value as an extra option, so clearing never silently
+  /// changes what a group plays. This is the list-only half of [resetToDefaults].
   Future<void> clearList() async {
     await ensureLoaded();
     final catalog = _catalog!;
-    await _write(catalog.copyWith(defaults: const [], customs: const []));
+    await _write(catalog.copyWith(defaults: const [WallpaperAdvanceInterval.off], customs: const []));
   }
 
   /// Restores the shipped list and turns every wallpaper off.

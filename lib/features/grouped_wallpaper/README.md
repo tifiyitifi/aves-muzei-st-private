@@ -598,16 +598,16 @@ lists are stored in AppMeta (`wallpaper.autoAdvanceIntervals`), and both
 auto-advance pages manage them in place. Only the list is shared: every group and
 the Muzei wallpaper persist their own selection.
 
-- A long press on a custom option enters multi-select deletion. Deleting only
-  resets the groups and the Muzei wallpaper currently using a deleted value; it
-  falls back to the JSON reset target, `0` (off).
+- A long press on any option except Off enters multi-select deletion. Built-in
+  and custom options are both deletable; Off is pinned because it is the off
+  switch. Deleting resets only the groups and the Muzei wallpaper currently using
+  a deleted value; it falls back to the JSON reset target, `0` (off).
 - The auto-advance page's overflow menu (shared with the Muzei page) holds the
   list actions plus About:
   - 「Add default intervals」 is additive: it restores only the shipped built-ins
-    that are missing and changes no selection.
-  - 「Clear all intervals」 empties the list, built-ins included, but changes no
-    selection. The list can then be empty; the picker still shows the current
-    value so the radio stays valid.
+    that are missing (including ones deleted by hand) and changes no selection.
+  - 「Clear all intervals」 removes every option except Off but changes no
+    selection; Off always stays so auto-advance can still be turned off.
   - 「Reset all to default」 is the factory reset: the shipped list comes back,
     custom options are dropped, and every group plus the Muzei wallpaper returns
     to off. It is the only action that resets every selection.
@@ -620,7 +620,7 @@ the Muzei wallpaper persist their own selection.
   battery, and Android may delay them anyway. The full explanation, including the
   three list actions, is the About page behind the overflow menu.
 - Adding a value that is a shipped built-in but currently missing restores it as
-  a built-in, not as a deletable custom option.
+  a built-in, not as a custom option.
 
 The interval and ordering are edited from the
 group page's More → 「Auto-advance」, the effects page's row, or the view page's

@@ -174,6 +174,7 @@ Fork releases are produced from the **`release`** branch: pushing it triggers `b
 - Reply in the user's language (Chinese / English / mixed).
 - Keep the working tree **uncommitted** during a session so `git status` / `git diff` show exactly what the AI changed.
 - Commit only on an explicit user request, on the working branch (never `main`), with an English conventional-commit message. Never push to `upstream`.
+- Write every temporary artifact (commit messages, draft notes, generated lists) under `.ai_tmp/commit_info/` — the gitignored scratch space. Never create them at the repo root, and never `git add` them: `commit_msg.txt` once slipped into a commit that way.
 - Never commit a flavor swap (`scripts/apply_flavor_*` output) or generated `lib/l10ngen/`.
 - Because `.githooks/pre-commit` auto-bumps `android/version.properties`, exclude that file from AI-authored commits.
 - No placeholders, partial code, or `// TODO: implement later`; every change must compile and pass `./flutterw analyze` + `./flutterw test`.

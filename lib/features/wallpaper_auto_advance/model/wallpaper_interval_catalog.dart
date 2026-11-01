@@ -6,9 +6,9 @@ import 'package:flutter/foundation.dart';
 /// The process-wide option list for wallpaper auto-advance intervals.
 ///
 /// The list itself is shared by the grouped wallpaper and the Muzei wallpaper,
-/// while each group and Muzei keep their own selected value elsewhere. Built-ins
-/// can be cleared and restored as a block; only [customs] can be deleted
-/// individually.
+/// while each group and Muzei keep their own selected value elsewhere. Every
+/// option can be deleted except [WallpaperAdvanceInterval.off], which stays as
+/// the off switch and the reset target.
 @immutable
 class WallpaperIntervalCatalog with Equatable {
   /// Reset target, read from the bundled JSON.
@@ -19,10 +19,11 @@ class WallpaperIntervalCatalog with Equatable {
   final List<WallpaperAdvanceInterval> shippedDefaults;
 
   /// Built-in options currently present. Seeded from the bundle, then only
-  /// changed by Reset (empty) and 「Add default intervals」.
+  /// changed by Reset, Clear all and 「Add default intervals」; individual
+  /// built-ins can also be deleted like custom ones.
   final List<WallpaperAdvanceInterval> defaults;
 
-  /// User-added options; the only ones that can be deleted one by one.
+  /// User-added options.
   final List<WallpaperAdvanceInterval> customs;
 
   const new({

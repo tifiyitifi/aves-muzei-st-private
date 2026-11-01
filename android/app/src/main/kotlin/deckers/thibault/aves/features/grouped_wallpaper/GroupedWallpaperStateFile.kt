@@ -127,6 +127,13 @@ data class GroupedWallpaperFileState(
      * screen, while [previous] and [next] decide what the buttons can do.
      */
     val rewindCursor: Int = 0,
+    /**
+     * How long a photo change fades, in milliseconds; `0` switches instantly.
+     *
+     * The app owns the preference: the renderer only animates, and it still
+     * respects the system's animation switch.
+     */
+    val transitionMs: Int = DEFAULT_TRANSITION_MS,
 ) {
     fun slot(id: Int): GroupedWallpaperSlotFile? = slots.firstOrNull { it.id == id }
 
@@ -152,6 +159,12 @@ data class GroupedWallpaperFileState(
         const val ACTION_NONE = "none"
         const val ACTION_NEXT_ARTWORK = "nextArtwork"
         const val ACTION_VIEW_ARTWORK = "viewArtwork"
+
+        /** The Dart default, for a file written before the setting existed. */
+        const val DEFAULT_TRANSITION_MS = 300
+
+        /** A corrupt or hand-edited file must not animate for a minute. */
+        const val MAX_TRANSITION_MS = 2_000
     }
 }
 
@@ -311,6 +324,7 @@ object GroupedWallpaperStateFile {
             canPrevious = json.optBoolean("canPrevious", false),
             navigated = json.optBoolean("navigated", false),
             rewindCursor = json.optInt("rewindCursor", 0),
+            transitionMs = json.optInt("transitionMs", GroupedWallpaperFileState.DEFAULT_TRANSITION_MS).coerceIn(0, GroupedWallpaperFileState.MAX_TRANSITION_MS),
         )
     }
 

@@ -26,6 +26,7 @@ import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.GLUtils
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import java.io.File
 import java.nio.ByteBuffer
@@ -82,11 +83,15 @@ class GroupedWallpaperRenderer(
         const val FRAGMENT_SHADER = """
             precision mediump float;
             uniform sampler2D uTexture;
+            uniform float uAlpha;
             varying vec2 vTexCoord;
             void main() {
-                gl_FragColor = texture2D(uTexture, vTexCoord);
+                gl_FragColor = vec4(texture2D(uTexture, vTexCoord).rgb, uAlpha);
             }
         """
+
+        /** Temporary kill switch: false ships the plain, instant switch. */
+        const val CROSSFADE_ENABLED = true
     }
 
     /** What the loader thread decoded for one reload. */
@@ -96,6 +101,9 @@ class GroupedWallpaperRenderer(
     )
 
     private class UploadedSlot(val entryId: Int, val photo: String, val texture: Int, val aspect: Float)
+
+    /** A frame fading out under the one that replaced it. */
+    private class Fading(val id: Int, val slot: UploadedSlot, val startedAt: Long, val durationMs: Int)
 
     /** Disk reads and PNG decodes never run on the GL thread. */
     private val loader = Executors.newSingleThreadExecutor()
@@ -152,11 +160,28 @@ class GroupedWallpaperRenderer(
     private var aPosition = -1
     private var aTexCoord = -1
     private var uTexture = -1
+    private var uAlpha = -1
 
     private var viewWidth = 1
     private var viewHeight = 1
 
     private val textures = mutableMapOf<Int, UploadedSlot>()
+
+    /**
+     * The frame fading out; its texture stays uploaded until the fade ends.
+     *
+     * Only the GL thread touches it, since only it owns the texture ids.
+     */
+    private var fading: Fading? = null
+
+    /**
+     * The slot a promotion left behind, to fade from on the next GL frame.
+     *
+     * A promotion runs on the main thread, which must not touch the textures, so
+     * it only records the intent and the GL thread starts the fade.
+     */
+    @Volatile
+    private var pendingFadeFrom: Int = -1
 
     private var placeholderTexture = 0
 
@@ -194,8 +219,16 @@ class GroupedWallpaperRenderer(
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         Log.d(TAG, "surface.created")
         destroyed = false
-        // A new EGL context invalidates every texture id from the previous one.
+        // A new EGL context invalidates every texture id from the previous one,
+        // and with them what the loader thinks it has already uploaded: keeping
+        // `uploaded` would make the next reload skip every slot and leave the
+        // wallpaper on the placeholder until the state changed.
         textures.clear()
+        uploaded = emptyMap()
+        // The textures of a fading frame belong to the old context too; deleting
+        // them now would free an id another context may reuse.
+        fading = null
+        pendingFadeFrom = -1
         readySlots = emptySet()
         placeholderTexture = 0
         try {
@@ -203,6 +236,7 @@ class GroupedWallpaperRenderer(
             aPosition = GLES20.glGetAttribLocation(program, "aPosition")
             aTexCoord = GLES20.glGetAttribLocation(program, "aTexCoord")
             uTexture = GLES20.glGetUniformLocation(program, "uTexture")
+            uAlpha = GLES20.glGetUniformLocation(program, "uAlpha")
             GLES20.glDisable(GLES20.GL_DEPTH_TEST)
             GLES20.glClearColor(
                 ((PLACEHOLDER_BACKGROUND shr 16) and 0xFF) / 255f,
@@ -233,21 +267,89 @@ class GroupedWallpaperRenderer(
 
     override fun onDrawFrame(gl: GL10?) {
         consumePending()
+        startPendingFade()
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         if (program == 0) return
 
-        val slot = textures[displayed]
-        if (slot != null) {
-            // The lock screen does not pan: center the window instead of leaving
-            // it on whichever home page the launcher stopped at.
-            val offset = if (lockScreenVisible) 0.5f else offsetX
-            GroupedWallpaperViewport.texCoords(texCoords, slot.aspect, viewWidth.toFloat() / viewHeight.toFloat(), offset)
-            texCoordBuffer.put(texCoords).position(0)
-            drawQuad(fullVertexBuffer, texCoordBuffer, slot.texture)
-        } else if (placeholderTexture != 0) {
-            drawQuad(placeholderVertexBuffer, placeholderTexCoords, placeholderTexture)
+        val current = textures[displayed]
+        val fade = fading
+        if (fade != null) {
+            if (current == null) {
+                // Nothing replaced the outgoing frame yet: keep it on screen
+                // instead of dropping to the placeholder.
+                drawSlot(fade.slot, alpha = 1f)
+                return
+            }
+            val elapsed = SystemClock.elapsedRealtime() - fade.startedAt
+            val t = (elapsed.toFloat() / fade.durationMs).coerceIn(0f, 1f)
+            drawSlot(fade.slot, alpha = 1f)
+            drawSlot(current, alpha = t)
+            if (t >= 1f) releaseFading() else requestRender()
+            return
         }
+        if (current != null) {
+            drawSlot(current, alpha = 1f)
+        } else if (placeholderTexture != 0) {
+            drawQuad(placeholderVertexBuffer, placeholderTexCoords, placeholderTexture, alpha = 1f)
+        }
+    }
+
+    /**
+     * Draws one frame with the launcher's pan window.
+     *
+     * The lock screen does not pan: it centers the window instead of leaving it
+     * on whichever home page the launcher stopped at.
+     */
+    private fun drawSlot(slot: UploadedSlot, alpha: Float) {
+        val offset = if (lockScreenVisible) 0.5f else offsetX
+        GroupedWallpaperViewport.texCoords(texCoords, slot.aspect, viewWidth.toFloat() / viewHeight.toFloat(), offset)
+        texCoordBuffer.put(texCoords).position(0)
+        drawQuad(fullVertexBuffer, texCoordBuffer, slot.texture, alpha)
+    }
+
+    /** Starts the fade a promotion recorded, on the thread that owns the textures. */
+    private fun startPendingFade() {
+        val from = pendingFadeFrom
+        if (from < 0) return
+        pendingFadeFrom = -1
+        beginFade(from)
+    }
+
+    /**
+     * Fades from [fromId] to the slot now on screen.
+     *
+     * The outgoing frame keeps its texture until the new one is fully opaque,
+     * which is Muzei's rule for its current picture set, so a mid-fade reload can
+     * never blank the wallpaper.
+     */
+    private fun beginFade(fromId: Int) {
+        releaseFading()
+        if (!CROSSFADE_ENABLED || !animatorsEnabled()) return
+        // The app owns the duration; a missing or zero value switches instantly.
+        val duration = state?.transitionMs ?: GroupedWallpaperFileState.DEFAULT_TRANSITION_MS
+        if (duration <= 0) return
+        if (fromId < 0 || fromId == displayed) return
+        val slot = textures.remove(fromId) ?: return
+        fading = Fading(fromId, slot, SystemClock.elapsedRealtime(), duration)
+        readySlots = textures.keys.toSet()
+        // The released frame leaves `uploaded` with its texture, or the next
+        // reload would skip re-uploading it and draw nothing.
+        uploaded = textures.mapValues { (_, uploadedSlot) -> uploadedSlot.entryId to uploadedSlot.photo }
+    }
+
+    private fun releaseFading() {
+        val fade = fading ?: return
+        fading = null
+        deleteTexture(fade.slot.texture)
+    }
+
+    /** Whether the system asks for animations, e.g. for motion-sickness users. */
+    private fun animatorsEnabled(): Boolean = try {
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
+    } catch (t: Throwable) {
+        // A vendor build without the setting still gets the fade.
+        true
     }
 
     /** Re-reads `state.json` on the loader thread. */
@@ -364,6 +466,8 @@ class GroupedWallpaperRenderer(
         }
         val previous = if (back) -1 else current.current
         val next = if (back) current.current else -1
+        // The GL thread starts the fade; the main thread must not touch textures.
+        pendingFadeFrom = displayed
         displayed = target
         state = current.copy(current = target, previous = previous, next = next)
         requestRender()
@@ -460,9 +564,7 @@ class GroupedWallpaperRenderer(
             state = next
         }
 
-        val seen = mutableSetOf<Int>()
         for ((id, bitmap) in loaded.bitmaps) {
-            seen.add(id)
             val slot = next.slot(id)
             val photo = slot?.photoFor(lockScreenVisible) ?: ""
             val existing = textures[id]
@@ -485,13 +587,21 @@ class GroupedWallpaperRenderer(
             }
         }
 
-        // Drop the textures of slots that left the queue.
-        val stale = textures.keys.filter { !seen.contains(it) }
+        // Keep every frame the new state still draws. `loaded.bitmaps` only holds
+        // the frames this reload decoded, and the loader skips the ones already on
+        // the GPU, so it cannot tell which frames are alive.
+        val uploadedNow = textures.mapValues { (_, slot) -> slot.entryId to slot.photo }
+        val wanted = next.slots.associate { it.id to (it.entryId to it.photoFor(lockScreenVisible)) }
+        // A frame on screen, or one still fading out, is never dropped: nothing
+        // would replace it.
+        val protected = listOfNotNull(displayed.takeIf { it >= 0 }, pendingFadeFrom.takeIf { it >= 0 }, fading?.id).toSet()
+        val stale = GroupedTextureRetention.staleIds(uploadedNow, wanted, protected)
         for (id in stale) {
             textures.remove(id)?.let { deleteTexture(it.texture) }
         }
         readySlots = textures.keys.toSet()
         uploaded = textures.mapValues { (_, slot) -> slot.entryId to slot.photo }
+        Log.d(TAG, "textures.keep=${textures.keys.sorted()} drop=${stale.sorted()} displayed=$displayed")
 
         synchronized(advanceLock) {
             // A newer state wins; an unchanged one must not undo a local
@@ -499,10 +609,20 @@ class GroupedWallpaperRenderer(
             // its displayed slot must survive.
             if (state === next) {
                 if (next.generation > previousGeneration || !textures.containsKey(displayed)) {
+                    // Fade from whatever was on screen to the photo the app chose,
+                    // the same way a tap does.
+                    if (displayed != next.current) pendingFadeFrom = displayed
                     displayed = next.current
                 }
             }
-            if (!textures.containsKey(displayed)) displayed = -1
+            // A frame that failed to decode must not blank the wallpaper: keep
+            // whatever is drawable on screen until something replaces it, the
+            // way Muzei's current picture set outlives a reload.
+            if (!textures.containsKey(displayed)) {
+                displayed = listOf(next.current, next.previous, next.next).firstOrNull { textures.containsKey(it) }
+                    ?: textures.keys.firstOrNull()
+                    ?: -1
+            }
         }
         // A buffered tap may be servable now that the new slots are uploaded.
         drainPendingAdvance()
@@ -533,11 +653,20 @@ class GroupedWallpaperRenderer(
         return newState.copy(current = onScreen, previous = newState.current, next = -1)
     }
 
-    private fun drawQuad(vertices: FloatBuffer, coords: FloatBuffer, texture: Int) {
+    private fun drawQuad(vertices: FloatBuffer, coords: FloatBuffer, texture: Int, alpha: Float) {
         GLES20.glUseProgram(program)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
         GLES20.glUniform1i(uTexture, 0)
+        GLES20.glUniform1f(uAlpha, alpha)
+        // The incoming frame is translucent over the outgoing one; an opaque
+        // frame is drawn unblended so no driver does needless work.
+        if (alpha < 1f) {
+            GLES20.glEnable(GLES20.GL_BLEND)
+            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+        } else {
+            GLES20.glDisable(GLES20.GL_BLEND)
+        }
         GLES20.glEnableVertexAttribArray(aPosition)
         GLES20.glVertexAttribPointer(aPosition, 2, GLES20.GL_FLOAT, false, 0, vertices)
         GLES20.glEnableVertexAttribArray(aTexCoord)

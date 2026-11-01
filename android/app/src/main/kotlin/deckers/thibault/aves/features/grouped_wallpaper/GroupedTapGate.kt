@@ -34,7 +34,7 @@ class GroupedTapGate(
     /** The platform's double-tap timeout; `ViewConfiguration` is 300 ms. */
     private val windowMs: Long = 300L,
     /** How long one fired gesture keeps every later signal of itself silent. */
-    private val cooldownMs: Long = 400L,
+    private val cooldownMs: Long = 250L,
 ) {
     private var armedAt: Long? = null
     private var firedAt: Long? = null

@@ -114,7 +114,7 @@ tap goes forward, the bar's "previous" goes back, and each switch draws a textur
 it already uploaded. The renderer writes the step to `runtime.json` synchronously
 and asks the app (or the shared background worker) to refill the frame it left
 behind. A tap that arrives before the neighbour is uploaded is buffered (capacity
-5, 10 s expiry) and replayed as slots land.
+5, 3 s expiry) and replayed as slots land.
 
 Dart adopts a runtime only when it names a queued neighbour of the state it knows,
 and re-reads it just before writing `state.json`, so a step that landed during a
@@ -127,6 +127,36 @@ The walk itself is the usage history (see below): a forward step returns through
 the records the user already saw and only creates a new photo at the newest one.
 Both directions are the same code path ([`_moveTo`]), so stepping back and forth
 can never reorder the records or skip one.
+
+### Frame retention
+
+A reload only drops the frames the new `state.json` no longer names. Judging a
+frame stale because *this* reload did not decode it is what blanked the wallpaper
+and made taps go unanswered: the loader deliberately skips a slot whose
+`(entryId, photo)` is already on the GPU, so the decoded set says nothing about
+which textures are alive. The rule lives in `GroupedTextureRetention`:
+
+- the new state's slots survive, as does the slot on screen (and the one still
+  fading out) whatever the state says, because nothing would replace them;
+- a slot that left the queue, or whose `(entryId, photo)` changed (a re-bake, or
+  a home↔lock effect switch), is dropped.
+
+`uploaded` must always match `textures`: a texture removed without updating it
+would be skipped by the next reload and leave a hole. `onSurfaceCreated` clears
+both, since a new EGL context invalidates the texture ids themselves.
+
+### Crossfade
+
+A promoted photo fades over 300 ms (Muzei uses 750 ms for its slower
+blur-to-sharp switch). The outgoing frame keeps its texture until the incoming
+one is fully opaque, so a mid-fade reload can never blank the wallpaper, and a
+tap during a fade starts a new one instead of queueing behind it. Two things turn
+it off: the system animation switch (`ANIMATOR_DURATION_SCALE`), which is what
+motion-sickness settings flip, and the user's global "photo change animation" in
+**Settings → Visible & wallpaper**, which travels in `state.json` as
+`transitionMs` (`0` switches instantly). It is deliberately not a group effect:
+a fade runs between frames that may belong to different groups, and the effects
+blob is the frame cache key, so a duration there would invalidate every frame.
 
 ### Frame cache
 
@@ -151,10 +181,13 @@ it is baked once more.
 launcher's command cannot tell a single tap from a double tap on its own. The
 service feeds both that command and the gesture detector's `onDoubleTap` into
 `GroupedTapGate`, which only fires when a second signal arrives inside the
-platform's double-tap window and stays closed for 400 ms afterwards. A single tap
-therefore never changes the wallpaper, a real double tap fires once whichever
-path reports second, and a launcher that delivers no touch events still works
-through its two commands.
+platform's double-tap window and stays closed for 250 ms afterwards (long enough
+to swallow the third signal of one gesture, short enough for two quick double
+taps to both count). A single tap therefore never changes the wallpaper, a real
+double tap fires once whichever path reports second, and a launcher that delivers
+no touch events still works through its two commands. Each signal logs
+`tap.signal src=touch|command fired=…` so a future report can tell a gesture the
+gate ate from one that never arrived.
 
 ### Scroll effect
 

@@ -314,6 +314,13 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         private val gestureHandler = Handler(Looper.getMainLooper())
 
         /**
+         * The launcher reports the scroll step on every frame; it is only
+         * interesting when it changes, and logging it every time buried the
+         * gesture lines in the last bug report.
+         */
+        private var lastScrollStep = Float.NaN
+
+        /**
          * The engine draws the same surface for home and lock, so the surface is
          * inferred from the screen broadcasts and the keyguard state.
          */
@@ -338,7 +345,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
                 override fun onDown(e: MotionEvent): Boolean = true
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
-                    if (tapGate.onTapSignal()) performGesture(threeFinger = false)
+                    val fired = tapGate.onTapSignal()
+                    Log.d(TAG, "tap.signal src=touch fired=$fired")
+                    if (fired) performGesture(threeFinger = false)
                     return true
                 }
             },
@@ -409,8 +418,12 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             // A picker preview says nothing about the launcher the wallpaper will
             // live on — it reports its own step, often the single-page `0` — so
             // only the real engine records it. Logged because "the first photos
-            // lost the effect" is otherwise untraceable.
-            Log.d(TAG, "scroll.step step=$xOffsetStep preview=$isPreview")
+            // lost the effect" is otherwise untraceable, but only on a change:
+            // a launcher reports it on every frame.
+            if (lastScrollStep != xOffsetStep) {
+                lastScrollStep = xOffsetStep
+                Log.d(TAG, "scroll.step step=$xOffsetStep preview=$isPreview")
+            }
             if (!isPreview) {
                 val startsPanning = GroupedLiveWallpaperService.recordScrollStep(xOffsetStep)
                 if (startsPanning) {
@@ -435,7 +448,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             if (WallpaperManager.COMMAND_TAP == action) {
                 // Only a tap the gesture detector already saw twice acts: a single
                 // tap must never change the wallpaper.
-                if (tapGate.onTapSignal()) performGesture(threeFinger = false)
+                val fired = tapGate.onTapSignal()
+                Log.d(TAG, "tap.signal src=command fired=$fired")
+                if (fired) performGesture(threeFinger = false)
             }
             return super.onCommand(action, x, y, z, extras, resultRequested)
         }

@@ -4,6 +4,7 @@ import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_history_limit_dialog.dart';
@@ -140,6 +141,80 @@ class WallpaperNotificationEditor extends StatelessWidget {
         },
       );
 }
+
+/// Picks how a photo change animates.
+///
+/// The value is global, not per group: a fade runs between frames that may come
+/// from different groups, and the effects blob it would otherwise live in is the
+/// frame cache key, so a duration there would re-bake every frame.
+class WallpaperTransitionEditor extends StatefulWidget {
+  final SettingDef def;
+
+  const new({super.key, required this.def});
+
+  @override
+  State<WallpaperTransitionEditor> createState() => _WallpaperTransitionEditorState();
+}
+
+class _WallpaperTransitionEditorState extends State<WallpaperTransitionEditor> {
+  GroupedWallpaperTransition? _value;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    try {
+      final value = await (await _store()).readTransition();
+      if (!mounted) return;
+      setState(() => _value = value);
+    } catch (error, stack) {
+      groupedWallpaperLog.e('failed to read the wallpaper transition', error, stack);
+    }
+  }
+
+  Future<void> _set(GroupedWallpaperTransition value) async {
+    setState(() => _value = value);
+    try {
+      // The store is the source of truth; the engine call carries the value into
+      // `state.json` so the renderer fades with it before the next bake.
+      await (await _store()).writeTransition(value);
+      await wallpaperEngineLink.setTransition(value);
+    } catch (error, stack) {
+      groupedWallpaperLog.e('failed to write the wallpaper transition', error, stack);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = _value;
+    return ListTile(
+      title: Text(widget.def.title(context)),
+      subtitle: value == null ? null : Text(_transitionName(context, value)),
+      enabled: value != null,
+      onTap: value == null
+          ? null
+          : () => showSelectionDialog<GroupedWallpaperTransition>(
+                context: context,
+                builder: (context) => AvesSingleSelectionDialog<GroupedWallpaperTransition>(
+                  initialValue: value,
+                  options: {for (final option in GroupedWallpaperTransition.values) option: _transitionName(context, option)},
+                  title: context.l10n.settingsWallpaperTransition,
+                ),
+                onSelection: (selected) => unawaited(_set(selected)),
+              ),
+    );
+  }
+}
+
+String _transitionName(BuildContext context, GroupedWallpaperTransition transition) => switch (transition) {
+      GroupedWallpaperTransition.off => context.l10n.settingsWallpaperTransitionOff,
+      GroupedWallpaperTransition.short => context.l10n.settingsWallpaperTransitionShort,
+      GroupedWallpaperTransition.standard => context.l10n.settingsWallpaperTransitionStandard,
+      GroupedWallpaperTransition.long => context.l10n.settingsWallpaperTransitionLong,
+    };
 
 /// Opens the history limit dialog, the same one the group page and the history
 /// page use, so the number is entered one way everywhere.

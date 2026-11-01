@@ -1,4 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_restore_notice.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -140,6 +141,9 @@ class _FakeConnection implements WallpaperEngineConnection {
 
   @override
   Future<void> setNotification(bool enabled) async {}
+
+  @override
+  Future<void> setTransition(GroupedWallpaperTransition transition) async {}
 
   @override
   Future<void> setHistoryLimit(int limit) async {}

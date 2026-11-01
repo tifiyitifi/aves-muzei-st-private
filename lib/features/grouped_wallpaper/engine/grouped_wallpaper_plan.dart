@@ -4,6 +4,7 @@ import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
@@ -57,6 +58,12 @@ class GroupedWallpaperPlan extends Equatable {
   /// and the notification needs the same value to grey its "previous" button.
   final int historyLimit;
 
+  /// How a photo change is animated on the wallpaper.
+  ///
+  /// It travels with the plan into `state.json` because the renderer fades on its
+  /// own, without asking Dart.
+  final GroupedWallpaperTransition transition;
+
   const new({
     required this.group,
     this.range,
@@ -67,6 +74,7 @@ class GroupedWallpaperPlan extends Equatable {
     this.groups = const [],
     this.notification = true,
     this.historyLimit = GroupedWallpaperHistoryLimit.defaultLimit,
+    this.transition = GroupedWallpaperTransition.defaultTransition,
   });
 
   bool get isNone => group.isNone;
@@ -80,7 +88,7 @@ class GroupedWallpaperPlan extends Equatable {
   bool get enabled => !disabled && !group.isNone;
 
   @override
-  List<Object?> get props => [group, range, disabled, gestures, ordering, interval, groups, notification, historyLimit];
+  List<Object?> get props => [group, range, disabled, gestures, ordering, interval, groups, notification, historyLimit, transition];
 }
 
 /// Reads and updates [GroupedWallpaperPlan].
@@ -108,6 +116,9 @@ abstract interface class GroupedWallpaperPlanStore {
   /// It only affects the next recorded photo: lowering it never deletes rows on
   /// its own.
   Future<void> setHistoryLimit(int limit);
+
+  /// Records how a photo change is animated.
+  Future<void> setTransition(GroupedWallpaperTransition transition);
 
   /// Makes the next (`delta > 0`) or previous enabled group current.
   ///
@@ -137,6 +148,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final gestures = await store.readGestures();
     final notification = await store.readNotification();
     final historyLimit = await store.readHistoryLimit();
+    final transition = await store.readTransition();
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? WallpaperGroup.none;
     if (group.isNone) {
       return GroupedWallpaperPlan(
@@ -148,6 +160,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
         groups: enabledWallpaperGroups(groups),
         notification: notification,
         historyLimit: historyLimit,
+        transition: transition,
       );
     }
     final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
@@ -161,6 +174,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       groups: enabledWallpaperGroups(groups),
       notification: notification,
       historyLimit: historyLimit,
+      transition: transition,
     );
   }
 
@@ -172,6 +186,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final gestures = await store.readGestures();
     final notification = await store.readNotification();
     final historyLimit = await store.readHistoryLimit();
+    final transition = await store.readTransition();
     // A group that is already current is the answer: adopting is idempotent, so
     // a repeated activation never moves the wallpaper to another group.
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? enabledWallpaperGroups(groups).firstOrNull;
@@ -184,6 +199,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
         groups: enabledWallpaperGroups(groups),
         notification: notification,
         historyLimit: historyLimit,
+        transition: transition,
       );
     }
     if (!group.current) {
@@ -202,6 +218,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       groups: enabledWallpaperGroups(groups),
       notification: notification,
       historyLimit: historyLimit,
+      transition: transition,
     );
   }
 
@@ -243,6 +260,10 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       groups: enabled,
       notification: await store.readNotification(),
       historyLimit: await store.readHistoryLimit(),
+      transition: await store.readTransition(),
     );
   }
+
+  @override
+  Future<void> setTransition(GroupedWallpaperTransition transition) async => WallpaperGroupStore(await _open()).writeTransition(transition);
 }

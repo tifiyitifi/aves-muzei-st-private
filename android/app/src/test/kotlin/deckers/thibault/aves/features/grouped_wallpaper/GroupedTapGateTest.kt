@@ -75,6 +75,20 @@ class GroupedTapGateTest {
     }
 
     @Test
+    fun `a new double tap just after the cooldown still fires`() {
+        val gate = gate()
+        assertFalse(gate.onTapSignal())
+        now += 100
+        assertTrue(gate.onTapSignal())
+        // Faster than the 400 ms the gate used to swallow: two quick double taps
+        // in a row must both count.
+        now += 250
+        assertFalse(gate.onTapSignal())
+        now += 100
+        assertTrue(gate.onTapSignal())
+    }
+
+    @Test
     fun `reset forgets a pending first tap`() {
         val gate = gate()
         assertFalse(gate.onTapSignal())

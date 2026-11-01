@@ -1,6 +1,7 @@
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
@@ -396,6 +397,13 @@ class GroupedWallpaperState extends Equatable {
   /// button: with recording off the bar greys it out instead of asking the app.
   final int historyLimit;
 
+  /// How long a photo change fades, in milliseconds; `0` switches instantly.
+  ///
+  /// It travels with the state because the renderer animates on its own, without
+  /// asking Dart, and it must respect both the user's choice and the system's
+  /// animation switch.
+  final int transitionMs;
+
   /// Whether the group-switch lock is on, so the bar greys its group buttons.
   ///
   /// It travels with the state because the notification is built natively from
@@ -446,6 +454,7 @@ class GroupedWallpaperState extends Equatable {
     this.surfaceHeight = 0,
     this.scrollEffect = false,
     this.historyLimit = GroupedWallpaperHistoryLimit.defaultLimit,
+    this.transitionMs = defaultGroupedWallpaperTransitionMs,
     this.switchLocked = false,
     this.switchLockedGroupId = '',
     this.groups = const [],
@@ -534,6 +543,7 @@ class GroupedWallpaperState extends Equatable {
     int? surfaceHeight,
     bool? scrollEffect,
     int? historyLimit,
+    int? transitionMs,
     bool? switchLocked,
     String? switchLockedGroupId,
     List<GroupedWallpaperGroup>? groups,
@@ -564,6 +574,7 @@ class GroupedWallpaperState extends Equatable {
         surfaceHeight: surfaceHeight ?? this.surfaceHeight,
         scrollEffect: scrollEffect ?? this.scrollEffect,
         historyLimit: historyLimit ?? this.historyLimit,
+        transitionMs: transitionMs ?? this.transitionMs,
         switchLocked: switchLocked ?? this.switchLocked,
         switchLockedGroupId: switchLockedGroupId ?? this.switchLockedGroupId,
         groups: groups ?? this.groups,
@@ -614,6 +625,7 @@ class GroupedWallpaperState extends Equatable {
         'surfaceHeight': surfaceHeight,
         'scrollEffect': scrollEffect,
         'historyLimit': historyLimit,
+        'transitionMs': transitionMs,
         'switchLocked': switchLocked,
         'switchLockedGroupId': switchLockedGroupId,
         'groups': groups.map((group) => group.toJsonMap()).toList(),
@@ -757,6 +769,8 @@ class GroupedWallpaperState extends Equatable {
       // Files written before the limit existed recorded everything, which is what
       // the store's default still does.
       historyLimit: historyLimit,
+      // Absent means a file from before the animation existed: use the default.
+      transitionMs: GroupedWallpaperTransition.fromDuration(json['transitionMs']).durationMs,
       switchLocked: json['switchLocked'] == true,
       switchLockedGroupId: _string(json['switchLockedGroupId']),
       groups: List.unmodifiable(groups),
@@ -781,7 +795,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, previous, next, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, switchLocked, switchLockedGroupId, groups, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, previous, next, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, transitionMs, switchLocked, switchLockedGroupId, groups, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

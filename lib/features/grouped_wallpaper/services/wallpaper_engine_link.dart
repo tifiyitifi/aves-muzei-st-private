@@ -1,4 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 
 /// What the page needs from the wallpaper engine.
 ///
@@ -56,6 +57,9 @@ abstract interface class WallpaperEngineConnection {
 
   /// Records how many photos the usage history keeps.
   Future<void> setHistoryLimit(int limit);
+
+  /// Records how a photo change is animated and applies it now.
+  Future<void> setTransition(GroupedWallpaperTransition transition);
 
   /// Drops the rewind stack after the usage history was cleared.
   Future<void> clearRewind();
@@ -206,6 +210,8 @@ class WallpaperEngineLink {
   }
 
   Future<void> setHistoryLimit(int limit) async => await _connection?.setHistoryLimit(limit);
+
+  Future<void> setTransition(GroupedWallpaperTransition transition) async => await _connection?.setTransition(transition);
 
   Future<void> clearRewind() async => await _connection?.clearRewind();
 

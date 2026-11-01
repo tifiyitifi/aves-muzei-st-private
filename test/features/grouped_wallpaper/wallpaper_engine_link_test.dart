@@ -1,4 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -223,6 +224,11 @@ class _FakeConnection implements WallpaperEngineConnection {
   Future<void> setHistoryLimit(int limit) async => historyLimit = limit;
 
   int historyLimit = 200;
+
+  @override
+  Future<void> setTransition(GroupedWallpaperTransition transition) async => this.transition = transition;
+
+  GroupedWallpaperTransition transition = GroupedWallpaperTransition.defaultTransition;
 
   @override
   Future<void> clearRewind() async => rewinds++;

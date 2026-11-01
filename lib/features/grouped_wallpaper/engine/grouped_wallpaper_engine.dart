@@ -16,6 +16,7 @@ import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_command.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
@@ -247,6 +248,25 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       await store.writeState(updated);
       await store.pruneFrames(keep: _framePaths(updated), maxFrames: value <= 0 ? 6 : value);
       await platform.refreshNotification();
+    });
+  }
+
+  /// Records the photo-change animation and applies it now.
+  ///
+  /// The duration travels in `state.json` because the renderer fades on its own,
+  /// without asking Dart. Rewriting the state keeps the same generation, so the
+  /// frame on screen does not move, and the reload is what makes a new value take
+  /// effect before the next bake.
+  @override
+  Future<void> setTransition(GroupedWallpaperTransition transition) {
+    return _serialize(() async {
+      await planStore.setTransition(transition);
+      final store = _store;
+      if (store == null) return;
+      final state = await store.readState();
+      if (state == null || state.transitionMs == transition.durationMs) return;
+      await store.writeState(state.copyWith(transitionMs: transition.durationMs));
+      await platform.reload();
     });
   }
 
@@ -518,6 +538,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final runtime = await store.readRuntime();
       final adopted = _adoptRuntime(previous, runtime);
       final promoted = adopted != null && !identical(adopted.state, previous);
+      if (promoted) {
+        groupedWallpaperLog.d('queue.adopt runtime current=${runtime?.current} generation=${runtime?.generation}');
+      }
       final surface = await _resolveTargetSize();
       final scrollEffect = await _effectiveScrollEffect(plan);
       final groupStale = _isStale(plan, adopted?.state ?? previous);
@@ -848,6 +871,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         surfaceHeight: surface.height.round(),
         scrollEffect: scrollEffect,
         historyLimit: plan.historyLimit,
+        transitionMs: plan.transition.durationMs,
         switchLocked: _groupSwitchLocked(),
         switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
         groups: _groupSnapshot(plan),
@@ -1002,6 +1026,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       surfaceHeight: surface.height.round(),
       scrollEffect: scrollEffect,
       historyLimit: plan.historyLimit,
+      transitionMs: plan.transition.durationMs,
       switchLocked: _groupSwitchLocked(),
       switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
       groups: _groupSnapshot(plan),
@@ -1297,6 +1322,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             generation: previous.generation + 1,
             status: GroupedWallpaperStatus.locked,
             historyLimit: plan.historyLimit,
+            transitionMs: plan.transition.durationMs,
             switchLocked: _groupSwitchLocked(),
             switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
             groups: _groupSnapshot(plan),
@@ -1311,6 +1337,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             gestures: plan.gestures,
             notification: plan.notification,
             historyLimit: plan.historyLimit,
+            transitionMs: plan.transition.durationMs,
             switchLocked: _groupSwitchLocked(),
             switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
             groups: _groupSnapshot(plan),
@@ -1345,6 +1372,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               gestures: plan.gestures,
               notification: plan.notification,
               historyLimit: plan.historyLimit,
+              transitionMs: plan.transition.durationMs,
               switchLocked: _groupSwitchLocked(),
               switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
               groups: _groupSnapshot(plan),
@@ -1359,6 +1387,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               gestures: previous?.gestures ?? const GroupedWallpaperGestures(),
               notification: previous?.notification ?? true,
               historyLimit: previous?.historyLimit ?? GroupedWallpaperHistoryLimit.defaultLimit,
+              transitionMs: previous?.transitionMs ?? GroupedWallpaperTransition.defaultTransition.durationMs,
               switchLocked: _groupSwitchLocked(),
               switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
               groups: previous?.groups ?? const [],

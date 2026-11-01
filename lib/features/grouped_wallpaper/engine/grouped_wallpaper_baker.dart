@@ -65,7 +65,11 @@ class GroupedWallpaperBaker {
   /// a very large intermediate bitmap.
   static const double maxDecodePixels = 16 * 1000 * 1000;
 
-  static const Duration decodeTimeout = Duration(seconds: 60);
+  /// A decode that runs longer than this is treated as failed.
+  ///
+  /// Baking is serialized, so waiting a minute for one photo blocks every tap
+  /// that follows it; picking another photo is better than a stuck queue.
+  static const Duration decodeTimeout = Duration(seconds: 15);
 
   /// Injected in tests so baking can run on the host without platform media
   /// channels; production uses the entry's EXIF-aware full-image provider.

@@ -6,6 +6,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
@@ -66,6 +67,11 @@ class WallpaperGroupStore {
   /// `bottomNavigationActions`, so its placement needs a home of its own.
   static const keyNavMode = 'wallpaper.groupedNavMode';
 
+  /// AppMeta key of the photo-change animation.
+  ///
+  /// Global like the switches above: the renderer fades between frames that may
+  /// belong to different groups, so no group can own the value.
+  static const keyTransition = 'wallpaper.groupedTransition';
   /// AppMeta key of the user closing the derived bottom-bar entry.
   static const keyNavEntryClosed = 'wallpaper.groupedNavEntryClosed';
 
@@ -233,6 +239,18 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeNavMode(GroupedWallpaperNavMode mode) => AppMetaStore(db).write({keyNavMode: mode.name});
+
+  /// How a photo change is animated on the wallpaper.
+  ///
+  /// Global like the switches above: the renderer animates between frames that
+  /// may belong to different groups, so the value cannot live in a group's
+  /// effects, which also double as the frame cache key.
+  Future<GroupedWallpaperTransition> readTransition() async {
+    final values = await AppMetaStore(db).read({keyTransition});
+    return GroupedWallpaperTransition.tryParse(values[keyTransition]);
+  }
+
+  Future<void> writeTransition(GroupedWallpaperTransition transition) => AppMetaStore(db).write({keyTransition: transition.name});
 
   /// Whether the user closed the derived bottom-bar entry.
   Future<bool> readNavEntryClosed() async {

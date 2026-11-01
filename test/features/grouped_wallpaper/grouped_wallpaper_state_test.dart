@@ -2,6 +2,7 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.d
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// `GroupedWallpaperState`: the `state.json` contract, the slot queue, the
@@ -157,6 +158,19 @@ void main() {
 
     final outOfRange = state.toJsonMap()..['historyLimit'] = 100000;
     expect(GroupedWallpaperState.tryFromJsonMap(outOfRange)!.historyLimit, GroupedWallpaperHistoryLimit.maxLimit);
+  });
+
+  test('the photo-change animation travels with the state', () {
+    final json = state.toJsonMap()..['transitionMs'] = 0;
+    expect(GroupedWallpaperState.tryFromJsonMap(json)!.transitionMs, 0);
+
+    final missing = state.toJsonMap()..remove('transitionMs');
+    expect(GroupedWallpaperState.tryFromJsonMap(missing)!.transitionMs, GroupedWallpaperTransition.defaultTransition.durationMs);
+
+    // A file written by another build keeps the closest known duration instead of
+    // freezing the wallpaper on a value no switch can name.
+    final unknown = state.toJsonMap()..['transitionMs'] = 420;
+    expect(GroupedWallpaperState.tryFromJsonMap(unknown)!.transitionMs, GroupedWallpaperTransition.long.durationMs);
   });
 
   test('a v3 file reads as playing, with no group on its history', () {

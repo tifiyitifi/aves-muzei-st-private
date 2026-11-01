@@ -36,8 +36,15 @@ class GroupedAdvanceRequestQueue(
         /** Enough for a quick burst; more would only obscure the photo. */
         const val DEFAULT_CAPACITY = 5
 
-        /** A bake takes a couple of seconds, so the window covers a few refills. */
-        const val DEFAULT_TIMEOUT_MS = 10_000L
+        /**
+         * How long a buffered tap may wait for its slot.
+         *
+         * Muzei keeps a single pending image loader, so a tap never lands long
+         * after the user made it. A bake takes a few seconds at most, so three
+         * seconds covers one refill without letting an old tap suddenly change
+         * the wallpaper.
+         */
+        const val DEFAULT_TIMEOUT_MS = 3_000L
     }
 
     private val requests = ArrayDeque<Long>()

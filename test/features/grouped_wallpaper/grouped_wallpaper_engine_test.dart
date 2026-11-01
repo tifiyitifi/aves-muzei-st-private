@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'dart:convert';
 
+import 'package:aves/features/grouped_wallpaper/engine/grouped_frame_baker.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_baker.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_bridge.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_engine.dart';
@@ -98,7 +99,7 @@ void main() {
     groupSwitchLocked = false;
     engine = GroupedWallpaperEngine(
       platform: platform,
-      baker: baker,
+      frameBaker: SkiaFrameBaker(baker),
       planStore: planStore,
       entrySource: entrySource,
       nameResolver: (group) => 'DCIM',
@@ -107,6 +108,9 @@ void main() {
       targetSize: () async => platform.size,
       now: () => 1234,
       groupSwitchLocked: () => groupSwitchLocked,
+      // The history and cache assertions below count exactly the bakes a step
+      // needs; the prewarm has its own group.
+      prewarm: false,
     );
     await engine.attach();
   });
@@ -1285,6 +1289,85 @@ void main() {
       expect(platform.reloadCount, reloads + 1);
     });
   });
+
+  group('prewarm', () {
+    late GroupedWallpaperEngine warming;
+
+    /// The prewarm runs after the step that scheduled it, on the engine's own
+    /// queue; draining that queue means another run, so the test waits instead.
+    Future<void> waitForBake(int count) async {
+      for (var i = 0; i < 200 && baker.bakeCount < count; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+    }
+
+    /// The engine serializes its runs, so a no-op run waits for the prewarm to
+    /// finish writing (and closing its file).
+    Future<void> drain() => warming.setHistoryLimit(GroupedWallpaperHistoryLimit.defaultLimit);
+
+    setUp(() async {
+      warming = GroupedWallpaperEngine(
+        platform: platform,
+        frameBaker: SkiaFrameBaker(baker),
+        planStore: planStore,
+        entrySource: entrySource,
+        nameResolver: (group) => 'DCIM',
+        link: link,
+        history: historyRecorder,
+        targetSize: () async => platform.size,
+        now: () => 1234,
+        groupSwitchLocked: () => groupSwitchLocked,
+      );
+      await warming.attach();
+    });
+
+    tearDown(() => warming.detach());
+
+    test('bakes the next step ahead without touching the history', () async {
+      serve(entries(12));
+      await warming.prepare();
+      final bakes = baker.bakeCount;
+      final stateBefore = await store.stateFile.readAsString();
+
+      await waitForBake(bakes + 1);
+
+      expect(baker.bakeCount, bakes + 1);
+      // Nothing was committed: `state.json` is byte-identical, so the cursor, the
+      // rewind stack and the queue are exactly what the step wrote.
+      expect(await store.stateFile.readAsString(), stateBefore);
+      await drain();
+    });
+
+    test('the prewarmed frame survives the cache eviction', () async {
+      serve(entries(12));
+      await warming.prepare();
+      final bakes = baker.bakeCount;
+      await waitForBake(bakes + 1);
+      await drain();
+      final prewarmed = await prewarmedPhoto(store, baker.lastEntry!.id);
+      expect(prewarmed, isNotNull, reason: 'the prewarm must write a cached frame');
+
+      // Frames no queue references, so a small cache has to drop them.
+      for (var entryId = 200; entryId < 210; entryId++) {
+        await store.writeFramePhoto(entryId, 'old', Uint8List.fromList([1]));
+      }
+      await warming.setHistoryLimit(1);
+
+      expect(await prewarmed!.exists(), isTrue, reason: 'the eviction must keep the frame it baked ahead');
+    });
+  });
+}
+
+/// The cached photo the prewarm wrote for [entryId], if any.
+Future<File?> prewarmedPhoto(GroupedWallpaperStateStore store, int entryId) async {
+  final dir = Directory('${store.framesDir.path}/$entryId');
+  if (!await dir.exists()) return null;
+  await for (final entity in dir.list()) {
+    if (entity is! Directory) continue;
+    final photo = File('${entity.path}/${GroupedWallpaperStateStore.framePhotoFileName}');
+    if (await photo.exists()) return photo;
+  }
+  return null;
 }
 
 class _FakeHistoryRecorder implements GroupedWallpaperHistoryRecorder {
@@ -1397,6 +1480,17 @@ class _FakePlatform implements GroupedWallpaperPlatform {
     syncHandler = onSyncRequested;
     commandHandler = onCommand;
   }
+
+  /// The fake platform never bakes natively: the engine's injected baker is the
+  /// Dart one, exactly like a host without the service.
+  @override
+  Future<GroupedFrameWriteResult?> writeFrame({
+    required AvesEntry entry,
+    required Size targetSize,
+    required String photoPath,
+    required int quality,
+  }) async =>
+      null;
 }
 
 class _FakeBaker extends GroupedWallpaperBaker {

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:aves/features/grouped_wallpaper/engine/grouped_frame_baker.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_baker.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_bridge.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_entry_source.dart';
@@ -50,7 +51,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   static const int maxBakeAttempts = 5;
 
   final GroupedWallpaperPlatform platform;
-  final GroupedWallpaperBaker baker;
+  final GroupedFrameBaker frameBaker;
   final GroupedWallpaperPlanStore planStore;
   final GroupedWallpaperEntrySource entrySource;
   final GroupedWallpaperNameResolver nameResolver;
@@ -69,7 +70,18 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   final Future<Size?> Function() _targetSize;
 
+  /// Whether to bake the frame the step after the next one will want.
+  ///
+  /// A burst promotes the queued neighbour and then waits for the refill to bake
+  /// the new one; doing that bake ahead of time turns the second step into a
+  /// cache hit. It changes nothing else: the cursor, the rewind stack and
+  /// `state.json` are only written by a real step.
+  final bool prewarm;
+
   GroupedWallpaperStateStore? _store;
+
+  /// The frame baked ahead of the queue, kept out of the cache's eviction.
+  GroupedWallpaperSlot? _prewarmed;
 
   /// Runs one pipeline at a time: the service's start request and the page's
   /// button must never bake two frames into the same file.
@@ -77,7 +89,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   new({
     required this.platform,
-    GroupedWallpaperBaker? baker,
+    GroupedFrameBaker? frameBaker,
     GroupedWallpaperPlanStore? planStore,
     GroupedWallpaperEntrySource? entrySource,
     GroupedWallpaperNameResolver? nameResolver,
@@ -86,7 +98,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     Future<Size?> Function()? targetSize,
     int Function()? now,
     bool Function()? groupSwitchLocked,
-  })  : baker = baker ?? GroupedWallpaperBaker(),
+    this.prewarm = true,
+  })  : frameBaker = frameBaker ?? NativeFrameBaker(platform),
         planStore = planStore ?? SavedGroupedWallpaperPlanStore(),
         entrySource = entrySource ?? GroupedWallpaperDbEntrySource(),
         nameResolver = nameResolver ?? resolveGroupedWallpaperName,
@@ -137,6 +150,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     platform.setSyncRequestHandler();
     link.detach();
     _store = null;
+    _prewarmed = null;
   }
 
   @override
@@ -246,7 +260,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       if (state.historyLimit == value && state.rewind.length == rewind.length && state.rewindCursor == rewindCursor) return;
       final updated = state.copyWith(historyLimit: value, rewind: rewind, rewindCursor: rewindCursor);
       await store.writeState(updated);
-      await store.pruneFrames(keep: _framePaths(updated), maxFrames: value <= 0 ? 6 : value);
+      await store.pruneFrames(keep: _keepPaths(updated), maxFrames: value <= 0 ? 6 : value);
       await platform.refreshNotification();
     });
   }
@@ -289,7 +303,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       await store.writeState(cleared);
       // The frames of the cleared records are the same private copy: dropping the
       // records must drop them too, not just hide the button.
-      await store.clearFrames(keep: _framePaths(cleared));
+      _prewarmed = null;
+      await store.clearFrames(keep: _keepPaths(cleared));
       await platform.reload();
       await platform.refreshNotification();
     });
@@ -726,6 +741,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     Set<int> exclude = const {},
   }) async {
     final sameGroup = previous != null && previous.groupId == plan.group.id;
+    // The queue is starting over: the frame baked for the old one is no longer
+    // the step this group will take.
+    _prewarmed = null;
     final base = previous?.copyWith(
           status: GroupedWallpaperStatus.ready,
           current: -1,
@@ -852,6 +870,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     required bool navigated,
   }) async {
     final layoutStale = _isLayoutStale(state, surface, scrollEffect);
+    // A prewarmed frame belongs to the layout it was baked for; keeping it after
+    // a layout or effect change would only hold a file the queue can never draw.
+    if (layoutStale) _prewarmed = null;
     final slots = <int, GroupedWallpaperSlot>{};
     final usedIds = <int>{};
 
@@ -1033,12 +1054,13 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       bakedAt: now(),
     );
     await store.writeState(nextState);
-    await store.pruneFrames(keep: _framePaths(nextState), maxFrames: _frameCacheDepth(plan));
+    await store.pruneFrames(keep: _keepPaths(nextState), maxFrames: _frameCacheDepth(plan));
     // Frames written before the entry-keyed cache lived under `slots/`.
     await store.pruneSlots(const []);
     if (newPhoto) await _recordShown(plan, currentSlot);
     await platform.reload();
     groupedWallpaperLog.d('queue.settled current=${nextState.current} previous=${nextState.previous} next=${nextState.next} cursor=${nextState.rewindCursor}/${rewind.length} count=$total');
+    _schedulePrewarm(store, plan, nextState, surface: surface, scrollEffect: scrollEffect);
     return (result: GroupedWallpaperSyncResult.baked, promoted: null);
   }
 
@@ -1090,13 +1112,71 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     return null;
   }
 
+  /// Bakes the photo the step after the next one will want, without recording it.
+  ///
+  /// A forward step promotes the queued neighbour and the refill that follows
+  /// bakes the new one; baking it now makes that refill a cache hit. The pick is
+  /// never committed: no cursor, rewind or `state.json` change happens here, so
+  /// the usage history and previous/next behave exactly as before.
+  Future<void> _prewarmNext(
+    GroupedWallpaperStateStore store,
+    GroupedWallpaperPlan plan,
+    GroupedWallpaperState state, {
+    required Size surface,
+    required bool scrollEffect,
+  }) async {
+    final current = state.currentSlot;
+    if (current == null) return;
+    final slots = {for (final slot in state.slots) slot.id: slot};
+    final usedIds = slots.keys.toSet();
+    final picked = await _pickNext(store, plan, state, current, state.previousSlot, slots, usedIds, surface: surface, scrollEffect: scrollEffect);
+    if (picked == null) return;
+    _prewarmed = picked.slot;
+    groupedWallpaperLog.d('frames.prewarm entry=${picked.slot.entryId} photo=${picked.slot.photo}');
+  }
+
+  /// Runs one prewarm after the current run, when a step forward needs a new photo.
+  void _schedulePrewarm(
+    GroupedWallpaperStateStore store,
+    GroupedWallpaperPlan plan,
+    GroupedWallpaperState state, {
+    required Size surface,
+    required bool scrollEffect,
+  }) {
+    if (!prewarm || state.next < 0 || state.rewindCursor != 0) return;
+    // Serialized with the engine's own runs, so two bakes never write the same
+    // frame file at once; the step that needs it then waits only for a lookup.
+    unawaited(
+      _serialize<void>(() async {
+        try {
+          await _prewarmNext(store, plan, state, surface: surface, scrollEffect: scrollEffect);
+        } catch (error, stack) {
+          // A prewarm is an optimization: failing it must never fail the step
+          // that triggered it.
+          groupedWallpaperLog.w('prewarm failed', error, stack);
+        }
+      }),
+    );
+  }
+
   /// Every file the state may draw, for the frame cache's eviction.
   static Set<String> _framePaths(GroupedWallpaperState state) => {
-        for (final slot in state.slots) ...[
-          slot.photo,
-          if (slot.effectHome.isNotEmpty) slot.effectHome,
-          if (slot.effectLock.isNotEmpty) slot.effectLock,
-        ],
+        for (final slot in state.slots) ..._slotPaths(slot),
+      };
+
+  static Set<String> _slotPaths(GroupedWallpaperSlot slot) => {
+        slot.photo,
+        if (slot.effectHome.isNotEmpty) slot.effectHome,
+        if (slot.effectLock.isNotEmpty) slot.effectLock,
+      };
+
+  /// [_framePaths] plus the prewarmed frame, which no slot references yet.
+  ///
+  /// Without this the eviction would treat the frame baked ahead of the queue as
+  /// garbage and delete it before the step that needs it.
+  Set<String> _keepPaths(GroupedWallpaperState state) => {
+        ..._framePaths(state),
+        if (_prewarmed != null) ..._slotPaths(_prewarmed!),
       };
 
   /// How many frames the cache keeps, so stepping back stays instant.
@@ -1138,26 +1218,27 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         darkness: cached.darkness,
       );
     }
-    final bake = await baker.bake(
+    final bake = await frameBaker.bakeTo(
       entry: entry,
       targetSize: target,
       home: plan.effects.home,
       lock: plan.effects.effectiveLock,
+      photoPath: store.frameFile(entry.id, key, GroupedWallpaperStateStore.framePhotoFileName).path,
+      effectHomePath: store.frameFile(entry.id, key, GroupedWallpaperStateStore.slotEffectHomeFileName).path,
+      effectLockPath: store.frameFile(entry.id, key, GroupedWallpaperStateStore.slotEffectLockFileName).path,
     );
-    final photo = await store.writeFramePhoto(entry.id, key, bake.sharpPng);
+    String effectPathOf(GroupedFrameEffect effect) => switch (effect) {
+          GroupedFrameEffect.none => '',
+          GroupedFrameEffect.home => store.framePath(entry.id, key, GroupedWallpaperStateStore.slotEffectHomeFileName),
+          GroupedFrameEffect.lock => store.framePath(entry.id, key, GroupedWallpaperStateStore.slotEffectLockFileName),
+        };
+    final photo = store.framePath(entry.id, key, GroupedWallpaperStateStore.framePhotoFileName);
+    if (photo.isEmpty) throw GroupedWallpaperBakeException('the frame of entry ${entry.id} was not written');
     // An identity effect is the sharp frame: leaving the path empty makes the
-    // renderer fall back to it instead of storing a second copy of the PNG.
-    final effectHome = identical(bake.effectsHomePng, bake.sharpPng)
-        ? ''
-        : await store.writeFramePhoto(entry.id, key, bake.effectsHomePng, name: GroupedWallpaperStateStore.slotEffectHomeFileName);
-    final effectLock = identical(bake.effectsLockPng, bake.sharpPng)
-        ? ''
-        : identical(bake.effectsLockPng, bake.effectsHomePng)
-            ? effectHome
-            : await store.writeFramePhoto(entry.id, key, bake.effectsLockPng, name: GroupedWallpaperStateStore.slotEffectLockFileName);
-    final width = bake.size.width.round();
-    final height = bake.size.height.round();
-    await store.writeFrameMeta(entry.id, key, width: width, height: height, darkness: bake.darkness, title: title, uri: entry.uri);
+    // renderer fall back to it instead of storing a second copy.
+    final effectHome = effectPathOf(bake.homeEffect);
+    final effectLock = effectPathOf(bake.lockEffect);
+    await store.writeFrameMeta(entry.id, key, width: bake.width, height: bake.height, darkness: bake.darkness, title: title, uri: entry.uri);
     return GroupedWallpaperSlot(
       id: id,
       entryId: entry.id,
@@ -1166,8 +1247,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       photo: photo,
       effectHome: effectHome,
       effectLock: effectLock,
-      width: width,
-      height: height,
+      width: bake.width,
+      height: bake.height,
       darkness: bake.darkness,
     );
   }

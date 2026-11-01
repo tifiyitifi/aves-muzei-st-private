@@ -25,6 +25,8 @@
     <string name="grouped_wallpaper_action_lock">Lock the current group</string>
     <string name="grouped_wallpaper_action_unlock">Unlock the group</string>
     <string name="grouped_wallpaper_switching_title">Switching groups</string>
+    <string name="grouped_wallpaper_switching_previous_title">Switching to previous</string>
+    <string name="grouped_wallpaper_switching_next_title">Switching to next</string>
     <string name="grouped_wallpaper_switching_text">From group %1$d %2$s to group %3$d %4$s</string>
     <string name="grouped_wallpaper_action_switch_actions">Switch actions</string>
     <string name="grouped_wallpaper_action_copy">Copy and share (coming soon)</string>

@@ -72,7 +72,9 @@ object LiveWallpaperRefillTargets {
     /** Whether a mounted page serves this target's refill requests. */
     fun isAppListening(target: LiveWallpaperTarget): Boolean = when (target) {
         LiveWallpaperTarget.MUZEI -> WallpaperAppBridge.isRequestHandlerAttached
-        LiveWallpaperTarget.GROUPED -> GroupedWallpaperAppBridge.isRequestHandlerAttached
+        // The service and the worker must use the same predicate, or a request
+        // can be refused by one and skipped by the other.
+        LiveWallpaperTarget.GROUPED -> GroupedWallpaperAppBridge.canServeRequests
     }
 
     /**

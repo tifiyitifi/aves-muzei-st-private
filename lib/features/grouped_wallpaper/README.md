@@ -95,11 +95,20 @@ One run:
    record);
 4. resolves the media set with `wallpaperMediaSetFilter` and picks each missing
    slot through the saved ordering;
-5. bakes a cover-cropped PNG per slot — at the wallpaper surface, or at the
+5. bakes a cover-cropped frame per slot — at the wallpaper surface, or at the
    photo's whole width when the scroll effect is on (see below) — plus one effect
    PNG per surface when the group's effects are not identity;
 6. writes `state.json` and the slot photos atomically, then asks the renderer to
    reload.
+
+The pixels are baked natively: `GroupedFrameWriter` decodes and cover-crops with
+Glide, encodes WebP and writes `photo.webp` itself, so no full-size image crosses
+the channel (only its size and a 64×64 darkness sample come back). Dart still
+owns *which* photo, the cache key and the state files, and it keeps a complete
+fallback (`SkiaFrameBaker`) for hosts without the service, video and SVG entries,
+and any decode the platform refuses. The effect pass stays in Dart on both paths:
+the effects page previews it on the GPU with the same math, so a second
+implementation would let the preview and the wallpaper drift apart.
 
 A plain `prepare` skips the bake when the state already holds the full queue for
 the saved group, is newer than the group's and the range's `updatedAt`, and was
@@ -114,7 +123,8 @@ tap goes forward, the bar's "previous" goes back, and each switch draws a textur
 it already uploaded. The renderer writes the step to `runtime.json` synchronously
 and asks the app (or the shared background worker) to refill the frame it left
 behind. A tap that arrives before the neighbour is uploaded is buffered (capacity
-5, 3 s expiry) and replayed as slots land.
+5, 15 s expiry) and replayed as slots land; the expiry is logged, so a dropped
+tap is countable instead of silent.
 
 Dart adopts a runtime only when it names a queued neighbour of the state it knows,
 and re-reads it just before writing `state.json`, so a step that landed during a
@@ -164,12 +174,19 @@ Every baked frame is stored under `frames/<entryId>/<key>/`, where `key` is the
 target size plus a fingerprint of the group's effects. A frame is therefore owned
 by *the photo at that layout*, not by the slot that happens to draw it, so any
 step back to a photo shown before is a file reference instead of a decode, an
-effect pass and a PNG encode. The cache keeps the 24 most recent frames (or the
-history limit when smaller), never evicts the three frames the queue references,
-and is trimmed when the limit changes and cleared with the history. Two extra
-measures keep a switch invisible: the renderer skips decoding a slot whose
-`(entryId, photo)` it already uploaded, and the engine reuses the queued slot's
-id, so a back-and-forth between two records is a texture swap.
+effect pass and an encode. Frames written by the native baker are `photo.webp`; a
+`photo.png` from an older build is still a cache hit, so the format changed
+without a migration. The cache keeps the 24 most recent frames (or the history
+limit when smaller), never evicts the frames the queue references (nor the one
+baked ahead of it), and is trimmed when the limit changes and cleared with the
+history. Two extra measures keep a switch invisible: the renderer skips decoding
+a slot whose `(entryId, photo)` it already uploaded, and the engine reuses the
+queued slot's id, so a back-and-forth between two records is a texture swap.
+
+After a settle at the newest record the engine also bakes the frame the *next*
+forward step will want (`_prewarmNext`). It is a cache entry only: no cursor, no
+rewind entry and no `state.json` write, so history and previous/next are
+unaffected; the second tap of a burst then finds its frame on disk.
 
 A slot that left the queue is still on disk in the cache: this is why "previous"
 is instant while the frames are within the cache depth, and only the frame beyond
@@ -227,14 +244,16 @@ optional link toggle. They are stored as one JSON column on the group row
 (`effects`, schema v10), so an upgraded group reads the identity configuration
 and keeps its photos sharp.
 
-The baker applies the same math as Muzei (blur at a quarter of the surface
-height then upscale, greyscale matrix, dim from the artwork's own darkness) and
-writes `frames/<entryId>/<key>/home.png` / `lock.png` next to the sharp
-`photo.png`. An identity effect leaves the path empty, so the renderer falls back
-to the sharp file instead of a second copy. The native renderer picks the file for
-the surface being drawn, using the keyguard state, so only one texture per slot is
-uploaded. The `key` includes the effects, so editing them re-bakes every frame at
-the new rendering instead of showing a stale one.
+The baker applies the same math as Muzei (blur at a quarter of the frame,
+greyscale matrix, dim from the artwork's own darkness) and writes
+`frames/<entryId>/<key>/home.png` / `lock.png` next to the sharp `photo.webp`. A
+real blur is baked at that quarter size and the GPU scales it back up, exactly as
+Muzei does; dim and grey alone stay full size, because downscaling them would
+visibly soften the photo. An identity effect leaves the path empty, so the
+renderer falls back to the sharp file instead of a second copy. The native
+renderer picks the file for the surface being drawn, using the keyguard state, so
+only one texture per slot is uploaded. The `key` includes the effects, so editing
+them re-bakes every frame at the new rendering instead of showing a stale one.
 
 The effects page is bound to the viewed group and applies as the sliders move,
 bypassing the range draft: effects are display preferences, and the live
@@ -438,6 +457,19 @@ command. The overlay ends when a state naming the target arrives, or after 20
 seconds if the bake failed; `contentKey` includes it, so the bar re-posts once
 when it starts and once when it ends.
 
+### Photo switch feedback
+
+A previous/next photo step starts the same kind of overlay, but only when it has
+to wait: the renderer promotes the queued neighbour instantly, and only a step
+that could not promote (no engine, or the neighbour is still baking) reaches the
+bar. The title then reads 「Switching to previous」 / 「Switching to next」, the
+subtitle keeps naming the photo on screen, and the photo buttons are greyed.
+The wait ends when a state shows a different `(slot, entry)` than the one the tap
+left (a re-bake can keep the slot id), or after 20 seconds, so a failed bake
+returns the bar to the photo that is really drawing. The rules live in the pure
+`GroupedPhotoSwitchPending` object, and `contentKey` includes the direction so the
+bar re-posts once when the wait starts and once when it ends.
+
 ### The view page
 
 A three-finger tap opens an immersive view of the current photo, modelled on
@@ -594,6 +626,18 @@ dispatches by target (`muzei` / `grouped`) to
 `entry/background_refill.dart`. The grouped run attaches the engine and either
 prepares a frame or advances, so a tap or an interval still applies when no page
 is mounted. Files, renderers and intervals stay per wallpaper.
+
+While a grouped service is drawing, it calls `LiveWallpaperRefillEngine.holdWarm`
+so the engine stays warm for five minutes instead of the 60 s burst window: a tap
+with the app closed then skips the several seconds of engine and service startup.
+The screen going off releases it at once (`releaseIfIdle`), and
+`KEEP_WARM_ENABLED` in that engine is the one-line switch to turn it off.
+
+Both sides decide from one predicate: `GroupedWallpaperAppBridge.canServeRequests`
+requires a messenger *and* an attached Dart handler, and the background engine
+registers its handler with `servesSyncRequests = false` because nothing can reach
+it. Without that, the service refused a request as "no app" while the worker
+skipped the run as "the page is listening", and the tap landed in the gap.
 
 ## Concepts
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -103,18 +104,27 @@ class GroupedWallpaperBaker {
     required WallpaperEffects lock,
   }) async {
     final target = clampTargetSize(targetSize);
+    final watch = Stopwatch()..start();
+    final timings = <String, int>{};
     ui.Image? decoded, sharp;
     try {
-      decoded = await _decode(entry, target);
-      sharp = await _coverCrop(decoded, target);
-      final sharpPng = await _encodePng(sharp);
-      final darkness = await _measureDarkness(sharp);
-      final homePng = home.isIdentity ? sharpPng : await _renderEffects(sharp: sharp, effects: home, darkness: darkness);
+      final source = await _timed(timings, 'decode', () => _decode(entry, target));
+      decoded = source;
+      final cropped = await _timed(timings, 'crop', () => _coverCrop(source, target));
+      sharp = cropped;
+      final sharpPng = await _timed(timings, 'encode', () => _encodePng(cropped));
+      final darkness = await _timed(timings, 'darkness', () => _measureDarkness(cropped));
+      final homePng = home.isIdentity ? sharpPng : await _timed(timings, 'effects', () => _renderEffects(sharp: cropped, effects: home, darkness: darkness));
       final lockPng = lock == home
           ? homePng
           : lock.isIdentity
               ? sharpPng
-              : await _renderEffects(sharp: sharp, effects: lock, darkness: darkness);
+              : await _timed(timings, 'effects', () => _renderEffects(sharp: cropped, effects: lock, darkness: darkness));
+      groupedWallpaperLog.d(
+        'bake.done entry=${entry.id} target=${target.width.round()}x${target.height.round()} ms=${watch.elapsedMilliseconds}'
+        ' decode=${timings['decode']} crop=${timings['crop']} darkness=${timings['darkness']}'
+        ' effects=${timings['effects'] ?? 0} encode=${timings['encode']}',
+      );
       return GroupedWallpaperBake(
         sharpPng: sharpPng,
         effectsHomePng: homePng,
@@ -130,6 +140,19 @@ class GroupedWallpaperBaker {
     } finally {
       sharp?.dispose();
       decoded?.dispose();
+    }
+  }
+
+  /// Runs [action], adding its duration to [timings] under [key].
+  ///
+  /// The bake is the wallpaper's whole latency, so each stage is measured where
+  /// it happens rather than guessed from the total.
+  static Future<T> _timed<T>(Map<String, int> timings, String key, Future<T> Function() action) async {
+    final watch = Stopwatch()..start();
+    try {
+      return await action();
+    } finally {
+      timings[key] = (timings[key] ?? 0) + watch.elapsedMilliseconds;
     }
   }
 
@@ -234,18 +257,46 @@ class GroupedWallpaperBaker {
     }
   }
 
+  /// Renders the effect image of a frame that was already baked to [photo].
+  ///
+  /// The native path writes the sharp frame and calls this for the effects, so
+  /// the effect math keeps a single implementation: the one the effects page
+  /// previews on the GPU.
+  Future<Uint8List> renderEffectsFromFile(File photo, Size size, WallpaperEffects effects, double darkness) async {
+    final downscale = effects.blur > 0 ? effectsDownscale : 1;
+    final width = math.max(2, (size.width / downscale).round());
+    final height = math.max(2, (size.height / downscale).round());
+    final image = await _decodeFile(photo, width, height);
+    try {
+      return await _renderEffects(sharp: image, effects: effects, darkness: darkness);
+    } finally {
+      image.dispose();
+    }
+  }
+
+  Future<ui.Image> _decodeFile(File photo, int width, int height) async {
+    final codec = await ui.instantiateImageCodec(await photo.readAsBytes(), targetWidth: width, targetHeight: height);
+    try {
+      return (await codec.getNextFrame()).image;
+    } finally {
+      codec.dispose();
+    }
+  }
+
   Future<Uint8List> _renderEffects({
     required ui.Image sharp,
     required WallpaperEffects effects,
     required double darkness,
   }) async {
-    final targetWidth = sharp.width;
-    final targetHeight = sharp.height;
-    final blurWidth = math.max(2, (targetWidth / effectsDownscale).round());
-    final blurHeight = math.max(2, (targetHeight / effectsDownscale).round());
-    final bounds = ui.Rect.fromLTWH(0, 0, blurWidth.toDouble(), blurHeight.toDouble());
-    final source = ui.Rect.fromLTWH(0, 0, targetWidth.toDouble(), targetHeight.toDouble());
-    final sigma = effects.sigmaFor(targetHeight.toDouble(), downscale: targetHeight / blurHeight);
+    // A real blur is soft by nature, so it is baked at a quarter of the frame
+    // and the GPU scales it back up (as Muzei does). Dim and grey alone would
+    // visibly soften the sharp photo instead, so they stay full size.
+    final downscale = effects.blur > 0 ? effectsDownscale : 1;
+    final width = math.max(2, (sharp.width / downscale).round());
+    final height = math.max(2, (sharp.height / downscale).round());
+    final bounds = ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble());
+    final source = ui.Rect.fromLTWH(0, 0, sharp.width.toDouble(), sharp.height.toDouble());
+    final sigma = effects.sigmaFor(sharp.height.toDouble(), downscale: sharp.height / height);
 
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
@@ -277,39 +328,33 @@ class GroupedWallpaperBaker {
     }
 
     final picture = recorder.endRecording();
-    ui.Image blurred;
     try {
-      blurred = await picture.toImage(blurWidth, blurHeight);
-    } finally {
-      picture.dispose();
-    }
-    try {
-      final upRecorder = ui.PictureRecorder();
-      final upCanvas = ui.Canvas(upRecorder);
-      upCanvas.drawImageRect(
-        blurred,
-        ui.Rect.fromLTWH(0, 0, blurWidth.toDouble(), blurHeight.toDouble()),
-        ui.Rect.fromLTWH(0, 0, targetWidth.toDouble(), targetHeight.toDouble()),
-        ui.Paint()..filterQuality = ui.FilterQuality.medium,
-      );
-      final upPicture = upRecorder.endRecording();
+      final output = await picture.toImage(width, height);
       try {
-        final output = await upPicture.toImage(targetWidth, targetHeight);
-        try {
-          return await _encodePng(output);
-        } finally {
-          output.dispose();
-        }
+        return await _encodePng(output);
       } finally {
-        upPicture.dispose();
+        output.dispose();
       }
     } finally {
-      blurred.dispose();
+      picture.dispose();
     }
   }
 
   /// Average luminance in `0..1`, using Muzei's channel weights so the dim
   /// curve behaves like the original renderer.
+  ///
+  /// The weights are the one copy for both bakers: the platform only sends the
+  /// 64×64 sample, and the dim curve that consumes it lives here too.
+  static double darknessOf(Uint8List rgba) {
+    final pixels = rgba.length ~/ 4;
+    if (pixels == 0) return .5;
+    var total = 0.0;
+    for (var i = 0; i + 3 < rgba.length; i += 4) {
+      total += 0.21 * rgba[i] + 0.71 * rgba[i + 1] + 0.07 * rgba[i + 2];
+    }
+    return (total / pixels / 256).clamp(0.0, 1.0);
+  }
+
   Future<double> _measureDarkness(ui.Image image) async {
     const side = darknessSampleSide;
     final recorder = ui.PictureRecorder();
@@ -326,12 +371,7 @@ class GroupedWallpaperBaker {
     try {
       final data = await thumbnail.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (data == null) throw const GroupedWallpaperBakeException('darkness sampling returned no data');
-      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-      var total = 0.0;
-      for (var i = 0; i + 3 < bytes.length; i += 4) {
-        total += 0.21 * bytes[i] + 0.71 * bytes[i + 1] + 0.07 * bytes[i + 2];
-      }
-      return (total / (side * side) / 256).clamp(0.0, 1.0);
+      return darknessOf(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
     } finally {
       thumbnail.dispose();
     }

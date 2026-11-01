@@ -86,6 +86,7 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
             }
             return
         }
+        GroupedWallpaperNotification.beginPhotoSwitch(context, forward = true)
         command(context, COMMAND_NEXT_ARTWORK)
     }
 
@@ -104,6 +105,7 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
             }
             return
         }
+        GroupedWallpaperNotification.beginPhotoSwitch(context, forward = false)
         command(context, COMMAND_PREVIOUS_ARTWORK)
     }
 

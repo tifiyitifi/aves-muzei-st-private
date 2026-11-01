@@ -134,6 +134,51 @@ void main() {
     }
   });
 
+  test('a blurred effect is baked at a quarter of the frame', () async {
+    final source = await createPng(80, 40, (canvas) => canvas.drawRect(const ui.Rect.fromLTWH(0, 0, 80, 40), ui.Paint()..color = const ui.Color(0xFF3366CC)));
+    final bake = await bakerFor(source).bake(
+      entry: entry(width: 80, height: 40),
+      targetSize: const Size(80, 40),
+      home: const WallpaperEffects(blur: 250),
+      lock: const WallpaperEffects(blur: 250),
+    );
+
+    // The blur is soft anyway, so the GPU can scale this back up.
+    final image = await decodePng(bake.effectsHomePng);
+    try {
+      expect(image.width, 20);
+      expect(image.height, 10);
+    } finally {
+      image.dispose();
+    }
+  });
+
+  test('a dim or grey effect keeps the full frame size', () async {
+    final source = await createPng(80, 40, (canvas) => canvas.drawRect(const ui.Rect.fromLTWH(0, 0, 80, 40), ui.Paint()..color = const ui.Color(0xFF3366CC)));
+    final bake = await bakerFor(source).bake(
+      entry: entry(width: 80, height: 40),
+      targetSize: const Size(80, 40),
+      home: const WallpaperEffects(dim: 128, grey: 200),
+      lock: const WallpaperEffects(dim: 128, grey: 200),
+    );
+
+    // Only a real blur may be downscaled: dim and grey would visibly soften.
+    final image = await decodePng(bake.effectsHomePng);
+    try {
+      expect(image.width, 80);
+      expect(image.height, 40);
+    } finally {
+      image.dispose();
+    }
+  });
+
+  test('darkness uses Muzei channel weights on a 64x64 sample', () {
+    // Muzei's weights sum to 0.99, so a white sample lands just below 1.
+    expect(GroupedWallpaperBaker.darknessOf(Uint8List.fromList(List.filled(64 * 64 * 4, 255))), closeTo(.986, .01));
+    expect(GroupedWallpaperBaker.darknessOf(Uint8List.fromList(List.filled(64 * 64 * 4, 0))), 0);
+    expect(GroupedWallpaperBaker.darknessOf(Uint8List(0)), .5);
+  });
+
   test('identity effects reuse the sharp bytes', () async {
     final source = await createPng(40, 40, (canvas) => canvas.drawRect(const ui.Rect.fromLTWH(0, 0, 40, 40), ui.Paint()..color = const ui.Color(0xFF808080)));
     final bake = await bakerFor(source).bake(

@@ -626,6 +626,9 @@ class GroupedWallpaperRenderer(
         }
         // A buffered tap may be servable now that the new slots are uploaded.
         drainPendingAdvance()
+        // A dropped tap used to vanish without a trace; count it instead.
+        val expired = synchronized(advanceLock) { advanceRequests.expire(SystemClock.elapsedRealtime()) }
+        if (expired > 0) Log.d(TAG, "advance.expired dropped=$expired")
         onFrameLoaded()
     }
 

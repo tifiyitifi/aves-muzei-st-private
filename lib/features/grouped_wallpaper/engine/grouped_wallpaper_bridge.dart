@@ -1,8 +1,23 @@
 import 'dart:async';
 
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/model/entry/entry.dart';
 import 'package:aves/services/common/channel.dart';
 import 'package:flutter/services.dart';
+
+/// A frame the platform decoded, covered and wrote to disk.
+///
+/// Only the size and a darkness sample come back: the pixels never cross the
+/// channel, so a bake costs one file write instead of a 30 MB round trip.
+class GroupedFrameWriteResult {
+  final int width;
+  final int height;
+
+  /// `64 × 64` RGBA pixels of the baked frame.
+  final Uint8List thumbnail;
+
+  const new({required this.width, required this.height, required this.thumbnail});
+}
 
 /// What the engine needs from the native grouped wallpaper service.
 ///
@@ -64,6 +79,19 @@ abstract interface class GroupedWallpaperPlatform {
 
   /// Opens the system live-wallpaper chooser for this service.
   Future<bool> openChooser();
+
+  /// Decodes [entry], covers it to [targetSize] and writes the frame to
+  /// [photoPath], which must be inside the state root.
+  ///
+  /// Returns null when the platform cannot bake this entry (no service, an
+  /// undecodable format, a failing channel); the caller then falls back to the
+  /// Dart baker instead of failing the bake.
+  Future<GroupedFrameWriteResult?> writeFrame({
+    required AvesEntry entry,
+    required Size targetSize,
+    required String photoPath,
+    required int quality,
+  });
 
   /// Registers the native-to-Dart requests: a fresh frame is needed, or the
   /// notification asked for a command (previous photo, group switch, freeze).
@@ -145,6 +173,34 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
   Future<bool> openChooser() async {
     final opened = await _invoke<bool>('openChooser');
     return opened ?? false;
+  }
+
+  @override
+  Future<GroupedFrameWriteResult?> writeFrame({
+    required AvesEntry entry,
+    required Size targetSize,
+    required String photoPath,
+    required int quality,
+  }) async {
+    final raw = await _invoke<Map<Object?, Object?>>('writeFrame', {
+      'uri': entry.uri,
+      'mimeType': entry.mimeType,
+      'pageId': entry.pageId,
+      'sizeBytes': entry.sizeBytes,
+      'rotationDegrees': entry.rotationDegrees,
+      'isFlipped': entry.isFlipped,
+      'targetWidth': targetSize.width.round(),
+      'targetHeight': targetSize.height.round(),
+      'outputPath': photoPath,
+      'quality': quality,
+    });
+    if (raw == null) return null;
+    final width = raw['width'];
+    final height = raw['height'];
+    final thumbnail = raw['thumbnail'];
+    if (width is! int || height is! int || width <= 0 || height <= 0) return null;
+    if (thumbnail is! Uint8List || thumbnail.isEmpty) return null;
+    return GroupedFrameWriteResult(width: width, height: height, thumbnail: thumbnail);
   }
 
   @override

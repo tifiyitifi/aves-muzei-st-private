@@ -75,6 +75,32 @@ class GroupedAdvanceRequestQueueTest {
     }
 
     @Test
+    fun `expire drops only the requests that are too old`() {
+        val queue = GroupedAdvanceRequestQueue(timeoutMs = 3_000)
+        queue.request(0)
+        queue.request(2_500)
+        assertEquals(1, queue.expire(3_001))
+        assertEquals(1, queue.size)
+    }
+
+    @Test
+    fun `expire keeps the requests that are still fresh`() {
+        val queue = GroupedAdvanceRequestQueue(timeoutMs = 3_000)
+        queue.request(0)
+        assertEquals(0, queue.expire(3_000))
+        assertEquals(1, queue.size)
+    }
+
+    @Test
+    fun `expire counts every dropped request`() {
+        val queue = GroupedAdvanceRequestQueue(timeoutMs = 3_000)
+        queue.request(0)
+        queue.request(100)
+        assertEquals(2, queue.expire(10_000))
+        assertTrue(queue.isEmpty)
+    }
+
+    @Test
     fun `clear drops every request`() {
         val queue = GroupedAdvanceRequestQueue()
         queue.request(0)

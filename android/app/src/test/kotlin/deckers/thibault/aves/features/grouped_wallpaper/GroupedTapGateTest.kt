@@ -16,6 +16,7 @@
 
 package deckers.thibault.aves.features.grouped_wallpaper
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -95,5 +96,29 @@ class GroupedTapGateTest {
         gate.reset()
         now += 100
         assertFalse(gate.onTapSignal())
+    }
+
+    @Test
+    fun `the gap between signals is measured`() {
+        val gate = gate()
+        assertFalse(gate.onTapSignal())
+        assertEquals(-1L, gate.lastGapMs)
+        // Too late for a double tap, but the gap is still recorded.
+        now += 900
+        assertFalse(gate.onTapSignal())
+        assertEquals(900L, gate.lastGapMs)
+        now += 100
+        assertTrue(gate.onTapSignal())
+        assertEquals(100L, gate.lastGapMs)
+    }
+
+    @Test
+    fun `reset clears the measured gap`() {
+        val gate = gate()
+        gate.onTapSignal()
+        now += 120
+        gate.onTapSignal()
+        gate.reset()
+        assertEquals(-1L, gate.lastGapMs)
     }
 }

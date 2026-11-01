@@ -124,6 +124,14 @@ object GroupedWallpaperNotification {
      */
     private const val PENDING_LOCK_TIMEOUT_MILLIS = 30_000L
 
+    /**
+     * How long a photo switch may stay pending before the bar gives up on it.
+     *
+     * Same deadline as a group switch: a bake that never lands must not leave
+     * the bar claiming a change that did not happen.
+     */
+    private const val PENDING_PHOTO_TIMEOUT_MILLIS = 20_000L
+
     private class PendingSwitch(
         val targetGroupId: String,
         val targetNumber: Int,
@@ -132,11 +140,24 @@ object GroupedWallpaperNotification {
         val fromName: String,
     )
 
+    /** A previous/next photo step that is still waiting for its frame. */
+    private class PendingPhotoSwitch(
+        val forward: Boolean,
+        val fromSlotId: Int,
+        val fromEntryId: Int,
+    )
+
     @Volatile
     private var pendingSwitch: PendingSwitch? = null
 
     @Volatile
     private var pendingSwitchAt = 0L
+
+    @Volatile
+    private var pendingPhotoSwitch: PendingPhotoSwitch? = null
+
+    @Volatile
+    private var pendingPhotoSwitchAt = 0L
 
     @Volatile
     private var pendingLockGroupId: String? = null
@@ -155,6 +176,10 @@ object GroupedWallpaperNotification {
         var changed = false
         if (pendingSwitch != null && now - pendingSwitchAt > PENDING_SWITCH_TIMEOUT_MILLIS) {
             pendingSwitch = null
+            changed = true
+        }
+        if (pendingPhotoSwitch != null && now - pendingPhotoSwitchAt > PENDING_PHOTO_TIMEOUT_MILLIS) {
+            pendingPhotoSwitch = null
             changed = true
         }
         if (pendingLockGroupId != null && now - pendingLockAt > PENDING_LOCK_TIMEOUT_MILLIS) {
@@ -235,6 +260,8 @@ object GroupedWallpaperNotification {
         val state = GroupedWallpaperStateFile.read(context) ?: return null
         val target = targetGroup(state, delta) ?: return null
         if (target.id == state.groupId) return null
+        // A photo step that never landed must not outlive the group it belonged to.
+        pendingPhotoSwitch = null
         pendingSwitch = PendingSwitch(
             targetGroupId = target.id,
             targetNumber = target.number,
@@ -247,6 +274,24 @@ object GroupedWallpaperNotification {
         Log.i(TAG, "notification.switch from=${state.groupId} to=${target.id}")
         refresh(context)
         return target
+    }
+
+    /**
+     * Shows "switching to the previous/next photo" until the frame arrives.
+     *
+     * Only called when the renderer could not promote at once, so a step that
+     * lands immediately never flashes the label. The subtitle keeps naming the
+     * photo on screen: the name changes when the new frame lands.
+     */
+    fun beginPhotoSwitch(context: Context, forward: Boolean) {
+        val state = GroupedWallpaperStateFile.read(context) ?: return
+        val slot = if (GroupedLiveWallpaperService.displayedSlot >= 0) state.slot(GroupedLiveWallpaperService.displayedSlot) else state.currentSlot
+        if (slot == null) return
+        pendingPhotoSwitch = PendingPhotoSwitch(forward = forward, fromSlotId = slot.id, fromEntryId = slot.entryId)
+        pendingPhotoSwitchAt = SystemClock.elapsedRealtime()
+        scheduleTimeout()
+        Log.i(TAG, "notification.photo-switch forward=$forward from=${slot.id}/${slot.entryId}")
+        refresh(context)
     }
 
     /**
@@ -310,6 +355,22 @@ object GroupedWallpaperNotification {
         return pending
     }
 
+    /**
+     * The photo switch the bar should still show, or null once its frame arrived.
+     *
+     * Cleared here (not only on a timer) so the pass that reads a new state ends
+     * the feedback in the same pass that shows the new photo.
+     */
+    private fun pendingPhotoSwitchFor(slot: GroupedWallpaperSlotFile?): PendingPhotoSwitch? {
+        val pending = pendingPhotoSwitch ?: return null
+        val samePhoto = GroupedPhotoSwitchPending.isSamePhoto(pending.fromSlotId, pending.fromEntryId, slot?.id, slot?.entryId)
+        if (!GroupedPhotoSwitchPending.stillWaiting(samePhoto, SystemClock.elapsedRealtime() - pendingPhotoSwitchAt, PENDING_PHOTO_TIMEOUT_MILLIS)) {
+            pendingPhotoSwitch = null
+            return null
+        }
+        return pending
+    }
+
     /** Whether the bar should offer the locked or the unlocked lock icon. */
     private fun lockedFor(state: GroupedWallpaperFileState): Boolean {
         if (state.switchLocked) {
@@ -329,6 +390,7 @@ object GroupedWallpaperNotification {
     /** Drops the pending overlays, so a fresh service starts from the state. */
     fun resetPending() {
         pendingSwitch = null
+        pendingPhotoSwitch = null
         pendingLockGroupId = null
         handler.removeCallbacks(clearStaleState)
     }
@@ -362,6 +424,10 @@ object GroupedWallpaperNotification {
         // The switch feedback lasts a bake, and ends when the target arrives.
         val pending = pendingSwitchFor(state)
         append(pending?.targetGroupId ?: "").append('|')
+        // A pending photo step is part of what the bar shows, and so is its
+        // direction: "previous" and "next" read differently.
+        val pendingPhoto = pendingPhotoSwitchFor(slot)
+        append(pendingPhoto?.forward).append('|')
         append(usesGroupActions(context)).append('|')
         append(slot?.id ?: -1).append('|')
         append(slot?.entryId ?: -1).append('|')
@@ -538,7 +604,8 @@ object GroupedWallpaperNotification {
         val layout = if (big) R.layout.grouped_wallpaper_notification_big else R.layout.grouped_wallpaper_notification_normal
         val views = RemoteViews(context.packageName, layout)
         val pending = pendingSwitchFor(state)
-        val switching = pending != null
+        val pendingPhoto = pendingPhotoSwitchFor(slot)
+        val switching = pending != null || pendingPhoto != null
         val ready = state.status == GroupedWallpaperFileState.STATUS_READY && !switching
         val fallback = context.getString(R.string.grouped_wallpaper_notification_fallback_title)
 
@@ -554,10 +621,12 @@ object GroupedWallpaperNotification {
         views.setInt(R.id.grouped_notification_status, "setBackgroundColor", badgeColor(badge ?: state.groupNumber))
         views.setTextViewText(
             R.id.grouped_notification_title,
-            if (switching) {
-                context.getString(R.string.grouped_wallpaper_switching_title)
-            } else {
-                state.groupName.ifBlank { fallback }
+            when {
+                pending != null -> context.getString(R.string.grouped_wallpaper_switching_title)
+                pendingPhoto != null -> context.getString(
+                    if (pendingPhoto.forward) R.string.grouped_wallpaper_switching_next_title else R.string.grouped_wallpaper_switching_previous_title,
+                )
+                else -> state.groupName.ifBlank { fallback }
             },
         )
         views.setTextViewText(
@@ -570,6 +639,8 @@ object GroupedWallpaperNotification {
                     pending.targetNumber,
                     pending.targetName.ifBlank { fallback },
                 )
+                // A photo step keeps the name on screen: only the title says what
+                // is happening, and the name updates when the new frame lands.
                 slot == null -> context.getString(R.string.grouped_wallpaper_notification_no_photo)
                 else -> slot.title.ifBlank { fallback }
             },

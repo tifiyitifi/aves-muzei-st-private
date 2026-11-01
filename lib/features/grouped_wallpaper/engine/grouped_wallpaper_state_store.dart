@@ -57,6 +57,12 @@ class GroupedWallpaperStateStore {
   static const String slotsDirName = 'slots';
   static const String slotPhotoFileName = 'photo.png';
 
+  /// The frame cache photo, WebP so a cached frame stays small.
+  static const String framePhotoFileName = 'photo.webp';
+
+  /// Frames baked before the native writer, still readable on a cache hit.
+  static const String legacyFramePhotoFileName = 'photo.png';
+
   /// Baked effect images of a slot; absent when the effect is the identity.
   static const String slotEffectHomeFileName = 'home.png';
   static const String slotEffectLockFileName = 'lock.png';
@@ -143,7 +149,8 @@ class GroupedWallpaperStateStore {
   /// photo at this layout": the caller can show it without baking.
   GroupedWallpaperFrame? cachedFrame(int entryId, String key) {
     if (entryId <= 0 || key.isEmpty) return null;
-    final photo = framePath(entryId, key, slotPhotoFileName);
+    final current = framePath(entryId, key, framePhotoFileName);
+    final photo = current.isNotEmpty ? current : framePath(entryId, key, legacyFramePhotoFileName);
     if (photo.isEmpty) return null;
     final meta = _readFrameMeta(entryId, key);
     return GroupedWallpaperFrame(
@@ -157,7 +164,10 @@ class GroupedWallpaperStateStore {
   }
 
   /// Writes one frame's photo and returns its path relative to the root.
-  Future<String> writeFramePhoto(int entryId, String key, Uint8List bytes, {String name = slotPhotoFileName}) async {
+  ///
+  /// Only the Dart fallback calls this now; the native writer writes the file
+  /// itself. The default name is the current WebP frame, so both paths agree.
+  Future<String> writeFramePhoto(int entryId, String key, Uint8List bytes, {String name = framePhotoFileName}) async {
     await ensureLayout();
     final target = frameFile(entryId, key, name);
     await target.parent.create(recursive: true);

@@ -78,9 +78,14 @@ object GroupedWallpaperAppBridge {
         Log.d(TAG, "app.handler attached=$attached")
     }
 
-    /** Whether a mounted app engine currently listens for `syncRequested`. */
-    val isRequestHandlerAttached: Boolean
-        get() = requestHandlerAttached
+    /**
+     * Whether a request sent now would actually be handled.
+     *
+     * Both the service and the refill worker decide from this one predicate, so
+     * they can never disagree about who is listening.
+     */
+    val canServeRequests: Boolean
+        get() = GroupedRequestListener.canServe(messenger != null, requestHandlerAttached)
 
     /**
      * Asks the app to bake a frame now; false when no app is listening.
@@ -90,8 +95,8 @@ object GroupedWallpaperAppBridge {
      * record whether it was notified or is picking the work up later.
      */
     fun requestSync(): Boolean {
+        if (!canServeRequests) return false
         val engineMessenger = messenger ?: return false
-        if (!requestHandlerAttached) return false
         mainHandler.post {
             try {
                 MethodChannel(engineMessenger, GroupedWallpaperHandler.CHANNEL)
@@ -111,8 +116,8 @@ object GroupedWallpaperAppBridge {
      * receiver routes through it before falling back to the background worker.
      */
     fun requestCommand(command: String): Boolean {
+        if (!canServeRequests) return false
         val engineMessenger = messenger ?: return false
-        if (!requestHandlerAttached) return false
         mainHandler.post {
             try {
                 MethodChannel(engineMessenger, GroupedWallpaperHandler.CHANNEL)

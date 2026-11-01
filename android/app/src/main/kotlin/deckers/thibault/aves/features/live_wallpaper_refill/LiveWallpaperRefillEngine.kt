@@ -65,6 +65,19 @@ object LiveWallpaperRefillEngine {
     /** Covers a double-tap burst; keeps a second isolate alive for a while. */
     private const val IDLE_TIMEOUT_MS = 60_000L
 
+    /**
+     * How long the engine stays warm while the wallpaper service is running.
+     *
+     * A tap on the wallpaper is served by this engine whenever the app is not in
+     * the foreground, and the service outlives the app, so the 60 s burst window
+     * only guaranteed a cold start for the next tap. Bounded so an idle phone
+     * still drops the isolate.
+     */
+    private const val KEEP_WARM_TIMEOUT_MS = 5 * 60_000L
+
+    /** One-line switch: turn the keep-warm window off if it ever misbehaves. */
+    private const val KEEP_WARM_ENABLED = true
+
     private const val INIT_TIMEOUT_MS = 30_000L
 
     /** A slow device bakes a couple of effects; well beyond that is a bug. */
@@ -81,12 +94,39 @@ object LiveWallpaperRefillEngine {
     private var engine: FlutterEngine? = null
     private var initialized = CompletableDeferred<Unit>()
 
+    /** Whether a wallpaper service asked this engine to stay warm. */
+    @Volatile
+    private var warm = false
+
     private val idleStop: Runnable = Runnable {
         if (inUse) {
-            mainHandler.postDelayed(idleStop, IDLE_TIMEOUT_MS)
+            mainHandler.postDelayed(idleStop, idleTimeoutMs())
         } else {
             release()
         }
+    }
+
+    private fun idleTimeoutMs(): Long = if (warm) KEEP_WARM_TIMEOUT_MS else IDLE_TIMEOUT_MS
+
+    /**
+     * Keeps the engine alive while a live wallpaper is drawing.
+     *
+     * The service stays in the process as long as the wallpaper is set, so tying
+     * the warm window to it removes the cold start of every tap made while the
+     * app is closed, without leaving an isolate alive on an idle phone.
+     */
+    fun holdWarm(hold: Boolean) {
+        warm = hold && KEEP_WARM_ENABLED
+        mainHandler.removeCallbacks(idleStop)
+        if (!inUse) mainHandler.postDelayed(idleStop, idleTimeoutMs())
+        Log.d(TAG, "refill.engine warm=$warm")
+    }
+
+    /** Drops the warm engine at once, e.g. when the screen goes off. */
+    fun releaseIfIdle() {
+        if (inUse) return
+        mainHandler.removeCallbacks(idleStop)
+        release()
     }
 
     /** Runs one refill, reusing the engine of the previous run when possible. */
@@ -99,7 +139,7 @@ object LiveWallpaperRefillEngine {
             withTimeout(REFILL_TIMEOUT_MS) { invokeRefill(current, target, advance, command) }
         } finally {
             inUse = false
-            mainHandler.postDelayed(idleStop, IDLE_TIMEOUT_MS)
+            mainHandler.postDelayed(idleStop, idleTimeoutMs())
         }
     }
 
@@ -137,7 +177,7 @@ object LiveWallpaperRefillEngine {
         // Both wallpaper lifecycle channels: a refill needs the surface size and
         // reports the state change so the running renderer reloads.
         MethodChannel(messenger, LiveWallpaperHandler.CHANNEL).setMethodCallHandler(LiveWallpaperHandler(context))
-        MethodChannel(messenger, GroupedWallpaperHandler.CHANNEL).setMethodCallHandler(GroupedWallpaperHandler(context))
+        MethodChannel(messenger, GroupedWallpaperHandler.CHANNEL).setMethodCallHandler(GroupedWallpaperHandler(context, servesSyncRequests = false))
 
         MethodChannel(messenger, LiveWallpaperRefillScheduler.CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {

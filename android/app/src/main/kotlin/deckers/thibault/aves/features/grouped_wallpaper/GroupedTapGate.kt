@@ -38,6 +38,17 @@ class GroupedTapGate(
 ) {
     private var armedAt: Long? = null
     private var firedAt: Long? = null
+    private var lastSignalAt: Long? = null
+
+    /**
+     * Milliseconds since the previous signal, or `-1` when this is the first one.
+     *
+     * A launcher that reports two taps further apart than the platform window
+     * looks exactly like a single tap, so the gap is what tells "the second
+     * signal never arrived" apart from "it arrived too late".
+     */
+    var lastGapMs: Long = -1L
+        private set
 
     /**
      * Records one tap signal.
@@ -47,6 +58,8 @@ class GroupedTapGate(
      */
     fun onTapSignal(): Boolean {
         val now = clock()
+        lastGapMs = lastSignalAt?.let { now - it } ?: -1L
+        lastSignalAt = now
         val fired = firedAt
         // The third signal of one gesture (command, touch, command) must not fire
         // a second time.
@@ -65,5 +78,7 @@ class GroupedTapGate(
     fun reset() {
         armedAt = null
         firedAt = null
+        lastSignalAt = null
+        lastGapMs = -1L
     }
 }

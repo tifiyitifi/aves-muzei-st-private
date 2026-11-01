@@ -33,6 +33,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import androidx.core.app.ServiceCompat
+import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillEngine
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillScheduler
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperTarget
 import net.rbgrn.android.glwallpaperservice.GLWallpaperService
@@ -279,12 +280,17 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
     private fun onRealEngineCreated() {
         realEngines++
+        // The wallpaper service lives as long as the wallpaper is set, so its
+        // refill engine should too: a cold start on every tap is most of the
+        // delay the user sees when the app is not open.
+        LiveWallpaperRefillEngine.holdWarm(true)
         if (realEngines == 1) updateNotification()
     }
 
     private fun onRealEngineDestroyed() {
         realEngines = (realEngines - 1).coerceAtLeast(0)
         if (realEngines != 0) return
+        LiveWallpaperRefillEngine.holdWarm(false)
         // The bar outlives the engine that drew it: demote, then post it as a
         // normal notification so it does not vanish with the foreground state.
         demoteFromForeground()
@@ -330,7 +336,12 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
                     Intent.ACTION_USER_PRESENT -> updateLockScreen(false)
-                    Intent.ACTION_SCREEN_OFF -> updateLockScreen(true)
+                    Intent.ACTION_SCREEN_OFF -> {
+                        updateLockScreen(true)
+                        // Nothing can tap a sleeping screen: drop the warm engine
+                        // instead of holding a second Flutter isolate in memory.
+                        LiveWallpaperRefillEngine.releaseIfIdle()
+                    }
                     Intent.ACTION_SCREEN_ON -> {
                         val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
                         updateLockScreen(keyguard.isKeyguardLocked)
@@ -346,7 +357,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
                     val fired = tapGate.onTapSignal()
-                    Log.d(TAG, "tap.signal src=touch fired=$fired")
+                    Log.d(TAG, "tap.signal src=touch fired=$fired dt=${tapGate.lastGapMs}")
                     if (fired) performGesture(threeFinger = false)
                     return true
                 }
@@ -449,7 +460,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
                 // Only a tap the gesture detector already saw twice acts: a single
                 // tap must never change the wallpaper.
                 val fired = tapGate.onTapSignal()
-                Log.d(TAG, "tap.signal src=command fired=$fired")
+                Log.d(TAG, "tap.signal src=command fired=$fired dt=${tapGate.lastGapMs}")
                 if (fired) performGesture(threeFinger = false)
             }
             return super.onCommand(action, x, y, z, extras, resultRequested)
@@ -497,6 +508,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             // The wallpaper may move but the next slot is still baking: keep the
             // tap and ask for the refill that lets `drainPendingAdvance` serve it.
             renderer.enqueueAdvance()
+            // Show the wait, so the bar does not keep describing the photo the
+            // tap already left.
+            GroupedWallpaperNotification.beginPhotoSwitch(this@GroupedLiveWallpaperService, forward = true)
             requestRefill()
         }
 

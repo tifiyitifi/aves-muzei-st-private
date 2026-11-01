@@ -66,8 +66,8 @@ void main() {
   test('writes a frame under its entry id, not its slot id', () async {
     final photo = await store.writeFramePhoto(42, '100x200-abcd', Uint8List.fromList([1, 2, 3]));
 
-    expect(photo, 'frames/42/100x200-abcd/photo.png');
-    expect(await store.frameFile(42, '100x200-abcd', GroupedWallpaperStateStore.slotPhotoFileName).readAsBytes(), [1, 2, 3]);
+    expect(photo, 'frames/42/100x200-abcd/photo.webp');
+    expect(await store.frameFile(42, '100x200-abcd', GroupedWallpaperStateStore.framePhotoFileName).readAsBytes(), [1, 2, 3]);
   });
 
   test('writes home and lock effect photos next to the sharp one', () async {
@@ -87,11 +87,11 @@ void main() {
     const key = '100x200-abcd';
     final sharp = await store.writeFramePhoto(42, key, Uint8List.fromList([1]));
     final identity = GroupedWallpaperSlot(id: 3, entryId: 42, uri: '', photo: sharp);
-    expect(store.slotEffectPhotoOf(identity, lock: false)?.path, store.frameFile(42, key, GroupedWallpaperStateStore.slotPhotoFileName).path);
-    expect(store.slotEffectPhotoOf(identity, lock: true)?.path, store.frameFile(42, key, GroupedWallpaperStateStore.slotPhotoFileName).path);
+    expect(store.slotEffectPhotoOf(identity, lock: false)?.path, store.frameFile(42, key, GroupedWallpaperStateStore.framePhotoFileName).path);
+    expect(store.slotEffectPhotoOf(identity, lock: true)?.path, store.frameFile(42, key, GroupedWallpaperStateStore.framePhotoFileName).path);
 
     final missing = GroupedWallpaperSlot(id: 3, entryId: 42, uri: '', photo: sharp, effectHome: 'frames/42/$key/gone.png');
-    expect(store.slotEffectPhotoOf(missing, lock: false)?.path, store.frameFile(42, key, GroupedWallpaperStateStore.slotPhotoFileName).path);
+    expect(store.slotEffectPhotoOf(missing, lock: false)?.path, store.frameFile(42, key, GroupedWallpaperStateStore.framePhotoFileName).path);
   });
 
   test('a cached frame is read back with its metadata', () async {
@@ -100,15 +100,25 @@ void main() {
     await store.writeFrameMeta(42, key, width: 100, height: 200, darkness: 0.25, title: 'IMG_42', uri: 'content://42');
 
     final frame = store.cachedFrame(42, key)!;
-    expect(frame.photo, 'frames/42/$key/photo.png');
+    expect(frame.photo, 'frames/42/$key/photo.webp');
     expect(frame.effectHome, isEmpty);
     expect(frame.width, 100);
     expect(frame.height, 200);
     expect(frame.darkness, 0.25);
   });
 
-  test('another layout key misses the cache', () async {
-    await store.writeFramePhoto(42, '100x200-abcd', Uint8List.fromList([1]));
+  test('a frame baked before the native writer still hits the cache', () async {
+    const key = '100x200-old';
+    final dir = store.frameDir(42, key);
+    await dir.create(recursive: true);
+    // What every build before the WebP frames left on disk.
+    await File('${dir.path}/photo.png').writeAsBytes([1, 2, 3]);
+    await store.writeFrameMeta(42, key, width: 100, height: 200, darkness: 0.5, title: '', uri: '');
+
+    expect(store.cachedFrame(42, key)?.photo, 'frames/42/$key/photo.png');
+  });
+
+  test('another layout key misses the cache', () async {    await store.writeFramePhoto(42, '100x200-abcd', Uint8List.fromList([1]));
     await store.writeFrameMeta(42, '100x200-abcd', width: 100, height: 200, darkness: 0.5, title: '', uri: '');
 
     expect(store.cachedFrame(42, '100x200-abcd'), isNotNull);
@@ -124,12 +134,12 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 2));
     }
     // Entry 1 is the one on screen: it must survive even as the oldest.
-    await store.pruneFrames(keep: {'frames/1/100x200-k/photo.png'}, maxFrames: 2);
+    await store.pruneFrames(keep: {'frames/1/100x200-k/photo.webp'}, maxFrames: 2);
 
-    expect(await store.frameFile(1, '100x200-k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isTrue);
-    expect(await store.frameFile(4, '100x200-k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isTrue);
-    expect(await store.frameFile(2, '100x200-k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isFalse);
-    expect(await store.frameFile(3, '100x200-k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isFalse);
+    expect(await store.frameFile(1, '100x200-k', GroupedWallpaperStateStore.framePhotoFileName).exists(), isTrue);
+    expect(await store.frameFile(4, '100x200-k', GroupedWallpaperStateStore.framePhotoFileName).exists(), isTrue);
+    expect(await store.frameFile(2, '100x200-k', GroupedWallpaperStateStore.framePhotoFileName).exists(), isFalse);
+    expect(await store.frameFile(3, '100x200-k', GroupedWallpaperStateStore.framePhotoFileName).exists(), isFalse);
   });
 
   test('clearing the history drops every unreferenced frame', () async {
@@ -138,15 +148,15 @@ void main() {
     final legacy = File('${dir.path}/${GroupedWallpaperState.photoFileNameV1}');
     await legacy.writeAsBytes([9]);
 
-    await store.clearFrames(keep: {'frames/1/k/photo.png'});
+    await store.clearFrames(keep: {'frames/1/k/photo.webp'});
 
-    expect(await store.frameFile(1, 'k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isTrue);
-    expect(await store.frameFile(2, 'k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isFalse);
+    expect(await store.frameFile(1, 'k', GroupedWallpaperStateStore.framePhotoFileName).exists(), isTrue);
+    expect(await store.frameFile(2, 'k', GroupedWallpaperStateStore.framePhotoFileName).exists(), isFalse);
     expect(await legacy.exists(), isTrue);
 
     await store.clearSlots();
 
-    expect(await store.frameFile(1, 'k', GroupedWallpaperStateStore.slotPhotoFileName).exists(), isFalse);
+    expect(await store.frameFile(1, 'k', GroupedWallpaperStateStore.framePhotoFileName).exists(), isFalse);
     expect(await legacy.exists(), isFalse);
     // Clearing a frame that is already gone is not an error.
     await store.clearSlots();
@@ -155,7 +165,7 @@ void main() {
   test('a rewrite replaces the previous file instead of appending', () async {
     await store.writeFramePhoto(42, 'k', Uint8List.fromList([1, 2, 3, 4]));
     await store.writeFramePhoto(42, 'k', Uint8List.fromList([9]));
-    expect(await store.frameFile(42, 'k', GroupedWallpaperStateStore.slotPhotoFileName).readAsBytes(), [9]);
+    expect(await store.frameFile(42, 'k', GroupedWallpaperStateStore.framePhotoFileName).readAsBytes(), [9]);
 
     await store.writeState(state);
     await store.writeState(state.copyWith(generation: 3));

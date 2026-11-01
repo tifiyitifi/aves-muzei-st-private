@@ -1,7 +1,9 @@
 import 'dart:ui' as ui;
 
 import 'package:aves/features/grouped_wallpaper/entry/background_refill.dart';
+import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/live_wallpaper_refill/log.dart';
+import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/muzei_wallpaper/entry/background_refill.dart';
 import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/model/device.dart';
@@ -53,6 +55,9 @@ const AvesMethodChannel _channel = AvesMethodChannel(liveWallpaperRefillChannelN
 /// preview.
 @pragma('vm:entry-point')
 Future<void> liveWallpaperRefillMain() async {
+  // This isolate has its own `Log` state: without this, every feature channel
+  // is closed here and a failed background refill leaves no trace at all.
+  Log.init(debugChannels: [...groupedWallpaperDebugLogKeys, ...liveWallpaperRefillDebugLogKeys]);
   WidgetsFlutterBinding.ensureInitialized();
   liveWallpaperRefillLog.i('refill.entry start');
 

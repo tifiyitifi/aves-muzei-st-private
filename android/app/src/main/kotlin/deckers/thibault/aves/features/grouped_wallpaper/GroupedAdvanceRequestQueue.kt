@@ -39,12 +39,13 @@ class GroupedAdvanceRequestQueue(
         /**
          * How long a buffered tap may wait for its slot.
          *
-         * Muzei keeps a single pending image loader, so a tap never lands long
-         * after the user made it. A bake takes a few seconds at most, so three
-         * seconds covers one refill without letting an old tap suddenly change
-         * the wallpaper.
+         * When the app is not in the foreground, the tap is served by the
+         * background worker, which has to start a Flutter engine before it can
+         * bake; three seconds covered only the bake itself, so every background
+         * tap expired silently. Fifteen seconds still ends well before a tap
+         * would surprise the user, and an expiry is logged.
          */
-        const val DEFAULT_TIMEOUT_MS = 3_000L
+        const val DEFAULT_TIMEOUT_MS = 15_000L
     }
 
     private val requests = ArrayDeque<Long>()
@@ -71,6 +72,23 @@ class GroupedAdvanceRequestQueue(
             if (now - requestedAt <= timeoutMs) return true
         }
         return false
+    }
+
+    /**
+     * Drops the requests that can no longer be served.
+     *
+     * Purging on its own turns a silent loss into a countable one: a request that
+     * disappears without a log looks the same as one that was never received.
+     *
+     * @return how many requests were dropped.
+     */
+    fun expire(now: Long): Int {
+        var dropped = 0
+        while (requests.isNotEmpty() && now - requests.first() > timeoutMs) {
+            requests.removeFirst()
+            dropped++
+        }
+        return dropped
     }
 
     fun clear() {

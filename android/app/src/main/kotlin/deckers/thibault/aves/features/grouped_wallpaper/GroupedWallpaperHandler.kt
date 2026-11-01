@@ -23,6 +23,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safe
+import deckers.thibault.aves.channel.calls.Coresult.Companion.safeSuspend
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillScheduler
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperTarget
 import io.flutter.plugin.common.MethodCall
@@ -36,10 +37,21 @@ import kotlinx.coroutines.launch
 /**
  * Method channel between the Flutter engine and the grouped wallpaper service.
  *
- * Only lifecycle commands cross it: the baked photo and `state.json` are shared
- * files, so applying a frame never depends on a channel round trip.
+ * Lifecycle commands cross it, plus the one write that has to stay native: the
+ * frame bake. `state.json` and the frame files are shared, so applying a frame
+ * never depends on a channel round trip.
  */
-class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler {
+class GroupedWallpaperHandler(
+    private val context: Context,
+    /**
+     * Whether this channel can receive the service's sync requests.
+     *
+     * The background refill engine mounts the same handler but is never given a
+     * messenger, so it must not claim the app's listening flag: the worker would
+     * then skip a refill the service is waiting for.
+     */
+    private val servesSyncRequests: Boolean = true,
+) : MethodCallHandler {
     companion object {
         private const val TAG = "AvesGroupedWallpaper"
         const val CHANNEL = "deckers.thibault/aves/grouped_wallpaper"
@@ -57,6 +69,7 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
             "scrollStep" -> safe(call, result, ::scrollStep)
             "displayedSlot" -> safe(call, result, ::displayedSlot)
             "stateRoot" -> safe(call, result, ::stateRoot)
+            "writeFrame" -> defaultScope.launch { safeSuspend(call, result, ::writeFrame) }
             "setRequestHandler" -> safe(call, result, ::setRequestHandler)
             "scheduleAutoAdvance" -> safe(call, result, ::scheduleAutoAdvance)
             "restartAutoAdvance" -> safe(call, result, ::restartAutoAdvance)
@@ -171,6 +184,46 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
     }
 
     /**
+     * Decodes, covers and writes one wallpaper frame, reporting its size and a
+     * darkness sample.
+     *
+     * `null` means "bake it in Dart", not a failed request: the channel is an
+     * optimization, so an undecodable entry or a desktop host simply takes the
+     * fallback the engine already has.
+     */
+    private suspend fun writeFrame(call: MethodCall, result: MethodChannel.Result) {
+        val uri = call.argument<String>("uri")
+        val mimeType = call.argument<String>("mimeType")
+        val outputPath = call.argument<String>("outputPath")
+        val targetWidth = call.argument<Int>("targetWidth")
+        val targetHeight = call.argument<Int>("targetHeight")
+        if (uri == null || mimeType == null || outputPath == null || targetWidth == null || targetHeight == null || targetWidth <= 0 || targetHeight <= 0) {
+            result.success(null)
+            return
+        }
+        val written = GroupedFrameWriter.write(
+            context,
+            GroupedFrameWriter.Request(
+                uri = uri,
+                mimeType = mimeType,
+                pageId = call.argument<Int>("pageId"),
+                sizeBytes = call.argument<Number>("sizeBytes")?.toLong(),
+                rotationDegrees = call.argument<Int>("rotationDegrees") ?: 0,
+                isFlipped = call.argument<Boolean>("isFlipped") == true,
+                targetWidth = targetWidth,
+                targetHeight = targetHeight,
+                outputPath = outputPath,
+                quality = call.argument<Int>("quality") ?: GroupedFrameWriter.DEFAULT_QUALITY,
+            ),
+        )
+        result.success(
+            written?.let {
+                mapOf("width" to it.width, "height" to it.height, "thumbnail" to it.thumbnail)
+            },
+        )
+    }
+
+    /**
      * Records whether the app listens for `syncRequested`.
      *
      * When it does and the service is already the wallpaper, ask for a frame
@@ -178,6 +231,13 @@ class GroupedWallpaperHandler(private val context: Context) : MethodCallHandler 
      * to get the first image.
      */
     private fun setRequestHandler(call: MethodCall, result: MethodChannel.Result) {
+        if (!servesSyncRequests) {
+            // A headless engine registers the handler too, but the service cannot
+            // reach it; leaving the flag untouched keeps the worker's decision
+            // honest.
+            result.success(null)
+            return
+        }
         val attached = call.argument<Boolean>("attached") == true
         GroupedWallpaperAppBridge.setRequestHandlerAttached(attached)
         if (attached && GroupedLiveWallpaperService.isRunning) {

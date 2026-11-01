@@ -134,6 +134,22 @@ data class GroupedWallpaperFileState(
      * respects the system's animation switch.
      */
     val transitionMs: Int = DEFAULT_TRANSITION_MS,
+    /**
+     * How many baked frames the renderer keeps on the GPU.
+     *
+     * The app owns the switch; the renderer only trades memory for an instant
+     * tap. The frame on screen is kept whatever this says.
+     */
+    val frameRetention: GroupedFrameRetention = GroupedFrameRetention.DEFAULT,
+    /**
+     * Whether the frames were baked with the home-screen scroll effect.
+     *
+     * It makes a frame `surface.height × aspect` wide, which is the case the
+     * retention switch's `auto` value exists for: those frames are the expensive
+     * ones to keep. Absent means a file written before the layout was recorded,
+     * whose frames were surface-sized.
+     */
+    val scrollEffect: Boolean = false,
 ) {
     fun slot(id: Int): GroupedWallpaperSlotFile? = slots.firstOrNull { it.id == id }
 
@@ -330,6 +346,10 @@ object GroupedWallpaperStateFile {
             navigated = json.optBoolean("navigated", false),
             rewindCursor = json.optInt("rewindCursor", 0),
             transitionMs = json.optInt("transitionMs", GroupedWallpaperFileState.DEFAULT_TRANSITION_MS).coerceIn(0, GroupedWallpaperFileState.MAX_TRANSITION_MS),
+            // Absent means a file written before the switch existed: those
+            // builds kept every frame.
+            frameRetention = GroupedFrameRetention.parse(json.optString("frameRetention")),
+            scrollEffect = json.optBoolean("scrollEffect", false),
         )
     }
 

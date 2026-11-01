@@ -1,3 +1,4 @@
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
@@ -406,6 +407,13 @@ class GroupedWallpaperState extends Equatable {
   /// animation switch.
   final int transitionMs;
 
+  /// How many baked frames the renderer keeps on the GPU.
+  ///
+  /// It travels with the state because the renderer decodes and evicts frames on
+  /// its own; the frame on screen is kept whatever this says, so the switch only
+  /// trades memory for an instant tap.
+  final GroupedWallpaperFrameRetention frameRetention;
+
   /// Whether the group-switch lock is on, so the bar greys its group buttons.
   ///
   /// It travels with the state because the notification is built natively from
@@ -457,6 +465,7 @@ class GroupedWallpaperState extends Equatable {
     this.scrollEffect = false,
     this.historyLimit = GroupedWallpaperHistoryLimit.defaultLimit,
     this.transitionMs = defaultGroupedWallpaperTransitionMs,
+    this.frameRetention = GroupedWallpaperFrameRetention.defaultRetention,
     this.switchLocked = false,
     this.switchLockedGroupId = '',
     this.groups = const [],
@@ -546,6 +555,7 @@ class GroupedWallpaperState extends Equatable {
     bool? scrollEffect,
     int? historyLimit,
     int? transitionMs,
+    GroupedWallpaperFrameRetention? frameRetention,
     bool? switchLocked,
     String? switchLockedGroupId,
     List<GroupedWallpaperGroup>? groups,
@@ -577,6 +587,7 @@ class GroupedWallpaperState extends Equatable {
         scrollEffect: scrollEffect ?? this.scrollEffect,
         historyLimit: historyLimit ?? this.historyLimit,
         transitionMs: transitionMs ?? this.transitionMs,
+        frameRetention: frameRetention ?? this.frameRetention,
         switchLocked: switchLocked ?? this.switchLocked,
         switchLockedGroupId: switchLockedGroupId ?? this.switchLockedGroupId,
         groups: groups ?? this.groups,
@@ -628,6 +639,7 @@ class GroupedWallpaperState extends Equatable {
         'scrollEffect': scrollEffect,
         'historyLimit': historyLimit,
         'transitionMs': transitionMs,
+        'frameRetention': frameRetention.name,
         'switchLocked': switchLocked,
         'switchLockedGroupId': switchLockedGroupId,
         'groups': groups.map((group) => group.toJsonMap()).toList(),
@@ -773,6 +785,8 @@ class GroupedWallpaperState extends Equatable {
       historyLimit: historyLimit,
       // Absent means a file from before the animation existed: use the default.
       transitionMs: GroupedWallpaperTransition.fromDuration(json['transitionMs']).durationMs,
+      // Same rule for the frame switch: older files kept every frame.
+      frameRetention: GroupedWallpaperFrameRetention.tryParse(json['frameRetention']),
       switchLocked: json['switchLocked'] == true,
       switchLockedGroupId: _string(json['switchLockedGroupId']),
       groups: List.unmodifiable(groups),
@@ -797,7 +811,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, previous, next, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, transitionMs, switchLocked, switchLockedGroupId, groups, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, previous, next, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, transitionMs, frameRetention, switchLocked, switchLockedGroupId, groups, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

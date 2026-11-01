@@ -1,4 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
@@ -171,6 +172,18 @@ void main() {
     // freezing the wallpaper on a value no switch can name.
     final unknown = state.toJsonMap()..['transitionMs'] = 420;
     expect(GroupedWallpaperState.tryFromJsonMap(unknown)!.transitionMs, GroupedWallpaperTransition.long.durationMs);
+  });
+
+  test('the frame retention switch travels with the state', () {
+    final json = state.toJsonMap()..['frameRetention'] = 'displayed';
+    expect(GroupedWallpaperState.tryFromJsonMap(json)!.frameRetention, GroupedWallpaperFrameRetention.displayed);
+
+    // A file written before the switch existed kept every frame.
+    final missing = state.toJsonMap()..remove('frameRetention');
+    expect(GroupedWallpaperState.tryFromJsonMap(missing)!.frameRetention, GroupedWallpaperFrameRetention.defaultRetention);
+
+    final unknown = state.toJsonMap()..['frameRetention'] = 'nonsense';
+    expect(GroupedWallpaperState.tryFromJsonMap(unknown)!.frameRetention, GroupedWallpaperFrameRetention.defaultRetention);
   });
 
   test('a v3 file reads as playing, with no group on its history', () {

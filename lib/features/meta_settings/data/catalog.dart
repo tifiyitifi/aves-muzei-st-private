@@ -519,6 +519,14 @@ final List<SettingDef> _wallpaperDefs = [
     sortOrder: 25,
   ),
   SettingDef(
+    key: WallpaperGroupStore.keyFrameRetention,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsWallpaperFrameRetention,
+    editorKey: MetaEditorKeys.wallpaperFrameRetention,
+    sortOrder: 26,
+  ),
+  SettingDef(
     key: WallpaperGroupStore.keyHistoryLimit,
     category: SettingsCategory.wallpaper,
     widgetKind: SettingWidgetKind.custom,

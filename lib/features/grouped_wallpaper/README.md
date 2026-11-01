@@ -69,10 +69,10 @@ the user's list stays theirs, and the entry can be closed and reopened.
   the user can move or remove it), while the builder still re-appends it when it
   is missing. Existing users keep their own list.
 - Settings → "Visible & wallpaper" collects the switches: the nav mode, the
-  notification bar, the history limit, the history page, the gestures page, and
-  the four Muzei confirmations/prefetch options that used to sit under
-  "Advanced". The group page keeps the same actions as contextual shortcuts;
-  both read one store.
+  notification bar, the history limit, the history page, the gestures page, the
+  photo-change animation, the frame retention, and the four Muzei
+  confirmations/prefetch options that used to sit under "Advanced". The group page
+  keeps the same actions as contextual shortcuts; both read one store.
 
 ## The engine
 
@@ -166,16 +166,49 @@ previous photo:
 
 - **the state writer**: a state older than the one on screen (`generation` lower)
   is discarded, so retention never treats the newer slots as garbage;
-- **the EGL context**: `onSurfaceCreated` bumps a surface epoch in the same
-  critical section that empties `uploaded`, and the loader reads both together.
-  A reload that started before the rebuild is discarded and re-read, because its
-  "already uploaded" snapshot describes texture ids the new context never had.
-  Without the epoch, the first reload after a rebuild could skip the slot being
-  drawn, fall back to a neighbour and stay there.
+- **a frame that went away while a reload ran**: the loader's skips were checked
+  against `uploaded` from a context that no longer draws. The decoded bitmaps are
+  context-free, so they are uploaded as usual and a follow-up reload fills the
+  slots the stale snapshot skipped. The epoch still pairs with the snapshot, so a
+  reload is never judged against frames it did not have.
 
-`uploaded` must always match `textures`: a texture removed without updating it
-would be skipped by the next reload and leave a hole. `onSurfaceCreated` clears
-both, since a new EGL context invalidates the texture ids themselves.
+`uploaded` and `readySlots` are derived from `textures` by one function
+(`publishFrames`): a map that drifts from the textures would make the next reload
+skip a slot that has no texture and leave a hole.
+
+#### What a surface rebuild invalidates
+
+`onSurfaceCreated` is a *window* event, not a guarantee of a new EGL context. The
+vendored `GLWallpaperService` keeps one context for the life of the engine
+(`EglHelper.start()` reuses it and `finish()` only runs when the GL thread exits),
+so a hide/show keeps every texture id alive. The renderer therefore asks the
+driver which frames survived (`glIsTexture`) instead of clearing them all; only a
+frame that is really gone is dropped, and only then is the epoch bumped and a
+re-decode requested. Clearing on every surface was what showed the grey
+placeholder each time the launcher recreated its surface. The same probe rebuilds
+the shader program and the placeholder texture only when they are gone.
+
+#### The retention switch
+
+**Settings → Visible & wallpaper → Frame retention** caps how many baked frames
+stay resident. The frame on screen is kept whatever the value, which is why the
+placeholder never comes back from this switch:
+
+- **Auto** keeps every frame, except when the group's home scroll effect is on:
+  those frames are `surface.height × aspect` wide (up to 4096), so two extra ones
+  are the expensive case;
+- **Keep all frames** (default) is what every earlier build did: an instant tap,
+  and the highest GPU memory use;
+- **Keep the frame on screen only** decodes a tap's target on demand, so the tap
+  waits for one decode.
+
+The value is global (`wallpaper.groupedFrameRetention`) and travels in
+`state.json` as `frameRetention`, because the renderer decodes and evicts frames
+on its own. `scrollEffect` travels with it so the renderer can resolve `auto`
+without asking Dart. A limited reload decodes the frame about to be shown first,
+then a buffered tap's target, and steps back to "keep everything" for that round
+when the wanted frame cannot be decoded: a neighbour is the only alternative to
+the placeholder.
 
 ### Crossfade
 

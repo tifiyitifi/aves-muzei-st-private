@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
@@ -72,6 +73,12 @@ class WallpaperGroupStore {
   /// Global like the switches above: the renderer fades between frames that may
   /// belong to different groups, so no group can own the value.
   static const keyTransition = 'wallpaper.groupedTransition';
+
+  /// AppMeta key of how many baked frames the renderer keeps on the GPU.
+  ///
+  /// Global like the transition: the renderer keeps frames that may belong to
+  /// different groups, and the switch trades memory for an instant tap.
+  static const keyFrameRetention = 'wallpaper.groupedFrameRetention';
   /// AppMeta key of the user closing the derived bottom-bar entry.
   static const keyNavEntryClosed = 'wallpaper.groupedNavEntryClosed';
 
@@ -251,6 +258,17 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeTransition(GroupedWallpaperTransition transition) => AppMetaStore(db).write({keyTransition: transition.name});
+
+  /// How many baked frames the renderer keeps on the GPU.
+  ///
+  /// Global like the transition above: the renderer owns the frames, and the
+  /// switch cannot live in a group's effects, which also key the frame cache.
+  Future<GroupedWallpaperFrameRetention> readFrameRetention() async {
+    final values = await AppMetaStore(db).read({keyFrameRetention});
+    return GroupedWallpaperFrameRetention.tryParse(values[keyFrameRetention]);
+  }
+
+  Future<void> writeFrameRetention(GroupedWallpaperFrameRetention retention) => AppMetaStore(db).write({keyFrameRetention: retention.name});
 
   /// Whether the user closed the derived bottom-bar entry.
   Future<bool> readNavEntryClosed() async {

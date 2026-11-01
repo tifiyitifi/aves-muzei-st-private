@@ -43,6 +43,7 @@ final Map<String, MetaEditorBuilder> metaEditorRegistry = {
   MetaEditorKeys.wallpaperNavMode: (context, def) => WallpaperNavModeEditor(def: def),
   MetaEditorKeys.wallpaperNotification: (context, def) => WallpaperNotificationEditor(def: def),
   MetaEditorKeys.wallpaperTransition: (context, def) => WallpaperTransitionEditor(def: def),
+  MetaEditorKeys.wallpaperFrameRetention: (context, def) => WallpaperFrameRetentionEditor(def: def),
   MetaEditorKeys.wallpaperHistoryLimit: (context, def) => WallpaperHistoryLimitEditor(def: def),
   MetaEditorKeys.wallpaperLockVisibleRange: (context, def) => WallpaperLockEditor(def: def, kind: WallpaperLockKind.visibleRange),
   MetaEditorKeys.wallpaperLockGroupSwitch: (context, def) => WallpaperLockEditor(def: def, kind: WallpaperLockKind.groupSwitch),

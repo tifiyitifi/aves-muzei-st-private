@@ -133,10 +133,11 @@ class GroupedWallpaperRenderer(
     private var destroyed = false
 
     /**
-     * Bumped whenever the EGL context is rebuilt.
+     * Bumped whenever frames the renderer had are gone from the current context.
      *
-     * An in-flight reload captured `uploaded` from the old context; consuming it
-     * after the rebuild would make it skip slots the new context never uploaded.
+     * An in-flight reload captured `uploaded` from before that loss; consuming it
+     * as-is would make it skip slots the context never uploaded. Only a real loss
+     * bumps it: a surface that comes back with its textures does not.
      */
     @Volatile
     private var surfaceEpoch = 0
@@ -160,6 +161,10 @@ class GroupedWallpaperRenderer(
      * A history step changes `current` alone, so the loader must not decode the
      * frames of the two neighbours again: that decode is the whole difference
      * between an instant step and a visible one.
+     *
+     * Derived from [textures] by [publishFrames] and never assigned anywhere
+     * else: the two maps drifting apart is what makes a reload skip a slot that
+     * has no texture and leave a hole.
      */
     @Volatile
     private var uploaded: Map<Int, Pair<Int, String>> = emptyMap()
@@ -276,35 +281,32 @@ class GroupedWallpaperRenderer(
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         destroyed = false
-        // A new EGL context invalidates every texture id from the previous one,
-        // and with them what the loader thinks it has already uploaded: keeping
-        // `uploaded` would make the next reload skip every slot and leave the
-        // wallpaper on the placeholder until the state changed.
+        // A surface (re)creation is not necessarily a new EGL context. This
+        // GLWallpaperService keeps one context for the life of the engine: its
+        // `EglHelper.start()` reuses the context it already has, and `finish()`
+        // only runs when the GL thread exits. So after a hide and show, the
+        // texture ids still name live objects, and clearing them is what used to
+        // force a re-decode and show the grey placeholder on every return.
         //
-        // The epoch is bumped in the same critical section as the clearing, and
-        // [loadFrame] reads both under the same lock, so an in-flight reload sees
-        // either the old epoch (and is discarded) or the empty snapshot. The
-        // order alone is not enough: a loader could see the new epoch and still
-        // read the pre-clear `uploaded`.
-        val epoch = synchronized(surfaceLock) {
-            surfaceEpoch++
-            uploaded = emptyMap()
-            surfaceEpoch
-        }
-        Log.d(TAG, "surface.created epoch=$epoch")
-        textures.clear()
-        // The textures of a fading frame belong to the old context too; deleting
-        // them now would free an id another context may reuse.
-        fading = null
-        pendingFadeFrom = -1
-        readySlots = emptySet()
-        placeholderTexture = 0
+        // Ask the driver which frames survived instead of assuming they all
+        // died. The epoch is bumped in the same critical section that publishes
+        // the surviving snapshot, and [loadFrame] reads both under the same lock,
+        // so a reload that started earlier is either still valid or discarded as
+        // a whole: the order alone is not enough, a loader could see the new
+        // epoch and still read the pre-clear `uploaded`.
+        val lost = dropLostFrames()
+        publishFrames(bumpEpoch = lost.isNotEmpty())
+        Log.d(TAG, "surface.created epoch=$surfaceEpoch kept=${textures.keys.sorted()} lost=$lost")
         try {
-            program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
-            aPosition = GLES20.glGetAttribLocation(program, "aPosition")
-            aTexCoord = GLES20.glGetAttribLocation(program, "aTexCoord")
-            uTexture = GLES20.glGetUniformLocation(program, "uTexture")
-            uAlpha = GLES20.glGetUniformLocation(program, "uAlpha")
+            // Only a lost program is rebuilt: recompiling on every surface would
+            // throw away the same shaders the context still owns.
+            if (!GLES20.glIsProgram(program)) {
+                program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
+                aPosition = GLES20.glGetAttribLocation(program, "aPosition")
+                aTexCoord = GLES20.glGetAttribLocation(program, "aTexCoord")
+                uTexture = GLES20.glGetUniformLocation(program, "uTexture")
+                uAlpha = GLES20.glGetUniformLocation(program, "uAlpha")
+            }
             GLES20.glDisable(GLES20.GL_DEPTH_TEST)
             GLES20.glClearColor(
                 ((PLACEHOLDER_BACKGROUND shr 16) and 0xFF) / 255f,
@@ -312,7 +314,9 @@ class GroupedWallpaperRenderer(
                 (PLACEHOLDER_BACKGROUND and 0xFF) / 255f,
                 1f,
             )
-            placeholderTexture = createTexture(createPlaceholderBitmap())
+            if (!GLES20.glIsTexture(placeholderTexture)) {
+                placeholderTexture = createTexture(createPlaceholderBitmap())
+            }
             if (attachToBus) GroupedWallpaperRenderBus.attach(this)
             requestReload()
         } catch (t: Throwable) {
@@ -322,6 +326,39 @@ class GroupedWallpaperRenderer(
             program = 0
             placeholderTexture = 0
         }
+    }
+
+    /**
+     * Drops the frames the current context does not know, and returns their slots.
+     *
+     * A lost frame is not deleted: its id belongs to another context, so
+     * `glDeleteTextures` would at best do nothing and at worst free a name the
+     * new context just handed out.
+     */
+    private fun dropLostFrames(): List<Int> {
+        val lost = textures.filterValues { !GLES20.glIsTexture(it.texture) }.keys.toList()
+        for (id in lost) textures.remove(id)
+        // A fading frame belongs to the same context; one that did not survive
+        // must not be drawn from a dead id.
+        val fade = fading
+        if (fade != null && !GLES20.glIsTexture(fade.slot.texture)) fading = null
+        return lost
+    }
+
+    /**
+     * Publishes [textures] as the source of truth the loader reads.
+     *
+     * `uploaded` and `readySlots` are derived here and nowhere else, so they can
+     * never describe a frame that is not on the GPU. A new epoch is only handed
+     * out together with the snapshot it belongs to, which is what makes an
+     * in-flight reload's skips safe to trust or safe to discard.
+     */
+    private fun publishFrames(bumpEpoch: Boolean = false) {
+        synchronized(surfaceLock) {
+            if (bumpEpoch) surfaceEpoch++
+            uploaded = textures.mapValues { (_, slot) -> slot.entryId to slot.photo }
+        }
+        readySlots = textures.keys.toSet()
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
@@ -400,10 +437,9 @@ class GroupedWallpaperRenderer(
         if (fromId < 0 || fromId == displayed) return
         val slot = textures.remove(fromId) ?: return
         fading = Fading(fromId, slot, SystemClock.elapsedRealtime(), duration)
-        readySlots = textures.keys.toSet()
         // The released frame leaves `uploaded` with its texture, or the next
         // reload would skip re-uploading it and draw nothing.
-        uploaded = textures.mapValues { (_, uploadedSlot) -> uploadedSlot.entryId to uploadedSlot.photo }
+        publishFrames()
     }
 
     private fun releaseFading() {
@@ -606,22 +642,42 @@ class GroupedWallpaperRenderer(
         val bitmaps = mutableMapOf<Int, Bitmap>()
         val skipped = mutableListOf<Int>()
         val failed = mutableListOf<Int>()
-        for (slot in state.slots) {
+        fun loadSlot(slot: GroupedWallpaperSlotFile) {
             val photo = slot.photoFor(lockScreen)
             // The texture is already on the GPU and draws the same file: decoding
             // it again would only delay the frame the user asked for.
             val existing = onScreen[slot.id]
             if (existing != null && existing.first == slot.entryId && existing.second == photo) {
                 skipped.add(slot.id)
-                continue
+                return
             }
             val file = GroupedWallpaperStateFile.photoFile(context, photo)
             if (file == null) {
                 failed.add(slot.id)
-                continue
+                return
             }
             val bitmap = decode(file)
             if (bitmap == null) failed.add(slot.id) else bitmaps[slot.id] = bitmap
+        }
+        val limitNeighbours = state.frameRetention.limitsNeighbours(state.scrollEffect)
+        // The frame the wallpaper is about to show is decoded first: a limited
+        // reload must not queue it behind neighbours it is going to evict. A
+        // buffered tap is the other frame worth decoding, or the tap could never
+        // be served under this policy.
+        val intent = desired.takeIf { state.slot(it) != null } ?: state.current
+        val advanceTarget = synchronized(advanceLock) { if (advanceRequests.isEmpty) -1 else state.next }
+        val wanted = listOf(intent) + listOfNotNull(advanceTarget.takeIf { it >= 0 && it != intent })
+        val order = GroupedFramePolicy.decodeOrder(state.slots.map { it.id }, wanted, limitNeighbours)
+        for (id in order) {
+            state.slot(id)?.let(::loadSlot)
+        }
+        if (limitNeighbours && bitmaps.isEmpty() && skipped.isEmpty()) {
+            // The one frame worth keeping cannot be decoded: the neighbours are
+            // the only alternative to the placeholder, so decode them after all.
+            Log.d(TAG, "reload.rescue intent=$intent")
+            for (id in state.slots.map { it.id }) {
+                if (id != intent) state.slot(id)?.let(::loadSlot)
+            }
         }
         // A slot that silently vanishes is what makes the wallpaper look like it
         // went back a photo; the reload log makes the difference between "skipped
@@ -655,14 +711,14 @@ class GroupedWallpaperRenderer(
     private fun consumePending() {
         val loaded = pending ?: return
         pending = null
-        if (GroupedDisplay.isStaleEpoch(loaded.epoch, surfaceEpoch)) {
-            // The loader read `uploaded` before the EGL context was rebuilt, so
-            // its skips describe texture ids that no longer exist. Re-loading
-            // reads the empty snapshot and decodes the current slot again.
-            loaded.bitmaps.values.forEach { it.recycle() }
-            Log.d(TAG, "reload.discard reason=epoch loaded=${loaded.epoch} current=$surfaceEpoch")
-            requestReload()
-            return
+        // A reload can outlive the frames its skips were based on: they were
+        // checked against `uploaded` from a context that no longer draws. The
+        // decoded bitmaps themselves do not belong to any context, so they are
+        // uploaded as usual; the reload requested below fills the slots the
+        // stale snapshot made it skip, instead of decoding everything again.
+        val staleEpoch = GroupedDisplay.isStaleEpoch(loaded.epoch, surfaceEpoch)
+        if (staleEpoch) {
+            Log.d(TAG, "reload.stale-epoch loaded=${loaded.epoch} current=$surfaceEpoch")
         }
 
         val previousGeneration: Int
@@ -720,16 +776,39 @@ class GroupedWallpaperRenderer(
         // the frames this reload decoded, and the loader skips the ones already on
         // the GPU, so it cannot tell which frames are alive.
         val uploadedNow = textures.mapValues { (_, slot) -> slot.entryId to slot.photo }
-        val wanted = next.slots.associate { it.id to (it.entryId to it.photoFor(loaded.lockScreen)) }
+        // The retention switch caps how many frames stay resident. It never
+        // overrides the frame about to be shown, and it steps aside while that
+        // frame is not drawable: a neighbour is the only alternative to the
+        // placeholder then.
+        val intent = desired.takeIf { next.slot(it) != null } ?: next.current
+        val kept = GroupedFramePolicy.retainedIds(
+            slots = next.slots.map { it.id }.toSet(),
+            intent = intent,
+            limitNeighbours = next.frameRetention.limitsNeighbours(next.scrollEffect),
+            drawable = textures.keys,
+        )
+        val wanted = next.slots.filter { it.id in kept }.associate { it.id to (it.entryId to it.photoFor(loaded.lockScreen)) }
         // A frame on screen, or one still fading out, is never dropped: nothing
-        // would replace it.
-        val protected = listOfNotNull(displayed.takeIf { it >= 0 }, pendingFadeFrom.takeIf { it >= 0 }, fading?.id).toSet()
+        // would replace it. A tap's target survives too, or the reload that just
+        // decoded it would evict it before the tap could be served.
+        val advanceTarget = synchronized(advanceLock) { if (advanceRequests.isEmpty) -1 else next.next }
+        val protected = listOfNotNull(
+            displayed.takeIf { it >= 0 },
+            pendingFadeFrom.takeIf { it >= 0 },
+            fading?.id,
+            advanceTarget.takeIf { it >= 0 },
+        ).toSet()
         val dropped = GroupedTextureRetention.staleIds(uploadedNow, wanted, protected)
         for (id in dropped) {
             textures.remove(id)?.let { deleteTexture(it.texture) }
         }
-        readySlots = textures.keys.toSet()
-        uploaded = textures.mapValues { (_, slot) -> slot.entryId to slot.photo }
+        publishFrames()
+        if (staleEpoch) {
+            // The slots this reload skipped were skipped on the strength of ids
+            // that no longer exist: one more pass now skips only what is really
+            // uploaded, so the wallpaper does not stay on a neighbour.
+            requestReload()
+        }
 
         var retry = false
         var retryDesired = -1

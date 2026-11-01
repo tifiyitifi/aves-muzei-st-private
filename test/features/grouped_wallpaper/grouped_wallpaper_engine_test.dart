@@ -13,6 +13,7 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_history
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_plan.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_entry.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
@@ -1310,6 +1311,22 @@ void main() {
       expect(persisted.generation, generation);
       expect(platform.reloadCount, reloads + 1);
     });
+
+    test('setFrameRetention writes the plan and the state and reloads', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final reloads = platform.reloadCount;
+      final generation = (await store.readState())!.generation;
+
+      await engine.setFrameRetention(GroupedWallpaperFrameRetention.displayed);
+
+      expect(planStore.frameRetentionWrites, [GroupedWallpaperFrameRetention.displayed]);
+      final persisted = (await store.readState())!;
+      expect(persisted.frameRetention, GroupedWallpaperFrameRetention.displayed);
+      // Same generation: capping the resident frames must not move the photo.
+      expect(persisted.generation, generation);
+      expect(platform.reloadCount, reloads + 1);
+    });
   });
 
   group('prewarm', () {
@@ -1610,7 +1627,7 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setHistoryLimit(int limit) async {
     historyLimitWrites.add(limit);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, historyLimit: limit, transition: plan.transition);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, historyLimit: limit, transition: plan.transition, frameRetention: plan.frameRetention);
   }
 
   final List<int> historyLimitWrites = [];
@@ -1618,10 +1635,18 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setTransition(GroupedWallpaperTransition transition) async {
     transitionWrites.add(transition);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, historyLimit: plan.historyLimit, transition: transition);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, historyLimit: plan.historyLimit, transition: transition, frameRetention: plan.frameRetention);
   }
 
   final List<GroupedWallpaperTransition> transitionWrites = [];
+
+  @override
+  Future<void> setFrameRetention(GroupedWallpaperFrameRetention retention) async {
+    frameRetentionWrites.add(retention);
+    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, historyLimit: plan.historyLimit, transition: plan.transition, frameRetention: retention);
+  }
+
+  final List<GroupedWallpaperFrameRetention> frameRetentionWrites = [];
 
   @override
   Future<GroupedWallpaperPlan> switchGroup(int delta) async {

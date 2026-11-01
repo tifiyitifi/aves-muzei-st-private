@@ -1,6 +1,7 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
@@ -64,6 +65,12 @@ class GroupedWallpaperPlan extends Equatable {
   /// own, without asking Dart.
   final GroupedWallpaperTransition transition;
 
+  /// How many baked frames the renderer keeps on the GPU.
+  ///
+  /// It travels with the plan like [transition] because the renderer decodes and
+  /// evicts frames on its own, without asking Dart.
+  final GroupedWallpaperFrameRetention frameRetention;
+
   const new({
     required this.group,
     this.range,
@@ -75,6 +82,7 @@ class GroupedWallpaperPlan extends Equatable {
     this.notification = true,
     this.historyLimit = GroupedWallpaperHistoryLimit.defaultLimit,
     this.transition = GroupedWallpaperTransition.defaultTransition,
+    this.frameRetention = GroupedWallpaperFrameRetention.defaultRetention,
   });
 
   bool get isNone => group.isNone;
@@ -88,7 +96,7 @@ class GroupedWallpaperPlan extends Equatable {
   bool get enabled => !disabled && !group.isNone;
 
   @override
-  List<Object?> get props => [group, range, disabled, gestures, ordering, interval, groups, notification, historyLimit, transition];
+  List<Object?> get props => [group, range, disabled, gestures, ordering, interval, groups, notification, historyLimit, transition, frameRetention];
 }
 
 /// Reads and updates [GroupedWallpaperPlan].
@@ -120,6 +128,9 @@ abstract interface class GroupedWallpaperPlanStore {
   /// Records how a photo change is animated.
   Future<void> setTransition(GroupedWallpaperTransition transition);
 
+  /// Records how many baked frames the renderer keeps on the GPU.
+  Future<void> setFrameRetention(GroupedWallpaperFrameRetention retention);
+
   /// Makes the next (`delta > 0`) or previous enabled group current.
   ///
   /// Group 0 is not part of the rotation: from it, "next" starts at the first
@@ -149,6 +160,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final notification = await store.readNotification();
     final historyLimit = await store.readHistoryLimit();
     final transition = await store.readTransition();
+    final frameRetention = await store.readFrameRetention();
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? WallpaperGroup.none;
     if (group.isNone) {
       return GroupedWallpaperPlan(
@@ -161,6 +173,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
         notification: notification,
         historyLimit: historyLimit,
         transition: transition,
+        frameRetention: frameRetention,
       );
     }
     final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
@@ -175,6 +188,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       notification: notification,
       historyLimit: historyLimit,
       transition: transition,
+      frameRetention: frameRetention,
     );
   }
 
@@ -187,6 +201,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final notification = await store.readNotification();
     final historyLimit = await store.readHistoryLimit();
     final transition = await store.readTransition();
+    final frameRetention = await store.readFrameRetention();
     // A group that is already current is the answer: adopting is idempotent, so
     // a repeated activation never moves the wallpaper to another group.
     final group = groups.firstWhereOrNull((candidate) => candidate.current && candidate.enabled) ?? enabledWallpaperGroups(groups).firstOrNull;
@@ -200,6 +215,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
         notification: notification,
         historyLimit: historyLimit,
         transition: transition,
+        frameRetention: frameRetention,
       );
     }
     if (!group.current) {
@@ -219,6 +235,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       notification: notification,
       historyLimit: historyLimit,
       transition: transition,
+      frameRetention: frameRetention,
     );
   }
 
@@ -261,9 +278,13 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       notification: await store.readNotification(),
       historyLimit: await store.readHistoryLimit(),
       transition: await store.readTransition(),
+      frameRetention: await store.readFrameRetention(),
     );
   }
 
   @override
   Future<void> setTransition(GroupedWallpaperTransition transition) async => WallpaperGroupStore(await _open()).writeTransition(transition);
+
+  @override
+  Future<void> setFrameRetention(GroupedWallpaperFrameRetention retention) async => WallpaperGroupStore(await _open()).writeFrameRetention(retention);
 }

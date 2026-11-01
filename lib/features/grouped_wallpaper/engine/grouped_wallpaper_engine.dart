@@ -15,6 +15,7 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.d
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_command.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
@@ -291,6 +292,25 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final state = await store.readState();
       if (state == null || state.transitionMs == transition.durationMs) return;
       await store.writeState(state.copyWith(transitionMs: transition.durationMs));
+      await platform.reload();
+    });
+  }
+
+  /// Records how many baked frames the renderer keeps on the GPU.
+  ///
+  /// Like the animation duration, the switch travels in `state.json` because the
+  /// renderer decodes and evicts frames on its own. Rewriting the state keeps the
+  /// same generation, and the reload applies the new value to the frame already
+  /// on screen instead of waiting for the next bake.
+  @override
+  Future<void> setFrameRetention(GroupedWallpaperFrameRetention retention) {
+    return _serialize(() async {
+      await planStore.setFrameRetention(retention);
+      final store = _store;
+      if (store == null) return;
+      final state = await store.readState();
+      if (state == null || state.frameRetention == retention) return;
+      await store.writeState(state.copyWith(frameRetention: retention));
       await platform.reload();
     });
   }
@@ -899,6 +919,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         scrollEffect: scrollEffect,
         historyLimit: plan.historyLimit,
         transitionMs: plan.transition.durationMs,
+        frameRetention: plan.frameRetention,
         switchLocked: _groupSwitchLocked(),
         switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
         groups: _groupSnapshot(plan),
@@ -1054,6 +1075,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       scrollEffect: scrollEffect,
       historyLimit: plan.historyLimit,
       transitionMs: plan.transition.durationMs,
+      frameRetention: plan.frameRetention,
       switchLocked: _groupSwitchLocked(),
       switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
       groups: _groupSnapshot(plan),
@@ -1427,6 +1449,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               notification: plan.notification,
               historyLimit: plan.historyLimit,
               transitionMs: plan.transition.durationMs,
+              frameRetention: plan.frameRetention,
               switchLocked: _groupSwitchLocked(),
               switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
               groups: _groupSnapshot(plan),
@@ -1442,6 +1465,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               notification: previous?.notification ?? true,
               historyLimit: previous?.historyLimit ?? GroupedWallpaperHistoryLimit.defaultLimit,
               transitionMs: previous?.transitionMs ?? GroupedWallpaperTransition.defaultTransition.durationMs,
+              frameRetention: previous?.frameRetention ?? GroupedWallpaperFrameRetention.defaultRetention,
               switchLocked: _groupSwitchLocked(),
               switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
               groups: previous?.groups ?? const [],

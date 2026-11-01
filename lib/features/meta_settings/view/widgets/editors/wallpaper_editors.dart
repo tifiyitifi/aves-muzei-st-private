@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
@@ -214,6 +215,86 @@ String _transitionName(BuildContext context, GroupedWallpaperTransition transiti
       GroupedWallpaperTransition.short => context.l10n.settingsWallpaperTransitionShort,
       GroupedWallpaperTransition.standard => context.l10n.settingsWallpaperTransitionStandard,
       GroupedWallpaperTransition.long => context.l10n.settingsWallpaperTransitionLong,
+    };
+
+/// Picks how many baked frames the renderer keeps on the GPU.
+///
+/// The frame on screen is always kept, so this never changes the first frame a
+/// surface shows; it only trades memory for an instant tap.
+class WallpaperFrameRetentionEditor extends StatefulWidget {
+  final SettingDef def;
+
+  const new({super.key, required this.def});
+
+  @override
+  State<WallpaperFrameRetentionEditor> createState() => _WallpaperFrameRetentionEditorState();
+}
+
+class _WallpaperFrameRetentionEditorState extends State<WallpaperFrameRetentionEditor> {
+  GroupedWallpaperFrameRetention? _value;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    try {
+      final value = await (await _store()).readFrameRetention();
+      if (!mounted) return;
+      setState(() => _value = value);
+    } catch (error, stack) {
+      groupedWallpaperLog.e('failed to read the wallpaper frame retention', error, stack);
+    }
+  }
+
+  Future<void> _set(GroupedWallpaperFrameRetention value) async {
+    setState(() => _value = value);
+    try {
+      // The store is the source of truth; the engine call carries the value into
+      // `state.json` so the renderer applies it before the next bake.
+      await (await _store()).writeFrameRetention(value);
+      await wallpaperEngineLink.setFrameRetention(value);
+    } catch (error, stack) {
+      groupedWallpaperLog.e('failed to write the wallpaper frame retention', error, stack);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = _value;
+    return ListTile(
+      title: Text(widget.def.title(context)),
+      subtitle: value == null ? null : AvesListSubtitle(_retentionName(context, value)),
+      enabled: value != null,
+      onTap: value == null
+          ? null
+          : () => showSelectionDialog<GroupedWallpaperFrameRetention>(
+                context: context,
+                builder: (context) => AvesSingleSelectionDialog<GroupedWallpaperFrameRetention>(
+                  initialValue: value,
+                  options: {for (final option in GroupedWallpaperFrameRetention.values) option: _retentionName(context, option)},
+                  optionSubtitleBuilder: (option) => _retentionSubtitle(context, option),
+                  title: context.l10n.settingsWallpaperFrameRetention,
+                  message: context.l10n.settingsWallpaperFrameRetentionMessage,
+                ),
+                onSelection: (selected) => unawaited(_set(selected)),
+              ),
+    );
+  }
+}
+
+String _retentionName(BuildContext context, GroupedWallpaperFrameRetention retention) => switch (retention) {
+      GroupedWallpaperFrameRetention.auto => context.l10n.settingsWallpaperFrameRetentionAuto,
+      GroupedWallpaperFrameRetention.all => context.l10n.settingsWallpaperFrameRetentionAll,
+      GroupedWallpaperFrameRetention.displayed => context.l10n.settingsWallpaperFrameRetentionDisplayed,
+    };
+
+String _retentionSubtitle(BuildContext context, GroupedWallpaperFrameRetention retention) => switch (retention) {
+      GroupedWallpaperFrameRetention.auto => context.l10n.settingsWallpaperFrameRetentionAutoSubtitle,
+      GroupedWallpaperFrameRetention.all => context.l10n.settingsWallpaperFrameRetentionAllSubtitle,
+      GroupedWallpaperFrameRetention.displayed => context.l10n.settingsWallpaperFrameRetentionDisplayedSubtitle,
     };
 
 /// Opens the history limit dialog, the same one the group page and the history

@@ -119,10 +119,10 @@ class _FakeConnection implements WallpaperEngineConnection {
   Future<GroupedWallpaperState?> readDisplayedState() async => null;
 
   @override
-  Future<String?> currentPhotoPath() async => null;
+  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame() async => null;
 
   @override
-  Future<String?> currentEffectPhotoPath() async => null;
+  Future<String?> currentPhotoPath() async => null;
 
   @override
   Future<GroupedWallpaperSyncResult> prepare({bool activation = false}) async => GroupedWallpaperSyncResult.notActive;

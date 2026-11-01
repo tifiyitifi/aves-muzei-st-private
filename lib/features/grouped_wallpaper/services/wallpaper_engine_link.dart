@@ -26,15 +26,14 @@ abstract interface class WallpaperEngineConnection {
   /// instead.
   Future<GroupedWallpaperState?> readDisplayedState();
 
-  /// Absolute path of the photo on screen, or null when there is none.
-  Future<String?> currentPhotoPath();
-
-  /// Absolute path of the home-effect image of the photo on screen.
+  /// The state and the effect image on screen, read as one snapshot.
   ///
-  /// This is what the view page shows: the wallpaper's own pixels, effects
-  /// included. The effects editor uses [currentPhotoPath] instead, because it
-  /// applies the effect to the sharp image itself.
-  Future<String?> currentEffectPhotoPath();
+  /// The view page uses it so the title, the entry and the pixels it shows all
+  /// describe the same frame, with the home or lock effect the renderer applied.
+  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame();
+
+  /// Absolute path of the sharp photo on screen, or null when there is none.
+  Future<String?> currentPhotoPath();
 
   /// Keeps a frame ready for the saved group, without requiring the service to
   /// be the system wallpaper yet.
@@ -189,9 +188,9 @@ class WallpaperEngineLink {
 
   Future<GroupedWallpaperState?> readDisplayedState() async => await _connection?.readDisplayedState();
 
-  Future<String?> currentPhotoPath() async => await _connection?.currentPhotoPath();
+  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame() async => await _connection?.readDisplayedFrame();
 
-  Future<String?> currentEffectPhotoPath() async => await _connection?.currentEffectPhotoPath();
+  Future<String?> currentPhotoPath() async => await _connection?.currentPhotoPath();
 
   Future<GroupedWallpaperSyncResult> prepare() async => await _connection?.prepare() ?? GroupedWallpaperSyncResult.notActive;
 

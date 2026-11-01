@@ -47,13 +47,14 @@ abstract interface class GroupedWallpaperPlatform {
   /// follows the user's switch instead of guessing.
   Future<double?> scrollStep();
 
-  /// The slot the real wallpaper engine is drawing, or null when no engine is
-  /// running.
+  /// The slot the real wallpaper engine is drawing, plus the surface it draws.
   ///
   /// `state.json` records what was last baked, but the renderer can promote a
   /// slot on its own and a reload keeps drawing the slot it had, so the two can
-  /// disagree. Only the engine knows which frame is on screen.
-  Future<int?> displayedSlot();
+  /// disagree. Only the engine knows which frame is on screen, and `lock` tells
+  /// whether that frame is the lock effect image. Returns null when no engine is
+  /// running.
+  Future<({int slot, bool lock})?> displayedSlot();
 
   /// Asks the renderer to re-read `state.json`.
   Future<void> reload();
@@ -148,10 +149,11 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
   }
 
   @override
-  Future<int?> displayedSlot() async {
-    final slot = await _invoke<int>('displayedSlot');
+  Future<({int slot, bool lock})?> displayedSlot() async {
+    final raw = await _invoke<Map<Object?, Object?>>('displayedSlot');
+    final slot = _number(raw?['slot']);
     if (slot == null || slot < 0) return null;
-    return slot;
+    return (slot: slot.toInt(), lock: raw?['lock'] == true);
   }
 
   @override

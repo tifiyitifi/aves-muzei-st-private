@@ -606,7 +606,12 @@ object GroupedWallpaperNotification {
         val pending = pendingSwitchFor(state)
         val pendingPhoto = pendingPhotoSwitchFor(slot)
         val switching = pending != null || pendingPhoto != null
+        // A legacy `locked` state still shows and navigates its photos: the range
+        // lock protects editing, not the wallpaper. Only the group buttons need
+        // the stricter "ready", so an old locked file cannot offer a group switch
+        // the app may refuse.
         val ready = state.status == GroupedWallpaperFileState.STATUS_READY && !switching
+        val navigable = (state.status == GroupedWallpaperFileState.STATUS_READY || state.status == GroupedWallpaperFileState.STATUS_LOCKED) && !switching
         val fallback = context.getString(R.string.grouped_wallpaper_notification_fallback_title)
 
         val badge = when {
@@ -651,7 +656,7 @@ object GroupedWallpaperNotification {
         } else {
             // With recording off the engine refuses "previous", so the bar greys
             // the button instead of offering an action that does nothing.
-            entryButtons(context, big, ready, canPrevious = ready && state.canRegress)
+            entryButtons(context, big, navigable, canPrevious = navigable && state.canRegress)
         }
         for (button in buttons) {
             views.setImageViewResource(button.viewId, button.iconRes)
@@ -675,7 +680,7 @@ object GroupedWallpaperNotification {
      * The placeholders keep Aves-ST's icons but stay disabled until the feature
      * exists, exactly as the batch plan requires.
      */
-    private fun entryButtons(context: Context, big: Boolean, ready: Boolean, canPrevious: Boolean): List<NotificationButton> {
+    private fun entryButtons(context: Context, big: Boolean, navigable: Boolean, canPrevious: Boolean): List<NotificationButton> {
         val previous = NotificationButton(
             R.id.grouped_notification_button_1,
             R.drawable.baseline_pre_24,
@@ -688,7 +693,7 @@ object GroupedWallpaperNotification {
             R.drawable.baseline_next_24,
             ACTION_NEXT_ARTWORK,
             context.getString(R.string.grouped_wallpaper_action_next),
-            enabled = ready,
+            enabled = navigable,
         )
         val copy = NotificationButton(
             R.id.grouped_notification_button_3,
@@ -724,7 +729,7 @@ object GroupedWallpaperNotification {
                 R.drawable.baseline_next_24,
                 ACTION_NEXT_ARTWORK,
                 context.getString(R.string.grouped_wallpaper_action_next),
-                enabled = ready,
+                enabled = navigable,
             ),
             NotificationButton(
                 R.id.grouped_notification_button_4,

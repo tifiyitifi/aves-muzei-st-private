@@ -143,11 +143,16 @@ data class GroupedWallpaperFileState(
 
     /** Whether a forward step has a queued frame to show. */
     val canPromote: Boolean
-        get() = status == STATUS_READY && next >= 0
+        get() = (status == STATUS_READY || status == STATUS_LOCKED) && count > 1 && next >= 0
 
-    /** Whether the bar's "previous" has a queued frame to show. */
+    /**
+     * Whether the bar's "previous" has a queued frame to show.
+     *
+     * A legacy `locked` state still navigates: the range lock protects editing,
+     * not the photos, and no build writes that status any more.
+     */
     val canRegress: Boolean
-        get() = status == STATUS_READY && previous >= 0 && canPrevious
+        get() = (status == STATUS_READY || status == STATUS_LOCKED) && count > 1 && previous >= 0 && canPrevious
 
     companion object {
         const val STATUS_READY = "ready"

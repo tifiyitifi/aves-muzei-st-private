@@ -40,6 +40,16 @@ object GroupedWallpaperRenderBus {
 
     fun isAttached(): Boolean = rendererRef?.get() != null
 
+    /**
+     * The slot on screen, asked of the renderer rather than a cached field.
+     *
+     * A promotion from the bar or a tap moves `displayed` immediately, while
+     * anything the service caches is only as fresh as the last callback; asking
+     * the renderer is what keeps the three-finger view and the bar describing the
+     * frame the user can see. `-1` means no real engine is attached.
+     */
+    fun displayedSlot(): Int = rendererRef?.get()?.displayedSlotId() ?: -1
+
     /** Re-reads `state.json` on the renderer's loader thread. */
     fun reload() {
         rendererRef?.get()?.requestReload()

@@ -715,6 +715,29 @@ void main() {
       final displayed = (await engine.readDisplayedState())!;
       expect(displayed.current, state.current);
     });
+
+    test('describes the effect image of the surface on screen', () async {
+      baker.distinctEffects = true;
+      planStore.plan = GroupedWallpaperPlan(
+        group: dcimGroup.copyWith(
+          effects: const WallpaperEffectsConfig(
+            home: WallpaperEffects(blur: 1),
+            lock: WallpaperEffects(blur: 2),
+          ),
+        ),
+      );
+      serve(entries(3));
+      await engine.prepare();
+      final state = (await store.readState())!;
+      platform.displayedSlotValue = state.current;
+      platform.lockScreenValue = true;
+
+      final frame = (await engine.readDisplayedFrame())!;
+
+      expect(frame.lockScreen, isTrue);
+      expect(frame.state.currentSlot, state.currentSlot);
+      expect(frame.photoPath, store.slotEffectPhotoOf(state.currentSlot!, lock: true)!.path);
+    });
   });
 
   group('disabled', () {
@@ -774,40 +797,39 @@ void main() {
     expect(await store.framesDir.exists(), isFalse);
   });
 
-  test('a locked group keeps its queue and bakes nothing', () async {
+  test('a locked range keeps rotating', () async {
     serve(entries(12));
     await engine.prepare();
-    final frozen = (await store.readState())!;
-    final bakes = baker.bakeCount;
-    final reloads = platform.reloadCount;
+    final before = (await store.readState())!;
 
     planStore.plan = GroupedWallpaperPlan(
       group: dcimGroup,
       range: VisibleRange(id: 'group.1.range', scope: VisibleRangeScope.wallpaper, ownerId: dcimGroup.id, locked: true),
     );
-    expect(await engine.syncNow(), GroupedWallpaperSyncResult.locked);
+    expect(await engine.nextArtwork(), GroupedWallpaperSyncResult.baked);
 
     final state = (await store.readState())!;
-    expect(state.status, GroupedWallpaperStatus.locked);
-    expect(state.current, frozen.current);
+    // The lock protects editing, not the photos: the wallpaper follows the group
+    // and keeps writing the regular ready status.
+    expect(state.status, GroupedWallpaperStatus.ready);
+    expect(state.currentSlot?.entryId, isNot(before.currentSlot?.entryId));
     expect(state.hasPhoto, isTrue);
-    expect(baker.bakeCount, bakes);
-    expect(platform.reloadCount, reloads);
   });
 
-  test('a locked group with no frame yet writes a placeholder state', () async {
+  test('a locked range with no frame bakes normally', () async {
+    serve(entries(3));
     planStore.plan = GroupedWallpaperPlan(
       group: dcimGroup,
       range: VisibleRange(id: 'group.1.range', scope: VisibleRangeScope.wallpaper, ownerId: dcimGroup.id, locked: true),
     );
 
-    expect(await engine.syncNow(), GroupedWallpaperSyncResult.locked);
+    expect(await engine.syncNow(), GroupedWallpaperSyncResult.baked);
 
     final state = (await store.readState())!;
-    expect(state.status, GroupedWallpaperStatus.locked);
-    expect(state.hasPhoto, isFalse);
+    expect(state.status, GroupedWallpaperStatus.ready);
+    expect(state.hasPhoto, isTrue);
     expect(state.groupId, dcimGroup.id);
-    expect(baker.bakeCount, 0);
+    expect(baker.bakeCount, greaterThan(0));
   });
 
   test('a bake failure while filling the queue keeps the frame and the queue', () async {
@@ -1434,8 +1456,11 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   /// The slot the "engine" is drawing; null mirrors "no engine".
   int? displayedSlotValue;
 
+  /// The surface that engine draws; the lock effect applies when true.
+  bool lockScreenValue = false;
+
   @override
-  Future<int?> displayedSlot() async => displayedSlotValue;
+  Future<({int slot, bool lock})?> displayedSlot() async => displayedSlotValue == null ? null : (slot: displayedSlotValue!, lock: lockScreenValue);
 
   @override
   Future<void> reload() async {

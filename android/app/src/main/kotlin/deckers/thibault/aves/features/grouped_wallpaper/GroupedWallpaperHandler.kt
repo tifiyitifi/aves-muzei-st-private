@@ -171,13 +171,20 @@ class GroupedWallpaperHandler(
     }
 
     /**
-     * Reports the slot the wallpaper engine is actually drawing, or `-1`.
+     * Reports the slot the wallpaper engine is actually drawing, or `-1`, plus
+     * the surface it draws.
      *
      * `state.json` says what was last baked, which is not always the frame on
-     * screen; the app uses this to describe the photo the user can see.
+     * screen; the app uses this to describe the photo the user can see, with the
+     * effect the renderer applied for that surface.
      */
     private fun displayedSlot(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
-        result.success(GroupedLiveWallpaperService.displayedSlot)
+        result.success(
+            mapOf(
+                "slot" to GroupedLiveWallpaperService.displayedSlot,
+                "lock" to GroupedLiveWallpaperService.lockScreenVisible,
+            ),
+        )
     }
 
     private fun stateRoot(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {        result.success(GroupedWallpaperStateFile.ensureRoot(context).absolutePath)

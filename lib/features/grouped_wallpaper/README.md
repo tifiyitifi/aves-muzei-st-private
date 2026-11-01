@@ -182,6 +182,10 @@ baked ahead of it), and is trimmed when the limit changes and cleared with the
 history. Two extra measures keep a switch invisible: the renderer skips decoding
 a slot whose `(entryId, photo)` it already uploaded, and the engine reuses the
 queued slot's id, so a back-and-forth between two records is a texture swap.
+Every write stages a `*.tmp` and renames it over the destination, so a crash can
+leave one behind inside a kept key directory, where directory-level eviction
+never reaches it: `attach()` sweeps `*.tmp` files older than 30 minutes (a fresh
+one may be the other engine's live write) from the root, `tmp/` and the cache.
 
 After a settle at the newest record the engine also bakes the frame the *next*
 forward step will want (`_prewarmNext`). It is a cache entry only: no cursor, no
@@ -509,11 +513,19 @@ through a handful. `newestEntryId`, `cursor` and `recent` live in `state.json`
 
 `state.json` is Dart-owned and read-only for the native side, and it carries what
 the notification will need (group number, resolved group name, entry, count,
-status). Every outcome is recorded instead of thrown: an empty group, a locked
-range, a missing photo or a failed bake all end in the grey placeholder, except a
-locked range or a turned-off feature, which keep the frame they stopped on. A
+status). Every outcome is recorded instead of thrown: an empty group, a missing
+photo or a failed bake all end in the grey placeholder, while a turned-off
+feature keeps the frame it stopped on. A locked range is a normal rotation: the
+lock guards editing and browsing, not the photos. A
 failed *prefetch* keeps the frame and the queue; only a group with no usable
 photo at all falls back to the placeholder.
+
+The slot the renderer is actually drawing is not in `state.json`: a promotion
+from a tap or the bar moves it before Dart writes. The app asks the live renderer
+(`GroupedWallpaperRenderBus.displayedSlot()`), so the three-finger view and the
+bar describe the frame on screen immediately, without waiting for the reload that
+would rewrite the state. The renderer's `locked` status is legacy: an upgraded
+install can still read it, and it navigates exactly like `ready`.
 
 The service asks the app for a frame when it starts and when the app attaches, so
 the wallpaper gets its first photo without a background worker; if the app is not

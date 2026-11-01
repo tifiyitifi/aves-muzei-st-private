@@ -253,4 +253,31 @@ void main() {
 
     expect(await store.readLockRequest(), isNull);
   });
+
+  test('sweeping temporaries drops only the ones old enough to be dead', () async {
+    await store.ensureLayout();
+    final old = DateTime.now().subtract(const Duration(hours: 1));
+    // What a crash leaves at the root and inside a kept frame directory: the
+    // cache works per key directory, so neither is reclaimed anywhere else.
+    final staleRoot = File('${store.root.path}/runtime.json.tmp');
+    await staleRoot.writeAsString('{}');
+    staleRoot.setLastModifiedSync(old);
+    final frameDir = store.frameDir(42, 'k');
+    await frameDir.create(recursive: true);
+    final staleFrame = File('${frameDir.path}/photo.webp.1.tmp');
+    await staleFrame.writeAsBytes([1]);
+    staleFrame.setLastModifiedSync(old);
+    final kept = File('${frameDir.path}/photo.webp');
+    await kept.writeAsBytes([2]);
+    // A fresh staging file may belong to the background engine writing right now.
+    final live = File('${store.tmpDir.path}/state.json.1.tmp');
+    await live.writeAsString('{}');
+
+    expect(await store.sweepTemporaries(), 2);
+
+    expect(await staleRoot.exists(), isFalse);
+    expect(await staleFrame.exists(), isFalse);
+    expect(await live.exists(), isTrue);
+    expect(await kept.exists(), isTrue);
+  });
 }

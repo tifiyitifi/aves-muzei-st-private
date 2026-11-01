@@ -319,6 +319,47 @@ class GroupedWallpaperStateStore {
     await tmpDir.create(recursive: true);
   }
 
+  /// How long a staging file may sit before it is assumed dead.
+  ///
+  /// The app engine and the background worker share this root, so a `.tmp`
+  /// younger than this may be another engine's in-flight write and must not be
+  /// removed.
+  static const Duration temporaryMaxAge = Duration(minutes: 30);
+
+  /// Deletes the staging files a crash or a process kill left behind.
+  ///
+  /// Every write goes through a `*.tmp` renamed over its destination, so an
+  /// interrupted write leaves garbage the frame cache never reclaims: it works at
+  /// key-directory granularity, and a kept key keeps whatever is inside it. Only
+  /// files older than [minAge] are removed; a fresh one may be live. Best effort,
+  /// so a locked file never costs the caller the wallpaper.
+  Future<int> sweepTemporaries({Duration minAge = temporaryMaxAge}) async {
+    final cutoff = DateTime.now().subtract(minAge);
+    var dropped = 0;
+    Future<void> sweep(Directory dir, {bool recursive = false}) async {
+      if (!await dir.exists()) return;
+      try {
+        await for (final entity in dir.list(recursive: recursive, followLinks: false)) {
+          if (entity is! File || !entity.path.endsWith('.tmp')) continue;
+          try {
+            if ((await entity.stat()).modified.isAfter(cutoff)) continue;
+            await entity.delete();
+            dropped++;
+          } catch (error, stack) {
+            groupedWallpaperLog.w('failed to delete the temporary file ${entity.path}', error, stack);
+          }
+        }
+      } catch (error, stack) {
+        groupedWallpaperLog.w('failed to list ${dir.path} for temporary files', error, stack);
+      }
+    }
+    await sweep(tmpDir);
+    await sweep(root);
+    await sweep(framesDir, recursive: true);
+    if (dropped > 0) groupedWallpaperLog.d('frames.sweep dropped=$dropped');
+    return dropped;
+  }
+
   Future<GroupedWallpaperState?> readState() async => await _readJson(stateFile, GroupedWallpaperState.tryFromJsonMap, 'state.json');
 
   /// The slot the renderer promoted to, or null when there is none or it is

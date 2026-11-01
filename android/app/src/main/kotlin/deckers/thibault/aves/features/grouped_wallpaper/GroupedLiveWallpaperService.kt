@@ -99,10 +99,24 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
          * The slot the real engine is drawing, or `-1` when no engine is running.
          *
          * The app asks for this instead of trusting `state.json`: the renderer can
-         * promote a slot on its own, and a reload keeps drawing the one it had.
+         * promote a slot on its own, and a reload keeps drawing the one it had. It
+         * asks the renderer directly ([GroupedWallpaperRenderBus]) because a bar
+         * promotion moves the frame without reporting back; the service's cached
+         * field is only the fallback for a renderer that has not attached yet.
          */
         val displayedSlot: Int
-            get() = instance?.displayedSlotId ?: -1
+            get() = GroupedWallpaperRenderBus.displayedSlot().takeIf { it >= 0 } ?: instance?.displayedSlotId ?: -1
+
+        /**
+         * Whether the real engine is drawing the lock screen, so the effect image
+         * on screen is `lock.png` rather than `home.png`.
+         *
+         * The app asks for it with [displayedSlot] so the view page shows the same
+         * effect the wallpaper does.
+         */
+        @Volatile
+        var lockScreenVisible = false
+            private set
 
         /**
          * Drops a bar whose service is gone.
@@ -160,7 +174,13 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
     @Volatile
     private var destroying = false
 
-    /** The slot the renderer is drawing, reported so the notification matches. */
+    /**
+     * The slot the renderer last reported, used only when no renderer is attached.
+     *
+     * [displayedSlot] prefers the live renderer; this field keeps the last known
+     * slot across an engine swap, when the app still has to describe the frame
+     * the service was drawing.
+     */
     @Volatile
     private var displayedSlotId = -1
 
@@ -203,7 +223,8 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             }
             return
         }
-        val slot = if (displayedSlotId >= 0) state.slot(displayedSlotId) else state.currentSlot
+        val displayed = displayedSlot
+        val slot = if (displayed >= 0) state.slot(displayed) else state.currentSlot
         val foreground = realEngines > 0
         // The plain bar belongs to a wallpaper the system is showing. During the
         // picker preview, or when an engine outlives a replacement, this service
@@ -381,6 +402,10 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
                         gestureHandler.post { this@GroupedLiveWallpaperService.onFrameLoaded(displayed) }
                     }
                 },
+                // A picker preview must not answer the app's commands: it would
+                // promote a surface nobody sees and swallow the reload the real
+                // wallpaper needs.
+                attachToBus = !isPreview,
             )
             setEGLContextClientVersion(2)
             setEGLConfigChooser(8, 8, 8, 0, 0, 0)
@@ -561,11 +586,13 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             applicationContext.registerReceiver(lockScreenReceiver, filter)
             val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
             lockScreenVisible = keyguard.isKeyguardLocked
+            GroupedLiveWallpaperService.lockScreenVisible = lockScreenVisible
         }
 
         private fun updateLockScreen(visible: Boolean) {
             if (lockScreenVisible == visible) return
             lockScreenVisible = visible
+            GroupedLiveWallpaperService.lockScreenVisible = visible
             if (::renderer.isInitialized) renderer.setLockScreenVisible(visible)
             // Locking or unlocking returns the bar to its default button set; the
             // user's switch applies until the keyguard changes.

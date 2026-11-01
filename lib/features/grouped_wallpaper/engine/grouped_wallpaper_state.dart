@@ -8,15 +8,20 @@ import 'package:flutter/foundation.dart';
 
 /// What the grouped wallpaper is showing, and why.
 ///
-/// [locked] and [disabled] keep the frame on screen: the wallpaper is not
-/// following the group, so the last photo stays instead of blanking. The other
-/// states all mean "no photo", so the native renderer draws its placeholder
-/// instead of a stale image.
+/// [disabled] keeps the frame on screen: the feature is turned off, so the last
+/// photo stays instead of blanking. [locked] is a legacy value no build writes
+/// any more: the range lock protects editing and browsing, not the photos, so an
+/// old `state.json` carrying it still draws and navigates like [ready]. The other
+/// states mean "no photo", so the native renderer draws its placeholder instead
+/// of a stale image.
 enum GroupedWallpaperStatus {
   /// A baked photo is on screen.
   ready,
 
-  /// The group is locked: the current frame stays, nothing new is baked.
+  /// Legacy: a range-locked group used to freeze its frame.
+  ///
+  /// The native side still accepts it, because an upgraded install may read an
+  /// old `state.json`, but the engine no longer writes it.
   locked,
 
   /// The grouped wallpaper is turned off: the last frame stays, nothing new is
@@ -47,9 +52,6 @@ enum GroupedWallpaperSyncResult {
 
   /// The group resolves to no image: the placeholder is on screen.
   empty,
-
-  /// The group is locked, so its current frame was kept.
-  locked,
 
   /// The grouped wallpaper is turned off: its last frame was kept.
   disabled,
@@ -845,4 +847,25 @@ class GroupedWallpaperRuntime extends Equatable {
 
   @override
   List<Object?> get props => [generation, current, next, refillRequested];
+}
+
+/// The frame the wallpaper engine is actually drawing.
+///
+/// The view page reads this as one snapshot instead of asking for the state and
+/// the effect path separately: a promotion landing between the two calls would
+/// describe one photo and show another. [state] has [GroupedWallpaperState.current]
+/// moved to the slot on screen, and [photoPath] is the image that surface draws,
+/// so a home/lock effect switch is reflected too.
+@immutable
+class GroupedWallpaperDisplayedFrame {
+  final GroupedWallpaperState state;
+
+  /// Absolute path of the image on screen, or null when nothing is baked.
+  final String? photoPath;
+
+  /// Whether the engine is drawing the lock screen, i.e. [photoPath] is the
+  /// lock effect image.
+  final bool lockScreen;
+
+  const new({required this.state, this.photoPath, this.lockScreen = false});
 }

@@ -1668,7 +1668,6 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       switch (result) {
         GroupedWallpaperSyncResult.baked => context.l10n.wallpaperGroupSyncDone,
         GroupedWallpaperSyncResult.empty => context.l10n.wallpaperGroupSyncEmpty,
-        GroupedWallpaperSyncResult.locked => context.l10n.wallpaperGroupSyncLocked,
         GroupedWallpaperSyncResult.disabled => context.l10n.wallpaperGroupSyncDisabled,
         GroupedWallpaperSyncResult.unchanged => context.l10n.wallpaperGroupSyncDone,
         GroupedWallpaperSyncResult.notActive => context.l10n.wallpaperGroupSyncInactive,

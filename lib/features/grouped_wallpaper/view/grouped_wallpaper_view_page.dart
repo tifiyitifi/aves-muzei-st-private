@@ -63,7 +63,7 @@ enum _ViewAction {
   toggleNotification,
 }
 
-class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
+class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> with WidgetsBindingObserver {
   final TransformationController _viewport = TransformationController();
 
   GroupedWallpaperState? _state;
@@ -87,15 +87,27 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setSystemUiVisible(false);
     unawaited(_load());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _setSystemUiVisible(true);
     _viewport.dispose();
     super.dispose();
+  }
+
+  /// Re-reads the frame when the page comes back into the foreground.
+  ///
+  /// The wallpaper can change while this page is away (a pushed group or viewer
+  /// page, or an auto-advance run), so returning must describe what is drawn now
+  /// rather than the frame the page opened on.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_load());
   }
 
   /// Hides the system bars while looking at the photo, and restores them on any
@@ -105,13 +117,13 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
   }
 
   Future<void> _load() async {
-    // `current` may name another slot than the frame the renderer painted (it
-    // promotes on its own, and a reload keeps the slot it had); the entry, the
-    // title and the aspect ratio below must all describe the photo on screen.
-    final state = await wallpaperEngineLink.readDisplayedState();
-    // The view shows the wallpaper's own pixels, effects included; the entry
-    // still points at the original photo for "open in gallery" and share.
-    final photo = await wallpaperEngineLink.currentEffectPhotoPath();
+    // One snapshot, because `current` may name another slot than the frame the
+    // renderer painted (it promotes on its own, and a reload keeps the slot it
+    // had): the entry, the title, the aspect ratio and the pixels below must all
+    // describe the photo on screen. The snapshot also carries whether that
+    // surface draws the lock effect image.
+    final frame = await wallpaperEngineLink.readDisplayedFrame();
+    final state = frame?.state;
     final uri = state?.currentSlot?.uri;
     AvesEntry? entry;
     if (uri != null && uri.isNotEmpty) {
@@ -122,7 +134,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> {
     setState(() {
       _state = state;
       _entry = entry;
-      _photo = photo;
+      _photo = frame?.photoPath;
       _loading = false;
     });
   }

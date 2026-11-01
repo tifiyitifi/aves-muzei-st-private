@@ -56,6 +56,14 @@ class GroupedWallpaperRenderer(
     private val requestRender: () -> Unit,
     private val onAdvanced: () -> Unit,
     private val onFrameLoaded: () -> Unit,
+    /**
+     * Whether this renderer answers the app's live-wallpaper commands.
+     *
+     * The picker preview builds the same renderer over the same state, so letting
+     * it attach would make the bar promote a surface nobody sees and hide the
+     * real engine's reload. Only the engine drawing the system wallpaper attaches.
+     */
+    private val attachToBus: Boolean = true,
 ) : GLSurfaceView.Renderer {
     private companion object {
         const val TAG = "AvesGroupedWallpaper"
@@ -245,7 +253,7 @@ class GroupedWallpaperRenderer(
                 1f,
             )
             placeholderTexture = createTexture(createPlaceholderBitmap())
-            GroupedWallpaperRenderBus.attach(this)
+            if (attachToBus) GroupedWallpaperRenderBus.attach(this)
             requestReload()
         } catch (t: Throwable) {
             // A driver that refuses the program still gets the grey background
@@ -409,10 +417,10 @@ class GroupedWallpaperRenderer(
     /**
      * Moves to the prefetched slot, as a wallpaper tap does.
      *
-     * Returns false when there is nothing to promote: the group is locked or
-     * turned off, the queue is exhausted, or the texture of the next slot has
-     * not been uploaded yet. The caller then buffers the tap instead of losing
-     * it.
+     * Returns false when there is nothing to promote: the group is turned off,
+     * the queue is exhausted, the group has a single photo, or the texture of
+     * the next slot has not been uploaded yet. The caller then buffers the tap
+     * instead of losing it.
      */
     fun promote(): Boolean = synchronized(advanceLock) {
         val current = state ?: return@synchronized false
@@ -430,8 +438,9 @@ class GroupedWallpaperRenderer(
     /**
      * Whether the wallpaper may advance at all.
      *
-     * A frozen or locked state has nothing to promote, and a tap must then do
-     * nothing instead of buffering a request that fires after the freeze ends.
+     * A turned-off state has nothing to promote, and a tap must then do nothing
+     * instead of buffering a request that fires after the feature is turned back
+     * on. A locked range still moves: the lock protects editing, not the photos.
      */
     fun canAdvance(): Boolean = state?.canPromote == true
 
@@ -440,12 +449,14 @@ class GroupedWallpaperRenderer(
      *
      * [canAdvance] is false both for a wallpaper that must not move at all and
      * for one that is merely waiting for the next slot to upload. Only the
-     * latter should queue: a request buffered across a freeze would fire long
-     * after the user tapped, while a slot that is baking arrives in milliseconds.
+     * latter should queue: a request buffered across an off switch would fire
+     * long after the user tapped, while a slot that is baking arrives in
+     * milliseconds. A locked range still navigates, so it queues like a ready
+     * one.
      */
     fun canQueueAdvance(): Boolean {
         val current = state ?: return false
-        return current.status == GroupedWallpaperFileState.STATUS_READY
+        return current.status == GroupedWallpaperFileState.STATUS_READY || current.status == GroupedWallpaperFileState.STATUS_LOCKED
     }
 
     /** The slot on screen, for the notification's title. */

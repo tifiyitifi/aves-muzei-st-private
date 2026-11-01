@@ -76,11 +76,14 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
      *
      * The promotion already wrote `runtime.json`, so a running app only has to
      * refill; without one the background worker does it. When the renderer
-     * cannot move (frozen, or the slot is not uploaded yet), the engine's own
-     * command takes over and the action is never silently lost.
+     * cannot move (turned off, or the slot is not uploaded yet), the engine's
+     * own command takes over and the action is never silently lost.
      */
     private fun nextArtwork(context: Context) {
         if (GroupedWallpaperRenderBus.advance()) {
+            // The renderer moved the frame without reporting it; the bar asks it
+            // directly so the title and badge describe the new photo at once.
+            GroupedLiveWallpaperService.refreshNotification()
             if (!GroupedWallpaperAppBridge.requestSync()) {
                 LiveWallpaperRefillScheduler.enqueueTapRefill(context, LiveWallpaperTarget.GROUPED)
             }
@@ -100,6 +103,8 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
      */
     private fun previousArtwork(context: Context) {
         if (GroupedWallpaperRenderBus.previous()) {
+            // Same as "next": the bar follows the slot the renderer moved to.
+            GroupedLiveWallpaperService.refreshNotification()
             if (!GroupedWallpaperAppBridge.requestSync()) {
                 LiveWallpaperRefillScheduler.enqueueTapRefill(context, LiveWallpaperTarget.GROUPED)
             }

@@ -121,6 +121,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     if (root == null) return;
     final store = GroupedWallpaperStateStore(Directory(root));
     await store.ensureLayout();
+    // A crash or a kill leaves its staging file behind, and the frame cache only
+    // deletes whole directories, so a kept key would keep the garbage forever.
+    // Best effort, with an age threshold: the background engine shares the root.
+    unawaited(store.sweepTemporaries());
     _store = store;
     // The bar can lock without the app running, so its request is persisted on
     // disk: adopting it here is what keeps a tap from being lost between the tap
@@ -169,8 +173,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   @override
   Future<GroupedWallpaperState?> readState() async => await _store?.readState();
 
-  /// [readState] with [GroupedWallpaperState.current] moved to the slot the
-  /// engine is actually drawing.
+  /// [readState] moved to the slot the wallpaper engine is actually drawing.
+  @override
+  Future<GroupedWallpaperState?> readDisplayedState() async => (await readDisplayedFrame())?.state;
+
+  /// The state, the slot drawn and the effect image, read in one snapshot.
   ///
   /// `state.json` is what Dart baked; the renderer may have promoted a slot on
   /// its own, or kept drawing one a reload no longer calls current. Reading
@@ -178,30 +185,34 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// which is what made the three-finger view differ from the wallpaper. A
   /// missing or pruned slot falls back to the state: a stale answer beats none.
   @override
-  Future<GroupedWallpaperState?> readDisplayedState() async {
-    final state = await _store?.readState();
-    if (state == null) return null;
+  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame() async {
+    final store = _store;
+    final state = await store?.readState();
+    if (store == null || state == null) return null;
     final displayed = await platform.displayedSlot();
-    if (displayed == null || state.slotById(displayed) == null) return state;
-    return state.copyWith(current: displayed);
+    // A slot the state no longer queues was pruned by a reload: the baked
+    // current is the best answer left, and its home effect is what it draws.
+    final drawn = displayed != null && state.slotById(displayed.slot) != null ? displayed : null;
+    final current = drawn?.slot ?? state.current;
+    final lockScreen = drawn?.lock ?? false;
+    final slot = state.slotById(current);
+    return GroupedWallpaperDisplayedFrame(
+      state: current == state.current ? state : state.copyWith(current: current),
+      photoPath: slot == null ? null : store.slotEffectPhotoOf(slot, lock: lockScreen)?.path,
+      lockScreen: lockScreen,
+    );
   }
 
-  /// Absolute path of the photo on screen, for the view page.
+  /// Absolute path of the sharp photo on screen, for the effects editor.
+  ///
+  /// The editor applies its effect to the original pixels, so it wants neither
+  /// the baked home nor lock image.
   @override
   Future<String?> currentPhotoPath() async {
     final state = await readDisplayedState();
     final slot = state?.currentSlot;
     if (slot == null) return null;
     return _store?.slotPhotoOf(slot)?.path;
-  }
-
-  /// Absolute path of the home-effect image on screen, for the view page.
-  @override
-  Future<String?> currentEffectPhotoPath() async {
-    final state = await readDisplayedState();
-    final slot = state?.currentSlot;
-    if (slot == null) return null;
-    return _store?.slotEffectPhotoOf(slot, lock: false)?.path;
   }
 
   /// Records the explicit off/on switch without touching the current group.
@@ -384,7 +395,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     return _serialize(() async {
       final plan = await planStore.switchGroup(delta);
       if (plan.isNone) return GroupedWallpaperSyncResult.unchanged;
-      return _run(advance: false, requireActive: false, activation: false, ignoreLock: true);
+      return _run(advance: false, requireActive: false, activation: false);
     });
   }
 
@@ -501,7 +512,6 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     required bool advance,
     required bool requireActive,
     required bool activation,
-    bool ignoreLock = false,
   }) async {
     final store = _store;
     if (store == null) return GroupedWallpaperSyncResult.notActive;
@@ -540,10 +550,6 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         // No group was ever played: leave the frame alone until the wallpaper is
         // activated, which is what adopts the first group.
         return GroupedWallpaperSyncResult.unchanged;
-      }
-      if (plan.locked && !ignoreLock) {
-        await _recordLocked(store, plan, previous);
-        return GroupedWallpaperSyncResult.locked;
       }
 
       // The renderer may have promoted a slot on its own; adopt it before
@@ -1392,39 +1398,6 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       // A failed write must never cost the user their wallpaper.
       groupedWallpaperLog.w('failed to record the wallpaper history', error, stack);
     }
-  }
-
-  /// Freezes the frame on screen: a locked group is not re-baked, so the state
-  /// keeps its queue and only records the lock for the notification.
-  Future<void> _recordLocked(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, GroupedWallpaperState? previous) async {
-    if (previous?.status == GroupedWallpaperStatus.locked && previous?.groupId == plan.group.id) return;
-    final state = previous != null
-        ? previous.copyWith(
-            generation: previous.generation + 1,
-            status: GroupedWallpaperStatus.locked,
-            historyLimit: plan.historyLimit,
-            transitionMs: plan.transition.durationMs,
-            switchLocked: _groupSwitchLocked(),
-            switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
-            groups: _groupSnapshot(plan),
-          )
-        : GroupedWallpaperState(
-            generation: 1,
-            status: GroupedWallpaperStatus.locked,
-            groupId: plan.group.id,
-            groupNumber: plan.group.number,
-            groupName: _resolveName(plan.group),
-            ordering: plan.ordering,
-            gestures: plan.gestures,
-            notification: plan.notification,
-            historyLimit: plan.historyLimit,
-            transitionMs: plan.transition.durationMs,
-            switchLocked: _groupSwitchLocked(),
-            switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
-            groups: _groupSnapshot(plan),
-            bakedAt: now(),
-          );
-    await store.writeState(state);
   }
 
   /// Records that the grouped wallpaper is off without touching the frame.

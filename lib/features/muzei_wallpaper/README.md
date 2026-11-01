@@ -69,7 +69,10 @@ Apache-2.0 headers. See the repository root `LICENSE` for Aves's own license.
   `assets/wallpaper_intervals.json`; the live built-ins + custom options are
   shared with the grouped wallpaper through
   `features/wallpaper_auto_advance/`, while this wallpaper keeps its own selected
-  value. A run advances the state in Dart, then asks the running app to refresh
+  value. The four-box editor (days/hours/minutes/seconds) and the overflow
+  actions (Add default / Clear all / Reset all to default / About) are shared
+  with the grouped page as well. A run advances the state in Dart, then asks the
+  running app to refresh
   its preview and schedules the next interval. The chain is cancelled while the
   wallpaper is not in use, so replacing it with another app stops the background
   bakes instead of leaving them running.

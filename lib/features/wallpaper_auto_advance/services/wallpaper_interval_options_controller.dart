@@ -106,11 +106,29 @@ class WallpaperIntervalOptionsController extends ChangeNotifier {
     await selectionReset(removed: removed, all: false, fallback: catalog.defaultInterval);
   }
 
-  /// Clears the whole list, built-ins included, and turns both wallpapers off.
-  Future<void> resetAll() async {
+  /// Clears the whole list, built-ins included, and leaves every selection alone.
+  ///
+  /// The pickers keep showing the caller's current value as an extra option, so
+  /// emptying the list never silently changes what a group plays. This is the
+  /// list-only half of the old Reset; [resetToDefaults] is the full one.
+  Future<void> clearList() async {
     await ensureLoaded();
     final catalog = _catalog!;
     await _write(catalog.copyWith(defaults: const [], customs: const []));
+  }
+
+  /// Restores the shipped list and turns every wallpaper off.
+  ///
+  /// The factory reset: custom options are dropped, the bundled built-ins come
+  /// back, and each group plus the Muzei wallpaper return to the bundled default
+  /// (off today). 「Add default intervals」 is the additive alternative.
+  Future<void> resetToDefaults() async {
+    await ensureLoaded();
+    final catalog = _catalog!;
+    await _write(catalog.copyWith(
+      defaults: sorted(catalog.shippedDefaults),
+      customs: const [],
+    ));
     await selectionReset(removed: const {}, all: true, fallback: catalog.defaultInterval);
   }
 

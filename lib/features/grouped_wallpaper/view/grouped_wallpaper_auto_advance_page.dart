@@ -7,6 +7,7 @@ import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_control
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/wallpaper_auto_advance/model/wallpaper_advance_interval.dart';
 import 'package:aves/features/wallpaper_auto_advance/view/wallpaper_interval_label.dart';
+import 'package:aves/features/wallpaper_auto_advance/view/widgets/wallpaper_interval_more_button.dart';
 import 'package:aves/features/wallpaper_auto_advance/view/widgets/wallpaper_interval_option_list.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
@@ -44,21 +45,13 @@ class GroupedWallpaperAutoAdvancePage extends StatelessWidget {
         return AvesScaffold(
           appBar: AppBar(
             title: Text(l10n.muzeiWallpaperAutoAdvance),
+            actions: const [WallpaperIntervalMoreButton()],
           ),
           body: group == null
               ? const SizedBox.shrink()
               : SafeArea(
                   child: ListView(
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        child: Text(
-                          l10n.wallpaperGroupAutoAdvanceHint,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                      ),
                       _SectionHeader(l10n.muzeiWallpaperAutoAdvanceOrdering),
                       RadioGroup<GroupedWallpaperOrdering>(
                         groupValue: group.ordering,

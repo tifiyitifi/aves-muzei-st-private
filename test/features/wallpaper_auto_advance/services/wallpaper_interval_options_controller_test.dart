@@ -131,25 +131,44 @@ void main() {
     controller.dispose();
   });
 
-  test('Reset clears built-ins and customs and resets every selection', () async {
+  test('Clear empties the list without touching any selection', () async {
     await writeCatalog(defaults: bundled.intervals, customs: const [WallpaperAdvanceInterval(7200)]);
     final controller = makeController();
     await controller.ensureLoaded();
 
-    await controller.resetAll();
+    await controller.clearList();
 
     expect(controller.catalog!.defaults, isEmpty);
     expect(controller.catalog!.customs, isEmpty);
     expect(controller.catalog!.options, isEmpty);
-    expect(resets, hasLength(1));
-    expect(resets.single.removed, isEmpty);
-    expect(resets.single.all, isTrue);
-    expect(resets.single.fallback, WallpaperAdvanceInterval.off);
+    expect(resets, isEmpty, reason: 'Clear only edits the list');
 
     // The empty state is persisted, not re-seeded.
     final reloaded = makeController();
     await reloaded.ensureLoaded();
     expect(reloaded.catalog!.options, isEmpty);
+    reloaded.dispose();
+    controller.dispose();
+  });
+
+  test('Reset restores the shipped list and resets every selection', () async {
+    await writeCatalog(defaults: const [WallpaperAdvanceInterval.off], customs: const [WallpaperAdvanceInterval(7200)]);
+    final controller = makeController();
+    await controller.ensureLoaded();
+
+    await controller.resetToDefaults();
+
+    expect(controller.catalog!.defaults, bundled.intervals);
+    expect(controller.catalog!.customs, isEmpty);
+    expect(controller.catalog!.options, bundled.intervals);
+    expect(resets, hasLength(1));
+    expect(resets.single.removed, isEmpty);
+    expect(resets.single.all, isTrue);
+    expect(resets.single.fallback, WallpaperAdvanceInterval.off);
+
+    final reloaded = makeController();
+    await reloaded.ensureLoaded();
+    expect(reloaded.catalog!.options, bundled.intervals);
     reloaded.dispose();
     controller.dispose();
   });

@@ -1,0 +1,9 @@
+feat(wallpaper): move interval actions to app bar and four-box editor
+
+Add a shared overflow menu (Add default / Clear all / Reset all to default / About) to both the grouped and Muzei auto-advance pages; remove hints and footer actions from the picker.
+
+Clear all now only empties the list and leaves every selection alone. Reset all to default restores the shipped list, drops custom options, and turns auto-advance off for every group and the Muzei wallpaper.
+
+Replace the single-field add dialog with a four-box editor (days/hours/minutes/seconds, 0–1000 each) that starts from the current interval or 10 minutes when off, validates 3 s–30 days, and uses the IRIS-style cached form with a keyboard-inset leaf so IME frames only repad.
+
+Move explanations into the shared About page; remove WallpaperIntervalUnit.

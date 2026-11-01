@@ -34,11 +34,4 @@ void main() {
     expect(const WallpaperAdvanceInterval(900), isNot(const WallpaperAdvanceInterval(901)));
     expect(const WallpaperAdvanceInterval(900).hashCode, const WallpaperAdvanceInterval(900).hashCode);
   });
-
-  test('units decompose a value for the editor', () {
-    expect(WallpaperIntervalUnit.largestFor(90), WallpaperIntervalUnit.seconds);
-    expect(WallpaperIntervalUnit.largestFor(1800), WallpaperIntervalUnit.minutes);
-    expect(WallpaperIntervalUnit.largestFor(7200), WallpaperIntervalUnit.hours);
-    expect(WallpaperIntervalUnit.largestFor(2 * 24 * 60 * 60), WallpaperIntervalUnit.days);
-  });
 }

@@ -601,16 +601,24 @@ the Muzei wallpaper persist their own selection.
 - A long press on a custom option enters multi-select deletion. Deleting only
   resets the groups and the Muzei wallpaper currently using a deleted value; it
   falls back to the JSON reset target, `0` (off).
-- 「Clear all intervals」 clears the built-ins **and** the custom options and
-  resets every group and the Muzei wallpaper to off. The list can then be empty;
-  the picker still shows the current value so the radio stays valid.
-- 「Add default intervals」 is additive: it restores only the shipped built-ins
-  that are missing and changes no selection.
+- The auto-advance page's overflow menu (shared with the Muzei page) holds the
+  list actions plus About:
+  - 「Add default intervals」 is additive: it restores only the shipped built-ins
+    that are missing and changes no selection.
+  - 「Clear all intervals」 empties the list, built-ins included, but changes no
+    selection. The list can then be empty; the picker still shows the current
+    value so the radio stays valid.
+  - 「Reset all to default」 is the factory reset: the shipped list comes back,
+    custom options are dropped, and every group plus the Muzei wallpaper returns
+    to off. It is the only action that resets every selection.
 - A custom value must be `3 seconds..30 days`. There is no default option in
   Dart beyond those bounds and off; changing the shipped list is a JSON edit.
-  The add dialog says that 3 seconds is for testing only and that daily use
-  should pick at least 15 minutes (1–6 hours is typical), because short intervals
-  wake the device often, drain the battery, and Android may delay them anyway.
+  The add sheet has four digits-only boxes (days, hours, minutes, seconds, each
+  0–1000), starts from the current value or 10 minutes, and says that 3 seconds
+  is for testing only and that daily use should pick at least 15 minutes (1–6
+  hours is typical), because short intervals wake the device often, drain the
+  battery, and Android may delay them anyway. The full explanation, including the
+  three list actions, is the About page behind the overflow menu.
 - Adding a value that is a shipped built-in but currently missing restores it as
   a built-in, not as a deletable custom option.
 

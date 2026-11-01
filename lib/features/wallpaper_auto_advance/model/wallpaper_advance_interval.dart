@@ -46,25 +46,3 @@ class WallpaperAdvanceInterval with Equatable {
   @override
   String toString() => 'WallpaperAdvanceInterval($seconds s)';
 }
-
-/// Unit offered by the custom-interval editor.
-enum WallpaperIntervalUnit {
-  seconds(1),
-  minutes(60),
-  hours(60 * 60),
-  days(24 * 60 * 60);
-
-  /// Seconds in one unit.
-  final int secondsPerUnit;
-
-  new(this.secondsPerUnit);
-
-  /// The largest unit that divides [value] exactly, so an existing custom value
-  /// round-trips through the editor unchanged.
-  static WallpaperIntervalUnit largestFor(int value) {
-    for (final unit in values.reversed) {
-      if (value % unit.secondsPerUnit == 0) return unit;
-    }
-    return seconds;
-  }
-}

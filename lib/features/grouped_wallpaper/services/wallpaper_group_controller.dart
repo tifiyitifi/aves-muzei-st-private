@@ -532,7 +532,7 @@ class WallpaperGroupController extends ChangeNotifier {
   /// Like effects, they are preferences rather than range edits, and they only
   /// affect future picks: `updatedAt` is deliberately left alone so the frame on
   /// screen is not re-baked just because the interval changed.
-  Future<void> setAutoAdvance(String id, {WallpaperInterval? interval, GroupedWallpaperOrdering? ordering}) async {
+  Future<void> setAutoAdvance(String id, {WallpaperAdvanceInterval? interval, GroupedWallpaperOrdering? ordering}) async {
     _requireInitialized();
     if (interval == null && ordering == null) return;
     final group = _groups.firstWhereOrNull((candidate) => candidate.id == id);
@@ -543,6 +543,33 @@ class WallpaperGroupController extends ChangeNotifier {
     _groups = [
       for (final candidate in _groups)
         if (candidate.id == id) candidate.copyWith(interval: interval, ordering: ordering) else candidate,
+    ];
+    notifyListeners();
+  }
+
+  /// Resets per-group intervals after the shared option list changed.
+  ///
+  /// [all] resets every group to [fallback]; otherwise only groups whose current
+  /// interval is in [removed] are reset. Deliberately does not bump `updatedAt`:
+  /// the photo on screen is unchanged, so there is nothing to re-bake.
+  Future<void> resetIntervals({
+    required Set<WallpaperAdvanceInterval> removed,
+    required WallpaperAdvanceInterval fallback,
+    bool all = false,
+  }) async {
+    await init();
+    final targets = [
+      for (final group in _groups)
+        if ((all || removed.contains(group.interval)) && group.interval != fallback) group,
+    ];
+    if (targets.isEmpty) return;
+    final store = await _openStore();
+    for (final group in targets) {
+      await store.writeAutoAdvance(group.id, interval: fallback);
+    }
+    _groups = [
+      for (final group in _groups)
+        if (targets.any((target) => target.id == group.id)) group.copyWith(interval: fallback) else group,
     ];
     notifyListeners();
   }

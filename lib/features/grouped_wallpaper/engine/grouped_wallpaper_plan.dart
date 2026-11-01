@@ -40,8 +40,9 @@ class GroupedWallpaperPlan extends Equatable {
   /// How the next photo is chosen within the group.
   final GroupedWallpaperOrdering ordering;
 
-  /// How often the group moves to its next photo; `never` leaves it still.
-  final WallpaperInterval interval;
+  /// How often the group moves to its next photo; [WallpaperAdvanceInterval.off]
+  /// leaves it still.
+  final WallpaperAdvanceInterval interval;
 
   /// The enabled groups of the rotation, in display order.
   ///
@@ -77,7 +78,7 @@ class GroupedWallpaperPlan extends Equatable {
     this.disabled = false,
     this.gestures = const GroupedWallpaperGestures(),
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
-    this.interval = WallpaperInterval.never,
+    this.interval = WallpaperAdvanceInterval.off,
     this.groups = const [],
     this.notification = true,
     this.historyLimit = GroupedWallpaperHistoryLimit.defaultLimit,

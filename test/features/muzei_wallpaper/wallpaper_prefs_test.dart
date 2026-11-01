@@ -25,7 +25,7 @@ void main() {
     expect(prefs.scope.singleEntryId, isNull);
     expect(prefs.effects, const WallpaperEffectsConfig());
     expect(prefs.gestures, const WallpaperGestures());
-    expect(prefs.autoAdvance.interval, WallpaperInterval.never);
+    expect(prefs.autoAdvance.interval, WallpaperAdvanceInterval.off);
     expect(prefs.autoAdvance.ordering, WallpaperOrdering.newThenRandom);
     expect(prefs.lastAdvancedAt, isNull);
     expect(prefs.currentIndex, 0);
@@ -59,7 +59,7 @@ void main() {
     );
     await prefs.setAutoAdvance(
       const WallpaperAutoAdvance(
-        interval: WallpaperInterval.h3,
+        interval: WallpaperAdvanceInterval(3 * 60 * 60),
         ordering: WallpaperOrdering.inOrder,
       ),
     );
@@ -79,7 +79,7 @@ void main() {
     expect(reloaded.effects.link, isTrue);
     expect(reloaded.gestures.doubleTap, WallpaperTapAction.nextArtwork);
     expect(reloaded.gestures.threeFinger, WallpaperTapAction.viewArtwork);
-    expect(reloaded.autoAdvance.interval, WallpaperInterval.h3);
+    expect(reloaded.autoAdvance.interval, const WallpaperAdvanceInterval(3 * 60 * 60));
     expect(reloaded.autoAdvance.ordering, WallpaperOrdering.inOrder);
     expect(reloaded.lastAdvancedAt, 1700000000000);
     expect(reloaded.currentIndex, 5);
@@ -90,12 +90,25 @@ void main() {
     reloaded.dispose();
   });
 
+  test('persists a custom interval the enum never offered', () async {
+    final prefs = WallpaperPrefs();
+    await prefs.init();
+    await prefs.setInterval(const WallpaperAdvanceInterval(2 * 60 * 60));
+    prefs.dispose();
+
+    final reloaded = WallpaperPrefs();
+    await reloaded.init();
+    // Previously an unknown value read back as 「never」, losing the user's choice.
+    expect(reloaded.autoAdvance.interval, const WallpaperAdvanceInterval(2 * 60 * 60));
+    reloaded.dispose();
+  });
+
   test('clamps persisted out-of-range values', () async {
     SharedPreferences.setMockInitialValues({
       WallpaperPrefsKeys.effectsHomeBlur: -100,
       WallpaperPrefsKeys.effectsHomeDim: 999,
       WallpaperPrefsKeys.effectsHomeGrey: 999,
-      WallpaperPrefsKeys.autoIntervalSeconds: 12345,
+      WallpaperPrefsKeys.autoIntervalSeconds: WallpaperAdvanceInterval.maxSeconds + 1,
       WallpaperPrefsKeys.viewportZoom: 99.0,
       WallpaperPrefsKeys.currentIndex: -5,
     });
@@ -105,7 +118,7 @@ void main() {
     expect(prefs.effects.home.blur, 0);
     expect(prefs.effects.home.dim, WallpaperEffects.maxDim);
     expect(prefs.effects.home.grey, WallpaperEffects.maxGrey);
-    expect(prefs.autoAdvance.interval, WallpaperInterval.never);
+    expect(prefs.autoAdvance.interval, const WallpaperAdvanceInterval(WallpaperAdvanceInterval.maxSeconds));
     expect(prefs.viewportZoom, WallpaperPrefs.maxViewportZoom);
     expect(prefs.currentIndex, 0);
     expect(prefs.titleMode, WallpaperTitleMode.defaultMode);

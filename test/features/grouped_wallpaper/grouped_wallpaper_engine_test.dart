@@ -1040,7 +1040,7 @@ void main() {
   });
 
   test('previous photo restarts the auto-advance timer', () async {
-    planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperInterval.m15);
+    planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperAdvanceInterval(15 * 60));
     serve(entries(12));
     await engine.prepare();
     await engine.syncNow();
@@ -1048,7 +1048,7 @@ void main() {
 
     await engine.previousArtwork();
 
-    expect(platform.restartedSeconds, [WallpaperInterval.m15.seconds]);
+    expect(platform.restartedSeconds, [const WallpaperAdvanceInterval(15 * 60).seconds]);
   });
 
   test('previous photo without history is a no-op', () async {
@@ -1200,22 +1200,22 @@ void main() {
   group('auto-advance', () {
     test('prepare applies the current group interval to the scheduler', () async {
       serve(entries(12));
-      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperInterval.m15);
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperAdvanceInterval(15 * 60));
 
       await engine.prepare();
 
-      expect(platform.scheduledSeconds.last, WallpaperInterval.m15.seconds);
+      expect(platform.scheduledSeconds.last, const WallpaperAdvanceInterval(15 * 60).seconds);
     });
 
     test('refreshSchedule re-applies an edited interval without baking', () async {
       serve(entries(12));
       await engine.prepare();
       final bakeCount = baker.bakeCount;
-      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperInterval.h6);
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, interval: WallpaperAdvanceInterval(6 * 60 * 60));
 
       await engine.refreshSchedule();
 
-      expect(platform.scheduledSeconds.last, WallpaperInterval.h6.seconds);
+      expect(platform.scheduledSeconds.last, const WallpaperAdvanceInterval(6 * 60 * 60).seconds);
       expect(baker.bakeCount, bakeCount);
     });
   });

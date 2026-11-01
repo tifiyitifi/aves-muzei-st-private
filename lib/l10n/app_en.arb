@@ -989,6 +989,14 @@
       }
     }
   },
+  "muzeiWallpaperAutoAdvanceSeconds": "{count, plural, =1{Every second} other{Every {count} seconds}}",
+  "@muzeiWallpaperAutoAdvanceSeconds": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "muzeiWallpaperAutoAdvanceDescription": "Control when the wallpaper automatically moves to the next artwork.",
   "muzeiWallpaperAutoAdvanceOrdering": "Ordering",
   "muzeiWallpaperAutoAdvanceOrderingInOrder": "Always in order",
@@ -1988,6 +1996,38 @@
   "wallpaperOverwriteDontAsk": "Do not tell me again",
   "wallpaperGroupGesturesHint": "Gestures are shared by the whole app, not by one group.",
   "wallpaperGroupAutoAdvanceHint": "The interval and ordering belong to this group. Another group keeps its own values, and the wallpaper only rotates while grouped wallpaper is on and not frozen.",
+  "wallpaperIntervalOptionsHint": "Interval options are shared by every group and the Muzei wallpaper. Each group and the Muzei wallpaper still keep their own selection.",
+  "wallpaperIntervalLongPressHint": "Long-press a custom interval to select and delete it.",
+  "wallpaperIntervalAdd": "Add interval…",
+  "wallpaperIntervalAddTitle": "Add interval",
+  "wallpaperIntervalAddAmount": "Amount",
+  "wallpaperIntervalUnitSeconds": "Seconds",
+  "wallpaperIntervalUnitMinutes": "Minutes",
+  "wallpaperIntervalUnitHours": "Hours",
+  "wallpaperIntervalUnitDays": "Days",
+  "wallpaperIntervalRange": "3 seconds to 30 days",
+  "wallpaperIntervalInvalid": "Enter a value between 3 seconds and 30 days.",
+  "wallpaperIntervalTestHint": "3 seconds is for testing only. In daily use pick at least 15 minutes; 1–6 hours is typical. Short intervals wake the device often, drain the battery, and Android may delay them anyway.",
+  "wallpaperIntervalCustom": "Custom",
+  "wallpaperIntervalBuiltIn": "Built-in",
+  "wallpaperIntervalBuiltInNotDeletable": "Built-in intervals cannot be deleted. Use Clear all intervals instead.",
+  "wallpaperIntervalSelectedCount": "{count, plural, =1{1 selected} other{{count} selected}}",
+  "@wallpaperIntervalSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "wallpaperIntervalDelete": "Delete",
+  "wallpaperIntervalDeleteTitle": "Delete intervals",
+  "wallpaperIntervalDeleteMessage": "Groups and the Muzei wallpaper using a deleted interval will reset to Off.",
+  "wallpaperIntervalAddDefaults": "Add default intervals",
+  "wallpaperIntervalAddDefaultsHint": "Restores missing built-in intervals without clearing custom ones or changing any selection.",
+  "wallpaperIntervalResetAll": "Clear all intervals",
+  "wallpaperIntervalResetAllHint": "Removes built-in and custom intervals and turns auto-advance off for every group and the Muzei wallpaper.",
+  "wallpaperIntervalResetAllTitle": "Clear all intervals?",
+  "wallpaperIntervalResetAllMessage": "Every interval, including the built-in ones, will be removed. All groups and the Muzei wallpaper will turn auto-advance off. You can restore the built-in list afterwards.",
   "wallpaperGroupGesturesDoubleTap": "Double tap",
   "wallpaperGroupGesturesThreeFinger": "Three-finger tap",
   "wallpaperGroupTapNone": "Do nothing",

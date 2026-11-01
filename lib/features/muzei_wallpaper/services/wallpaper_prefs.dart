@@ -130,7 +130,7 @@ class WallpaperPrefs extends ChangeNotifier {
         threeFinger: WallpaperTapAction.tryParse(_string(prefs, WallpaperPrefsKeys.gesturesThreeFinger)) ?? WallpaperGestures.defaultThreeFinger,
       );
       _autoAdvance = WallpaperAutoAdvance(
-        interval: WallpaperInterval.tryFromSeconds(prefs.getInt(WallpaperPrefsKeys.autoIntervalSeconds)) ?? WallpaperAutoAdvance.defaultInterval,
+        interval: WallpaperAdvanceInterval.fromSeconds(prefs.getInt(WallpaperPrefsKeys.autoIntervalSeconds)),
         ordering: WallpaperOrdering.tryParse(_string(prefs, WallpaperPrefsKeys.autoOrdering)) ?? WallpaperAutoAdvance.defaultOrdering,
       );
       _lastAdvancedAt = prefs.getInt(WallpaperPrefsKeys.lastAdvancedAt);
@@ -234,7 +234,7 @@ class WallpaperPrefs extends ChangeNotifier {
     }
   }
 
-  Future<void> setInterval(WallpaperInterval interval) => setAutoAdvance(_autoAdvance.copyWith(interval: interval));
+  Future<void> setInterval(WallpaperAdvanceInterval interval) => setAutoAdvance(_autoAdvance.copyWith(interval: interval));
 
   Future<void> setOrdering(WallpaperOrdering ordering) => setAutoAdvance(_autoAdvance.copyWith(ordering: ordering));
 

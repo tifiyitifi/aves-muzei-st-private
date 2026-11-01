@@ -63,23 +63,28 @@ void main() {
 
   test('a group keeps its own interval and ordering', () async {
     await store.saveGroups([
-      group('a').copyWith(interval: WallpaperInterval.h1, ordering: GroupedWallpaperOrdering.random),
+      group('a').copyWith(interval: const WallpaperAdvanceInterval(60 * 60), ordering: GroupedWallpaperOrdering.random),
       group('b'),
     ]);
 
     var loaded = await store.loadGroups();
-    expect(loaded.first.interval, WallpaperInterval.h1);
+    expect(loaded.first.interval, const WallpaperAdvanceInterval(60 * 60));
     expect(loaded.first.ordering, GroupedWallpaperOrdering.random);
-    expect(loaded.last.interval, WallpaperInterval.never);
+    expect(loaded.last.interval, WallpaperAdvanceInterval.off);
     expect(loaded.last.ordering, GroupedWallpaperOrdering.newThenRandom);
 
-    await store.writeAutoAdvance('a', interval: WallpaperInterval.m15);
+    await store.writeAutoAdvance('a', interval: const WallpaperAdvanceInterval(15 * 60));
 
     loaded = await store.loadGroups();
-    expect(loaded.first.interval, WallpaperInterval.m15);
+    expect(loaded.first.interval, const WallpaperAdvanceInterval(15 * 60));
     expect(loaded.first.ordering, GroupedWallpaperOrdering.random);
     // The contract only affects future picks, so it must not re-bake the frame.
     expect(loaded.first.updatedAt, 2);
+
+    // A value the old enum never offered must survive the round-trip.
+    await store.writeAutoAdvance('a', interval: const WallpaperAdvanceInterval(7200));
+    loaded = await store.loadGroups();
+    expect(loaded.first.interval, const WallpaperAdvanceInterval(7200));
   });
 
   test('deleting a group also deletes its range, rules and applied targets', () async {

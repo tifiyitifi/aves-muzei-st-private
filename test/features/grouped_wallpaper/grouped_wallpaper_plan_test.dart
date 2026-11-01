@@ -238,25 +238,25 @@ void main() {
 
   test('the plan carries the current group\'s own interval and ordering', () async {
     await groups.saveGroups([
-      group('a', current: true).copyWith(interval: WallpaperInterval.h1, ordering: GroupedWallpaperOrdering.random),
-      group('b').copyWith(interval: WallpaperInterval.m15, ordering: GroupedWallpaperOrdering.inOrder),
+      group('a', current: true).copyWith(interval: const WallpaperAdvanceInterval(60 * 60), ordering: GroupedWallpaperOrdering.random),
+      group('b').copyWith(interval: const WallpaperAdvanceInterval(15 * 60), ordering: GroupedWallpaperOrdering.inOrder),
     ]);
 
     final plan = await planStore.load();
 
-    expect(plan.interval, WallpaperInterval.h1);
+    expect(plan.interval, const WallpaperAdvanceInterval(60 * 60));
     expect(plan.ordering, GroupedWallpaperOrdering.random);
   });
 
   test('switching groups carries the target group\'s interval and ordering', () async {
     await groups.saveGroups([
-      group('a', current: true).copyWith(interval: WallpaperInterval.h1),
-      group('b').copyWith(interval: WallpaperInterval.m15, ordering: GroupedWallpaperOrdering.inOrder),
+      group('a', current: true).copyWith(interval: const WallpaperAdvanceInterval(60 * 60)),
+      group('b').copyWith(interval: const WallpaperAdvanceInterval(15 * 60), ordering: GroupedWallpaperOrdering.inOrder),
     ]);
 
     final plan = await planStore.switchGroup(1);
 
-    expect(plan.interval, WallpaperInterval.m15);
+    expect(plan.interval, const WallpaperAdvanceInterval(15 * 60));
     expect(plan.ordering, GroupedWallpaperOrdering.inOrder);
   });
 
@@ -266,7 +266,7 @@ void main() {
     final plan = await planStore.load();
 
     expect(plan.isNone, isTrue);
-    expect(plan.interval, WallpaperInterval.never);
+    expect(plan.interval, WallpaperAdvanceInterval.off);
     expect(plan.ordering, GroupedWallpaperOrdering.newThenRandom);
   });
 }

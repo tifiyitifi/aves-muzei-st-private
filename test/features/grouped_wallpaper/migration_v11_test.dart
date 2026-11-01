@@ -55,7 +55,7 @@ void main() {
 
     final groups = await WallpaperGroupStore(db).loadGroups();
     expect(groups, hasLength(1));
-    expect(groups.single.interval, WallpaperInterval.never);
+    expect(groups.single.interval, WallpaperAdvanceInterval.off);
     expect(groups.single.ordering, GroupedWallpaperOrdering.random);
     // The global key is consumed by the upgrade: the groups own the value now.
     expect(await AppMetaStore(db).read({'wallpaper.groupedOrdering'}), isEmpty);
@@ -67,7 +67,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     final groups = await WallpaperGroupStore(db).loadGroups();
-    expect(groups.single.interval, WallpaperInterval.never);
+    expect(groups.single.interval, WallpaperAdvanceInterval.off);
     expect(groups.single.ordering, GroupedWallpaperOrdering.newThenRandom);
   });
 
@@ -85,13 +85,13 @@ void main() {
         current: true,
         createdAt: 1,
         updatedAt: 2,
-        interval: WallpaperInterval.h3,
+        interval: WallpaperAdvanceInterval(3 * 60 * 60),
         ordering: GroupedWallpaperOrdering.inOrder,
       ),
     ]);
 
     final stored = (await WallpaperGroupStore(db).loadGroups()).single;
-    expect(stored.interval, WallpaperInterval.h3);
+    expect(stored.interval, const WallpaperAdvanceInterval(3 * 60 * 60));
     expect(stored.ordering, GroupedWallpaperOrdering.inOrder);
   });
 }

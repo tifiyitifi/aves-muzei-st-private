@@ -64,8 +64,12 @@ Apache-2.0 headers. See the repository root `LICENSE` for Aves's own license.
   explicit force-stop still uses the one prefetched slot; a normal process death
   or swiping the app away is covered, and the chain resumes on the next launch.
 - Auto-advance is a chain of one-time WorkManager runs driven by the interval
-  preference (15 minutes to 3 days, or off), because the page may be gone for
-  hours. A run advances the state in Dart, then asks the running app to refresh
+  preference (3 seconds to 30 days, or off), because the page may be gone for
+  hours. The built-in list and the reset target (off) come from
+  `assets/wallpaper_intervals.json`; the live built-ins + custom options are
+  shared with the grouped wallpaper through
+  `features/wallpaper_auto_advance/`, while this wallpaper keeps its own selected
+  value. A run advances the state in Dart, then asks the running app to refresh
   its preview and schedules the next interval. The chain is cancelled while the
   wallpaper is not in use, so replacing it with another app stops the background
   bakes instead of leaving them running.

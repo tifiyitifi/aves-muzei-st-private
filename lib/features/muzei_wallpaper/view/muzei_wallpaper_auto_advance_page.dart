@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/services/wallpaper_controller.dart';
+import 'package:aves/features/wallpaper_auto_advance/view/widgets/wallpaper_interval_option_list.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:material_ui/material_ui.dart';
@@ -67,19 +68,10 @@ class MuzeiWallpaperAutoAdvancePage extends StatelessWidget {
                 ),
                 const Divider(),
                 _SectionHeader(l10n.muzeiWallpaperAutoAdvanceInterval),
-                RadioGroup<WallpaperInterval>(
-                  groupValue: value.interval,
-                  onChanged: (interval) => unawaited(
+                WallpaperIntervalOptionList(
+                  selected: value.interval,
+                  onSelected: (interval) => unawaited(
                     controller.setAutoAdvance(value.copyWith(interval: interval)),
-                  ),
-                  child: Column(
-                    children: [
-                      for (final interval in WallpaperInterval.values)
-                        RadioListTile<WallpaperInterval>(
-                          value: interval,
-                          title: Text(_intervalLabel(context, interval)),
-                        ),
-                    ],
                   ),
                 ),
               ],
@@ -105,20 +97,6 @@ class MuzeiWallpaperAutoAdvancePage extends StatelessWidget {
       WallpaperOrdering.inOrder => l10n.muzeiWallpaperAutoAdvanceOrderingInOrderHint,
       WallpaperOrdering.newThenRandom => l10n.muzeiWallpaperAutoAdvanceOrderingNewThenRandomHint,
       WallpaperOrdering.random => l10n.muzeiWallpaperAutoAdvanceOrderingRandomHint,
-    };
-  }
-
-  static String _intervalLabel(BuildContext context, WallpaperInterval interval) {
-    final l10n = context.l10n;
-    return switch (interval) {
-      WallpaperInterval.m15 => l10n.muzeiWallpaperAutoAdvanceMinutes(15),
-      WallpaperInterval.m30 => l10n.muzeiWallpaperAutoAdvanceMinutes(30),
-      WallpaperInterval.h1 => l10n.muzeiWallpaperAutoAdvanceHours(1),
-      WallpaperInterval.h3 => l10n.muzeiWallpaperAutoAdvanceHours(3),
-      WallpaperInterval.h6 => l10n.muzeiWallpaperAutoAdvanceHours(6),
-      WallpaperInterval.h24 => l10n.muzeiWallpaperAutoAdvanceDays(1),
-      WallpaperInterval.h72 => l10n.muzeiWallpaperAutoAdvanceDays(3),
-      WallpaperInterval.never => l10n.muzeiWallpaperAutoAdvanceOff,
     };
   }
 }

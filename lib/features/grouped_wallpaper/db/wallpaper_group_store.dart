@@ -184,7 +184,7 @@ class WallpaperGroupStore {
   /// interval and ordering, so a private group can stay still while a public one
   /// rotates. The values only affect future picks, so writing them does not bump
   /// `updatedAt` (which would re-bake the frame on screen).
-  Future<void> writeAutoAdvance(String id, {WallpaperInterval? interval, GroupedWallpaperOrdering? ordering}) async {
+  Future<void> writeAutoAdvance(String id, {WallpaperAdvanceInterval? interval, GroupedWallpaperOrdering? ordering}) async {
     if (interval == null && ordering == null) return;
     await (db.update(db.wallpaperGroupRows)..where((t) => t.id.equals(id))).write(
       WallpaperGroupRowsCompanion(
@@ -327,7 +327,7 @@ class WallpaperGroupStore {
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         effects: _effects(row.effects, legacyScrollEffect: legacyScrollEffect),
-        interval: WallpaperInterval.tryFromSeconds(row.interval) ?? WallpaperInterval.never,
+        interval: WallpaperAdvanceInterval.fromSeconds(row.interval),
         ordering: GroupedWallpaperOrdering.tryParse(row.ordering),
       );
 

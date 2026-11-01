@@ -2,6 +2,7 @@ import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
@@ -351,18 +352,43 @@ void main() {
     const id = 'wallpaper.group.dcim';
     final before = controller.groups.firstWhere((group) => group.id == id);
 
-    await controller.setAutoAdvance(id, interval: WallpaperInterval.h3, ordering: GroupedWallpaperOrdering.inOrder);
+    await controller.setAutoAdvance(id, interval: const WallpaperAdvanceInterval(3 * 60 * 60), ordering: GroupedWallpaperOrdering.inOrder);
 
     final after = controller.groups.firstWhere((group) => group.id == id);
-    expect(after.interval, WallpaperInterval.h3);
+    expect(after.interval, const WallpaperAdvanceInterval(3 * 60 * 60));
     expect(after.ordering, GroupedWallpaperOrdering.inOrder);
     // The contract only affects future picks, so the frame on screen survives.
     expect(after.updatedAt, before.updatedAt);
     final stored = (await WallpaperGroupStore(db).loadGroups()).firstWhere((group) => group.id == id);
-    expect(stored.interval, WallpaperInterval.h3);
+    expect(stored.interval, const WallpaperAdvanceInterval(3 * 60 * 60));
     expect(stored.ordering, GroupedWallpaperOrdering.inOrder);
     // The other groups keep their own contract.
-    expect(controller.groups.firstWhere((group) => group.id != id).interval, WallpaperInterval.never);
+    expect(controller.groups.firstWhere((group) => group.id != id).interval, WallpaperAdvanceInterval.off);
+  });
+
+  test('resetIntervals resets only the affected groups unless all is requested', () async {
+    const allId = 'wallpaper.group.all';
+    const dcimId = 'wallpaper.group.dcim';
+    const picturesId = 'wallpaper.group.pictures';
+    const custom = WallpaperAdvanceInterval(7200);
+    await controller.setAutoAdvance(allId, interval: custom);
+    await controller.setAutoAdvance(picturesId, interval: const WallpaperAdvanceInterval(3 * 60 * 60));
+    final before = controller.groups.firstWhere((group) => group.id == allId).updatedAt;
+
+    await controller.resetIntervals(removed: {custom}, fallback: WallpaperAdvanceInterval.off);
+
+    WallpaperGroup current(String id) => controller.groups.firstWhere((group) => group.id == id);
+    expect(current(allId).interval, WallpaperAdvanceInterval.off);
+    // The unaffected group keeps its own value.
+    expect(current(picturesId).interval, const WallpaperAdvanceInterval(3 * 60 * 60));
+    expect(current(dcimId).interval, WallpaperAdvanceInterval.off);
+    // Only the interval changed: the frame on screen must not re-bake.
+    expect(current(allId).updatedAt, before);
+    final stored = await WallpaperGroupStore(db).loadGroups();
+    expect(stored.firstWhere((group) => group.id == allId).interval, WallpaperAdvanceInterval.off);
+
+    await controller.resetIntervals(removed: const {}, fallback: WallpaperAdvanceInterval.off, all: true);
+    expect(current(picturesId).interval, WallpaperAdvanceInterval.off);
   });
 
   test('reloadSaved picks up a group switched by another surface', () async {

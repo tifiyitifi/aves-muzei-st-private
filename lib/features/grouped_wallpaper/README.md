@@ -591,7 +591,30 @@ opens or resumes.
 ### Auto-advance
 
 Each group also owns its interval (`wallpaper_groups.interval`, seconds; `0` is
-off, the default). The values are Muzei's (`15 min` … `3 days`), edited from the
+off, the default). The **option list** is shared with the Muzei wallpaper and
+lives in `features/wallpaper_auto_advance/`: the built-ins and the reset target
+come from `assets/wallpaper_intervals.json`, the live `defaults` + `customs`
+lists are stored in AppMeta (`wallpaper.autoAdvanceIntervals`), and both
+auto-advance pages manage them in place. Only the list is shared: every group and
+the Muzei wallpaper persist their own selection.
+
+- A long press on a custom option enters multi-select deletion. Deleting only
+  resets the groups and the Muzei wallpaper currently using a deleted value; it
+  falls back to the JSON reset target, `0` (off).
+- 「Clear all intervals」 clears the built-ins **and** the custom options and
+  resets every group and the Muzei wallpaper to off. The list can then be empty;
+  the picker still shows the current value so the radio stays valid.
+- 「Add default intervals」 is additive: it restores only the shipped built-ins
+  that are missing and changes no selection.
+- A custom value must be `3 seconds..30 days`. There is no default option in
+  Dart beyond those bounds and off; changing the shipped list is a JSON edit.
+  The add dialog says that 3 seconds is for testing only and that daily use
+  should pick at least 15 minutes (1–6 hours is typical), because short intervals
+  wake the device often, drain the battery, and Android may delay them anyway.
+- Adding a value that is a shipped built-in but currently missing restores it as
+  a built-in, not as a deletable custom option.
+
+The interval and ordering are edited from the
 group page's More → 「Auto-advance」, the effects page's row, or the view page's
 More; all three write immediately like effects and do not bump `updatedAt`: the
 contract only affects future picks, so the frame on screen is never re-baked just
@@ -606,9 +629,10 @@ Scheduling reuses the shared native WorkManager chain
 `scheduleAutoAdvance`; a finished interval run reschedules itself. The engine
 applies the interval on every non-advance run and when the page edits it, and
 schedules **nothing** while the wallpaper is turned off or on group 0, so it does
-not wake up for a frame it would refuse to show. The interval and ordering are
-still group-level and shared by both surfaces; their row lives in the effects
-page, next to the effects they belong with.
+not wake up for a frame it would refuse to show. The native scheduler clamps the
+value to `0` or `3 seconds..30 days`, so a corrupt saved value can neither loop
+back-to-back nor schedule work in the far future. The interval and ordering are
+group-level: the Muzei wallpaper keeps its own pair.
 
 ## Turning it on and off
 

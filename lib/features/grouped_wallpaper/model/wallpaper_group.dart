@@ -50,9 +50,10 @@ class WallpaperGroup extends Equatable {
 
   /// How often this group moves to its next photo.
   ///
-  /// [WallpaperInterval.never] is the default, like Muzei: a group keeps its
-  /// photo until the user, the notification or a tap asks for another one.
-  final WallpaperInterval interval;
+  /// [WallpaperAdvanceInterval.off] is the default, like Muzei: a group keeps
+  /// its photo until the user, the notification or a tap asks for another one.
+  /// The value comes from the shared option list but is stored per group.
+  final WallpaperAdvanceInterval interval;
 
   /// How the next photo is chosen within this group.
   final GroupedWallpaperOrdering ordering;
@@ -67,7 +68,7 @@ class WallpaperGroup extends Equatable {
     this.createdAt = 0,
     this.updatedAt = 0,
     this.effects = const WallpaperEffectsConfig(),
-    this.interval = WallpaperInterval.never,
+    this.interval = WallpaperAdvanceInterval.off,
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
   });
 
@@ -93,7 +94,7 @@ class WallpaperGroup extends Equatable {
     bool? current,
     int? updatedAt,
     WallpaperEffectsConfig? effects,
-    WallpaperInterval? interval,
+    WallpaperAdvanceInterval? interval,
     GroupedWallpaperOrdering? ordering,
   }) {
     return WallpaperGroup(

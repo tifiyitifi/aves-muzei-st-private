@@ -56,6 +56,22 @@ object LiveWallpaperRefillScheduler {
 
     private fun intervalKey(target: LiveWallpaperTarget) = "$PREF_AUTO_INTERVAL_PREFIX${target.id}"
 
+    /**
+     * Bounds shared with Dart's `WallpaperAdvanceInterval`.
+     *
+     * `0` is off. The minimum keeps a WorkManager chain from re-arming
+     * back-to-back; the maximum is 30 days, the longest custom value the app
+     * offers. Clamping here means a bad saved value can never schedule work in
+     * the far future or in a tight loop.
+     */
+    object AutoAdvanceInterval {
+        const val MIN_SECONDS = 3
+        const val MAX_SECONDS = 30 * 24 * 60 * 60
+
+        fun clamp(seconds: Int): Int =
+            if (seconds <= 0) 0 else seconds.coerceIn(MIN_SECONDS, MAX_SECONDS)
+    }
+
     /** Persists the `vm:entry-point` callback handle the worker boots. */
     fun registerCallback(context: Context, callbackHandle: Long) {
         context.getSharedPreferences(SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
@@ -121,17 +137,18 @@ object LiveWallpaperRefillScheduler {
      * interval keeps the pending run (`KEEP`) while a changed one replaces it.
      */
     fun scheduleAutoAdvance(context: Context, target: LiveWallpaperTarget, seconds: Int) {
+        val clamped = AutoAdvanceInterval.clamp(seconds)
         val prefs = context.getSharedPreferences(SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
         val key = intervalKey(target)
         val previous = prefs.getInt(key, 0)
         val manager = WorkManager.getInstance(context)
-        if (seconds <= 0) {
+        if (clamped <= 0) {
             prefs.edit().putInt(key, 0).apply()
             manager.cancelUniqueWork(autoWorkName(target))
             Log.d(TAG, "auto.schedule target=${target.id} off")
             return
         }
-        prefs.edit().putInt(key, seconds).apply()
+        prefs.edit().putInt(key, clamped).apply()
         val request = OneTimeWorkRequestBuilder<LiveWallpaperRefillWorker>()
             .setInputData(
                 workDataOf(
@@ -139,11 +156,11 @@ object LiveWallpaperRefillScheduler {
                     LiveWallpaperRefillWorker.KEY_ADVANCE to true,
                 ),
             )
-            .setInitialDelay(seconds.toLong(), TimeUnit.SECONDS)
+            .setInitialDelay(clamped.toLong(), TimeUnit.SECONDS)
             .build()
-        val policy = if (previous == seconds) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.REPLACE
+        val policy = if (previous == clamped) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.REPLACE
         manager.enqueueUniqueWork(autoWorkName(target), policy, request)
-        Log.d(TAG, "auto.schedule target=${target.id} seconds=$seconds previous=$previous")
+        Log.d(TAG, "auto.schedule target=${target.id} seconds=$clamped previous=$previous")
     }
 
     /**
@@ -154,15 +171,16 @@ object LiveWallpaperRefillScheduler {
      * be a full interval away instead of firing right after it.
      */
     fun restartAutoAdvance(context: Context, target: LiveWallpaperTarget, seconds: Int) {
+        val clamped = AutoAdvanceInterval.clamp(seconds)
         val prefs = context.getSharedPreferences(SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
         val key = intervalKey(target)
-        if (seconds <= 0) {
+        if (clamped <= 0) {
             prefs.edit().putInt(key, 0).apply()
             WorkManager.getInstance(context).cancelUniqueWork(autoWorkName(target))
             Log.d(TAG, "auto.restart target=${target.id} off")
             return
         }
-        prefs.edit().putInt(key, seconds).apply()
+        prefs.edit().putInt(key, clamped).apply()
         val request = OneTimeWorkRequestBuilder<LiveWallpaperRefillWorker>()
             .setInputData(
                 workDataOf(
@@ -170,10 +188,10 @@ object LiveWallpaperRefillScheduler {
                     LiveWallpaperRefillWorker.KEY_ADVANCE to true,
                 ),
             )
-            .setInitialDelay(seconds.toLong(), TimeUnit.SECONDS)
+            .setInitialDelay(clamped.toLong(), TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(autoWorkName(target), ExistingWorkPolicy.REPLACE, request)
-        Log.d(TAG, "auto.restart target=${target.id} seconds=$seconds")
+        Log.d(TAG, "auto.restart target=${target.id} seconds=$clamped")
     }
 
     /**
@@ -200,6 +218,8 @@ object LiveWallpaperRefillScheduler {
 
     /** The interval currently scheduled for [target], or 0 when it is off. */
     fun autoAdvanceInterval(context: Context, target: LiveWallpaperTarget): Int =
-        context.getSharedPreferences(SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
-            .getInt(intervalKey(target), 0)
+        AutoAdvanceInterval.clamp(
+            context.getSharedPreferences(SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
+                .getInt(intervalKey(target), 0),
+        )
 }

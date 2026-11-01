@@ -476,12 +476,12 @@ void main() {
     await controller.idle;
 
     // The fake wallpaper service starts inactive: there is nothing to advance.
-    await controller.setAutoAdvance(const WallpaperAutoAdvance(interval: WallpaperInterval.h1));
+    await controller.setAutoAdvance(const WallpaperAutoAdvance(interval: WallpaperAdvanceInterval(60 * 60)));
     expect(bridge.autoAdvanceSeconds, 0);
 
     bridge.active = true;
     await controller.refreshServiceActive();
-    expect(bridge.autoAdvanceSeconds, WallpaperInterval.h1.seconds);
+    expect(bridge.autoAdvanceSeconds, const WallpaperAdvanceInterval(60 * 60).seconds);
 
     // Replacing the wallpaper must cancel the chain instead of baking in the dark.
     bridge.active = false;

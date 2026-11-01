@@ -5,6 +5,9 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
+import 'package:aves/features/wallpaper_auto_advance/model/wallpaper_advance_interval.dart';
+import 'package:aves/features/wallpaper_auto_advance/view/wallpaper_interval_label.dart';
+import 'package:aves/features/wallpaper_auto_advance/view/widgets/wallpaper_interval_option_list.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:collection/collection.dart';
@@ -75,20 +78,9 @@ class GroupedWallpaperAutoAdvancePage extends StatelessWidget {
                       ),
                       const Divider(),
                       _SectionHeader(l10n.muzeiWallpaperAutoAdvanceInterval),
-                      RadioGroup<WallpaperInterval>(
-                        groupValue: group.interval,
-                        onChanged: (interval) {
-                          if (interval != null) unawaited(_setInterval(interval));
-                        },
-                        child: Column(
-                          children: [
-                            for (final interval in WallpaperInterval.values)
-                              RadioListTile<WallpaperInterval>(
-                                value: interval,
-                                title: Text(_intervalLabel(context, interval)),
-                              ),
-                          ],
-                        ),
+                      WallpaperIntervalOptionList(
+                        selected: group.interval,
+                        onSelected: (interval) => unawaited(_setInterval(interval)),
                       ),
                     ],
                   ),
@@ -105,7 +97,7 @@ class GroupedWallpaperAutoAdvancePage extends StatelessWidget {
     await wallpaperEngineLink.refreshSchedule();
   }
 
-  Future<void> _setInterval(WallpaperInterval interval) async {
+  Future<void> _setInterval(WallpaperAdvanceInterval interval) async {
     await controller.setAutoAdvance(groupId, interval: interval);
     await wallpaperEngineLink.refreshSchedule();
   }
@@ -127,25 +119,10 @@ class GroupedWallpaperAutoAdvancePage extends StatelessWidget {
       GroupedWallpaperOrdering.random => l10n.muzeiWallpaperAutoAdvanceOrderingRandomHint,
     };
   }
-
-  static String _intervalLabel(BuildContext context, WallpaperInterval interval) {
-    final l10n = context.l10n;
-    return switch (interval) {
-      WallpaperInterval.m15 => l10n.muzeiWallpaperAutoAdvanceMinutes(15),
-      WallpaperInterval.m30 => l10n.muzeiWallpaperAutoAdvanceMinutes(30),
-      WallpaperInterval.h1 => l10n.muzeiWallpaperAutoAdvanceHours(1),
-      WallpaperInterval.h3 => l10n.muzeiWallpaperAutoAdvanceHours(3),
-      WallpaperInterval.h6 => l10n.muzeiWallpaperAutoAdvanceHours(6),
-      WallpaperInterval.h24 => l10n.muzeiWallpaperAutoAdvanceDays(1),
-      WallpaperInterval.h72 => l10n.muzeiWallpaperAutoAdvanceDays(3),
-      WallpaperInterval.never => l10n.muzeiWallpaperAutoAdvanceOff,
-    };
-  }
 }
 
 /// The one-line interval summary shown under the menu entry.
-String groupedWallpaperAutoAdvanceSummary(BuildContext context, WallpaperGroup group) =>
-    GroupedWallpaperAutoAdvancePage._intervalLabel(context, group.interval);
+String groupedWallpaperAutoAdvanceSummary(BuildContext context, WallpaperGroup group) => wallpaperAdvanceIntervalLabel(context, group.interval);
 
 class _SectionHeader extends StatelessWidget {
   final String title;

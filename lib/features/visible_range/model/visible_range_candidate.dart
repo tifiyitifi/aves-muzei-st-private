@@ -14,10 +14,10 @@ enum VisibleRangeCandidateKind {
   supplement;
 
   VisibleRangeRuleKind? get ruleKind => switch (this) {
-        base => null,
-        restriction => VisibleRangeRuleKind.restriction,
-        supplement => VisibleRangeRuleKind.supplement,
-      };
+    base => null,
+    restriction => VisibleRangeRuleKind.restriction,
+    supplement => VisibleRangeRuleKind.supplement,
+  };
 }
 
 /// One tappable tile: the current base, a base preset, or a rule.
@@ -48,10 +48,15 @@ class VisibleRangeCandidate extends Equatable {
 
   /// Whether the tile is shown but cannot be edited.
   ///
-  /// The wallpaper page uses it for the surface that is not being edited: both
-  /// surfaces are expanded, but the inactive one is a read-only summary, so a
-  /// tap must never write its conditions into the active surface's range.
+  /// The wallpaper page uses it for a surface summary: it lists what that surface
+  /// applies, and a tap there switches the edited surface instead of writing.
   final bool readOnly;
+
+  /// Which wallpaper surfaces use this condition, as a bit mask.
+  ///
+  /// The wallpaper page draws the home/lock marks from it; the gallery page
+  /// leaves it at `0`.
+  final int surfaces;
 
   const new({
     required this.id,
@@ -65,18 +70,19 @@ class VisibleRangeCandidate extends Equatable {
     this.rule,
     this.placeholder = false,
     this.readOnly = false,
+    this.surfaces = 0,
   });
 
   factory fromPreset(VisibleRangePreset preset, {required bool active}) => VisibleRangeCandidate(
-        id: preset.id,
-        kind: VisibleRangeCandidateKind.base,
-        filters: preset.filters,
-        labelKey: preset.builtin ? preset.name : '',
-        label: preset.builtin ? '' : preset.name,
-        description: preset.description,
-        active: active,
-        preset: preset,
-      );
+    id: preset.id,
+    kind: VisibleRangeCandidateKind.base,
+    filters: preset.filters,
+    labelKey: preset.builtin ? preset.name : '',
+    label: preset.builtin ? '' : preset.name,
+    description: preset.description,
+    active: active,
+    preset: preset,
+  );
 
   /// A candidate for an active base whose preset was deleted: the range still
   /// carries its filters, so it must stay visible and selected.
@@ -153,36 +159,55 @@ class VisibleRangeCandidate extends Equatable {
   /// flip its state, so the 「Unrestricted」 tile reads and previews the same on
   /// either page.
   VisibleRangeCandidate copyWithActive(bool active) => VisibleRangeCandidate(
-        id: id,
-        kind: kind,
-        filters: filters,
-        labelKey: labelKey,
-        label: label,
-        description: description,
-        active: active,
-        preset: preset,
-        rule: rule,
-        placeholder: placeholder,
-        readOnly: readOnly,
-      );
+    id: id,
+    kind: kind,
+    filters: filters,
+    labelKey: labelKey,
+    label: label,
+    description: description,
+    active: active,
+    preset: preset,
+    rule: rule,
+    placeholder: placeholder,
+    readOnly: readOnly,
+    surfaces: surfaces,
+  );
+
+  /// The same candidate with the wallpaper surface marks (and the mark the page
+  /// reads as "on").
+  VisibleRangeCandidate copyWithSurfaceMarks({required int surfaces, required bool active}) => VisibleRangeCandidate(
+    id: id,
+    kind: kind,
+    filters: filters,
+    labelKey: labelKey,
+    label: label,
+    description: description,
+    active: active,
+    preset: preset,
+    rule: rule,
+    placeholder: placeholder,
+    readOnly: readOnly,
+    surfaces: surfaces,
+  );
 
   /// The same candidate, shown as a read-only summary.
   VisibleRangeCandidate copyWithReadOnly(bool readOnly) => VisibleRangeCandidate(
-        id: id,
-        kind: kind,
-        filters: filters,
-        labelKey: labelKey,
-        label: label,
-        description: description,
-        active: active,
-        preset: preset,
-        rule: rule,
-        placeholder: placeholder,
-        readOnly: readOnly,
-      );
+    id: id,
+    kind: kind,
+    filters: filters,
+    labelKey: labelKey,
+    label: label,
+    description: description,
+    active: active,
+    preset: preset,
+    rule: rule,
+    placeholder: placeholder,
+    readOnly: readOnly,
+    surfaces: surfaces,
+  );
 
   @override
-  List<Object?> get props => [id, kind, filters, labelKey, label, description, active, placeholder, readOnly];
+  List<Object?> get props => [id, kind, filters, labelKey, label, description, active, placeholder, readOnly, surfaces];
 }
 
 /// A titled group of candidates.
@@ -261,9 +286,7 @@ List<VisibleRangeCandidate> buildVisibleRangeActiveCandidates({
   final baseCandidates = buildVisibleRangeSections(range: range, presets: presets).first.candidates;
   final activeBase = baseCandidates.firstWhereOrNull((candidate) => candidate.active && !candidate.isUnrestricted);
   final rules = [
-    for (final kind in range.order.isIntersectFirst
-        ? [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement]
-        : [VisibleRangeRuleKind.supplement, VisibleRangeRuleKind.restriction])
+    for (final kind in range.order.isIntersectFirst ? [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement] : [VisibleRangeRuleKind.supplement, VisibleRangeRuleKind.restriction])
       for (final rule in range.activeRulesOf(kind)) VisibleRangeCandidate.fromRule(rule),
   ];
   return [

@@ -61,24 +61,24 @@ void main() {
   late bool groupSwitchLocked;
 
   AvesEntry entry(int id, {int width = 300, int height = 100}) => AvesEntry(
-        id: id,
-        uri: 'content://media/$id',
-        path: null,
-        contentId: id,
-        pageId: null,
-        sourceMimeType: 'image/jpeg',
-        width: width,
-        height: height,
-        sourceRotationDegrees: 0,
-        sizeBytes: 1,
-        sourceTitle: 'IMG_$id',
-        dateAddedSecs: 1,
-        dateModifiedMillis: 2,
-        sourceDateTakenMillis: 3,
-        durationMillis: 0,
-        trashed: false,
-        origin: EntryOrigins.mediaStoreContent,
-      );
+    id: id,
+    uri: 'content://media/$id',
+    path: null,
+    contentId: id,
+    pageId: null,
+    sourceMimeType: 'image/jpeg',
+    width: width,
+    height: height,
+    sourceRotationDegrees: 0,
+    sizeBytes: 1,
+    sourceTitle: 'IMG_$id',
+    dateAddedSecs: 1,
+    dateModifiedMillis: 2,
+    sourceDateTakenMillis: 3,
+    durationMillis: 0,
+    trashed: false,
+    origin: EntryOrigins.mediaStoreContent,
+  );
 
   /// Newest first, as the database returns them.
   List<AvesEntry> entries(int n, {int first = 50}) => [for (var i = 0; i < n; i++) entry(first - i)];
@@ -506,7 +506,7 @@ void main() {
       expect(state.height, 200);
     });
 
-    test('a launcher that never pans keeps the surface-sized bake', () async {
+    test('a launcher that never pans still keeps the wide frame', () async {
       planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
       platform.scrollStepValue = 0;
       serve(entries(12));
@@ -514,42 +514,40 @@ void main() {
       await engine.prepare();
 
       final state = (await store.readState())!;
-      expect(state.scrollEffect, isFalse);
-      expect(state.width, 100);
+      // The switch is the user's: a launcher with no pan draws the wide frame
+      // centered, which looks like the cover crop, so nothing is lost by keeping
+      // the photo's whole width.
+      expect(state.scrollEffect, isTrue);
+      expect(state.width, 600);
+      expect(platform.scrollStepReads, 0);
     });
 
-    test('an unknown scroll step follows the switch', () async {
+    test('the switch is followed without asking the launcher', () async {
       planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
       serve(entries(12));
 
       await engine.prepare();
 
-      expect(platform.scrollStepReads, greaterThan(0));
+      expect(platform.scrollStepReads, 0);
       expect((await store.readState())!.scrollEffect, isTrue);
     });
 
-    test('a launcher that starts panning re-bakes the same photo wider', () async {
+    test('a launcher stepping from no pan to panning keeps the same wide frame', () async {
       planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
       platform.scrollStepValue = 0;
       serve(entries(12));
 
       await engine.prepare();
-      final narrow = (await store.readState())!;
-      expect(narrow.scrollEffect, isFalse);
-      expect(narrow.width, 100);
-
-      // The launcher's first callbacks arrive after the wallpaper is bound, so
-      // the frame was baked for a home screen that could not pan. The native
-      // side asks for a refill when the step becomes real; the same photo must
-      // gain the wide frame without being replaced.
-      platform.scrollStepValue = 0.25;
-      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
-
       final wide = (await store.readState())!;
       expect(wide.scrollEffect, isTrue);
-      expect(wide.entryId, narrow.entryId);
       expect(wide.width, 600);
+
+      // The launcher's step only changes how the renderer maps the offset onto
+      // the frame it already has: the engine has nothing to re-bake.
+      platform.scrollStepValue = 0.25;
       expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
+      expect((await store.readState())!.width, 600);
+      expect((await store.readState())!.entryId, wide.entryId);
     });
 
     test('turning the group switch on re-bakes once and keeps the queue', () async {
@@ -789,7 +787,9 @@ void main() {
     await engine.prepare();
 
     serve(const []);
-    planStore.plan = const GroupedWallpaperPlan(group: WallpaperGroup(id: 'group.2', number: 2, name: 'B', current: true, updatedAt: 11));
+    planStore.plan = const GroupedWallpaperPlan(
+      group: WallpaperGroup(id: 'group.2', number: 2, name: 'B', current: true, updatedAt: 11),
+    );
 
     expect(await engine.prepare(), GroupedWallpaperSyncResult.empty);
 
@@ -869,6 +869,26 @@ void main() {
     final joined = (await store.readState())!;
     expect(joined.lock, isNull);
     expect(joined.lockRangeId, isEmpty);
+  });
+
+  test('a home step never changes the lock photo', () async {
+    final homeRange = VisibleRange(id: wallpaperGroupRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    final lockRange = VisibleRange(id: wallpaperGroupLockRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.1'), updatedAt: 1);
+    planStore.plan = GroupedWallpaperPlan(group: dcimGroup.copyWith(separateLockRange: true), range: homeRange, lockRange: lockRange);
+    serve(entries(5));
+    await engine.prepare();
+    final first = (await store.readState())!;
+    expect(first.lock, isNotNull);
+
+    // A double tap / the bar's next button changes the desktop photo.
+    await engine.nextArtwork();
+    final after = (await store.readState())!;
+    expect(after.currentSlot!.entryId, isNot(first.currentSlot!.entryId));
+    // The decoy only moves with time or from the view page.
+    expect(after.lock!.entryId, first.lock!.entryId);
+
+    await engine.nextLockArtwork();
+    expect((await store.readState())!.lock!.entryId, isNot(first.lock!.entryId));
   });
 
   test('previous lock photo skips a record that left the range', () async {
@@ -1561,14 +1581,16 @@ class _FakeHistoryRecorder implements GroupedWallpaperHistoryRecorder {
     required int limit,
     required WallpaperSurface surface,
   }) async {
-    rows.add(GroupedWallpaperHistoryEntry(
-      entryId: entryId,
-      groupId: groupId,
-      groupName: groupName,
-      groupNumber: groupNumber,
-      surface: surface,
-      usedAt: usedAt,
-    ));
+    rows.add(
+      GroupedWallpaperHistoryEntry(
+        entryId: entryId,
+        groupId: groupId,
+        groupName: groupName,
+        groupNumber: groupNumber,
+        surface: surface,
+        usedAt: usedAt,
+      ),
+    );
     this.limit = limit;
   }
 
@@ -1624,8 +1646,7 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   GroupedWallpaperLockSurfaceStatus lockSurface = GroupedWallpaperLockSurfaceStatus.unknown;
 
   @override
-  Future<({int slot, bool lock, WallpaperSurface surface})?> displayedSlot() async =>
-      displayedSlotValue == null ? null : (slot: displayedSlotValue!, lock: lockScreenValue, surface: surfaceValue);
+  Future<({int slot, bool lock, WallpaperSurface surface})?> displayedSlot() async => displayedSlotValue == null ? null : (slot: displayedSlotValue!, lock: lockScreenValue, surface: surfaceValue);
 
   @override
   Future<GroupedWallpaperLockSurfaceStatus> lockSurfaceStatus() async => lockSurface;
@@ -1682,8 +1703,7 @@ class _FakePlatform implements GroupedWallpaperPlatform {
     required Size targetSize,
     required String photoPath,
     required int quality,
-  }) async =>
-      null;
+  }) async => null;
 }
 
 class _FakeBaker extends GroupedWallpaperBaker {
@@ -1778,7 +1798,18 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setHistoryLimit(int limit) async {
     historyLimitWrites.add(limit);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, historyLimit: limit, transition: plan.transition, frameRetention: plan.frameRetention);
+    plan = GroupedWallpaperPlan(
+      group: plan.group,
+      range: plan.range,
+      disabled: plan.disabled,
+      gestures: plan.gestures,
+      ordering: plan.ordering,
+      interval: plan.interval,
+      notification: plan.notification,
+      historyLimit: limit,
+      transition: plan.transition,
+      frameRetention: plan.frameRetention,
+    );
   }
 
   final List<int> historyLimitWrites = [];
@@ -1786,7 +1817,18 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setTransition(GroupedWallpaperTransition transition) async {
     transitionWrites.add(transition);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, historyLimit: plan.historyLimit, transition: transition, frameRetention: plan.frameRetention);
+    plan = GroupedWallpaperPlan(
+      group: plan.group,
+      range: plan.range,
+      disabled: plan.disabled,
+      gestures: plan.gestures,
+      ordering: plan.ordering,
+      interval: plan.interval,
+      notification: plan.notification,
+      historyLimit: plan.historyLimit,
+      transition: transition,
+      frameRetention: plan.frameRetention,
+    );
   }
 
   final List<GroupedWallpaperTransition> transitionWrites = [];
@@ -1794,7 +1836,18 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setFrameRetention(GroupedWallpaperFrameRetention retention) async {
     frameRetentionWrites.add(retention);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification, historyLimit: plan.historyLimit, transition: plan.transition, frameRetention: retention);
+    plan = GroupedWallpaperPlan(
+      group: plan.group,
+      range: plan.range,
+      disabled: plan.disabled,
+      gestures: plan.gestures,
+      ordering: plan.ordering,
+      interval: plan.interval,
+      notification: plan.notification,
+      historyLimit: plan.historyLimit,
+      transition: plan.transition,
+      frameRetention: retention,
+    );
   }
 
   final List<GroupedWallpaperFrameRetention> frameRetentionWrites = [];

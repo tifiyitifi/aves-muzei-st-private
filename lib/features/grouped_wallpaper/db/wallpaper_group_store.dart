@@ -79,6 +79,7 @@ class WallpaperGroupStore {
   /// Global like the transition: the renderer keeps frames that may belong to
   /// different groups, and the switch trades memory for an instant tap.
   static const keyFrameRetention = 'wallpaper.groupedFrameRetention';
+
   /// AppMeta key of the user closing the derived bottom-bar entry.
   static const keyNavEntryClosed = 'wallpaper.groupedNavEntryClosed';
 
@@ -128,7 +129,9 @@ class WallpaperGroupStore {
     await db.transaction(() async {
       for (var i = 0; i < list.length; i++) {
         final group = list[i];
-        await db.into(db.wallpaperGroupRows).insertOnConflictUpdate(
+        await db
+            .into(db.wallpaperGroupRows)
+            .insertOnConflictUpdate(
               WallpaperGroupRowsCompanion.insert(
                 id: group.id,
                 createdAt: group.createdAt,
@@ -142,6 +145,7 @@ class WallpaperGroupStore {
                 interval: Value(group.interval.seconds),
                 ordering: Value(group.ordering.name),
                 separateLockRange: Value(group.separateLockRange),
+                lockRangeSeeded: Value(group.lockRangeSeeded),
               ),
             );
       }
@@ -326,19 +330,20 @@ class WallpaperGroupStore {
   }
 
   static WallpaperGroup _toGroup(WallpaperGroupRow row, int number, {required bool legacyScrollEffect}) => WallpaperGroup(
-        id: row.id,
-        number: number,
-        name: row.name,
-        description: row.description,
-        enabled: row.enabled,
-        current: row.current,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        effects: _effects(row.effects, legacyScrollEffect: legacyScrollEffect),
-        interval: WallpaperAdvanceInterval.fromSeconds(row.interval),
-        ordering: GroupedWallpaperOrdering.tryParse(row.ordering),
-        separateLockRange: row.separateLockRange,
-      );
+    id: row.id,
+    number: number,
+    name: row.name,
+    description: row.description,
+    enabled: row.enabled,
+    current: row.current,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    effects: _effects(row.effects, legacyScrollEffect: legacyScrollEffect),
+    interval: WallpaperAdvanceInterval.fromSeconds(row.interval),
+    ordering: GroupedWallpaperOrdering.tryParse(row.ordering),
+    separateLockRange: row.separateLockRange,
+    lockRangeSeeded: row.lockRangeSeeded,
+  );
 
   /// Parses the stored effects, falling back to identity when the value is from a
   /// newer build or was truncated.

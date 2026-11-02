@@ -6,6 +6,7 @@ import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_condition_pool.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
@@ -52,8 +53,8 @@ class WallpaperGroupController extends ChangeNotifier {
   new({
     this.injectedDatabase,
     WallpaperGroupDefaultLoader? defaultLoader,
-  })  : _usesBundledDefaults = defaultLoader == null,
-        defaultLoader = defaultLoader ?? _loadBundledDefaults;
+  }) : _usesBundledDefaults = defaultLoader == null,
+       defaultLoader = defaultLoader ?? _loadBundledDefaults;
 
   static Future<List<WallpaperGroupDefinition>> _loadBundledDefaults() => loadWallpaperGroupDefinitions();
 
@@ -196,6 +197,9 @@ class WallpaperGroupController extends ChangeNotifier {
           // A base name is only shown when the base is not 「unrestricted」.
           baseName: definition.filters.isEmpty ? '' : '@${definition.nameKey}',
           baseFilters: definition.filters,
+          // A bundled base belongs to the home surface: the lock marks are seeded
+          // from it the first time the group splits.
+          baseSurfaces: definition.filters.isEmpty ? 0 : WallpaperConditionSurfaces.home,
           createdAt: now,
           updatedAt: now,
         ),
@@ -215,9 +219,10 @@ class WallpaperGroupController extends ChangeNotifier {
 
   /// Drops the rule candidates an older defaults version seeded into a group.
   ///
-  /// Only rules that are still switched off and still carry their bundled `@`
-  /// label go: an activation or a rename is the user's decision and outlives the
-  /// bundle. Ids are prefixed with the group id, so a user rule is never caught.
+  /// Only rules that are still used by neither surface and still carry their
+  /// bundled `@` label go: a mark on a surface or a rename is the user's decision
+  /// and outlives the bundle. Ids are prefixed with the group id, so a user rule
+  /// is never caught.
   static Future<void> _pruneSeededRules(VisibleRangeStore ranges, Iterable<WallpaperGroup> groups) async {
     for (final group in groups) {
       final range = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
@@ -225,7 +230,7 @@ class WallpaperGroupController extends ChangeNotifier {
       final prefix = '${group.id}.rule.';
       final kept = [
         for (final rule in range.rules)
-          if (!(rule.id.startsWith(prefix) && !rule.active && rule.label.startsWith('@'))) rule,
+          if (!(rule.id.startsWith(prefix) && !WallpaperConditionSurfaces.any(rule.surfaces) && rule.label.startsWith('@'))) rule,
       ];
       if (kept.length != range.rules.length) {
         await ranges.saveRange(range.copyWith(rules: kept));
@@ -278,18 +283,15 @@ class WallpaperGroupController extends ChangeNotifier {
     final ranges = VisibleRangeStore(store.db);
     _ranges.clear();
     for (final group in _groups) {
-      final range = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
-      if (range != null) _ranges[group.id] = range;
-      // The lock range stays loaded while the split is off: it is hidden, not
-      // deleted, so re-enabling the switch must reuse the narrowing the user
-      // already made instead of copying the home range again.
-      final lockRange = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId(group.id));
-      if (lockRange != null) _ranges[lockRange.ownerId] = lockRange;
+      // One row per group: its condition pool. Home and lock are projections of
+      // it, so there is no second range to load.
+      final pool = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
+      if (pool != null) _ranges[group.id] = pool;
     }
   }
 
   /// Writes the draft back in one transaction: removed groups and their ranges
-  /// first, then the group list, then every edited range.
+  /// first, then the group list, then every edited condition pool.
   Future<void> saveDraft() async {
     if (!_draftActive) return;
     final store = await _openStore();
@@ -299,10 +301,8 @@ class WallpaperGroupController extends ChangeNotifier {
         await store.deleteGroup(id);
       }
       await store.saveGroups(_groups);
-      // Every loaded range belongs to a live surface, home or lock: the map is
-      // keyed by owner id, so one loop writes both surfaces of a split group.
-      for (final range in _ranges.values) {
-        await ranges.saveRange(range);
+      for (final pool in _ranges.values) {
+        await ranges.saveRange(pool);
       }
     });
     _deletedIds.clear();
@@ -378,17 +378,16 @@ class WallpaperGroupController extends ChangeNotifier {
   ///
   /// The copy is never enabled, current or locked: it is a starting point, not a
   /// second player, and a locked range is read-only, so copying it would clone
-  /// content the user froze. Rules get fresh ids so the two groups never share a
-  /// row, while the effects, the auto-advance contract and both range surfaces
-  /// are deep-copied. Returns null when the group is unknown or either of its
-  /// ranges is locked.
+  /// content the user froze. Conditions get fresh ids so the two groups never
+  /// share a row, while the effects, the auto-advance contract and both surface
+  /// marks are deep-copied. Returns null when the group is unknown or its pool is
+  /// locked.
   Future<WallpaperGroup?> duplicateGroup(String id, {required String name}) async {
     _requireInitialized();
     final source = _groups.firstWhereOrNull((group) => group.id == id);
     if (source == null) return null;
-    final range = await groupRange(id);
-    final lockRange = source.separateLockRange ? await groupRange(id, surface: WallpaperSurface.lock) : null;
-    if (range.locked || (lockRange?.locked ?? false)) return null;
+    final pool = await groupPool(id);
+    if (pool.locked) return null;
 
     final now = _now;
     final copy = WallpaperGroup(
@@ -401,11 +400,11 @@ class WallpaperGroupController extends ChangeNotifier {
       interval: source.interval,
       ordering: source.ordering,
       separateLockRange: source.separateLockRange,
+      lockRangeSeeded: source.lockRangeSeeded,
       createdAt: now,
       updatedAt: now,
     );
-    final copiedRange = _copyRange(range, id: wallpaperGroupRangeId(copy.id), ownerId: copy.id, now: now);
-    final copiedLockRange = lockRange == null ? null : _copyRange(lockRange, id: wallpaperGroupLockRangeId(copy.id), ownerId: wallpaperGroupLockOwnerId(copy.id), now: now);
+    final copiedPool = _copyPool(pool, groupId: copy.id, now: now);
 
     // Insert right after the source, then normalize: normalization owns the
     // enabled/disabled segments, so a disabled copy lands at the start of the
@@ -414,8 +413,7 @@ class WallpaperGroupController extends ChangeNotifier {
     final next = normalizeWallpaperGroups([..._groups]..insert(index + 1, copy));
     if (_draftActive) {
       _groups = next;
-      _ranges[copy.id] = copiedRange;
-      if (copiedLockRange != null) _ranges[copiedLockRange.ownerId] = copiedLockRange;
+      _ranges[copy.id] = copiedPool;
       _dirty = true;
       notifyListeners();
       return next.firstWhereOrNull((group) => group.id == copy.id);
@@ -423,46 +421,49 @@ class WallpaperGroupController extends ChangeNotifier {
     final store = await _openStore();
     await store.db.transaction(() async {
       await store.saveGroups(next);
-      final ranges = VisibleRangeStore(store.db);
-      await ranges.saveRange(copiedRange);
-      if (copiedLockRange != null) await ranges.saveRange(copiedLockRange);
+      await VisibleRangeStore(store.db).saveRange(copiedPool);
     });
     _groups = next;
     notifyListeners();
     return next.firstWhereOrNull((group) => group.id == copy.id);
   }
 
-  /// Copies [source] into a range owned by another surface, with fresh rule ids.
+  /// Copies a condition pool into a new group, with fresh rule ids.
   ///
-  /// The two surfaces of one group must never share rule rows: editing the decoy
-  /// would otherwise rewrite the home range behind the user's back.
-  VisibleRange _copyRange(VisibleRange source, {required String id, required String ownerId, required int now}) => VisibleRange(
-        id: id,
-        scope: VisibleRangeScope.wallpaper,
-        ownerId: ownerId,
-        baseName: source.baseName,
-        basePresetId: source.basePresetId,
-        baseFilters: source.baseFilters,
-        baseActive: source.baseActive,
-        rules: [
-          for (final rule in source.rules)
-            VisibleRangeRule(
-              id: 'rule.$now.${_idSequence++}',
-              rangeId: id,
-              kind: rule.kind,
-              position: rule.position,
-              label: rule.label,
-              description: rule.description,
-              filters: rule.filters,
-              active: rule.active,
-            ),
-        ],
-        order: source.order,
-        locked: false,
-        permissions: source.permissions,
-        createdAt: now,
-        updatedAt: now,
-      );
+  /// The surface marks travel with the conditions: a copy of a split group keeps
+  /// the same home/lock split instead of starting unrestricted on the lock side.
+  VisibleRange _copyPool(VisibleRange source, {required String groupId, required int now}) {
+    final id = wallpaperGroupRangeId(groupId);
+    return VisibleRange(
+      id: id,
+      scope: VisibleRangeScope.wallpaper,
+      ownerId: groupId,
+      baseName: source.baseName,
+      basePresetId: source.basePresetId,
+      baseFilters: source.baseFilters,
+      baseActive: source.baseActive,
+      baseSurfaces: source.baseSurfaces,
+      rules: [
+        for (final rule in source.rules)
+          VisibleRangeRule(
+            id: 'rule.$now.${_idSequence++}',
+            rangeId: id,
+            kind: rule.kind,
+            position: rule.position,
+            label: rule.label,
+            description: rule.description,
+            filters: rule.filters,
+            active: true,
+            surfaces: rule.surfaces,
+          ),
+      ],
+      order: source.order,
+      locked: false,
+      permissions: source.permissions,
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
 
   /// Updates the user text of a group. An empty name keeps the current one, so
   /// the dialog cannot leave a group nameless.
@@ -499,7 +500,6 @@ class WallpaperGroupController extends ChangeNotifier {
       _groups = next;
       for (final id in targets) {
         _ranges.remove(id);
-        _ranges.remove(wallpaperGroupLockOwnerId(id));
         _deletedIds.add(id);
       }
       _dirty = true;
@@ -616,39 +616,89 @@ class WallpaperGroupController extends ChangeNotifier {
     await _writeGroups(next);
   }
 
-  /// The group's visible range, or a fresh unrestricted one when it has none.
-  Future<VisibleRange> groupRange(String groupId, {WallpaperSurface surface = WallpaperSurface.home}) async {
-    final ownerId = _ownerIdOf(groupId, surface);
-    final rangeId = _rangeIdOf(groupId, surface);
+  /// The group's condition pool, or a fresh empty one when it has none.
+  ///
+  /// Home and lock share this one row: every base and rule is stored once and
+  /// carries a mark per surface ([WallpaperConditionSurfaces]). The page edits the
+  /// pool; the engine and the pin sheet consume its [projectWallpaperGroupRange]
+  /// projections.
+  Future<VisibleRange> groupPool(String groupId) async {
     if (_draftActive) {
-      final cached = _ranges[ownerId];
-      if (cached != null) return cached;
-      return VisibleRange(
-        id: rangeId,
-        scope: VisibleRangeScope.wallpaper,
-        ownerId: ownerId,
-        createdAt: _now,
-        updatedAt: _now,
-      );
+      return _ranges[groupId] ?? _emptyPool(groupId);
     }
-    final store = await _openStore();
-    final existing = await VisibleRangeStore(store.db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: ownerId);
-    if (existing != null) return existing;
-    return VisibleRange(
-      id: rangeId,
-      scope: VisibleRangeScope.wallpaper,
-      ownerId: ownerId,
-      createdAt: _now,
-      updatedAt: _now,
-    );
+    return await _loadPool(groupId) ?? _emptyPool(groupId);
   }
 
-  /// Saves a group's range after checking it really belongs to that group.
+  /// The group's visible range for [surface], projected from its condition pool.
+  Future<VisibleRange> groupRange(String groupId, {WallpaperSurface surface = WallpaperSurface.home}) async {
+    final pool = await groupPool(groupId);
+    return projectWallpaperGroupRange(pool, groupId: groupId, surface: surface);
+  }
+
+  VisibleRange _emptyPool(String groupId) => VisibleRange(
+    id: wallpaperGroupRangeId(groupId),
+    scope: VisibleRangeScope.wallpaper,
+    ownerId: groupId,
+    createdAt: _now,
+    updatedAt: _now,
+  );
+
+  /// Saves a group's condition pool after checking it belongs to a group.
   ///
-  /// The id is derived from the owner, so a caller cannot write a range under
-  /// another group or the other surface by mistake. While the draft is active
-  /// this only updates the in-memory range; [saveDraft] is what touches the
-  /// database.
+  /// Every write bumps the pool's `updatedAt` so the engine re-bakes; [bumpGroup]
+  /// additionally moves the group's own timestamp, which is what makes the home
+  /// queue re-evaluate. Only seeding the lock surface skips it: that changes the
+  /// decoy alone and must not restart the home walk.
+  Future<VisibleRange> saveGroupPool(VisibleRange pool, {bool bumpGroup = true}) async {
+    _requireInitialized();
+    if (pool.scope != VisibleRangeScope.wallpaper) {
+      throw ArgumentError.value(pool.scope, 'pool.scope', 'only wallpaper ranges are accepted');
+    }
+    final groupId = pool.ownerId;
+    if (pool.id != wallpaperGroupRangeId(groupId)) {
+      throw ArgumentError.value(pool.id, 'pool.id', 'the pool id must be derived from the group');
+    }
+    if (!_groups.any((group) => group.id == groupId)) {
+      throw ArgumentError.value(groupId, 'pool.ownerId', 'unknown wallpaper group');
+    }
+    final now = _now;
+    // A wallpaper condition is switched on a surface by its mark, so `active`
+    // stays true: the pool never hides a condition behind a second switch.
+    final next = pool.copyWith(
+      updatedAt: now,
+      baseActive: true,
+      rules: [
+        for (final rule in pool.rules) rule.copyWith(active: true),
+      ],
+    );
+    if (_draftActive) {
+      _ranges[groupId] = next;
+      if (bumpGroup) _groups = _bumpGroupUpdatedAt(groupId, now);
+      _dirty = true;
+      notifyListeners();
+      return next;
+    }
+    final store = await _openStore();
+    await VisibleRangeStore(store.db).saveRange(next);
+    if (bumpGroup) {
+      _groups = _bumpGroupUpdatedAt(groupId, now);
+      await store.saveGroups(_groups);
+    }
+    notifyListeners();
+    return next;
+  }
+
+  List<WallpaperGroup> _bumpGroupUpdatedAt(String groupId, int now) => [
+    for (final candidate in _groups)
+      if (candidate.id == groupId) candidate.copyWith(updatedAt: now) else candidate,
+  ];
+
+  /// Saves one surface of a group's range by merging it back into the pool.
+  ///
+  /// External writers (the pin sheet, the write-back list) address a range by its
+  /// per-surface id and know nothing about the pool, so this is the adapter: the
+  /// projection's conditions update the shared rows, the surface's mark follows
+  /// what the projection kept, and the other surface is left as it was.
   Future<void> saveGroupRange(VisibleRange range) async {
     _requireInitialized();
     if (range.scope != VisibleRangeScope.wallpaper) {
@@ -667,59 +717,26 @@ class WallpaperGroupController extends ChangeNotifier {
     if (surface.isLock && !group.separateLockRange) {
       throw ArgumentError.value(range.ownerId, 'range.ownerId', 'the group has no separate lock range');
     }
-    final now = _now;
-    final next = range.copyWith(updatedAt: now);
-    // Only the home surface re-bakes the home queue. A lock edit bumps the lock
-    // range's own `updatedAt`, which the engine compares for the decoy alone:
-    // bumping the group would restart the home walk for a change it cannot see.
-    List<WallpaperGroup> bumpUpdatedAt() => [
-          for (final candidate in _groups)
-            if (candidate.id == groupId) candidate.copyWith(updatedAt: now) else candidate,
-        ];
-    if (_draftActive) {
-      _ranges[range.ownerId] = next;
-      if (!surface.isLock) _groups = bumpUpdatedAt();
-      _dirty = true;
-      notifyListeners();
-      return;
-    }
-    final store = await _openStore();
-    await VisibleRangeStore(store.db).saveRange(next);
-    if (!surface.isLock) {
-      _groups = bumpUpdatedAt();
-      await store.saveGroups(_groups);
-    }
-    notifyListeners();
+    final pool = await groupPool(groupId);
+    await saveGroupPool(mergeWallpaperGroupRange(pool, range, surface: surface));
   }
 
   /// Turns a group's decoy lock surface on or off.
   ///
-  /// Enabling copies the home range once, so the lock screen starts by showing
-  /// exactly what the home screen shows; the two then narrow independently.
-  /// Disabling only hides the lock range: keeping it is what makes the switch
-  /// reversible without losing the user's filters. Neither direction bumps the
-  /// group's `updatedAt`: only the decoy changes, and its own range timestamp is
-  /// what the engine compares.
+  /// The first enable marks every condition the home surface uses for the lock
+  /// surface too, so the lock screen starts by showing exactly what the home
+  /// screen shows. Later toggles only hide the lock marks: the narrowing the user
+  /// made survives, and re-enabling never resurrects conditions they removed.
   Future<void> setSeparateLockRange(String id, bool enabled) async {
     _requireInitialized();
     final group = _groups.firstWhereOrNull((candidate) => candidate.id == id);
     if (group == null || group.separateLockRange == enabled) return;
-    final now = _now;
-    final lockOwnerId = wallpaperGroupLockOwnerId(id);
-    VisibleRange? lockRange;
-    if (enabled) {
-      // A previously created range is reused as-is: the user who narrowed it
-      // before turning the split off gets that narrowing back.
-      lockRange = _ranges[lockOwnerId] ?? await _loadRange(lockOwnerId);
-      if (lockRange == null) {
-        final home = await groupRange(id);
-        lockRange = _copyRange(home, id: wallpaperGroupLockRangeId(id), ownerId: lockOwnerId, now: now);
-      }
-      _ranges[lockOwnerId] = lockRange;
+    if (enabled && !group.lockRangeSeeded) {
+      await saveGroupPool(_seedLockSurface(await groupPool(id)), bumpGroup: false);
     }
     final next = [
       for (final candidate in _groups)
-        if (candidate.id == id) candidate.copyWith(separateLockRange: enabled) else candidate,
+        if (candidate.id == id) candidate.copyWith(separateLockRange: enabled, lockRangeSeeded: candidate.lockRangeSeeded || enabled) else candidate,
     ];
     if (_draftActive) {
       _groups = next;
@@ -728,23 +745,30 @@ class WallpaperGroupController extends ChangeNotifier {
       return;
     }
     final store = await _openStore();
-    await store.db.transaction(() async {
-      if (enabled && lockRange != null) await VisibleRangeStore(store.db).saveRange(lockRange);
-      await store.saveGroups(next);
-    });
+    await store.saveGroups(next);
     _groups = next;
     notifyListeners();
   }
 
-  /// The range stored for [ownerId], without building an empty fallback.
-  Future<VisibleRange?> _loadRange(String ownerId) async {
-    final store = await _openStore();
-    return VisibleRangeStore(store.db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: ownerId);
+  /// Marks every condition the home surface uses for the lock surface.
+  static VisibleRange _seedLockSurface(VisibleRange pool) {
+    const home = WallpaperSurface.home;
+    const lock = WallpaperSurface.lock;
+    final usesBase = WallpaperConditionSurfaces.contains(pool.baseSurfaces, home) && pool.baseFilters.isNotEmpty;
+    return pool.copyWith(
+      baseSurfaces: WallpaperConditionSurfaces.withSurface(pool.baseSurfaces, lock, usesBase),
+      rules: [
+        for (final rule in pool.rules)
+          rule.copyWith(
+            surfaces: WallpaperConditionSurfaces.withSurface(
+              rule.surfaces,
+              lock,
+              WallpaperConditionSurfaces.contains(rule.surfaces, home),
+            ),
+          ),
+      ],
+    );
   }
-
-  static String _ownerIdOf(String groupId, WallpaperSurface surface) => surface.isLock ? wallpaperGroupLockOwnerId(groupId) : groupId;
-
-  static String _rangeIdOf(String groupId, WallpaperSurface surface) => surface.isLock ? wallpaperGroupLockRangeId(groupId) : wallpaperGroupRangeId(groupId);
 
   /// Updates the group list in memory (draft) or in the database.
   Future<void> _writeGroups(List<WallpaperGroup> groups) async {
@@ -796,6 +820,14 @@ class WallpaperGroupController extends ChangeNotifier {
     final db = _db ??= injectedDatabase ?? await getIt<AppDatabaseProvider>().open();
     return _store = WallpaperGroupStore(db);
   }
+
+  /// The range stored for [groupId], without building an empty fallback.
+  Future<VisibleRange?> _loadPool(String groupId) async {
+    final store = await _openStore();
+    return VisibleRangeStore(store.db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: groupId);
+  }
+
+  static String _rangeIdOf(String groupId, WallpaperSurface surface) => surface.isLock ? wallpaperGroupLockRangeId(groupId) : wallpaperGroupRangeId(groupId);
 
   void _requireInitialized() {
     if (!_initialized) throw StateError('WallpaperGroupController is not initialized');

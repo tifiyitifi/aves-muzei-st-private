@@ -1707,14 +1707,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   /// Whether frames should keep the photo's whole width for the launcher to pan.
   ///
-  /// The switch is the user's, but a launcher that never pans (`xOffsetStep` 0)
-  /// has nothing to pan with, so a wide frame there would only crop the sides. An
-  /// unknown step means no offset callback arrived yet: follow the switch.
-  Future<bool> _effectiveScrollEffect(GroupedWallpaperPlan plan) async {
-    if (!plan.effects.homeScrollEffect) return false;
-    final step = await platform.scrollStep();
-    return step == null || step > 0;
-  }
+  /// The switch is the user's alone. A launcher that never pans draws the wide
+  /// frame centered, which looks exactly like a cover crop, so following the
+  /// switch without asking for `xOffsetStep` is safe — and it removes the
+  /// "panning only starts after the launcher's first offset callback" gap, where
+  /// the wallpaper kept a cover-cropped frame and had nothing to pan.
+  Future<bool> _effectiveScrollEffect(GroupedWallpaperPlan plan) async => plan.effects.homeScrollEffect;
 
   /// The photo's whole width at the surface height, capped by the texture limit.
   ///

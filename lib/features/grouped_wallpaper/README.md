@@ -8,9 +8,10 @@ of the Muzei-style live wallpaper mechanism.
 - **Done**: group model, layout invariants, bundled defaults (JSON), storage
   (`wallpaper_groups` table, schema v7; `baseActive` in v9; per-group `effects`
   in v10; per-group `interval`/`ordering` in v11; `grouped_wallpaper_history` in
-  v12; `separateLockRange` and the history `surface` in v13), controller with the page's
+  v12; `separateLockRange` and the history `surface` in v13; the shared condition
+  pool in v14), controller with the page's
   in-memory draft, the wallpaper-group page reachable from the visible-range
-  page's More menu / its own bottom-bar entry, the engine's closed loop (Dart
+  page's More menu / its own pinned navigation destination, the engine's closed loop (Dart
   baking + native slot queue), global gestures, the immersive view page, per-group
   home/lock effects with a copy-to-other-groups grid, per-group auto-advance
   (interval + ordering, scheduled through the shared WorkManager chain), the
@@ -42,12 +43,21 @@ shape the design:
 - the notification's priority on the lock screen is **switching groups**, not
   changing the photo.
 
-The home range is mandatory and keeps its historical id
-(`wallpaperGroupRangeId`); turning the switch on creates `$groupId.lock.range`
-with owner `$groupId.lock`, once, by copying the home range. Turning the switch
-off only hides that range: re-enabling reuses the narrowing the user already
-made. Deleting a group deletes both ranges and their rules.
+**One condition pool, two marks.** A group stores its conditions once: the single
+`wallpaper`-scope range row (`<groupId>.range`) is its pool, and every base/rule
+carries a `surfaces` bit mask (`1` home, `2` lock; the base's mask is
+`baseSurfaces`). Home and lock are *projections* of that pool
+(`projectWallpaperGroupRange`), with the historical per-surface ids, so
+`state.json`, the decoy range id and the history keep addressing the same
+ranges. The page lists each condition once with two marks; only the lamped
+surface is edited, and tapping a tile switches that surface's mark.
+`mergeWallpaperGroupRange` folds an externally written projection (the pin
+sheet's write-back) back into the pool without disturbing the other surface.
 
+- **Seeding the split.** Turning the switch on the first time marks every
+  condition the home surface uses for the lock surface too, so the two start
+  identical; `lockRangeSeeded` remembers that and later toggles only hide the
+  lock marks, so the narrowing the user made survives.
 - **One frame, not a queue.** The decoy advances only with time, so it has a
   single baked file (`state.json` `lock`) instead of the home queue's three
   slots. It is baked at the surface size with the group's lock effects already
@@ -56,14 +66,16 @@ made. Deleting a group deletes both ranges and their rules.
   the lock screen is ignored, and the bar greys its photo button there (the
   group buttons stay live, because switching groups is the lock surface's
   priority). The app's view page has a home/lock switch, and its previous/next
-  controls are the only manual way to step the decoy.
+  controls are the only manual way to step the decoy — they work before the
+  decoy has a frame, so the first step bakes one.
 - **The walk is per group and self-healing.** A record that left the range, or
   that belongs to a group the user switched away from, is skipped when stepping
   back, and dropped once nothing older can be shown, so "previous lock photo"
   never stays a dead button.
 - **Shared interval.** The group's interval advances both surfaces in one run.
   An interval run picks a new decoy photo; a home "next photo" does not touch
-  the lock surface.
+  the lock surface (a home change advances the home queue only, and
+  `_syncLock` keeps the decoy's entry unless it is missing or the range moved).
 - **History by surface.** `grouped_wallpaper_history.surface` splits the
   records, and the history page's More menu filters by surface. Clearing still
   clears everything.
@@ -76,49 +88,41 @@ made. Deleting a group deletes both ranges and their rules.
   the lock screen draws a live wallpaper. The page warns when the decoy cannot
   be shown (`none`/`other`); older devices answer `unknown` and only the About
   text explains the limit.
+- **Migration v14.** The old lock range row is folded into the pool: identical
+  conditions merge into one row marked for both surfaces, a lock-only rule moves
+  into the pool row marked for the lock surface, an identical base is marked for
+  both, and a *different* lock base becomes a lock-only restriction (an
+  unrestricted base AND those filters is the same range).
 
 
 
-The wallpaper is a peer of the visible range, not a hidden sub-page of it, so the
-bar derives its own entry instead of writing it into `bottomNavigationActions`:
-the user's list stays theirs, and the entry can be closed and reopened.
+## Navigation
 
-- `wallpaper.groupedNavMode` (AppMeta) picks one of three placements:
-  `shared` (one entry, a shell flipping between the two pages, the original
-  setup), `separateLeft` and `separateRight` (its own entry immediately left or
-  right of the visible-range entry). The default is `separateRight`.
-- `withWallpaperNavDestinations` composes `withVisibleRangeDestination` and
-  inserts the entry next to the range entry wherever the user moved it. It
-  derives nothing while picking a photo, in `shared` mode, when the entry was
-  closed, or when the user pinned `/wallpaper_groups` in their own list.
-- `wallpaper.groupedNavEntryClosed` (AppMeta) is the close switch. It lives on the
-  wallpaper page's More, and only while the entry is derived: a pinned entry is
-  the user's, so the menu leaves it alone. Closing removes the entry the page was
-  reached from, so the page hands the screen back to the visible range instead of
-  staying on a destination the bar no longer shows.
-- The visible range page's More keeps "Wallpaper groups": in `shared` mode it
-  flips the one entry's page, and in a separate mode it opens the page through the
-  bar's own destination, so the bar highlights the wallpaper entry rather than
-  leaving the range entry selected. Opening the page this way reopens a closed
-  derived entry first, because a destination the bar does not show cannot be
-  highlighted.
-- Closing is undone from the visible range page: while the derived entry is
-  closed it offers "Show the wallpaper group entry". The close control sends the
-  user back there, so the page that receives them owns the way back; a pinned
-  entry is managed in the navigation editor instead.
-- A tap on a fork page's own entry is a no-op while that page is on top (these
-  destinations are pushed, not top-level, so a second tap would stack a copy). In
-  `shared` mode the range entry's tap also points the shell back at the range
-  page.
-- `GroupedWallpaperNavController` caches both values for the bar, which is built
-  synchronously and cannot read the database; it loads at startup with the other
-  essentials and notifies on every change.
+The wallpaper page is a navigation destination of its own, not a sub-page of the
+visible-range editor and not an entry the bar adds on its own: it is a settings
+page that is rarely opened, so the default bar does not carry it.
+
+- The visible range page's More opens it with `AvesNavItem(route).goTo(topLevel:
+  true)`, the same navigation a bar destination performs: the stack is replaced,
+  and the bar highlights the entry when the user pinned it (and highlights
+  nothing when they did not).
+- The bar no longer derives a wallpaper entry. `withWallpaperNavDestinations`,
+  `GroupedWallpaperNavMode`, `GroupedWallpaperNavController` and the shared shell
+  are retained while whether that entry ships again is open, but nothing calls
+  them; `visibleRangeDestination` never leaves `range`, so a stale value (a
+  gesture cold start, a value stored by an older build) can never turn the range
+  entry into the wallpaper page.
+- `/wallpaper_groups` stays in the navigation editor, so a user who wants it on
+  the bar can pin it there; a pinned entry is theirs and the page never closes
+  it.
+- Notifications, the three-finger gesture and session restore deep-link the route
+  directly, so the page also opens without the destination being on the bar.
 - The default bar is All / Favourites / Albums / Visible range: the video
   shortcut is gone and the range entry is stored like any other destination (so
   the user can move or remove it), while the builder still re-appends it when it
   is missing. Existing users keep their own list.
-- Settings → "Visible & wallpaper" collects the switches: the nav mode, the
-  notification bar, the history limit, the history page, the gestures page, the
+- Settings → "Visible & wallpaper" collects the switches: the notification bar,
+  the lock switches, the history limit, the history page, the gestures page, the
   photo-change animation, the frame retention, and the four Muzei
   confirmations/prefetch options that used to sit under "Advanced". The group page
   keeps the same actions as contextual shortcuts; both read one store.
@@ -314,6 +318,19 @@ no touch events still works through its two commands. Each signal logs
 `tap.signal src=touch|command fired=…` so a future report can tell a gesture the
 gate ate from one that never arrived.
 
+A double tap advances the **home** queue only: the lock decoy has no gesture and
+`_syncLock` keeps its entry unless it is missing or its range moved. The lock
+photo changes on the group's interval, or from the view page's previous/next
+controls. A manual home step additionally restarts the auto-advance countdown
+(`restartAutoAdvance`), which the About text lists as a known limitation.
+
+A gesture that opens a page passes the service's own context to
+`GroupedWallpaperAppBridge`: an app-provided context would still be null when the
+wallpaper fires before the app ever ran, which used to drop the gesture without a
+trace. The split-lock gate asks `KeyguardManager.isKeyguardLocked` at gesture
+time instead of trusting the cached broadcast state, so a missed
+`ACTION_USER_PRESENT` can no longer swallow every gesture.
+
 ### Scroll effect
 
 The wallpaper can pan with the home pages, the way the static wallpaper's "use
@@ -334,9 +351,11 @@ surface simply has no pan range.
 
 Two guards keep the wider frame honest:
 
-- a launcher that never pans (`onOffsetsChanged` reports `xOffsetStep == 0`)
-  gets surface-sized frames anyway, or the sides would only be cropped away; an
-  unknown step (no callback yet) follows the switch;
+- the switch alone decides: a launcher that never pans draws the wide frame
+  centered, which looks exactly like the surface crop, and a launcher that
+  reports no step (no callback yet) is no different. Asking for `xOffsetStep` is
+  what used to gate the wide frame, and that gate is what left the wallpaper
+  with nothing to pan when a launcher scrolled without reporting a step;
 - the lock screen does not pan, so the renderer centers its window (`offsetX`
   `0.5`) instead of leaving it on the last home page.
 
@@ -448,10 +467,9 @@ The bar only exists while this service is the wallpaper the system is showing:
   a leftover.
 
 Tapping the body opens the immersive view of the photo on screen, exactly like
-the three-finger gesture: the app pushes the shared bottom-bar destination
-(`/visible_range`, rendering the wallpaper page on the playing group) below the
-view, so backing out lands on the wallpaper page with its entry highlighted. The
-expanded first button only switches the button set. The screen broadcasts
+the three-finger gesture: the app puts the group page (`/wallpaper_groups`, on
+the playing group) below the view, so backing out lands on the wallpaper page.
+The expanded first button only switches the button set. The screen broadcasts
 (`ACTION_SCREEN_OFF`, `ACTION_SCREEN_ON`, `ACTION_USER_PRESENT`) switch the layout
 family and the home/lock effect image together, and return the button set to the
 keyguard's default.
@@ -583,19 +601,22 @@ bar re-posts once when the wait starts and once when it ends.
 A three-finger tap opens an immersive view of the current photo, modelled on
 Muzei's artwork screen: pan and zoom, chrome visible on open and toggled by a
 tap, the group · count · title at the bottom left and the menu at the bottom
-right. The menu has 「Open wallpaper groups」, 「Open in gallery」, share and
-「Usage history」. A
+right. The menu has 「Open wallpaper groups」, 「Open in gallery」, share,
+「Usage history」, the home/lock switch and the notification switch. A
 wallpaper gesture has no Activity, so the view is pushed over the playing
 group's page, itself over the app's home page: back walks view → group page →
 home instead of closing the app, and the group page starts on the group being
 played. Opened from the group page, 「Open wallpaper groups」 pops back to it.
 
-The page below the view is the shared bottom-bar destination
-(`VisibleRangeShellPage` with `visibleRangeDestination` set to the wallpaper
-page), not the standalone `/wallpaper_groups` route: that way the bar highlights
-the entry the user is on instead of falling back to its first item, and the
-page's own menu keeps working the same way it does from the bar. The
+The page below the view is the `/wallpaper_groups` route itself — the page is a
+navigation destination of its own, so it needs no shared shell. The
 notification's body opens the same view, so both entry points land identically.
+
+The home/lock switch is always listed: for a split group it switches which
+surface the page describes, and for a group without a split it is greyed with
+「This group has no lock screen setup」 instead of disappearing. Its previous/next
+controls act on the decoy and are enabled as soon as the group has a lock range,
+so the first step bakes the frame the page was never able to show before.
 
 ### Ordering
 
@@ -801,8 +822,10 @@ skipped the run as "the page is listening", and the tap landed in the gap.
 - **Current**: at most one group carries `current`. Disabling or deleting the
   current group clears the flag, i.e. falls back to group 0.
 - **Range ownership**: each group owns exactly one `wallpaper`-scope visible
-  range, whose id is *derived* (`wallpaperGroupRangeId`), never stored. Deleting
-  a group deletes its range, rules and applied targets in the same transaction.
+  range — its condition pool — whose id is *derived* (`wallpaperGroupRangeId`),
+  never stored. Home and lock are projections of it; the lock's projected id
+  (`wallpaperGroupLockRangeId`) is derived too. Deleting a group deletes the pool,
+  its rules and applied targets in the same transaction.
 
 ## Defaults
 
@@ -872,7 +895,9 @@ The gallery range and a group range are independent data sets, and both constrai
 browsing. The group page publishes the range of the group it shows through
 `VisibleRangeGate`, so the media set, albums, search and every other browsing
 surface see the gallery range **and** the group range — exactly the photos the
-wallpaper may use. The intersection is the default on purpose: a user may have
+wallpaper may use. The published range is the **lamped surface's projection**, not
+the pool: the other surface's marks never narrow browsing. The intersection is the
+default on purpose: a user may have
 restricted the gallery for privacy and still hand the phone over to show the
 wallpaper, so the page must not widen what the gallery hides. It is also the way
 to see which photos the configured groups actually contain, so it does not depend

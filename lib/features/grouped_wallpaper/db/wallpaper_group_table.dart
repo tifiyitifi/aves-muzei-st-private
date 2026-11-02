@@ -64,6 +64,13 @@ class WallpaperGroupRows extends Table {
   /// instead of deleting it, so the user's narrowing survives a toggle.
   BoolColumn get separateLockRange => boolean().named('separateLockRange').withDefault(const Constant(false))();
 
+  /// Whether the first enable of [separateLockRange] already seeded the lock
+  /// surface from the home one.
+  ///
+  /// The seed runs once: after it, re-enabling the split reuses the marks the
+  /// user left on the lock surface instead of copying the home ones again.
+  BoolColumn get lockRangeSeeded => boolean().named('lockRangeSeeded').withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

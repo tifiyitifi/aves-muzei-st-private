@@ -138,22 +138,26 @@ void main() {
 
     test('Visible & wallpaper is fully migrated', () {
       final keys = metaSettingsDefsFor(SettingsCategory.wallpaper).map((def) => def.key).toList();
-      expect(keys, hasLength(13));
-      expect(keys, containsAll([
-        WallpaperGroupStore.keyNavMode,
-        WallpaperLockStore.keyVisibleRangeLockId,
-        WallpaperLockStore.keyGroupSwitchLocked,
-        WallpaperGroupStore.keyNotification,
-        WallpaperGroupStore.keyTransition,
-        WallpaperGroupStore.keyFrameRetention,
-        WallpaperGroupStore.keyHistoryLimit,
-        MetaPageKeys.wallpaperHistory,
-        MetaPageKeys.wallpaperGestures,
-        WallpaperPrefetchSetting.key,
-        WallpaperSourceResetSetting.key,
-        WallpaperSourceDeleteSetting.key,
-        WallpaperViewerDeleteSetting.key,
-      ]));
+      // The wallpaper page's navigation mode is gone: it is a navigation
+      // destination of its own, reached from the visible-range page.
+      expect(keys, hasLength(12));
+      expect(
+        keys,
+        containsAll([
+          WallpaperLockStore.keyVisibleRangeLockId,
+          WallpaperLockStore.keyGroupSwitchLocked,
+          WallpaperGroupStore.keyNotification,
+          WallpaperGroupStore.keyTransition,
+          WallpaperGroupStore.keyFrameRetention,
+          WallpaperGroupStore.keyHistoryLimit,
+          MetaPageKeys.wallpaperHistory,
+          MetaPageKeys.wallpaperGestures,
+          WallpaperPrefetchSetting.key,
+          WallpaperSourceResetSetting.key,
+          WallpaperSourceDeleteSetting.key,
+          WallpaperViewerDeleteSetting.key,
+        ]),
+      );
     });
 
     test('the Muzei wallpaper options left Advanced', () {

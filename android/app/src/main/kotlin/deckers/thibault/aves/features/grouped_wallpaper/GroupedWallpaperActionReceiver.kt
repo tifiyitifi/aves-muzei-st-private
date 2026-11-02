@@ -64,7 +64,7 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
      */
     private fun switchActions(context: Context) {
         if (!GroupedLiveWallpaperService.isRunning) {
-            GroupedWallpaperAppBridge.requestGroupPage()
+            GroupedWallpaperAppBridge.requestGroupPage(context)
             return
         }
         GroupedWallpaperNotification.toggleGroupActions(context)
@@ -135,7 +135,7 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
     private fun toggleGroupLock(context: Context) {
         val locked = GroupedWallpaperStateFile.read(context)?.switchLocked == true
         if (locked) {
-            GroupedWallpaperAppBridge.requestGroupUnlock()
+            GroupedWallpaperAppBridge.requestGroupUnlock(context)
             return
         }
         if (!GroupedWallpaperNotification.beginGroupLock(context)) return

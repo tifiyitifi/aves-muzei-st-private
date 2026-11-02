@@ -4,6 +4,7 @@ import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_condition_pool.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
@@ -16,17 +17,18 @@ import 'package:aves/services/common/services.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
-/// Edits the selected wallpaper group's visible range for the wallpaper page.
+/// Edits the selected wallpaper group's condition pool for the wallpaper page.
 ///
-/// The page is the range editor with a group switcher on top, so this controller
-/// is the group-scoped counterpart of [VisibleRangeController]: every write goes
-/// through [WallpaperGroupController.saveGroupRange], which keeps the
-/// "one group owns exactly one `wallpaper` range" invariant in one place.
+/// A group stores its conditions once: the pool is one `wallpaper` range row, and
+/// home/lock only mark which conditions they use. The page edits the pool, while
+/// the engine, the browsing overlay and the pin sheet consume
+/// [projectWallpaperGroupRange] projections of it, so there is exactly one write
+/// path and one place that decides what a surface shows.
 ///
-/// The page's own view preferences (the active-style form) are stored apart from
-/// the visible-range page's, so the two pages can look different: a list here and
-/// a grid there, for example. The layout itself is already isolated by the page's
-/// route key.
+/// The page's own view preferences (the active-style form, the surface being
+/// edited) are stored apart from the visible-range page's, so the two pages can
+/// look different: a list here and a grid there, for example. The layout itself is
+/// already isolated by the page's route key.
 class WallpaperGroupRangeController extends ChangeNotifier {
   /// AppMeta key of this page's active-style form.
   static const keyActiveStyle = 'wallpaper.page.activeStyle';
@@ -34,7 +36,7 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   /// AppMeta key of this page's group switcher style.
   static const keySwitcherStyle = 'wallpaper.page.groupSwitcherStyle';
 
-  /// AppMeta key of the surface the range editor is showing.
+  /// AppMeta key of the surface the page is editing.
   ///
   /// It is a page preference, not a group setting: reopening the page returns to
   /// the surface the user was last narrowing.
@@ -52,8 +54,7 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   bool _initialized = false;
   bool _loading = false;
   String? _selectedGroupId;
-  VisibleRange? _range;
-  VisibleRange? _lockRange;
+  VisibleRange? _pool;
   WallpaperSurface _surface = WallpaperSurface.home;
   VisibleRangeActiveStyle _activeStyle = VisibleRangeActiveStyle.section;
   WallpaperGroupSwitcherStyle _switcherStyle = WallpaperGroupSwitcherStyle.chips;
@@ -86,23 +87,36 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   /// Whether the viewed group has a decoy lock surface.
   bool get separateLockRange => selectedGroup?.separateLockRange ?? false;
 
-  /// The viewed surface's range, or null for group 0.
-  VisibleRange? get range => _surface.isLock ? _lockRange : _range;
+  /// The whole condition pool of the viewed group, or null for group 0.
+  ///
+  /// It holds every condition once, including the ones no surface marks: the page
+  /// lists them so they can be switched back on.
+  VisibleRange? get pool => _pool;
+
+  /// The viewed surface's projection, or null for group 0.
+  VisibleRange? get range => _surface.isLock ? lockRange : homeRange;
 
   /// The viewed group's home range, whatever surface is active.
-  VisibleRange? get homeRange => _range;
+  VisibleRange? get homeRange => _project(WallpaperSurface.home);
 
   /// The viewed group's lock range, or null when the split is off.
-  VisibleRange? get lockRange => _lockRange;
+  VisibleRange? get lockRange => separateLockRange ? _project(WallpaperSurface.lock) : null;
+
+  VisibleRange? _project(WallpaperSurface surface) {
+    final pool = _pool;
+    final groupId = _selectedGroupId;
+    if (pool == null || groupId == null) return null;
+    return projectWallpaperGroupRange(pool, groupId: groupId, surface: surface);
+  }
 
   VisibleRangeActiveStyle get activeStyle => _activeStyle;
 
   WallpaperGroupSwitcherStyle get switcherStyle => _switcherStyle;
 
-  /// A locked range refuses edits, like on the visible-range page.
+  /// A locked pool refuses edits, like on the visible-range page.
   bool get canEdit {
-    final range = this.range;
-    return range != null && !range.locked;
+    final pool = _pool;
+    return pool != null && !pool.locked;
   }
 
   Future<void> init() async {
@@ -110,7 +124,7 @@ class WallpaperGroupRangeController extends ChangeNotifier {
     try {
       await groupController.init();
       // The page owns the in-memory draft: the first open in a process loads
-      // every group and range, and later edits stay here until the user saves.
+      // every group and pool, and later edits stay here until the user saves.
       await groupController.beginDraft();
       groupController.addListener(_onGroupControllerChanged);
       final db = await _openDb();
@@ -140,33 +154,29 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   /// Re-reads the saved groups after another surface moved the current one.
   Future<void> reloadGroups() => groupController.reloadSaved();
 
-  /// Re-reads the selected range when the group aggregate changed elsewhere
+  /// Re-reads the selected pool when the group aggregate changed elsewhere
   /// (a draft edit from the pin sheet, a group rename, discard).
   void _onGroupControllerChanged() {
     final id = _selectedGroupId;
-    if (id != null) unawaited(_reloadRange(id));
+    if (id != null) unawaited(_reloadPool(id));
     notifyListeners();
   }
 
-  Future<void> _reloadRange(String id) async {
+  Future<void> _reloadPool(String id) async {
     final token = ++_rangeToken;
-    final group = groups.firstWhereOrNull((candidate) => candidate.id == id);
-    final range = await groupController.groupRange(id);
-    final lockRange = group?.separateLockRange == true ? await groupController.groupRange(id, surface: WallpaperSurface.lock) : null;
+    final pool = await groupController.groupPool(id);
     if (token != _rangeToken || _selectedGroupId != id) return;
-    _range = range;
-    _lockRange = lockRange;
+    _pool = pool;
     notifyListeners();
   }
 
-  /// Shows [id]'s range; null selects group 0 (no range to edit).
+  /// Shows [id]'s pool; null selects group 0 (no range to edit).
   Future<void> selectGroup(String? id) async {
     wallpaperGroupPageSession
       ..initialized = true
       ..selectedGroupId = id;
     _selectedGroupId = id;
-    _range = null;
-    _lockRange = null;
+    _pool = null;
     _loading = id != null;
     final token = ++_rangeToken;
     // A group without a decoy surface has nothing to show on the lock side, so
@@ -176,12 +186,10 @@ class WallpaperGroupRangeController extends ChangeNotifier {
     notifyListeners();
     if (id == null) return;
     try {
-      final range = await groupController.groupRange(id);
-      final lockRange = group?.separateLockRange == true ? await groupController.groupRange(id, surface: WallpaperSurface.lock) : null;
-      // The user may have switched again while the range was loading.
+      final pool = await groupController.groupPool(id);
+      // The user may have switched again while the pool was loading.
       if (token != _rangeToken || _selectedGroupId != id) return;
-      _range = range;
-      _lockRange = lockRange;
+      _pool = pool;
     } finally {
       if (token == _rangeToken) _loading = false;
       notifyListeners();
@@ -198,15 +206,15 @@ class WallpaperGroupRangeController extends ChangeNotifier {
 
   /// Turns the viewed group's decoy lock surface on or off.
   ///
-  /// Enabling copies the home range once in the controller, so the two start
+  /// Enabling seeds the lock marks once from the home ones, so the two start
   /// identical and then narrow independently; disabling only hides the lock
-  /// range and moves the editor back to home.
+  /// marks, so re-enabling reuses the narrowing the user already made.
   Future<void> setSeparateLockRange(bool enabled) async {
     final id = _selectedGroupId;
     if (id == null) return;
     await groupController.setSeparateLockRange(id, enabled);
     if (!enabled && _surface.isLock) await _setSurface(WallpaperSurface.home);
-    await _reloadRange(id);
+    await _reloadPool(id);
     notifyListeners();
   }
 
@@ -229,102 +237,105 @@ class WallpaperGroupRangeController extends ChangeNotifier {
     await AppMetaStore(await _openDb()).write({keySwitcherStyle: style.name});
   }
 
-  Future<void> toggleBaseActive() => _update((range) {
-        if (range.baseFilters.isEmpty) return range;
-        return range.copyWith(baseActive: !range.baseActive);
-      });
+  // conditions
 
-  Future<void> setBaseActive(bool active) => _update((range) {
-        if (range.baseFilters.isEmpty || range.baseActive == active) return range;
-        return range.copyWith(baseActive: active);
-      });
+  /// Adds or removes [surface]'s mark on one rule.
+  Future<void> toggleRuleSurface(String ruleId, WallpaperSurface surface) => _updatePool((pool) {
+    final rule = pool.ruleById(ruleId);
+    if (rule == null) return pool;
+    final enabled = !WallpaperConditionSurfaces.contains(rule.surfaces, surface);
+    return pool.copyWith(
+      rules: [
+        for (final candidate in pool.rules) candidate.id == ruleId ? candidate.copyWith(surfaces: WallpaperConditionSurfaces.withSurface(candidate.surfaces, surface, enabled)) : candidate,
+      ],
+    );
+  });
 
-  /// Deletes the selected conditions; the base is cleared when [base] is true.
-  Future<void> deleteConditions({bool base = false, Set<String> ruleIds = const {}}) => _update((range) {
-        if (!base && ruleIds.isEmpty) return range;
-        return range.copyWith(
-          baseName: base ? '' : range.baseName,
-          basePresetId: base ? '' : range.basePresetId,
-          baseFilters: base ? const {} : range.baseFilters,
-          baseActive: true,
-          rules: range.rules.where((rule) => !ruleIds.contains(rule.id)).toList(),
-        );
-      });
-
-  Future<void> toggleRule(String ruleId) => _update((range) {
-        final rule = range.ruleById(ruleId);
-        if (rule == null) return range;
-        return range.copyWith(
-          rules: [
-            for (final candidate in range.rules)
-              if (candidate.id == ruleId) candidate.copyWith(active: !candidate.active) else candidate,
-          ],
-        );
-      });
-
-  Future<void> renameRule(String ruleId, {required String label, String? description}) => _update((range) {
-        return range.copyWith(
-          rules: [
-            for (final rule in range.rules)
-              if (rule.id == ruleId)
-                rule.copyWith(
-                  label: label.trim().isEmpty ? rule.label : label.trim(),
-                  description: description,
-                )
-              else
-                rule,
-          ],
-        );
-      });
-
-  Future<void> deleteRules(Set<String> ids) => _update((range) => range.copyWith(rules: range.rules.where((rule) => !ids.contains(rule.id)).toList()));
-
-  /// Replaces one rule with [rule], keeping its place in the list.
+  /// Marks or clears the group's base on one surface.
   ///
-  /// Used by the rule actions to change a rule's kind; the caller appends to the
-  /// target section by setting [VisibleRangeRule.position] first.
-  Future<void> updateRule(VisibleRangeRule rule) => _update((range) {
-        if (range.ruleById(rule.id) == null) return range;
-        return range.copyWith(rules: [for (final candidate in range.rules) candidate.id == rule.id ? rule : candidate]);
-      });
+  /// A surface uses at most one base, so this is a single switch: clearing it
+  /// keeps the filters in the pool for the other surface or for later.
+  Future<void> setBaseSurface(WallpaperSurface surface, bool enabled) => _updatePool((pool) {
+    if (enabled && pool.baseFilters.isEmpty) return pool;
+    if (WallpaperConditionSurfaces.contains(pool.baseSurfaces, surface) == enabled) return pool;
+    return pool.copyWith(baseSurfaces: WallpaperConditionSurfaces.withSurface(pool.baseSurfaces, surface, enabled));
+  });
+
+  /// Deletes the given conditions from the pool: both surfaces lose them.
+  ///
+  /// Unmarking one surface is [toggleRuleSurface]; this is the explicit "this
+  /// condition is gone" action.
+  Future<void> deleteConditions({bool base = false, Set<String> ruleIds = const {}}) => _updatePool((pool) {
+    if (!base && ruleIds.isEmpty) return pool;
+    return pool.copyWith(
+      baseName: base ? '' : pool.baseName,
+      basePresetId: base ? '' : pool.basePresetId,
+      baseFilters: base ? const {} : pool.baseFilters,
+      baseSurfaces: base ? 0 : pool.baseSurfaces,
+      rules: pool.rules.where((rule) => !ruleIds.contains(rule.id)).toList(),
+    );
+  });
+
+  Future<void> renameRule(String ruleId, {required String label, String? description}) => _updatePool((pool) {
+    return pool.copyWith(
+      rules: [
+        for (final rule in pool.rules)
+          if (rule.id == ruleId)
+            rule.copyWith(
+              label: label.trim().isEmpty ? rule.label : label.trim(),
+              description: description,
+            )
+          else
+            rule,
+      ],
+    );
+  });
+
+  Future<void> deleteRules(Set<String> ids) => _updatePool((pool) => pool.copyWith(rules: pool.rules.where((rule) => !ids.contains(rule.id)).toList()));
+
+  /// Replaces one rule with [rule], keeping it in the pool.
+  Future<void> updateRule(VisibleRangeRule rule) => _updatePool((pool) {
+    if (pool.ruleById(rule.id) == null) return pool;
+    return pool.copyWith(rules: [for (final candidate in pool.rules) candidate.id == rule.id ? rule : candidate]);
+  });
 
   /// Moves a rule to another section, appended after the rules already there.
-  Future<void> moveRuleToKind(String ruleId, VisibleRangeRuleKind kind) => _update((range) {
-        final rule = range.ruleById(ruleId);
-        if (rule == null || rule.kind == kind) return range;
-        final moved = rule.copyWith(kind: kind, position: range.rulesOf(kind).length);
-        return range.copyWith(rules: [for (final candidate in range.rules) candidate.id == ruleId ? moved : candidate]);
-      });
+  Future<void> moveRuleToKind(String ruleId, VisibleRangeRuleKind kind) => _updatePool((pool) {
+    final rule = pool.ruleById(ruleId);
+    if (rule == null || rule.kind == kind) return pool;
+    final moved = rule.copyWith(kind: kind, position: pool.rulesOf(kind).length);
+    return pool.copyWith(rules: [for (final candidate in pool.rules) candidate.id == ruleId ? moved : candidate]);
+  });
 
   /// Turns a rule into the group's base and removes the rule.
   ///
-  /// The base is overwritten when the group already has one, exactly like the
-  /// visible-range page: the base is one slot, not a list.
-  Future<void> moveRuleToBase(String ruleId, {required String name}) => _update((range) {
-        final rule = range.ruleById(ruleId);
-        if (rule == null) return range;
-        return range.copyWith(
-          baseName: name.trim(),
-          basePresetId: '',
-          baseFilters: rule.filters,
-          baseActive: true,
-          rules: range.rules.where((candidate) => candidate.id != ruleId).toList(),
-        );
-      });
+  /// The base is one slot shared by both surfaces, exactly like a rule: it takes
+  /// the rule's filters and the surfaces the rule was marked for.
+  Future<void> moveRuleToBase(String ruleId, {required String name}) => _updatePool((pool) {
+    final rule = pool.ruleById(ruleId);
+    if (rule == null) return pool;
+    return pool.copyWith(
+      baseName: name.trim(),
+      basePresetId: '',
+      baseFilters: rule.filters,
+      baseSurfaces: rule.surfaces,
+      rules: pool.rules.where((candidate) => candidate.id != ruleId).toList(),
+    );
+  });
 
-  Future<void> setOrder(VisibleRangeOrder order) => _update((range) => range.copyWith(order: order));
+  Future<void> setOrder(VisibleRangeOrder order) => _updatePool((pool) => pool.copyWith(order: order));
 
-  Future<void> lockWithPreset(VisibleRangeLockPreset preset) => _update(
-        (range) => range.copyWith(locked: true, permissions: VisibleRangePermissions.of(preset)),
-        allowLocked: true,
-      );
+  Future<void> lockWithPreset(VisibleRangeLockPreset preset) => _updatePool(
+    (pool) => pool.copyWith(locked: true, permissions: VisibleRangePermissions.of(preset)),
+    allowLocked: true,
+  );
 
-  Future<void> lock({required VisibleRangePermissions permissions}) => _update(
-        (range) => range.copyWith(locked: true, permissions: permissions),
-        allowLocked: true,
-      );
+  Future<void> lock({required VisibleRangePermissions permissions}) => _updatePool(
+    (pool) => pool.copyWith(locked: true, permissions: permissions),
+    allowLocked: true,
+  );
 
-  Future<void> unlock() => _update((range) => range.copyWith(locked: false), allowLocked: true);
+  Future<void> unlock() => _updatePool((pool) => pool.copyWith(locked: false), allowLocked: true);
 
   // group management
 
@@ -371,7 +382,7 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   /// The viewed group's effects, or identity when the group is unknown.
   WallpaperEffectsConfig effectsOf(String id) => groupController.effectsOf(id);
 
-  /// Applies effects immediately, even while the page's range draft is open.
+  /// Applies effects immediately, even while the page's pool draft is open.
   Future<void> setEffects(String id, WallpaperEffectsConfig effects) => groupController.setEffects(id, effects);
 
   /// Copies effects to other groups from the "sync to other groups" grid.
@@ -393,29 +404,23 @@ class WallpaperGroupRangeController extends ChangeNotifier {
     await selectGroup(groups.any((group) => group.id == id) ? id : groups.firstOrNull?.id);
   }
 
-  /// Applies [transform] to the selected range and persists it.
+  /// Applies [transform] to the condition pool and persists it.
   ///
-  /// A locked range is read-only, so the guard sits here instead of at every
-  /// call site. Locking and unlocking are the only writes a locked range
-  /// accepts, otherwise it could never be opened again. The range id is derived
-  /// from the group, so the group controller's save guard keeps another group's
-  /// range out of this one.
-  Future<void> _update(VisibleRange Function(VisibleRange range) transform, {bool allowLocked = false}) async {
-    final range = this.range;
-    if (range == null) return;
-    if (range.locked && !allowLocked) return;
-    final next = transform(range);
-    if (next == range) return;
-    if (_surface.isLock) {
-      _lockRange = next;
-    } else {
-      _range = next;
-    }
+  /// A locked pool is read-only, so the guard sits here instead of at every call
+  /// site. Locking and unlocking are the only writes a locked pool accepts,
+  /// otherwise it could never be opened again.
+  Future<void> _updatePool(VisibleRange Function(VisibleRange pool) transform, {bool allowLocked = false}) async {
+    final pool = _pool;
+    if (pool == null) return;
+    if (pool.locked && !allowLocked) return;
+    final next = transform(pool);
+    if (next == pool) return;
+    _pool = next;
     notifyListeners();
     try {
-      await groupController.saveGroupRange(next);
+      _pool = await groupController.saveGroupPool(next);
     } catch (error, stack) {
-      groupedWallpaperLog.e('failed to save a wallpaper group range', error, stack);
+      groupedWallpaperLog.e('failed to save a wallpaper group pool', error, stack);
       // Re-read so the page never shows an unsaved state as saved.
       final id = _selectedGroupId;
       if (id != null) await selectGroup(id);

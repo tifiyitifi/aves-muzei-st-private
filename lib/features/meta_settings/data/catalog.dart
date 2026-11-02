@@ -478,15 +478,6 @@ final List<SettingDef> _navigationDefs = [
 /// the same actions as contextual shortcuts, and both read one store.
 final List<SettingDef> _wallpaperDefs = [
   SettingDef(
-    key: WallpaperGroupStore.keyNavMode,
-    category: SettingsCategory.wallpaper,
-    widgetKind: SettingWidgetKind.custom,
-    title: (context) => context.l10n.settingsWallpaperNavMode,
-    editorKey: MetaEditorKeys.wallpaperNavMode,
-    availabilityKey: DefVisibility.notTv,
-    sortOrder: 10,
-  ),
-  SettingDef(
     key: WallpaperLockStore.keyVisibleRangeLockId,
     category: SettingsCategory.wallpaper,
     widgetKind: SettingWidgetKind.custom,

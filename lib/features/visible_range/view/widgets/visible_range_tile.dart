@@ -54,6 +54,13 @@ class VisibleRangeTile extends StatelessWidget {
 
   /// Layout-specific text for a placeholder tile; empty keeps the candidate's.
   final String labelOverride;
+
+  /// Which wallpaper surfaces use this condition, for the two marks.
+  ///
+  /// Null on the gallery page and on a surface summary, where the section already
+  /// names the surface.
+  final ({bool home, bool lock})? surfaceMarks;
+
   final VoidCallback? onTap;
   final VoidCallback? onRemove;
   final VoidCallback? onLongPress;
@@ -70,6 +77,7 @@ class VisibleRangeTile extends StatelessWidget {
     this.selecting = false,
     this.selected = false,
     this.labelOverride = '',
+    this.surfaceMarks,
     this.onTap,
     this.onRemove,
     this.onLongPress,
@@ -180,9 +188,7 @@ class VisibleRangeTile extends StatelessWidget {
     final textScaler = MediaQuery.textScalerOf(context);
     final infoHeight = showText ? CoveredFilterChip.infoHeight(extent: extent, textScaler: textScaler, showText: true) : 0.0;
     final inactiveRule = candidate.rule != null && !candidate.active;
-    final displayFilter = labelOverride.isEmpty
-        ? gridItem.filter
-        : VisibleRangeCandidateFilter(candidate, summary: summary, labelOverride: labelOverride);
+    final displayFilter = labelOverride.isEmpty ? gridItem.filter : VisibleRangeCandidateFilter(candidate, summary: summary, labelOverride: labelOverride);
     return Opacity(
       opacity: inactiveRule ? .62 : 1,
       child: AvesFilterChip(
@@ -241,6 +247,30 @@ class VisibleRangeTile extends StatelessWidget {
     );
   }
 
+  /// One home/lock mark: a letter in a small pill, filled when that surface uses
+  /// the condition.
+  Widget _buildSurfaceMark(BuildContext context, double size, String letter, bool used) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsetsDirectional.only(end: 3),
+      padding: EdgeInsets.symmetric(horizontal: size * .3, vertical: size * .05),
+      decoration: BoxDecoration(
+        color: used ? colors.primary.withValues(alpha: .16) : Colors.transparent,
+        border: Border.all(color: used ? colors.primary : colors.outlineVariant),
+        borderRadius: BorderRadius.all(Radius.circular(size * .45)),
+      ),
+      child: Text(
+        letter,
+        style: TextStyle(
+          fontSize: size * .8,
+          height: 1.1,
+          fontWeight: FontWeight.w600,
+          color: used ? colors.primary : colors.outline,
+        ),
+      ),
+    );
+  }
+
   Widget _buildDetails(BuildContext context, double extent, Color? color) {
     final colors = Theme.of(context).colorScheme;
     final count = stats?.count;
@@ -260,6 +290,13 @@ class VisibleRangeTile extends StatelessWidget {
             color: candidate.active ? colors.primary : colors.onSurfaceVariant,
           ),
           const SizedBox(width: 4),
+        ],
+        if (surfaceMarks case final marks?) ...[
+          // Every condition is stored once, so the tile says which surface(s)
+          // use it: the state icon above is only the surface being edited.
+          _buildSurfaceMark(context, iconSize, 'H', marks.home),
+          _buildSurfaceMark(context, iconSize, 'L', marks.lock),
+          const SizedBox(width: 2),
         ],
         if (countText != null)
           Flexible(

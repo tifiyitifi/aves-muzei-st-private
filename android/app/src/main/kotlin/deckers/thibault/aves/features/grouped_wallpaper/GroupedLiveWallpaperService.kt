@@ -504,8 +504,11 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             }
             if (!::renderer.isInitialized) return
             // Single-page launchers report a zero step and a zero offset; center
-            // the artwork instead of pinning it to the left edge.
-            renderer.setOffsetX(if (xOffsetStep > 0f) xOffset else 0.5f)
+            // the artwork instead of pinning it to the left edge. A step of zero
+            // must not throw a real offset away: some launchers scroll while
+            // reporting no step, and dropping the offset is what made the pan
+            // silently stop following the home pages.
+            renderer.setOffsetX(if (xOffsetStep > 0f || xOffset > 0f) xOffset else 0.5f)
         }
 
         override fun onCommand(
@@ -545,7 +548,11 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             // and the bar's group switch is the intended action there.
             val splitLock = GroupedWallpaperStateFile.read(this@GroupedLiveWallpaperService)
                 ?.let { it.lock != null || it.lockRangeId.isNotEmpty() } == true
-            if (lockScreenVisible && splitLock) {
+            // Ask the keyguard now instead of trusting the cached broadcast state:
+            // a missed ACTION_USER_PRESENT used to swallow every gesture on the
+            // home screen until the next screen cycle.
+            val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            if (keyguard.isKeyguardLocked && splitLock) {
                 Log.d(TAG, "gesture ignored on the split lock surface threeFinger=$threeFinger")
                 return
             }
@@ -617,7 +624,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
         /** Opens the grouped wallpaper's view page, like Muzei's artwork view. */
         private fun openViewPage() {
-            GroupedWallpaperAppBridge.requestView()
+            GroupedWallpaperAppBridge.requestView(this@GroupedLiveWallpaperService)
         }
 
         override fun onDestroy() {

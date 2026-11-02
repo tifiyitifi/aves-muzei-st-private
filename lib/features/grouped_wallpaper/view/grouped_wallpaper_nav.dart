@@ -53,8 +53,7 @@ bool canReopenWallpaperNavEntry({
   required GroupedWallpaperNavMode mode,
   required bool entryClosed,
   required bool pinned,
-}) =>
-    mode != GroupedWallpaperNavMode.shared && entryClosed && !pinned;
+}) => mode != GroupedWallpaperNavMode.shared && entryClosed && !pinned;
 
 /// What the visible-range page's single wallpaper entry offers.
 ///
@@ -92,11 +91,12 @@ WallpaperNavEntryAction wallpaperNavEntryAction({
 /// has to describe the bar the user actually sees, so the difference is shown
 /// read-only instead of silently missing. Order is kept: it is where the bar
 /// puts them.
-List<AvesNavItem> derivedNavDestinations(
-  List<AvesNavItem> configured, {
-  required GroupedWallpaperNavMode mode,
-  required bool entryClosed,
-}) {
-  final effective = withWallpaperNavDestinations(configured, mode: mode, entryClosed: entryClosed);
+///
+/// Only the visible-range entry is derived now: the wallpaper page is a
+/// navigation destination the user may pin themselves, not one the bar adds on
+/// its own. [withWallpaperNavDestinations] and the mode controller are retained
+/// while that decision is open, but nothing calls them.
+List<AvesNavItem> derivedNavDestinations(List<AvesNavItem> configured) {
+  final effective = withVisibleRangeDestination(configured);
   return effective.where((item) => !configured.contains(item)).toList();
 }

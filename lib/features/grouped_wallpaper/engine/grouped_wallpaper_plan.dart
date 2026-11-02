@@ -6,8 +6,10 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_condition_pool.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_layout.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
@@ -163,6 +165,20 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
 
   Future<AppDatabase> _open() async => await (provider ?? getIt<AppDatabaseProvider>()).open();
 
+  /// Loads a group's condition pool and projects the surfaces a plan needs.
+  ///
+  /// Home and lock share one stored pool, so both projections come from the same
+  /// row; the ids stay the historical per-surface ones, which is what the engine
+  /// compares against `state.json`.
+  static Future<(VisibleRange?, VisibleRange?)> _projectRanges(AppDatabase db, WallpaperGroup group) async {
+    final pool = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
+    if (pool == null) return (null, null);
+    return (
+      projectWallpaperGroupRange(pool, groupId: group.id, surface: WallpaperSurface.home),
+      group.separateLockRange ? projectWallpaperGroupRange(pool, groupId: group.id, surface: WallpaperSurface.lock) : null,
+    );
+  }
+
   @override
   Future<GroupedWallpaperPlan> load() async {
     final db = await _open();
@@ -189,9 +205,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
         frameRetention: frameRetention,
       );
     }
-    final ranges = VisibleRangeStore(db);
-    final range = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
-    final lockRange = group.separateLockRange ? await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId(group.id)) : null;
+    final (range, lockRange) = await _projectRanges(db, group);
     return GroupedWallpaperPlan(
       group: group,
       range: range,
@@ -235,14 +249,14 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       );
     }
     if (!group.current) {
-      await store.saveGroups(normalizeWallpaperGroups([
-        for (final candidate in groups) candidate.copyWith(current: candidate.id == group.id),
-      ]));
+      await store.saveGroups(
+        normalizeWallpaperGroups([
+          for (final candidate in groups) candidate.copyWith(current: candidate.id == group.id),
+        ]),
+      );
     }
     await store.writeDisabled(false);
-    final ranges = VisibleRangeStore(db);
-    final range = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
-    final lockRange = group.separateLockRange ? await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId(group.id)) : null;
+    final (range, lockRange) = await _projectRanges(db, group);
     return GroupedWallpaperPlan(
       group: group.copyWith(current: true),
       range: range,
@@ -282,12 +296,12 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     // From group 0, "next" enters at the first group and "previous" at the last.
     final start = index >= 0 ? index : (delta > 0 ? -1 : 0);
     final target = enabled[((start + delta) % enabled.length + enabled.length) % enabled.length];
-    await store.saveGroups(normalizeWallpaperGroups([
-      for (final group in groups) group.copyWith(current: group.id == target.id),
-    ]));
-    final ranges = VisibleRangeStore(db);
-    final range = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: target.id);
-    final lockRange = target.separateLockRange ? await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId(target.id)) : null;
+    await store.saveGroups(
+      normalizeWallpaperGroups([
+        for (final group in groups) group.copyWith(current: group.id == target.id),
+      ]),
+    );
+    final (range, lockRange) = await _projectRanges(db, target);
     return GroupedWallpaperPlan(
       group: target.copyWith(current: true),
       range: range,

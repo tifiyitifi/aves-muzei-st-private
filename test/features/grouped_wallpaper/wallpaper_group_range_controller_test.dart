@@ -1,13 +1,16 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_condition_pool.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
-import 'package:aves/features/visible_range/model/visible_range.dart';import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
+import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/path.dart';
 import 'package:aves/services/common/services.dart';
@@ -31,18 +34,18 @@ void main() {
   late WallpaperGroupRangeController controller;
 
   List<WallpaperGroupDefinition> definitions() => [
-        const WallpaperGroupDefinition(id: 'wallpaper.group.all', nameKey: 'wallpaperGroupDefaultAll', current: true),
-        WallpaperGroupDefinition(id: 'wallpaper.group.dcim', nameKey: 'wallpaperGroupDefaultDcim', filters: {PathFilter('/dcim')}),
-        WallpaperGroupDefinition(id: 'wallpaper.group.pictures', nameKey: 'wallpaperGroupDefaultPictures', filters: {PathFilter('/pictures')}),
-      ];
+    const WallpaperGroupDefinition(id: 'wallpaper.group.all', nameKey: 'wallpaperGroupDefaultAll', current: true),
+    WallpaperGroupDefinition(id: 'wallpaper.group.dcim', nameKey: 'wallpaperGroupDefaultDcim', filters: {PathFilter('/dcim')}),
+    WallpaperGroupDefinition(id: 'wallpaper.group.pictures', nameKey: 'wallpaperGroupDefaultPictures', filters: {PathFilter('/pictures')}),
+  ];
 
   WallpaperGroupRangeController makeController() => WallpaperGroupRangeController(
-        groupController: WallpaperGroupController(
-          injectedDatabase: db,
-          defaultLoader: () async => definitions(),
-        ),
-        injectedDatabase: db,
-      );
+    groupController: WallpaperGroupController(
+      injectedDatabase: db,
+      defaultLoader: () async => definitions(),
+    ),
+    injectedDatabase: db,
+  );
 
   setUp(() async {
     // The selected-group session is process-wide; a fresh test starts cold.
@@ -125,19 +128,21 @@ void main() {
     expect((await controller.groupController.groupRange('wallpaper.group.dcim')).isBaseUnrestricted, isTrue);
   });
 
-  test('switching the base off keeps its conditions for later', () async {
+  test('switching the base off keeps its conditions in the pool for later', () async {
     await controller.selectGroup('wallpaper.group.dcim');
-    await controller.setBaseActive(false);
+    await controller.setBaseSurface(WallpaperSurface.home, false);
 
-    expect(controller.range!.baseFilters, {PathFilter('/dcim')});
+    // The surface stops using the base, but the condition is still stored.
+    expect(controller.pool!.baseFilters, {PathFilter('/dcim')});
+    expect(controller.range!.baseFilters, isEmpty);
     expect(controller.range!.isBaseUnrestricted, isTrue);
     expect(controller.range!.resolve(), isNull);
 
-    await controller.setBaseActive(true);
+    await controller.setBaseSurface(WallpaperSurface.home, true);
     expect(controller.range!.resolve(), PathFilter('/dcim'));
   });
 
-  test('rules toggle, rename and reorder on the group range', () async {
+  test('rules are marked per surface and toggled on the pool', () async {
     await controller.selectGroup('wallpaper.group.pictures');
     final range = controller.range!;
     final rule = VisibleRangeRule(
@@ -145,13 +150,20 @@ void main() {
       rangeId: range.id,
       kind: VisibleRangeRuleKind.restriction,
       filters: {MimeFilter.image},
-      active: false,
     );
     await controller.groupController.saveGroupRange(range.copyWith(rules: [rule]));
     await controller.selectGroup('wallpaper.group.pictures');
 
-    await controller.toggleRule('r1');
-    expect(controller.range!.ruleById('r1')!.active, isTrue);
+    // A pinned rule joins the pool marked for the surface that wrote it.
+    expect(controller.range!.ruleById('r1')!.surfaces, WallpaperConditionSurfaces.home);
+
+    await controller.toggleRuleSurface('r1', WallpaperSurface.home);
+    // Unmarking this surface removes it from its range but keeps the condition.
+    expect(controller.range!.ruleById('r1'), isNull);
+    expect(controller.pool!.ruleById('r1')!.surfaces, 0);
+
+    await controller.toggleRuleSurface('r1', WallpaperSurface.home);
+    expect(controller.range!.ruleById('r1')!.surfaces, WallpaperConditionSurfaces.home);
 
     await controller.renameRule('r1', label: 'Mine');
     expect(controller.range!.ruleById('r1')!.label, 'Mine');
@@ -161,13 +173,17 @@ void main() {
 
     await controller.deleteRules({'r1'});
     expect(controller.range!.rules, isEmpty);
+    expect(controller.pool!.rules, isEmpty);
   });
 
   test('updateRule replaces one rule and leaves the others alone', () async {
-    await seedRules('wallpaper.group.pictures', (rangeId) => [
-          VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}),
-          VisibleRangeRule(id: 'r2', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, position: 1, filters: {MimeFilter.video}),
-        ]);
+    await seedRules(
+      'wallpaper.group.pictures',
+      (rangeId) => [
+        VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}),
+        VisibleRangeRule(id: 'r2', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, position: 1, filters: {MimeFilter.video}),
+      ],
+    );
 
     await controller.updateRule(controller.range!.ruleById('r1')!.copyWith(label: 'Mine', description: 'a note'));
 
@@ -178,10 +194,13 @@ void main() {
   });
 
   test('moveRuleToKind appends the rule to the target section', () async {
-    await seedRules('wallpaper.group.pictures', (rangeId) => [
-          VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}, label: 'Mine', active: false),
-          VisibleRangeRule(id: 'r2', rangeId: rangeId, kind: VisibleRangeRuleKind.supplement, filters: {MimeFilter.video}),
-        ]);
+    await seedRules(
+      'wallpaper.group.pictures',
+      (rangeId) => [
+        VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}, label: 'Mine', active: false),
+        VisibleRangeRule(id: 'r2', rangeId: rangeId, kind: VisibleRangeRuleKind.supplement, filters: {MimeFilter.video}),
+      ],
+    );
 
     await controller.moveRuleToKind('r1', VisibleRangeRuleKind.supplement);
 
@@ -189,9 +208,9 @@ void main() {
     expect(moved.kind, VisibleRangeRuleKind.supplement);
     // Appended after the supplement that was already there.
     expect(moved.position, 1);
-    // Only the section changes: the rule keeps its own conditions and toggle.
+    // Only the section changes: the rule keeps its own conditions and marks.
     expect(moved.label, 'Mine');
-    expect(moved.active, isFalse);
+    expect(moved.surfaces, WallpaperConditionSurfaces.home);
     expect(moved.filters, {MimeFilter.image});
 
     await controller.moveRuleToKind('r1', VisibleRangeRuleKind.restriction);
@@ -199,9 +218,12 @@ void main() {
   });
 
   test('moveRuleToBase turns a rule into the base', () async {
-    await seedRules('wallpaper.group.all', (rangeId) => [
-          VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.supplement, filters: {MimeFilter.video}),
-        ]);
+    await seedRules(
+      'wallpaper.group.all',
+      (rangeId) => [
+        VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.supplement, filters: {MimeFilter.video}),
+      ],
+    );
 
     await controller.moveRuleToBase('r1', name: ' Videos ');
 
@@ -214,9 +236,12 @@ void main() {
   });
 
   test('moveRuleToBase overwrites an existing base', () async {
-    await seedRules('wallpaper.group.pictures', (rangeId) => [
-          VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}),
-        ]);
+    await seedRules(
+      'wallpaper.group.pictures',
+      (rangeId) => [
+        VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}),
+      ],
+    );
 
     await controller.moveRuleToBase('r1', name: 'Images');
 
@@ -228,9 +253,12 @@ void main() {
   });
 
   test('a locked range refuses the rule actions too', () async {
-    await seedRules('wallpaper.group.pictures', (rangeId) => [
-          VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}),
-        ]);
+    await seedRules(
+      'wallpaper.group.pictures',
+      (rangeId) => [
+        VisibleRangeRule(id: 'r1', rangeId: rangeId, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}),
+      ],
+    );
     await controller.lockWithPreset(VisibleRangeLockPreset.readOnly);
 
     await controller.updateRule(controller.range!.ruleById('r1')!.copyWith(label: 'Nope'));
@@ -282,7 +310,8 @@ void main() {
     expect(controller.range!.isBaseUnrestricted, isTrue);
   });
 
-  test('the active-style form is this page\'s own preference', () async {    expect(controller.activeStyle, VisibleRangeActiveStyle.section);
+  test('the active-style form is this page\'s own preference', () async {
+    expect(controller.activeStyle, VisibleRangeActiveStyle.section);
     await controller.setActiveStyle(VisibleRangeActiveStyle.tiles);
 
     final restarted = makeController();
@@ -477,7 +506,8 @@ void main() {
       expect(copied.rules.single.rangeId, copied.id);
       expect(copied.rules.single.label, 'No videos');
       expect(copied.rules.single.filters, {MimeFilter.video});
-      expect(copied.rules.single.active, isFalse);
+      // A copied condition keeps the surface marks it was given.
+      expect(copied.rules.single.surfaces, WallpaperConditionSurfaces.home);
       // The source keeps its own rule.
       expect((await controller.groupController.groupRange('wallpaper.group.dcim')).rules.single.id, 'rule.1.0');
     });

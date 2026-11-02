@@ -112,25 +112,25 @@ class VisibleRangePermissions extends Equatable {
   VisibleRangePresetValues get presetValues => (share: share, delete: delete, edit: edit, move: move, rename: rename, hide: hide, vault: vault, trash: trash, metadata: metadata);
 
   static VisibleRangePermissions of(VisibleRangeLockPreset preset) => switch (preset) {
-        VisibleRangeLockPreset.readOnly => readOnly,
-        VisibleRangeLockPreset.manageable => manageable,
-        VisibleRangeLockPreset.full => full,
-      };
+    VisibleRangeLockPreset.readOnly => readOnly,
+    VisibleRangeLockPreset.manageable => manageable,
+    VisibleRangeLockPreset.full => full,
+  };
 
   @override
   List<Object?> get props => [share, delete, edit, move, rename, hide, vault, trash, metadata];
 
   Map<String, Object?> toMap() => {
-        'share': share,
-        'delete': delete,
-        'edit': edit,
-        'move': move,
-        'rename': rename,
-        'hide': hide,
-        'vault': vault,
-        'trash': trash,
-        'metadata': metadata,
-      };
+    'share': share,
+    'delete': delete,
+    'edit': edit,
+    'move': move,
+    'rename': rename,
+    'hide': hide,
+    'vault': vault,
+    'trash': trash,
+    'metadata': metadata,
+  };
 
   static VisibleRangePermissions? fromMap(Object? json) {
     if (json is! Map) return null;
@@ -177,6 +177,13 @@ class VisibleRangeRule extends Equatable {
   final Set<CollectionFilter> filters;
   final bool active;
 
+  /// Which wallpaper surfaces use this condition, as a bit mask.
+  ///
+  /// A wallpaper group stores every condition once and keeps only this mark per
+  /// surface (`1` home, `2` lock); the gallery range ignores it, because its
+  /// single surface is the whole app.
+  final int surfaces;
+
   const new({
     required this.id,
     required this.rangeId,
@@ -186,6 +193,7 @@ class VisibleRangeRule extends Equatable {
     this.description = '',
     this.filters = const {},
     this.active = true,
+    this.surfaces = 0,
   });
 
   bool get isEmpty => filters.isEmpty;
@@ -204,6 +212,7 @@ class VisibleRangeRule extends Equatable {
     String? description,
     Set<CollectionFilter>? filters,
     bool? active,
+    int? surfaces,
   }) {
     return VisibleRangeRule(
       id: id,
@@ -214,11 +223,12 @@ class VisibleRangeRule extends Equatable {
       description: description ?? this.description,
       filters: filters ?? this.filters,
       active: active ?? this.active,
+      surfaces: surfaces ?? this.surfaces,
     );
   }
 
   @override
-  List<Object?> get props => [id, rangeId, kind, position, label, description, filters, active];
+  List<Object?> get props => [id, rangeId, kind, position, label, description, filters, active, surfaces];
 }
 
 /// A base-range preset (built-in or user-saved). Built-in presets are read-only.
@@ -278,6 +288,13 @@ class VisibleRange extends Equatable {
   /// emptying [baseFilters]; a wallpaper group can switch it off instead and
   /// keep the conditions for later.
   final bool baseActive;
+
+  /// Which wallpaper surfaces use the base, as a bit mask.
+  ///
+  /// The wallpaper group's base is one condition, like every rule: the group
+  /// keeps the filters once and each surface only marks whether it uses them.
+  /// The gallery range ignores it.
+  final int baseSurfaces;
   final List<VisibleRangeRule> rules;
   final VisibleRangeOrder order;
   final bool locked;
@@ -293,6 +310,7 @@ class VisibleRange extends Equatable {
     this.basePresetId = '',
     this.baseFilters = const {},
     this.baseActive = true,
+    this.baseSurfaces = 0,
     this.rules = const [],
     this.order = VisibleRangeOrder.intersectFirst,
     this.locked = false,
@@ -318,8 +336,7 @@ class VisibleRange extends Equatable {
   /// True when nothing would be filtered at all.
   bool get isUnrestricted => !isRestricted && rules.every((rule) => !rule.active || rule.filters.isEmpty);
 
-  List<VisibleRangeRule> activeRulesOf(VisibleRangeRuleKind kind) =>
-      rules.where((rule) => rule.active && rule.kind == kind && rule.filters.isNotEmpty).toList()..sort((a, b) => a.position.compareTo(b.position));
+  List<VisibleRangeRule> activeRulesOf(VisibleRangeRuleKind kind) => rules.where((rule) => rule.active && rule.kind == kind && rule.filters.isNotEmpty).toList()..sort((a, b) => a.position.compareTo(b.position));
 
   List<VisibleRangeRule> rulesOf(VisibleRangeRuleKind kind) => rules.where((rule) => rule.kind == kind).toList()..sort((a, b) => a.position.compareTo(b.position));
 
@@ -384,6 +401,7 @@ class VisibleRange extends Equatable {
     String? basePresetId,
     Set<CollectionFilter>? baseFilters,
     bool? baseActive,
+    int? baseSurfaces,
     List<VisibleRangeRule>? rules,
     VisibleRangeOrder? order,
     bool? locked,
@@ -398,6 +416,7 @@ class VisibleRange extends Equatable {
       basePresetId: basePresetId ?? this.basePresetId,
       baseFilters: baseFilters ?? this.baseFilters,
       baseActive: baseActive ?? this.baseActive,
+      baseSurfaces: baseSurfaces ?? this.baseSurfaces,
       rules: rules ?? this.rules,
       order: order ?? this.order,
       locked: locked ?? this.locked,
@@ -409,18 +428,18 @@ class VisibleRange extends Equatable {
 
   /// A new, empty gallery range. Not persisted until the user changes something.
   static VisibleRange emptyGallery({String id = galleryRangeId, int now = 0}) => VisibleRange(
-        id: id,
-        scope: VisibleRangeScope.gallery,
-        ownerId: galleryOwnerId,
-        createdAt: now,
-        updatedAt: now,
-      );
+    id: id,
+    scope: VisibleRangeScope.gallery,
+    ownerId: galleryOwnerId,
+    createdAt: now,
+    updatedAt: now,
+  );
 
   static const galleryOwnerId = 'gallery';
   static const galleryRangeId = 'gallery';
 
   @override
-  List<Object?> get props => [id, scope, ownerId, baseName, basePresetId, baseFilters, baseActive, rules, order, locked, permissions, createdAt, updatedAt];
+  List<Object?> get props => [id, scope, ownerId, baseName, basePresetId, baseFilters, baseActive, baseSurfaces, rules, order, locked, permissions, createdAt, updatedAt];
 }
 
 /// Stable fingerprint of a filter set, used to dedupe presets/rules.

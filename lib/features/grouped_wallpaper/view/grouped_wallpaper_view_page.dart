@@ -145,9 +145,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
       final entries = await localMediaDb.loadEntriesByUris({uri});
       entry = entries.firstOrNull;
     }
-    final aspect = _surface.isLock
-        ? (lock != null && lock.width > 0 && lock.height > 0 ? lock.width / lock.height : null)
-        : slot?.aspectRatio;
+    final aspect = _surface.isLock ? (lock != null && lock.width > 0 && lock.height > 0 ? lock.width / lock.height : null) : slot?.aspectRatio;
     if (!mounted) return;
     setState(() {
       _state = state;
@@ -327,15 +325,26 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
 
   /// Switches the page between the home photo and the lock decoy.
   ///
-  /// The menu entry only appears for a split group; the lock surface has no
-  /// gesture, so this page is where the user manages its previous/next by hand.
+  /// The menu entry only acts for a split group; the lock surface has no gesture,
+  /// so this page is where the user manages its previous/next by hand. It also
+  /// offers the switch before the decoy has been baked: the first "next" then
+  /// bakes one instead of the control being unreachable.
   Future<void> _switchSurface() async {
-    if (_state?.lock == null && !_surface.isLock) return;
+    if (!_hasLockSurface) return;
     setState(() {
       _surface = _surface.isLock ? WallpaperSurface.home : WallpaperSurface.lock;
       _loading = true;
     });
     await _load();
+  }
+
+  /// Whether the viewed group keeps a separate lock range.
+  ///
+  /// `lockRangeId` is written with the split, so this is true before the decoy
+  /// has a photo: the menu can then offer the switch and the first step bakes it.
+  bool get _hasLockSurface {
+    final state = _state;
+    return state != null && (state.lock != null || state.lockRangeId.isNotEmpty);
   }
 
   /// Opens the playing group's auto-advance editor.
@@ -372,13 +381,16 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     final lock = _surface.isLock ? state?.lock : null;
     final title = _surface.isLock ? (lock?.title ?? '') : (state?.entryTitle ?? '');
     final canOpenGroup = state != null && state.groupId.isNotEmpty && state.groupId != wallpaperGroupNoneId;
+    final hasLockSurface = _hasLockSurface;
     final canPrevious = _surface.isLock ? (lock?.recent.any((record) => record.entryId != lock.entryId) ?? false) : state != null && groupedWallpaperCanGoPrevious(state);
-    final canNext = _surface.isLock ? lock != null : state != null && groupedWallpaperCanGoNext(state);
+    // The lock surface can be stepped before it has a frame: the first step is
+    // what bakes the decoy, so gating on `lock != null` would make it unreachable.
+    final canNext = _surface.isLock ? hasLockSurface : state != null && groupedWallpaperCanGoNext(state);
     final subtitle = state == null
         ? null
         : _surface.isLock
-            ? state.groupName
-            : l10n.groupedWallpaperViewInfo(state.groupName, state.count);
+        ? state.groupName
+        : l10n.groupedWallpaperViewInfo(state.groupName, state.count);
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -391,7 +403,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  l10n.groupedWallpaperViewEmpty,
+                  _surface.isLock && hasLockSurface ? l10n.wallpaperGroupLockNotBaked : l10n.groupedWallpaperViewEmpty,
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white70),
                 ),
@@ -538,15 +550,22 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
                               child: _menuRow(AIcons.autoAdvance, l10n.muzeiWallpaperAutoAdvance),
                             ),
                           // The decoy is managed here, not on the lock screen:
-                          // its gestures are deliberately inert.
-                          if (state?.lock != null)
-                            PopupMenuItem(
-                              value: _ViewAction.switchSurface,
-                              child: _menuRow(
-                                _surface.isLock ? AIcons.visibleRangeInactive : AIcons.visibleRangeActive,
-                                _surface.isLock ? l10n.wallpaperGroupViewHomeWallpaper : l10n.wallpaperGroupViewLockWallpaper,
-                              ),
+                          // its gestures are deliberately inert. The entry stays
+                          // visible for a group without a split so the menu says
+                          // why there is nothing to switch to, instead of hiding
+                          // the control the user is looking for.
+                          PopupMenuItem(
+                            value: _ViewAction.switchSurface,
+                            enabled: hasLockSurface,
+                            child: _menuRow(
+                              AIcons.visibleRangeActive,
+                              !hasLockSurface
+                                  ? l10n.wallpaperGroupNoLockSurface
+                                  : _surface.isLock
+                                  ? l10n.wallpaperGroupViewHomeWallpaper
+                                  : l10n.wallpaperGroupViewLockWallpaper,
                             ),
+                          ),
                           PopupMenuItem(
                             value: _ViewAction.toggleNotification,
                             child: _menuRow(
@@ -568,10 +587,10 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
   }
 
   Widget _menuRow(IconData icon, String text) => Row(
-        children: [
-          Icon(icon, size: 20),
-          const SizedBox(width: 12),
-          Text(text),
-        ],
-      );
+    children: [
+      Icon(icon, size: 20),
+      const SizedBox(width: 12),
+      Text(text),
+    ],
+  );
 }

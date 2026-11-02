@@ -64,6 +64,13 @@ class VisibleRangeRows extends Table {
   /// be switched back on without pinning them again.
   BoolColumn get baseActive => boolean().named('baseActive').withDefault(const Constant(true))();
 
+  /// Which wallpaper surfaces use the base, as a bit mask (`1` home, `2` lock).
+  ///
+  /// A wallpaper group owns one condition pool, so its base is stored once and
+  /// each surface only marks whether it uses it. The gallery range ignores the
+  /// column: its single surface is the whole app.
+  IntColumn get baseSurfaces => integer().named('baseSurfaces').withDefault(const Constant(0))();
+
   /// `intersectFirst` (restrictions before supplements) or `unionFirst`
   /// (supplements before restrictions).
   TextColumn get orderMode => text().named('orderMode').withDefault(const Constant('intersectFirst'))();
@@ -104,7 +111,17 @@ class VisibleRangeRuleRows extends Table {
   /// JSON array of filter bodies.
   TextColumn get filters => text().withDefault(const Constant('[]'))();
 
+  /// Whether the rule takes part in the gallery range.
+  ///
+  /// Wallpaper groups store their switch in [surfaces] instead: a condition is
+  /// enabled on a surface by marking it, so this column is always true there.
   BoolColumn get active => boolean().withDefault(const Constant(true))();
+
+  /// Which wallpaper surfaces use this rule, as a bit mask (`1` home, `2` lock).
+  ///
+  /// `0` is a condition kept in the pool but used by neither surface: the page
+  /// still lists it so it can be switched back on.
+  IntColumn get surfaces => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};

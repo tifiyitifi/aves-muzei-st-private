@@ -17,6 +17,7 @@ import 'package:aves/features/drift_db/migration/migration_v10.dart';
 import 'package:aves/features/drift_db/migration/migration_v11.dart';
 import 'package:aves/features/drift_db/migration/migration_v12.dart';
 import 'package:aves/features/drift_db/migration/migration_v13.dart';
+import 'package:aves/features/drift_db/migration/migration_v14.dart';
 import 'package:aves/features/drift_db/migration/migration_v9.dart';
 import 'package:aves/features/drift_db/trash/trash_table.dart';
 import 'package:aves/features/drift_db/vaults/vault_table.dart';
@@ -72,7 +73,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -94,6 +95,7 @@ class AppDatabase extends _$AppDatabase {
           if (from < 11) await MigrationV11(this).run(m);
           if (from < 12) await MigrationV12(this).run(m);
           if (from < 13) await MigrationV13(this).run(m);
+          if (from < 14) await MigrationV14(this).run(m);
         },
         beforeOpen: (details) async {
           // The main isolate and the analysis background isolate each open

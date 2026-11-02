@@ -1,6 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
-import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -60,9 +59,7 @@ class NavigationDisplay {
       case GroupedWallpaperPage.routeName:
         return l10n.wallpaperGroupsTitle;
       case VisibleRangePage.routeName:
-        // One entry, two peer pages: the label and the icon follow whichever
-        // page the shell currently renders.
-        return visibleRangeDestination.value == VisibleRangeDestination.wallpaper ? l10n.wallpaperGroupsTitle : l10n.visibleRangePageTitle;
+        return l10n.visibleRangePageTitle;
       case SearchPage.routeName:
         return MaterialLocalizations.of(context).searchFieldLabel;
       case SettingsPage.routeName:
@@ -95,7 +92,7 @@ class NavigationDisplay {
       case GroupedWallpaperPage.routeName:
         return AIcons.wallpaper;
       case VisibleRangePage.routeName:
-        return visibleRangeDestination.value == VisibleRangeDestination.wallpaper ? AIcons.wallpaper : AIcons.visibleRange;
+        return AIcons.visibleRange;
       case SearchPage.routeName:
         return AIcons.search;
       case SettingsPage.routeName:

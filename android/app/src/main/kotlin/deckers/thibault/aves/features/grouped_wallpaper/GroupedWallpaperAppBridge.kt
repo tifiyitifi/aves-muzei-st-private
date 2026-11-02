@@ -48,9 +48,6 @@ object GroupedWallpaperAppBridge {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     @Volatile
-    private var context: Context? = null
-
-    @Volatile
     private var messenger: BinaryMessenger? = null
 
     /** Whether the app engine currently listens for `syncRequested`. */
@@ -59,11 +56,6 @@ object GroupedWallpaperAppBridge {
 
     fun attach(engineMessenger: BinaryMessenger) {
         messenger = engineMessenger
-    }
-
-    /** Keeps the application context so a gesture can start the app. */
-    fun attachContext(appContext: Context) {
-        context = appContext.applicationContext
     }
 
     fun detach(engineMessenger: BinaryMessenger) {
@@ -135,14 +127,18 @@ object GroupedWallpaperAppBridge {
      * A wallpaper gesture has no Activity, so this starts the app (cold start is
      * expected, exactly like Muzei's artwork gesture). The page is a normal route
      * of the app, so it is the same page the group page's menu opens.
+     *
+     * The caller passes its own context on purpose: a wallpaper gesture can fire
+     * before the app process ever ran, and an app-provided context would still be
+     * null there, which used to drop the gesture without a trace.
      */
-    fun requestView() {
-        requestPage(GroupedWallpaperViewRoute)
+    fun requestView(context: Context) {
+        requestPage(context, GroupedWallpaperViewRoute)
     }
 
     /** Opens the wallpaper group page, which is also the notification's target. */
-    fun requestGroupPage() {
-        requestPage(GroupedWallpaperPageRoute)
+    fun requestGroupPage(context: Context) {
+        requestPage(context, GroupedWallpaperPageRoute)
     }
 
     /**
@@ -151,15 +147,14 @@ object GroupedWallpaperAppBridge {
      * The lock button is the way into the lock, so tapping it while locked is the
      * user asking to unlock: the page prompts instead of waiting for the menu.
      */
-    fun requestGroupUnlock() {
-        requestPage(GroupedWallpaperUnlockRoute)
+    fun requestGroupUnlock(context: Context) {
+        requestPage(context, GroupedWallpaperUnlockRoute)
     }
 
-    private fun requestPage(route: String) {
-        val appContext = context ?: return
+    private fun requestPage(context: Context, route: String) {
         try {
-            appContext.startActivity(
-                Intent(appContext, MainActivity::class.java)
+            context.startActivity(
+                Intent(context, MainActivity::class.java)
                     .setAction(Intent.ACTION_MAIN)
                     .addCategory(Intent.CATEGORY_LAUNCHER)
                     .putExtra("page", route)

@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
-import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_nav.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
@@ -164,10 +162,9 @@ enum _EditorAction {
 /// Destinations the bar adds on its own, shown read-only.
 ///
 /// The displayed-buttons list is the user's own `bottomNavigationActions`, but
-/// the bar also appends the visible range and derives the wallpaper entry. This
-/// section is what makes the editor describe the bar the user actually sees;
-/// adding a destination to the list above turns it into an editable button here
-/// as well.
+/// the bar also appends the visible range. This section is what makes the editor
+/// describe the bar the user actually sees; adding a destination to the list
+/// above turns it into an editable button here as well.
 class _DerivedDestinations extends StatelessWidget {
   final QuickActionEditorController<AvesNavItem> controller;
 
@@ -175,13 +172,11 @@ class _DerivedDestinations extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mode = context.select<GroupedWallpaperNavController, GroupedWallpaperNavMode>((v) => v.mode);
-    final entryClosed = context.select<GroupedWallpaperNavController, bool>((v) => v.entryClosed);
     final theme = Theme.of(context);
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        final derived = derivedNavDestinations(controller.items, mode: mode, entryClosed: entryClosed);
+        final derived = derivedNavDestinations(controller.items);
         if (derived.isEmpty) return const SizedBox();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,

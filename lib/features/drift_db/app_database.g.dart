@@ -5090,6 +5090,18 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _baseSurfacesMeta = const VerificationMeta(
+    'baseSurfaces',
+  );
+  @override
+  late final GeneratedColumn<int> baseSurfaces = GeneratedColumn<int>(
+    'baseSurfaces',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _orderModeMeta = const VerificationMeta(
     'orderMode',
   );
@@ -5157,6 +5169,7 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
     basePresetId,
     baseFilters,
     baseActive,
+    baseSurfaces,
     orderMode,
     locked,
     permissions,
@@ -5224,6 +5237,15 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
       context.handle(
         _baseActiveMeta,
         baseActive.isAcceptableOrUnknown(data['baseActive']!, _baseActiveMeta),
+      );
+    }
+    if (data.containsKey('baseSurfaces')) {
+      context.handle(
+        _baseSurfacesMeta,
+        baseSurfaces.isAcceptableOrUnknown(
+          data['baseSurfaces']!,
+          _baseSurfacesMeta,
+        ),
       );
     }
     if (data.containsKey('orderMode')) {
@@ -5300,6 +5322,10 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
         DriftSqlType.bool,
         data['${effectivePrefix}baseActive'],
       )!,
+      baseSurfaces: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}baseSurfaces'],
+      )!,
       orderMode: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}orderMode'],
@@ -5353,6 +5379,13 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
   /// be switched back on without pinning them again.
   final bool baseActive;
 
+  /// Which wallpaper surfaces use the base, as a bit mask (`1` home, `2` lock).
+  ///
+  /// A wallpaper group owns one condition pool, so its base is stored once and
+  /// each surface only marks whether it uses it. The gallery range ignores the
+  /// column: its single surface is the whole app.
+  final int baseSurfaces;
+
   /// `intersectFirst` (restrictions before supplements) or `unionFirst`
   /// (supplements before restrictions).
   final String orderMode;
@@ -5371,6 +5404,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     required this.basePresetId,
     required this.baseFilters,
     required this.baseActive,
+    required this.baseSurfaces,
     required this.orderMode,
     required this.locked,
     this.permissions,
@@ -5387,6 +5421,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     map['basePresetId'] = Variable<String>(basePresetId);
     map['baseFilters'] = Variable<String>(baseFilters);
     map['baseActive'] = Variable<bool>(baseActive);
+    map['baseSurfaces'] = Variable<int>(baseSurfaces);
     map['orderMode'] = Variable<String>(orderMode);
     map['locked'] = Variable<bool>(locked);
     if (!nullToAbsent || permissions != null) {
@@ -5406,6 +5441,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
       basePresetId: Value(basePresetId),
       baseFilters: Value(baseFilters),
       baseActive: Value(baseActive),
+      baseSurfaces: Value(baseSurfaces),
       orderMode: Value(orderMode),
       locked: Value(locked),
       permissions: permissions == null && nullToAbsent
@@ -5429,6 +5465,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
       basePresetId: serializer.fromJson<String>(json['basePresetId']),
       baseFilters: serializer.fromJson<String>(json['baseFilters']),
       baseActive: serializer.fromJson<bool>(json['baseActive']),
+      baseSurfaces: serializer.fromJson<int>(json['baseSurfaces']),
       orderMode: serializer.fromJson<String>(json['orderMode']),
       locked: serializer.fromJson<bool>(json['locked']),
       permissions: serializer.fromJson<String?>(json['permissions']),
@@ -5447,6 +5484,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
       'basePresetId': serializer.toJson<String>(basePresetId),
       'baseFilters': serializer.toJson<String>(baseFilters),
       'baseActive': serializer.toJson<bool>(baseActive),
+      'baseSurfaces': serializer.toJson<int>(baseSurfaces),
       'orderMode': serializer.toJson<String>(orderMode),
       'locked': serializer.toJson<bool>(locked),
       'permissions': serializer.toJson<String?>(permissions),
@@ -5463,6 +5501,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     String? basePresetId,
     String? baseFilters,
     bool? baseActive,
+    int? baseSurfaces,
     String? orderMode,
     bool? locked,
     Value<String?> permissions = const Value.absent(),
@@ -5476,6 +5515,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     basePresetId: basePresetId ?? this.basePresetId,
     baseFilters: baseFilters ?? this.baseFilters,
     baseActive: baseActive ?? this.baseActive,
+    baseSurfaces: baseSurfaces ?? this.baseSurfaces,
     orderMode: orderMode ?? this.orderMode,
     locked: locked ?? this.locked,
     permissions: permissions.present ? permissions.value : this.permissions,
@@ -5497,6 +5537,9 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
       baseActive: data.baseActive.present
           ? data.baseActive.value
           : this.baseActive,
+      baseSurfaces: data.baseSurfaces.present
+          ? data.baseSurfaces.value
+          : this.baseSurfaces,
       orderMode: data.orderMode.present ? data.orderMode.value : this.orderMode,
       locked: data.locked.present ? data.locked.value : this.locked,
       permissions: data.permissions.present
@@ -5517,6 +5560,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
           ..write('basePresetId: $basePresetId, ')
           ..write('baseFilters: $baseFilters, ')
           ..write('baseActive: $baseActive, ')
+          ..write('baseSurfaces: $baseSurfaces, ')
           ..write('orderMode: $orderMode, ')
           ..write('locked: $locked, ')
           ..write('permissions: $permissions, ')
@@ -5535,6 +5579,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     basePresetId,
     baseFilters,
     baseActive,
+    baseSurfaces,
     orderMode,
     locked,
     permissions,
@@ -5552,6 +5597,7 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
           other.basePresetId == this.basePresetId &&
           other.baseFilters == this.baseFilters &&
           other.baseActive == this.baseActive &&
+          other.baseSurfaces == this.baseSurfaces &&
           other.orderMode == this.orderMode &&
           other.locked == this.locked &&
           other.permissions == this.permissions &&
@@ -5567,6 +5613,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
   final Value<String> basePresetId;
   final Value<String> baseFilters;
   final Value<bool> baseActive;
+  final Value<int> baseSurfaces;
   final Value<String> orderMode;
   final Value<bool> locked;
   final Value<String?> permissions;
@@ -5581,6 +5628,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     this.basePresetId = const Value.absent(),
     this.baseFilters = const Value.absent(),
     this.baseActive = const Value.absent(),
+    this.baseSurfaces = const Value.absent(),
     this.orderMode = const Value.absent(),
     this.locked = const Value.absent(),
     this.permissions = const Value.absent(),
@@ -5596,6 +5644,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     this.basePresetId = const Value.absent(),
     this.baseFilters = const Value.absent(),
     this.baseActive = const Value.absent(),
+    this.baseSurfaces = const Value.absent(),
     this.orderMode = const Value.absent(),
     this.locked = const Value.absent(),
     this.permissions = const Value.absent(),
@@ -5615,6 +5664,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     Expression<String>? basePresetId,
     Expression<String>? baseFilters,
     Expression<bool>? baseActive,
+    Expression<int>? baseSurfaces,
     Expression<String>? orderMode,
     Expression<bool>? locked,
     Expression<String>? permissions,
@@ -5630,6 +5680,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
       if (basePresetId != null) 'basePresetId': basePresetId,
       if (baseFilters != null) 'baseFilters': baseFilters,
       if (baseActive != null) 'baseActive': baseActive,
+      if (baseSurfaces != null) 'baseSurfaces': baseSurfaces,
       if (orderMode != null) 'orderMode': orderMode,
       if (locked != null) 'locked': locked,
       if (permissions != null) 'permissions': permissions,
@@ -5647,6 +5698,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     Value<String>? basePresetId,
     Value<String>? baseFilters,
     Value<bool>? baseActive,
+    Value<int>? baseSurfaces,
     Value<String>? orderMode,
     Value<bool>? locked,
     Value<String?>? permissions,
@@ -5662,6 +5714,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
       basePresetId: basePresetId ?? this.basePresetId,
       baseFilters: baseFilters ?? this.baseFilters,
       baseActive: baseActive ?? this.baseActive,
+      baseSurfaces: baseSurfaces ?? this.baseSurfaces,
       orderMode: orderMode ?? this.orderMode,
       locked: locked ?? this.locked,
       permissions: permissions ?? this.permissions,
@@ -5695,6 +5748,9 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     if (baseActive.present) {
       map['baseActive'] = Variable<bool>(baseActive.value);
     }
+    if (baseSurfaces.present) {
+      map['baseSurfaces'] = Variable<int>(baseSurfaces.value);
+    }
     if (orderMode.present) {
       map['orderMode'] = Variable<String>(orderMode.value);
     }
@@ -5726,6 +5782,7 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
           ..write('basePresetId: $basePresetId, ')
           ..write('baseFilters: $baseFilters, ')
           ..write('baseActive: $baseActive, ')
+          ..write('baseSurfaces: $baseSurfaces, ')
           ..write('orderMode: $orderMode, ')
           ..write('locked: $locked, ')
           ..write('permissions: $permissions, ')
@@ -5831,6 +5888,18 @@ class $VisibleRangeRuleRowsTable extends VisibleRangeRuleRows
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _surfacesMeta = const VerificationMeta(
+    'surfaces',
+  );
+  @override
+  late final GeneratedColumn<int> surfaces = GeneratedColumn<int>(
+    'surfaces',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -5841,6 +5910,7 @@ class $VisibleRangeRuleRowsTable extends VisibleRangeRuleRows
     description,
     filters,
     active,
+    surfaces,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -5908,6 +5978,12 @@ class $VisibleRangeRuleRowsTable extends VisibleRangeRuleRows
         active.isAcceptableOrUnknown(data['active']!, _activeMeta),
       );
     }
+    if (data.containsKey('surfaces')) {
+      context.handle(
+        _surfacesMeta,
+        surfaces.isAcceptableOrUnknown(data['surfaces']!, _surfacesMeta),
+      );
+    }
     return context;
   }
 
@@ -5949,6 +6025,10 @@ class $VisibleRangeRuleRowsTable extends VisibleRangeRuleRows
         DriftSqlType.bool,
         data['${effectivePrefix}active'],
       )!,
+      surfaces: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}surfaces'],
+      )!,
     );
   }
 
@@ -5971,7 +6051,18 @@ class VisibleRangeRuleRow extends DataClass
 
   /// JSON array of filter bodies.
   final String filters;
+
+  /// Whether the rule takes part in the gallery range.
+  ///
+  /// Wallpaper groups store their switch in [surfaces] instead: a condition is
+  /// enabled on a surface by marking it, so this column is always true there.
   final bool active;
+
+  /// Which wallpaper surfaces use this rule, as a bit mask (`1` home, `2` lock).
+  ///
+  /// `0` is a condition kept in the pool but used by neither surface: the page
+  /// still lists it so it can be switched back on.
+  final int surfaces;
   const VisibleRangeRuleRow({
     required this.id,
     required this.rangeId,
@@ -5981,6 +6072,7 @@ class VisibleRangeRuleRow extends DataClass
     required this.description,
     required this.filters,
     required this.active,
+    required this.surfaces,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5993,6 +6085,7 @@ class VisibleRangeRuleRow extends DataClass
     map['description'] = Variable<String>(description);
     map['filters'] = Variable<String>(filters);
     map['active'] = Variable<bool>(active);
+    map['surfaces'] = Variable<int>(surfaces);
     return map;
   }
 
@@ -6006,6 +6099,7 @@ class VisibleRangeRuleRow extends DataClass
       description: Value(description),
       filters: Value(filters),
       active: Value(active),
+      surfaces: Value(surfaces),
     );
   }
 
@@ -6023,6 +6117,7 @@ class VisibleRangeRuleRow extends DataClass
       description: serializer.fromJson<String>(json['description']),
       filters: serializer.fromJson<String>(json['filters']),
       active: serializer.fromJson<bool>(json['active']),
+      surfaces: serializer.fromJson<int>(json['surfaces']),
     );
   }
   @override
@@ -6037,6 +6132,7 @@ class VisibleRangeRuleRow extends DataClass
       'description': serializer.toJson<String>(description),
       'filters': serializer.toJson<String>(filters),
       'active': serializer.toJson<bool>(active),
+      'surfaces': serializer.toJson<int>(surfaces),
     };
   }
 
@@ -6049,6 +6145,7 @@ class VisibleRangeRuleRow extends DataClass
     String? description,
     String? filters,
     bool? active,
+    int? surfaces,
   }) => VisibleRangeRuleRow(
     id: id ?? this.id,
     rangeId: rangeId ?? this.rangeId,
@@ -6058,6 +6155,7 @@ class VisibleRangeRuleRow extends DataClass
     description: description ?? this.description,
     filters: filters ?? this.filters,
     active: active ?? this.active,
+    surfaces: surfaces ?? this.surfaces,
   );
   VisibleRangeRuleRow copyWithCompanion(VisibleRangeRuleRowsCompanion data) {
     return VisibleRangeRuleRow(
@@ -6071,6 +6169,7 @@ class VisibleRangeRuleRow extends DataClass
           : this.description,
       filters: data.filters.present ? data.filters.value : this.filters,
       active: data.active.present ? data.active.value : this.active,
+      surfaces: data.surfaces.present ? data.surfaces.value : this.surfaces,
     );
   }
 
@@ -6084,7 +6183,8 @@ class VisibleRangeRuleRow extends DataClass
           ..write('label: $label, ')
           ..write('description: $description, ')
           ..write('filters: $filters, ')
-          ..write('active: $active')
+          ..write('active: $active, ')
+          ..write('surfaces: $surfaces')
           ..write(')'))
         .toString();
   }
@@ -6099,6 +6199,7 @@ class VisibleRangeRuleRow extends DataClass
     description,
     filters,
     active,
+    surfaces,
   );
   @override
   bool operator ==(Object other) =>
@@ -6111,7 +6212,8 @@ class VisibleRangeRuleRow extends DataClass
           other.label == this.label &&
           other.description == this.description &&
           other.filters == this.filters &&
-          other.active == this.active);
+          other.active == this.active &&
+          other.surfaces == this.surfaces);
 }
 
 class VisibleRangeRuleRowsCompanion
@@ -6124,6 +6226,7 @@ class VisibleRangeRuleRowsCompanion
   final Value<String> description;
   final Value<String> filters;
   final Value<bool> active;
+  final Value<int> surfaces;
   final Value<int> rowid;
   const VisibleRangeRuleRowsCompanion({
     this.id = const Value.absent(),
@@ -6134,6 +6237,7 @@ class VisibleRangeRuleRowsCompanion
     this.description = const Value.absent(),
     this.filters = const Value.absent(),
     this.active = const Value.absent(),
+    this.surfaces = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   VisibleRangeRuleRowsCompanion.insert({
@@ -6145,6 +6249,7 @@ class VisibleRangeRuleRowsCompanion
     this.description = const Value.absent(),
     this.filters = const Value.absent(),
     this.active = const Value.absent(),
+    this.surfaces = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        rangeId = Value(rangeId),
@@ -6158,6 +6263,7 @@ class VisibleRangeRuleRowsCompanion
     Expression<String>? description,
     Expression<String>? filters,
     Expression<bool>? active,
+    Expression<int>? surfaces,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -6169,6 +6275,7 @@ class VisibleRangeRuleRowsCompanion
       if (description != null) 'description': description,
       if (filters != null) 'filters': filters,
       if (active != null) 'active': active,
+      if (surfaces != null) 'surfaces': surfaces,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -6182,6 +6289,7 @@ class VisibleRangeRuleRowsCompanion
     Value<String>? description,
     Value<String>? filters,
     Value<bool>? active,
+    Value<int>? surfaces,
     Value<int>? rowid,
   }) {
     return VisibleRangeRuleRowsCompanion(
@@ -6193,6 +6301,7 @@ class VisibleRangeRuleRowsCompanion
       description: description ?? this.description,
       filters: filters ?? this.filters,
       active: active ?? this.active,
+      surfaces: surfaces ?? this.surfaces,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -6224,6 +6333,9 @@ class VisibleRangeRuleRowsCompanion
     if (active.present) {
       map['active'] = Variable<bool>(active.value);
     }
+    if (surfaces.present) {
+      map['surfaces'] = Variable<int>(surfaces.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -6241,6 +6353,7 @@ class VisibleRangeRuleRowsCompanion
           ..write('description: $description, ')
           ..write('filters: $filters, ')
           ..write('active: $active, ')
+          ..write('surfaces: $surfaces, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6980,6 +7093,21 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _lockRangeSeededMeta = const VerificationMeta(
+    'lockRangeSeeded',
+  );
+  @override
+  late final GeneratedColumn<bool> lockRangeSeeded = GeneratedColumn<bool>(
+    'lockRangeSeeded',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("lockRangeSeeded" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -6994,6 +7122,7 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
     interval,
     ordering,
     separateLockRange,
+    lockRangeSeeded,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7088,6 +7217,15 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
         ),
       );
     }
+    if (data.containsKey('lockRangeSeeded')) {
+      context.handle(
+        _lockRangeSeededMeta,
+        lockRangeSeeded.isAcceptableOrUnknown(
+          data['lockRangeSeeded']!,
+          _lockRangeSeededMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -7144,6 +7282,10 @@ class $WallpaperGroupRowsTable extends WallpaperGroupRows
       separateLockRange: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}separateLockRange'],
+      )!,
+      lockRangeSeeded: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}lockRangeSeeded'],
       )!,
     );
   }
@@ -7202,6 +7344,13 @@ class WallpaperGroupRow extends DataClass
   /// second range owned by the group, and turning it off only hides that range
   /// instead of deleting it, so the user's narrowing survives a toggle.
   final bool separateLockRange;
+
+  /// Whether the first enable of [separateLockRange] already seeded the lock
+  /// surface from the home one.
+  ///
+  /// The seed runs once: after it, re-enabling the split reuses the marks the
+  /// user left on the lock surface instead of copying the home ones again.
+  final bool lockRangeSeeded;
   const WallpaperGroupRow({
     required this.id,
     required this.name,
@@ -7215,6 +7364,7 @@ class WallpaperGroupRow extends DataClass
     required this.interval,
     required this.ordering,
     required this.separateLockRange,
+    required this.lockRangeSeeded,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7231,6 +7381,7 @@ class WallpaperGroupRow extends DataClass
     map['interval'] = Variable<int>(interval);
     map['ordering'] = Variable<String>(ordering);
     map['separateLockRange'] = Variable<bool>(separateLockRange);
+    map['lockRangeSeeded'] = Variable<bool>(lockRangeSeeded);
     return map;
   }
 
@@ -7248,6 +7399,7 @@ class WallpaperGroupRow extends DataClass
       interval: Value(interval),
       ordering: Value(ordering),
       separateLockRange: Value(separateLockRange),
+      lockRangeSeeded: Value(lockRangeSeeded),
     );
   }
 
@@ -7269,6 +7421,7 @@ class WallpaperGroupRow extends DataClass
       interval: serializer.fromJson<int>(json['interval']),
       ordering: serializer.fromJson<String>(json['ordering']),
       separateLockRange: serializer.fromJson<bool>(json['separateLockRange']),
+      lockRangeSeeded: serializer.fromJson<bool>(json['lockRangeSeeded']),
     );
   }
   @override
@@ -7287,6 +7440,7 @@ class WallpaperGroupRow extends DataClass
       'interval': serializer.toJson<int>(interval),
       'ordering': serializer.toJson<String>(ordering),
       'separateLockRange': serializer.toJson<bool>(separateLockRange),
+      'lockRangeSeeded': serializer.toJson<bool>(lockRangeSeeded),
     };
   }
 
@@ -7303,6 +7457,7 @@ class WallpaperGroupRow extends DataClass
     int? interval,
     String? ordering,
     bool? separateLockRange,
+    bool? lockRangeSeeded,
   }) => WallpaperGroupRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -7316,6 +7471,7 @@ class WallpaperGroupRow extends DataClass
     interval: interval ?? this.interval,
     ordering: ordering ?? this.ordering,
     separateLockRange: separateLockRange ?? this.separateLockRange,
+    lockRangeSeeded: lockRangeSeeded ?? this.lockRangeSeeded,
   );
   WallpaperGroupRow copyWithCompanion(WallpaperGroupRowsCompanion data) {
     return WallpaperGroupRow(
@@ -7335,6 +7491,9 @@ class WallpaperGroupRow extends DataClass
       separateLockRange: data.separateLockRange.present
           ? data.separateLockRange.value
           : this.separateLockRange,
+      lockRangeSeeded: data.lockRangeSeeded.present
+          ? data.lockRangeSeeded.value
+          : this.lockRangeSeeded,
     );
   }
 
@@ -7352,7 +7511,8 @@ class WallpaperGroupRow extends DataClass
           ..write('effects: $effects, ')
           ..write('interval: $interval, ')
           ..write('ordering: $ordering, ')
-          ..write('separateLockRange: $separateLockRange')
+          ..write('separateLockRange: $separateLockRange, ')
+          ..write('lockRangeSeeded: $lockRangeSeeded')
           ..write(')'))
         .toString();
   }
@@ -7371,6 +7531,7 @@ class WallpaperGroupRow extends DataClass
     interval,
     ordering,
     separateLockRange,
+    lockRangeSeeded,
   );
   @override
   bool operator ==(Object other) =>
@@ -7387,7 +7548,8 @@ class WallpaperGroupRow extends DataClass
           other.effects == this.effects &&
           other.interval == this.interval &&
           other.ordering == this.ordering &&
-          other.separateLockRange == this.separateLockRange);
+          other.separateLockRange == this.separateLockRange &&
+          other.lockRangeSeeded == this.lockRangeSeeded);
 }
 
 class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
@@ -7403,6 +7565,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
   final Value<int> interval;
   final Value<String> ordering;
   final Value<bool> separateLockRange;
+  final Value<bool> lockRangeSeeded;
   final Value<int> rowid;
   const WallpaperGroupRowsCompanion({
     this.id = const Value.absent(),
@@ -7417,6 +7580,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     this.interval = const Value.absent(),
     this.ordering = const Value.absent(),
     this.separateLockRange = const Value.absent(),
+    this.lockRangeSeeded = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   WallpaperGroupRowsCompanion.insert({
@@ -7432,6 +7596,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     this.interval = const Value.absent(),
     this.ordering = const Value.absent(),
     this.separateLockRange = const Value.absent(),
+    this.lockRangeSeeded = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        createdAt = Value(createdAt),
@@ -7449,6 +7614,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     Expression<int>? interval,
     Expression<String>? ordering,
     Expression<bool>? separateLockRange,
+    Expression<bool>? lockRangeSeeded,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -7464,6 +7630,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
       if (interval != null) 'interval': interval,
       if (ordering != null) 'ordering': ordering,
       if (separateLockRange != null) 'separateLockRange': separateLockRange,
+      if (lockRangeSeeded != null) 'lockRangeSeeded': lockRangeSeeded,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -7481,6 +7648,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     Value<int>? interval,
     Value<String>? ordering,
     Value<bool>? separateLockRange,
+    Value<bool>? lockRangeSeeded,
     Value<int>? rowid,
   }) {
     return WallpaperGroupRowsCompanion(
@@ -7496,6 +7664,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
       interval: interval ?? this.interval,
       ordering: ordering ?? this.ordering,
       separateLockRange: separateLockRange ?? this.separateLockRange,
+      lockRangeSeeded: lockRangeSeeded ?? this.lockRangeSeeded,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -7539,6 +7708,9 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
     if (separateLockRange.present) {
       map['separateLockRange'] = Variable<bool>(separateLockRange.value);
     }
+    if (lockRangeSeeded.present) {
+      map['lockRangeSeeded'] = Variable<bool>(lockRangeSeeded.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -7560,6 +7732,7 @@ class WallpaperGroupRowsCompanion extends UpdateCompanion<WallpaperGroupRow> {
           ..write('interval: $interval, ')
           ..write('ordering: $ordering, ')
           ..write('separateLockRange: $separateLockRange, ')
+          ..write('lockRangeSeeded: $lockRangeSeeded, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -10912,6 +11085,7 @@ typedef $$VisibleRangeRowsTableCreateCompanionBuilder =
       Value<String> basePresetId,
       Value<String> baseFilters,
       Value<bool> baseActive,
+      Value<int> baseSurfaces,
       Value<String> orderMode,
       Value<bool> locked,
       Value<String?> permissions,
@@ -10928,6 +11102,7 @@ typedef $$VisibleRangeRowsTableUpdateCompanionBuilder =
       Value<String> basePresetId,
       Value<String> baseFilters,
       Value<bool> baseActive,
+      Value<int> baseSurfaces,
       Value<String> orderMode,
       Value<bool> locked,
       Value<String?> permissions,
@@ -10977,6 +11152,11 @@ class $$VisibleRangeRowsTableFilterComposer
 
   ColumnFilters<bool> get baseActive => $composableBuilder(
     column: $table.baseActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get baseSurfaces => $composableBuilder(
+    column: $table.baseSurfaces,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11050,6 +11230,11 @@ class $$VisibleRangeRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get baseSurfaces => $composableBuilder(
+    column: $table.baseSurfaces,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get orderMode => $composableBuilder(
     column: $table.orderMode,
     builder: (column) => ColumnOrderings(column),
@@ -11109,6 +11294,11 @@ class $$VisibleRangeRowsTableAnnotationComposer
 
   GeneratedColumn<bool> get baseActive => $composableBuilder(
     column: $table.baseActive,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get baseSurfaces => $composableBuilder(
+    column: $table.baseSurfaces,
     builder: (column) => column,
   );
 
@@ -11174,6 +11364,7 @@ class $$VisibleRangeRowsTableTableManager
                 Value<String> basePresetId = const Value.absent(),
                 Value<String> baseFilters = const Value.absent(),
                 Value<bool> baseActive = const Value.absent(),
+                Value<int> baseSurfaces = const Value.absent(),
                 Value<String> orderMode = const Value.absent(),
                 Value<bool> locked = const Value.absent(),
                 Value<String?> permissions = const Value.absent(),
@@ -11188,6 +11379,7 @@ class $$VisibleRangeRowsTableTableManager
                 basePresetId: basePresetId,
                 baseFilters: baseFilters,
                 baseActive: baseActive,
+                baseSurfaces: baseSurfaces,
                 orderMode: orderMode,
                 locked: locked,
                 permissions: permissions,
@@ -11204,6 +11396,7 @@ class $$VisibleRangeRowsTableTableManager
                 Value<String> basePresetId = const Value.absent(),
                 Value<String> baseFilters = const Value.absent(),
                 Value<bool> baseActive = const Value.absent(),
+                Value<int> baseSurfaces = const Value.absent(),
                 Value<String> orderMode = const Value.absent(),
                 Value<bool> locked = const Value.absent(),
                 Value<String?> permissions = const Value.absent(),
@@ -11218,6 +11411,7 @@ class $$VisibleRangeRowsTableTableManager
                 basePresetId: basePresetId,
                 baseFilters: baseFilters,
                 baseActive: baseActive,
+                baseSurfaces: baseSurfaces,
                 orderMode: orderMode,
                 locked: locked,
                 permissions: permissions,
@@ -11260,6 +11454,7 @@ typedef $$VisibleRangeRuleRowsTableCreateCompanionBuilder =
       Value<String> description,
       Value<String> filters,
       Value<bool> active,
+      Value<int> surfaces,
       Value<int> rowid,
     });
 typedef $$VisibleRangeRuleRowsTableUpdateCompanionBuilder =
@@ -11272,6 +11467,7 @@ typedef $$VisibleRangeRuleRowsTableUpdateCompanionBuilder =
       Value<String> description,
       Value<String> filters,
       Value<bool> active,
+      Value<int> surfaces,
       Value<int> rowid,
     });
 
@@ -11321,6 +11517,11 @@ class $$VisibleRangeRuleRowsTableFilterComposer
 
   ColumnFilters<bool> get active => $composableBuilder(
     column: $table.active,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get surfaces => $composableBuilder(
+    column: $table.surfaces,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -11373,6 +11574,11 @@ class $$VisibleRangeRuleRowsTableOrderingComposer
     column: $table.active,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get surfaces => $composableBuilder(
+    column: $table.surfaces,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$VisibleRangeRuleRowsTableAnnotationComposer
@@ -11409,6 +11615,9 @@ class $$VisibleRangeRuleRowsTableAnnotationComposer
 
   GeneratedColumn<bool> get active =>
       $composableBuilder(column: $table.active, builder: (column) => column);
+
+  GeneratedColumn<int> get surfaces =>
+      $composableBuilder(column: $table.surfaces, builder: (column) => column);
 }
 
 class $$VisibleRangeRuleRowsTableTableManager
@@ -11462,6 +11671,7 @@ class $$VisibleRangeRuleRowsTableTableManager
                 Value<String> description = const Value.absent(),
                 Value<String> filters = const Value.absent(),
                 Value<bool> active = const Value.absent(),
+                Value<int> surfaces = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => VisibleRangeRuleRowsCompanion(
                 id: id,
@@ -11472,6 +11682,7 @@ class $$VisibleRangeRuleRowsTableTableManager
                 description: description,
                 filters: filters,
                 active: active,
+                surfaces: surfaces,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -11484,6 +11695,7 @@ class $$VisibleRangeRuleRowsTableTableManager
                 Value<String> description = const Value.absent(),
                 Value<String> filters = const Value.absent(),
                 Value<bool> active = const Value.absent(),
+                Value<int> surfaces = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => VisibleRangeRuleRowsCompanion.insert(
                 id: id,
@@ -11494,6 +11706,7 @@ class $$VisibleRangeRuleRowsTableTableManager
                 description: description,
                 filters: filters,
                 active: active,
+                surfaces: surfaces,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -11920,6 +12133,7 @@ typedef $$WallpaperGroupRowsTableCreateCompanionBuilder =
       Value<int> interval,
       Value<String> ordering,
       Value<bool> separateLockRange,
+      Value<bool> lockRangeSeeded,
       Value<int> rowid,
     });
 typedef $$WallpaperGroupRowsTableUpdateCompanionBuilder =
@@ -11936,6 +12150,7 @@ typedef $$WallpaperGroupRowsTableUpdateCompanionBuilder =
       Value<int> interval,
       Value<String> ordering,
       Value<bool> separateLockRange,
+      Value<bool> lockRangeSeeded,
       Value<int> rowid,
     });
 
@@ -12005,6 +12220,11 @@ class $$WallpaperGroupRowsTableFilterComposer
 
   ColumnFilters<bool> get separateLockRange => $composableBuilder(
     column: $table.separateLockRange,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get lockRangeSeeded => $composableBuilder(
+    column: $table.lockRangeSeeded,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -12077,6 +12297,11 @@ class $$WallpaperGroupRowsTableOrderingComposer
     column: $table.separateLockRange,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get lockRangeSeeded => $composableBuilder(
+    column: $table.lockRangeSeeded,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$WallpaperGroupRowsTableAnnotationComposer
@@ -12125,6 +12350,11 @@ class $$WallpaperGroupRowsTableAnnotationComposer
 
   GeneratedColumn<bool> get separateLockRange => $composableBuilder(
     column: $table.separateLockRange,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get lockRangeSeeded => $composableBuilder(
+    column: $table.lockRangeSeeded,
     builder: (column) => column,
   );
 }
@@ -12181,6 +12411,7 @@ class $$WallpaperGroupRowsTableTableManager
                 Value<int> interval = const Value.absent(),
                 Value<String> ordering = const Value.absent(),
                 Value<bool> separateLockRange = const Value.absent(),
+                Value<bool> lockRangeSeeded = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WallpaperGroupRowsCompanion(
                 id: id,
@@ -12195,6 +12426,7 @@ class $$WallpaperGroupRowsTableTableManager
                 interval: interval,
                 ordering: ordering,
                 separateLockRange: separateLockRange,
+                lockRangeSeeded: lockRangeSeeded,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -12211,6 +12443,7 @@ class $$WallpaperGroupRowsTableTableManager
                 Value<int> interval = const Value.absent(),
                 Value<String> ordering = const Value.absent(),
                 Value<bool> separateLockRange = const Value.absent(),
+                Value<bool> lockRangeSeeded = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WallpaperGroupRowsCompanion.insert(
                 id: id,
@@ -12225,6 +12458,7 @@ class $$WallpaperGroupRowsTableTableManager
                 interval: interval,
                 ordering: ordering,
                 separateLockRange: separateLockRange,
+                lockRangeSeeded: lockRangeSeeded,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -81,16 +81,24 @@ class WallpaperGroup extends Equatable {
   /// How the next photo is chosen within this group.
   final GroupedWallpaperOrdering ordering;
 
-  /// Whether the group's lock screen draws its own range instead of the home
-  /// one.
+  /// Whether the group's lock screen draws its own conditions instead of the
+  /// home ones.
   ///
   /// The lock surface is a decoy: it shows a public range while the home screen
   /// keeps the private one, so someone who picks up the device sees nothing of
-  /// what the home screen is playing. The home range is mandatory and keeps its
-  /// historical id; the lock range is created by copying the home range, and
-  /// turning the split off only hides it, so re-enabling never loses the
-  /// narrowing the user made.
+  /// what the home screen is playing. Both surfaces share one condition pool
+  /// (see [WallpaperConditionSurfaces]); turning this on marks every condition the
+  /// home surface uses for the lock surface the first time, and turning it off
+  /// only hides the lock marks, so re-enabling never loses the narrowing the user
+  /// made.
   final bool separateLockRange;
+
+  /// Whether turning the split on already seeded the lock surface.
+  ///
+  /// The first enable copies the home marks so both surfaces start identical;
+  /// once seeded, re-enabling reuses the marks the user left behind instead of
+  /// resurrecting conditions they removed from the lock surface.
+  final bool lockRangeSeeded;
 
   const new({
     required this.id,
@@ -105,6 +113,7 @@ class WallpaperGroup extends Equatable {
     this.interval = WallpaperAdvanceInterval.off,
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
     this.separateLockRange = false,
+    this.lockRangeSeeded = false,
   });
 
   /// The fixed group 0 entry: no row, no range, no wallpaper change.
@@ -132,6 +141,7 @@ class WallpaperGroup extends Equatable {
     WallpaperAdvanceInterval? interval,
     GroupedWallpaperOrdering? ordering,
     bool? separateLockRange,
+    bool? lockRangeSeeded,
   }) {
     return WallpaperGroup(
       id: id,
@@ -146,9 +156,10 @@ class WallpaperGroup extends Equatable {
       interval: interval ?? this.interval,
       ordering: ordering ?? this.ordering,
       separateLockRange: separateLockRange ?? this.separateLockRange,
+      lockRangeSeeded: lockRangeSeeded ?? this.lockRangeSeeded,
     );
   }
 
   @override
-  List<Object?> get props => [id, number, name, description, enabled, current, createdAt, updatedAt, effects, interval, ordering, separateLockRange];
+  List<Object?> get props => [id, number, name, description, enabled, current, createdAt, updatedAt, effects, interval, ordering, separateLockRange, lockRangeSeeded];
 }

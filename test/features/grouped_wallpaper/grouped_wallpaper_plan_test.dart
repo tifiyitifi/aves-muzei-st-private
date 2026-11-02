@@ -5,10 +5,12 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_plan.da
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_condition_pool.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/path.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:drift/native.dart';
@@ -41,19 +43,28 @@ void main() {
 
   tearDown(() => db.close());
 
-  WallpaperGroup group(String id, {bool enabled = true, bool current = false}) =>
-      WallpaperGroup(id: id, name: '@wallpaperGroupDefaultAll', enabled: enabled, current: current, createdAt: 1, updatedAt: 2);
+  WallpaperGroup group(String id, {bool enabled = true, bool current = false}) => WallpaperGroup(id: id, name: '@wallpaperGroupDefaultAll', enabled: enabled, current: current, createdAt: 1, updatedAt: 2);
 
-  VisibleRange range(String groupId, {bool locked = false, Set<CollectionFilter> base = const {}}) => VisibleRange(
-        id: wallpaperGroupRangeId(groupId),
-        scope: VisibleRangeScope.wallpaper,
-        ownerId: groupId,
-        baseName: '@wallpaperGroupDefaultDcim',
-        baseFilters: base,
-        locked: locked,
-        createdAt: 1,
-        updatedAt: 2,
-      );
+  VisibleRange range(
+    String groupId, {
+    bool locked = false,
+    Set<CollectionFilter> base = const {},
+    int baseSurfaces = WallpaperConditionSurfaces.home,
+    List<VisibleRangeRule> rules = const [],
+  }) => VisibleRange(
+    id: wallpaperGroupRangeId(groupId),
+    scope: VisibleRangeScope.wallpaper,
+    ownerId: groupId,
+    baseName: '@wallpaperGroupDefaultDcim',
+    baseFilters: base,
+    // The pool stores the mark, not a per-surface copy: a directly written
+    // range must say which surface uses its base.
+    baseSurfaces: base.isEmpty ? 0 : baseSurfaces,
+    rules: rules,
+    locked: locked,
+    createdAt: 1,
+    updatedAt: 2,
+  );
 
   test('loads the current enabled group and its saved range', () async {
     await groups.saveGroups([group('a'), group('b', current: true)]);
@@ -70,21 +81,25 @@ void main() {
 
   test('loads both surfaces of a split group, and only home when split off', () async {
     await groups.saveGroups([group('a', current: true).copyWith(separateLockRange: true)]);
-    await ranges.saveRange(range('a', base: {PathFilter('/dcim')}));
     await ranges.saveRange(
-      VisibleRange(
-        id: wallpaperGroupLockRangeId('a'),
-        scope: VisibleRangeScope.wallpaper,
-        ownerId: wallpaperGroupLockOwnerId('a'),
-        baseFilters: {PathFilter('/pictures')},
-        createdAt: 1,
-        updatedAt: 2,
+      range(
+        'a',
+        base: {PathFilter('/dcim')},
+        baseSurfaces: WallpaperConditionSurfaces.all,
+        rules: [
+          VisibleRangeRule(id: 'r-home', rangeId: wallpaperGroupRangeId('a'), kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.image}, surfaces: WallpaperConditionSurfaces.home),
+          VisibleRangeRule(id: 'r-lock', rangeId: wallpaperGroupRangeId('a'), kind: VisibleRangeRuleKind.restriction, position: 1, filters: {MimeFilter.video}, surfaces: WallpaperConditionSurfaces.lock),
+        ],
       ),
     );
 
     final split = await planStore.load();
+    // One pool, two projections: the base is marked for both and each rule only
+    // reaches the surface that marks it.
     expect(split.range?.baseFilters, {PathFilter('/dcim')});
-    expect(split.lockRange?.baseFilters, {PathFilter('/pictures')});
+    expect(split.lockRange?.baseFilters, {PathFilter('/dcim')});
+    expect(split.range?.rules.map((rule) => rule.id), ['r-home']);
+    expect(split.lockRange?.rules.map((rule) => rule.id), ['r-lock']);
     expect(split.hasLockRange, isTrue);
 
     await groups.saveGroups([group('a', current: true)]);

@@ -1,3 +1,4 @@
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -23,9 +24,15 @@ class VisibleRangeCandidateFilter extends CollectionFilter {
   /// the cover chip has no room for). Empty keeps the candidate's own label.
   final String labelOverride;
 
+  /// The wallpaper surface a summary section belongs to.
+  ///
+  /// A surface summary is a selector: tapping one of its tiles makes that surface
+  /// the edited one. The pool sections and the gallery page leave it null.
+  final WallpaperSurface? surface;
+
   late final EntryPredicate _test;
 
-  new(this.candidate, {this.summary = false, this.labelOverride = '', super.reversed = false}) {
+  new(this.candidate, {this.summary = false, this.labelOverride = '', this.surface, super.reversed = false}) {
     final filters = candidate.filters;
     _test = filters.isEmpty ? (entry) => true : (entry) => filters.every((filter) => filter.test(entry));
   }
@@ -63,18 +70,19 @@ class VisibleRangeCandidateFilter extends CollectionFilter {
   String get category => type;
 
   @override
-  String get key => '$type-${summary ? 'summary' : 'grid'}-${candidate.id}-${candidate.active}-$labelOverride';
+  String get key => '$type-${summary ? 'summary' : 'grid'}-${surface?.name ?? ''}-${candidate.id}-${candidate.active}-$labelOverride';
 
   @override
   Map<String, Object?> toJsonMap() => {
-        'type': type,
-        'id': candidate.id,
-        'summary': summary,
-        'active': candidate.active,
-        if (labelOverride.isNotEmpty) 'label': labelOverride,
-        if (reversed) 'reversed': reversed,
-      };
+    'type': type,
+    'id': candidate.id,
+    'summary': summary,
+    'active': candidate.active,
+    if (surface != null) 'surface': surface!.name,
+    if (labelOverride.isNotEmpty) 'label': labelOverride,
+    if (reversed) 'reversed': reversed,
+  };
 
   @override
-  List<Object?> get props => [candidate.id, summary, candidate.active, candidate.labelKey, candidate.label, candidate.filters, labelOverride, reversed];
+  List<Object?> get props => [candidate.id, summary, candidate.active, candidate.labelKey, candidate.label, candidate.filters, labelOverride, surface, reversed];
 }

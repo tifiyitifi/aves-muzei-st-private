@@ -68,6 +68,7 @@ class VisibleRangeStore {
           basePresetId: Value(range.basePresetId),
           baseFilters: Value(VisibleRangeFilterCodec.encode(range.baseFilters)),
           baseActive: Value(range.baseActive),
+          baseSurfaces: Value(range.baseSurfaces),
           orderMode: Value(range.order.name),
           locked: Value(range.locked),
           permissions: Value(range.locked ? _encodePermissions(range.permissions) : null),
@@ -130,6 +131,7 @@ class VisibleRangeStore {
         description: Value(rule.description),
         filters: Value(VisibleRangeFilterCodec.encode(rule.filters)),
         active: Value(rule.active),
+        surfaces: Value(rule.surfaces),
       ),
     );
   }
@@ -232,6 +234,7 @@ class VisibleRangeStore {
       basePresetId: row.basePresetId,
       baseFilters: VisibleRangeFilterCodec.decode(row.baseFilters),
       baseActive: row.baseActive,
+      baseSurfaces: row.baseSurfaces,
       rules: rules,
       order: VisibleRangeOrder.parse(row.orderMode),
       locked: row.locked,
@@ -250,6 +253,7 @@ class VisibleRangeStore {
         description: row.description,
         filters: VisibleRangeFilterCodec.decode(row.filters),
         active: row.active,
+        surfaces: row.surfaces,
       );
 
   static VisibleRangePreset _toPreset(VisibleRangePresetRow row) => VisibleRangePreset(

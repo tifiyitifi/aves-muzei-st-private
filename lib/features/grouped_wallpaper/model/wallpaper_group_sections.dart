@@ -1,3 +1,5 @@
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_condition_pool.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/model/filters/mime.dart';
@@ -13,47 +15,50 @@ const String wallpaperGroupSectionNoneIdPrefix = 'wallpaper.group.sectionNone.';
 /// is also what makes its cover and count agree with the group cards (both
 /// count images).
 VisibleRangeCandidate wallpaperGroupAllImagesCandidate({required bool active}) => VisibleRangeCandidate(
-      id: VisibleRangeCandidate.unrestrictedId,
-      kind: VisibleRangeCandidateKind.base,
-      filters: {MimeFilter.image},
-      labelKey: 'wallpaperGroupAllImages',
-      active: active,
-    );
+  id: VisibleRangeCandidate.unrestrictedId,
+  kind: VisibleRangeCandidateKind.base,
+  filters: {MimeFilter.image},
+  labelKey: 'wallpaperGroupAllImages',
+  active: active,
+);
 
 VisibleRangeCandidate _sectionNone(VisibleRangeCandidateKind kind) => VisibleRangeCandidate(
-      id: '$wallpaperGroupSectionNoneIdPrefix${kind.name}',
-      kind: kind,
-      filters: const {},
-      labelKey: 'wallpaperGroupSectionNone',
-      placeholder: true,
-    );
+  id: '$wallpaperGroupSectionNoneIdPrefix${kind.name}',
+  kind: kind,
+  filters: const {},
+  labelKey: 'wallpaperGroupSectionNone',
+  placeholder: true,
+);
 
 /// Whether [candidate] is the group's own base, as opposed to the
 /// 「All images」 choice or a section placeholder.
-bool isWallpaperGroupBaseCandidate(VisibleRangeCandidate candidate) =>
-    candidate.kind == VisibleRangeCandidateKind.base && !candidate.placeholder && candidate.id == VisibleRangeCandidate.customBaseId;
+bool isWallpaperGroupBaseCandidate(VisibleRangeCandidate candidate) => candidate.kind == VisibleRangeCandidateKind.base && !candidate.placeholder && candidate.id == VisibleRangeCandidate.customBaseId;
 
-/// The group page's sections, built from the group's own range only.
+/// The group page's three condition sections, built from the group's pool.
+///
+/// Every condition appears exactly once, whatever surface marks it: home and
+/// lock share the pool, so the sections are the pool's list, not a per-surface
+/// copy. [active] decides which mark the tiles read as "on"; the other mark stays
+/// visible on the tile.
 ///
 /// The gallery's preset catalogue never enters this builder: a group owns its
 /// base and its rules, and conditions are added by pinning from a media set,
-/// never by picking a gallery default here. The base section starts with
-/// 「All images」, the wallpaper counterpart of the gallery page's
-/// 「Unrestricted」: its image filter set is what gives it the images' cover and
-/// count. The group's own base follows when it carries conditions, and an empty
-/// rule section keeps one 「None」 slot so the page shows that the section exists
-/// instead of hiding it.
-List<VisibleRangeCandidateSection> buildWallpaperGroupSections({required VisibleRange range}) {
+/// never by picking a gallery default here. An empty rule section keeps one
+/// 「None」 slot so the page shows that the section exists instead of hiding it.
+List<VisibleRangeCandidateSection> buildWallpaperGroupPoolSections({required VisibleRange pool, required WallpaperSurface active}) {
+  final usesBase = WallpaperConditionSurfaces.contains(pool.baseSurfaces, active);
   final base = <VisibleRangeCandidate>[
-    // The base is unrestricted when it narrows nothing, either because it has no
-    // conditions or because the group switched them off.
-    wallpaperGroupAllImagesCandidate(active: range.isBaseUnrestricted),
-    if (range.baseFilters.isNotEmpty)
-      VisibleRangeCandidate.customBase(name: range.baseName, filters: range.baseFilters, active: range.baseActive),
+    wallpaperGroupAllImagesCandidate(active: !usesBase || pool.baseFilters.isEmpty),
+    if (pool.baseFilters.isNotEmpty) VisibleRangeCandidate.customBase(name: pool.baseName, filters: pool.baseFilters).copyWithSurfaceMarks(surfaces: pool.baseSurfaces, active: usesBase),
   ];
 
+  VisibleRangeCandidate fromRule(VisibleRangeRule rule) => VisibleRangeCandidate.fromRule(rule).copyWithSurfaceMarks(
+    surfaces: rule.surfaces,
+    active: WallpaperConditionSurfaces.contains(rule.surfaces, active),
+  );
+
   List<VisibleRangeCandidate> rulesOf(VisibleRangeRuleKind kind) {
-    final rules = range.rulesOf(kind);
+    final rules = pool.rulesOf(kind);
     if (rules.isEmpty) {
       return [
         _sectionNone(
@@ -61,7 +66,7 @@ List<VisibleRangeCandidateSection> buildWallpaperGroupSections({required Visible
         ),
       ];
     }
-    return [for (final rule in rules) VisibleRangeCandidate.fromRule(rule)];
+    return [for (final rule in rules) fromRule(rule)];
   }
 
   final baseSection = VisibleRangeCandidateSection(kind: VisibleRangeCandidateKind.base, candidates: base);
@@ -69,27 +74,30 @@ List<VisibleRangeCandidateSection> buildWallpaperGroupSections({required Visible
   final supplementSection = VisibleRangeCandidateSection(kind: VisibleRangeCandidateKind.supplement, candidates: rulesOf(VisibleRangeRuleKind.supplement));
   return [
     baseSection,
-    if (range.order.isIntersectFirst) ...[restrictionSection, supplementSection] else ...[supplementSection, restrictionSection],
+    if (pool.order.isIntersectFirst) ...[restrictionSection, supplementSection] else ...[supplementSection, restrictionSection],
   ];
 }
 
-/// The group's active conditions, for the page's active footer/section.
+/// The conditions one surface actually applies, for the surface summary section.
 ///
-/// The result preview comes first, then the active base (only when it takes
-/// part), then the active rules in evaluation order.
-List<VisibleRangeCandidate> buildWallpaperGroupActiveCandidates({required VisibleRange range}) {
-  final base = range.baseActive && range.baseFilters.isNotEmpty
-      ? VisibleRangeCandidate.customBase(name: range.baseName, filters: range.baseFilters)
-      : null;
-  final rules = [
-    for (final kind in range.order.isIntersectFirst
-        ? [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement]
-        : [VisibleRangeRuleKind.supplement, VisibleRangeRuleKind.restriction])
+/// The list is read-only: it says what that surface shows, and the pool sections
+/// above are where the same conditions are edited. A surface that applies nothing
+/// keeps one 「None」 slot so the section never collapses to an empty header.
+List<VisibleRangeCandidate> buildWallpaperGroupSurfaceCandidates({required VisibleRange range}) {
+  final base = range.baseActive && range.baseFilters.isNotEmpty ? VisibleRangeCandidate.customBase(name: range.baseName, filters: range.baseFilters) : null;
+  final candidates = [
+    ?base,
+    for (final kind in range.order.isIntersectFirst ? [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement] : [VisibleRangeRuleKind.supplement, VisibleRangeRuleKind.restriction])
       for (final rule in range.activeRulesOf(kind)) VisibleRangeCandidate.fromRule(rule),
   ];
+  if (candidates.isNotEmpty) return candidates;
   return [
-    VisibleRangeCandidate.gallery,
-    ?base,
-    ...rules,
+    const VisibleRangeCandidate(
+      id: '${wallpaperGroupSectionNoneIdPrefix}surface',
+      kind: VisibleRangeCandidateKind.base,
+      filters: {},
+      labelKey: 'wallpaperGroupSectionNone',
+      placeholder: true,
+    ),
   ];
 }

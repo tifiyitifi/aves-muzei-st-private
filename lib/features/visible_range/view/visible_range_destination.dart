@@ -22,15 +22,15 @@ final ValueNotifier<VisibleRangeDestination> visibleRangeDestination = ValueNoti
 
 /// The page the shared entry actually renders.
 ///
-/// A separate mode gives the wallpaper page its own entry, so the shared entry
-/// is always the range page there. The choice is process-wide, so a stale
-/// `wallpaper` value (a gesture cold start, a switch made in the shared mode)
-/// must not turn the range entry into the wallpaper page after the mode changes.
+/// The shared mode is off while the wallpaper page is its own navigation
+/// destination: the entry always renders the visible-range page, so a stale
+/// `wallpaper` value (a gesture cold start, a value stored by an older build) can
+/// never turn the range entry into the wallpaper page. The enum, the notifier and
+/// the shell stay in place while whether the shared entry ships again is open.
 VisibleRangeDestination visibleRangeShellDestination({
   required GroupedWallpaperNavMode mode,
   required VisibleRangeDestination destination,
-}) =>
-    mode == GroupedWallpaperNavMode.shared ? destination : VisibleRangeDestination.range;
+}) => VisibleRangeDestination.range;
 
 /// The page the shared entry renders.
 class VisibleRangeShellPage extends StatelessWidget {
@@ -48,9 +48,8 @@ class VisibleRangeShellPage extends StatelessWidget {
     final mode = context.select<GroupedWallpaperNavController, GroupedWallpaperNavMode>((v) => v.mode);
     return ValueListenableBuilder<VisibleRangeDestination>(
       valueListenable: visibleRangeDestination,
-      builder: (context, destination, _) => visibleRangeShellDestination(mode: mode, destination: destination) == VisibleRangeDestination.wallpaper
-          ? GroupedWallpaperPage(selectCurrent: selectCurrentWallpaperGroup)
-          : const VisibleRangePage(),
+      builder: (context, destination, _) =>
+          visibleRangeShellDestination(mode: mode, destination: destination) == VisibleRangeDestination.wallpaper ? GroupedWallpaperPage(selectCurrent: selectCurrentWallpaperGroup) : const VisibleRangePage(),
     );
   }
 }

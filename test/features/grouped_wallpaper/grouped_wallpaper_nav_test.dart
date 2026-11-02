@@ -127,32 +127,18 @@ void main() {
   });
 
   group('derived destinations', () {
-    test('lists what the bar adds beyond the user list', () {
-      expect(
-        routes(derivedNavDestinations([all, albums], mode: GroupedWallpaperNavMode.separateRight, entryClosed: false)),
-        [VisibleRangePage.routeName, GroupedWallpaperPage.routeName],
-      );
+    test('the bar only adds the visible-range entry', () {
+      // The wallpaper page is a navigation destination the user may pin; the bar
+      // no longer adds it on its own.
+      expect(routes(derivedNavDestinations([all, albums])), [VisibleRangePage.routeName]);
     });
 
     test('shows nothing that is already the user\'s own', () {
-      expect(
-        derivedNavDestinations([all, range, wallpaper], mode: GroupedWallpaperNavMode.separateRight, entryClosed: false),
-        isEmpty,
-      );
+      expect(derivedNavDestinations([all, range, wallpaper]), isEmpty);
     });
 
-    test('keeps only the range entry while the wallpaper entry is closed', () {
-      expect(
-        routes(derivedNavDestinations([all, albums], mode: GroupedWallpaperNavMode.separateRight, entryClosed: true)),
-        [VisibleRangePage.routeName],
-      );
-    });
-
-    test('adds only the range entry in the shared mode', () {
-      expect(
-        routes(derivedNavDestinations([all, albums], mode: GroupedWallpaperNavMode.shared, entryClosed: false)),
-        [VisibleRangePage.routeName],
-      );
+    test('a pinned wallpaper entry is not derived again', () {
+      expect(routes(derivedNavDestinations([all, albums, wallpaper])), [VisibleRangePage.routeName]);
     });
   });
 }

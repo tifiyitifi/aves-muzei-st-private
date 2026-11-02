@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
@@ -15,13 +17,54 @@ class GroupedWallpaperNavController extends ChangeNotifier {
   GroupedWallpaperNavMode _mode = defaultGroupedWallpaperNavMode;
   bool _entryClosed = false;
 
+  /// How many wallpaper pages are on screen right now.
+  ///
+  /// The wallpaper page is a settings surface the user rarely opens, so the bar
+  /// keeps it off by default and shows its entry only while the page is open.
+  /// A depth counter (not a flag) keeps the entry alive across a page that is
+  /// replaced by another one, where the new page starts before the old disposes.
+  int _pageDepth = 0;
+
   GroupedWallpaperNavMode get mode => _mode;
 
   /// Whether the user closed the derived entry from a page's menu.
+  ///
+  /// Retained with the rest of the nav-mode machinery while that entry's future
+  /// is undecided; it no longer gates the derivation, which follows
+  /// [pageVisible] instead.
   bool get entryClosed => _entryClosed;
 
+  /// Whether the wallpaper page is on screen.
+  ///
+  /// The bar derives the wallpaper entry only in this state (and never in the
+  /// shared mode): opening the page from the visible range, a notification or a
+  /// gesture adds the entry next to the visible range, and closing the page
+  /// takes it away again.
+  bool get pageVisible => _pageDepth > 0;
+
   /// Whether the bar should derive its own wallpaper entry.
-  bool get derivesEntry => _mode != GroupedWallpaperNavMode.shared && !_entryClosed;
+  bool get derivesEntry => _mode != GroupedWallpaperNavMode.shared && pageVisible;
+
+  /// Marks a wallpaper page as opened; the first one makes the entry appear.
+  void enterPage() {
+    _pageDepth++;
+    if (_pageDepth == 1) _notifyDeferred();
+  }
+
+  /// Marks a wallpaper page as closed; the entry goes away with the last one.
+  void exitPage() {
+    if (_pageDepth == 0) return;
+    _pageDepth--;
+    if (_pageDepth == 0) _notifyDeferred();
+  }
+
+  /// Notifies after the current build instead of inside it.
+  ///
+  /// A page enters and leaves while the Navigator builds its routes, when the
+  /// bottom bar may already have been built this frame; marking it dirty there
+  /// would throw "setState() or markNeedsBuild() called during build". A
+  /// microtask runs as soon as the synchronous frame work returns.
+  void _notifyDeferred() => scheduleMicrotask(notifyListeners);
 
   Future<void> load() async {
     try {

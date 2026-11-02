@@ -46,7 +46,14 @@ class WallpaperNavModeEditor extends StatelessWidget {
           final mode = groupedWallpaperNavController.mode;
           return ListTile(
             title: Text(def.title(context)),
-            subtitle: AvesListSubtitle(_navModeName(context, mode)),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AvesListSubtitle(_navModeName(context, mode)),
+                if (def.subtitle?.call(context) case final hint?) AvesListSubtitle(hint),
+              ],
+            ),
             onTap: () => showSelectionDialog<GroupedWallpaperNavMode>(
               context: context,
               builder: (context) => AvesSingleSelectionDialog<GroupedWallpaperNavMode>(

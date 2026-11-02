@@ -22,15 +22,15 @@ final ValueNotifier<VisibleRangeDestination> visibleRangeDestination = ValueNoti
 
 /// The page the shared entry actually renders.
 ///
-/// The shared mode is off while the wallpaper page is its own navigation
-/// destination: the entry always renders the visible-range page, so a stale
-/// `wallpaper` value (a gesture cold start, a value stored by an older build) can
-/// never turn the range entry into the wallpaper page. The enum, the notifier and
-/// the shell stay in place while whether the shared entry ships again is open.
+/// In the shared mode the entry hosts both pages and renders the stored choice.
+/// With a temporary entry the wallpaper page has its own bar entry and the range
+/// entry always renders the range page, so a stale `wallpaper` value (a gesture
+/// cold start, a value stored by an older build) can never take over the range
+/// entry.
 VisibleRangeDestination visibleRangeShellDestination({
   required GroupedWallpaperNavMode mode,
   required VisibleRangeDestination destination,
-}) => VisibleRangeDestination.range;
+}) => mode == GroupedWallpaperNavMode.shared ? destination : VisibleRangeDestination.range;
 
 /// The page the shared entry renders.
 class VisibleRangeShellPage extends StatelessWidget {
@@ -41,15 +41,23 @@ class VisibleRangeShellPage extends StatelessWidget {
   /// instead, exactly like the view it sits under.
   final bool selectCurrentWallpaperGroup;
 
-  const new({super.key, this.selectCurrentWallpaperGroup = false});
+  /// Whether the wallpaper page asks for the PIN at once.
+  ///
+  /// The notification's lock button deep-links the group page with this flag;
+  /// routed through the shell, the shell has to pass it on instead of dropping
+  /// the reason the user tapped.
+  final bool promptUnlock;
+
+  const new({super.key, this.selectCurrentWallpaperGroup = false, this.promptUnlock = false});
 
   @override
   Widget build(BuildContext context) {
     final mode = context.select<GroupedWallpaperNavController, GroupedWallpaperNavMode>((v) => v.mode);
     return ValueListenableBuilder<VisibleRangeDestination>(
       valueListenable: visibleRangeDestination,
-      builder: (context, destination, _) =>
-          visibleRangeShellDestination(mode: mode, destination: destination) == VisibleRangeDestination.wallpaper ? GroupedWallpaperPage(selectCurrent: selectCurrentWallpaperGroup) : const VisibleRangePage(),
+      builder: (context, destination, _) => visibleRangeShellDestination(mode: mode, destination: destination) == VisibleRangeDestination.wallpaper
+          ? GroupedWallpaperPage(selectCurrent: selectCurrentWallpaperGroup, promptUnlock: promptUnlock)
+          : const VisibleRangePage(),
     );
   }
 }

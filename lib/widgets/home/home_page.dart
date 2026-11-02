@@ -671,13 +671,21 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
       case MuzeiWallpaperPage.routeName:
         return buildRoute((context) => const MuzeiWallpaperPage());
       case GroupedWallpaperPage.routeName:
-        // Pushed as the backdrop of a gesture-opened view: start on the playing
-        // group so the page describes what the view shows.
-        return buildRoute((context) => const GroupedWallpaperPage(selectCurrent: true));
       case GroupedWallpaperPage.unlockRouteName:
-        // The notification's lock button: the page opens on the locked group and
-        // asks for the PIN at once, which is the reason the user tapped.
-        return buildRoute((context) => const GroupedWallpaperPage(selectCurrent: true, promptUnlock: true));
+        {
+          // The notification's lock button and a wallpaper gesture deep-link the
+          // group page. Pushed as the backdrop of a gesture-opened view, it starts
+          // on the playing group so the page describes what the view shows.
+          final promptUnlock = routeName == GroupedWallpaperPage.unlockRouteName;
+          if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared) {
+            // The shared entry hosts both pages, so the deep link switches that
+            // entry instead of stacking a page the bar would not highlight.
+            visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
+            routeName = VisibleRangePage.routeName;
+            return buildRoute((context) => VisibleRangeShellPage(selectCurrentWallpaperGroup: true, promptUnlock: promptUnlock));
+          }
+          return buildRoute((context) => GroupedWallpaperPage(selectCurrent: true, promptUnlock: promptUnlock));
+        }
       case GroupedWallpaperViewPage.routeName:
         // A gesture always pushes the playing group's page below the view.
         return buildRoute((context) => const GroupedWallpaperViewPage(groupPageBelow: true));

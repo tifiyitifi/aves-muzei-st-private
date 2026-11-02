@@ -2,7 +2,10 @@ import 'dart:math';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
-import 'package:aves/features/visible_range/view/visible_range_nav.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_nav.dart';
+import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_lens.dart';
@@ -43,6 +46,9 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
   void initState() {
     super.initState();
     _registerWidget(widget);
+    // In the shared mode, the entry's label and icon follow the page it renders;
+    // flipping the page keeps the same route, so the bar has to rebuild itself.
+    visibleRangeDestination.addListener(_onDestinationChanged);
   }
 
   @override
@@ -54,6 +60,7 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
 
   @override
   void dispose() {
+    visibleRangeDestination.removeListener(_onDestinationChanged);
     _unregisterWidget(widget);
     super.dispose();
   }
@@ -71,11 +78,13 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
     final configured = context.select<Settings, List<AvesNavItem>>((v) => v.bottomNavigationActions);
     if (configured.length < 2) return const SizedBox();
     final picking = CollectionViewHooksScope.maybeOf(context)?.isPicking ?? false;
-    // Only the visible-range entry is derived now: the wallpaper page is a
-    // navigation destination the user may pin, not one the bar adds on its own.
+    // The wallpaper entry is temporary: it is derived only while the wallpaper
+    // page is open, and its side comes from the configured mode.
+    final navMode = context.select<GroupedWallpaperNavController, GroupedWallpaperNavMode>((v) => v.mode);
+    final pageVisible = context.select<GroupedWallpaperNavController, bool>((v) => v.pageVisible);
     final items = _visibleItems(
       context,
-      withVisibleRangeDestination(configured, include: !picking),
+      withWallpaperNavDestinations(configured, mode: navMode, pageVisible: pageVisible, include: !picking),
     );
     if (items.length < 2) return const SizedBox();
 
@@ -133,6 +142,10 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
   }
 
   void _onCollectionFilterChanged() => setState(() {});
+
+  void _onDestinationChanged() {
+    if (mounted) setState(() {});
+  }
 
   /// Drops destinations a borrowed photo view cannot serve.
   ///

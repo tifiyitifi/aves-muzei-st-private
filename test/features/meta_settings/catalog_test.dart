@@ -138,12 +138,13 @@ void main() {
 
     test('Visible & wallpaper is fully migrated', () {
       final keys = metaSettingsDefsFor(SettingsCategory.wallpaper).map((def) => def.key).toList();
-      // The wallpaper page's navigation mode is gone: it is a navigation
-      // destination of its own, reached from the visible-range page.
-      expect(keys, hasLength(12));
+      expect(keys, hasLength(13));
       expect(
         keys,
         containsAll([
+          // The wallpaper page's entry policy: shared, or temporary on either
+          // side of the visible range.
+          WallpaperGroupStore.keyNavMode,
           WallpaperLockStore.keyVisibleRangeLockId,
           WallpaperLockStore.keyGroupSwitchLocked,
           WallpaperGroupStore.keyNotification,

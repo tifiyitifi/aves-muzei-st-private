@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
@@ -12,6 +14,7 @@ import 'package:aves/features/visible_range/view/visible_range_about_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_action_delegate.dart';
 import 'package:aves/features/visible_range/view/visible_range_active_footer.dart';
 import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
+import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/features/visible_range/view/visible_range_section_key.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_lock_dialog.dart';
@@ -773,14 +776,20 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     }
   }
 
-  /// Opens the wallpaper groups as a navigation destination.
+  /// Opens the wallpaper groups.
   ///
-  /// It uses [AvesNavItem.goTo] with `topLevel` for the same reason a bar tap
-  /// does: the wallpaper page is a destination of its own, not a sub-page of the
-  /// range editor, so it replaces the stack and the bar highlights it when the
-  /// user pinned it (and highlights nothing when they did not).
+  /// In the shared mode the two pages are peers behind one entry, so the menu
+  /// flips that entry instead of navigating: the bar keeps a single highlighted
+  /// destination. With a temporary entry it uses [AvesNavItem.goTo] with
+  /// `topLevel`, like a bar tap does: the wallpaper page is a destination of its
+  /// own, not a sub-page of the range editor, so it replaces the stack and the
+  /// bar highlights its entry while the page is open.
   Future<void> _openWallpaperGroups() async {
     if (!mounted) return;
+    if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared) {
+      visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
+      return;
+    }
     await const AvesNavItem(route: GroupedWallpaperPage.routeName).goTo(context, topLevel: true);
   }
 

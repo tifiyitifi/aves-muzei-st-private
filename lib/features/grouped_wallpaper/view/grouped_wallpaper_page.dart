@@ -6,6 +6,7 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.d
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/group_lock_rules.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_condition_pool.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_sections.dart';
@@ -215,6 +216,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // The bar shows the wallpaper entry only while this page is open.
+    groupedWallpaperNavController.enterPage();
     _controller = WallpaperGroupRangeController();
     _controller.addListener(_onControllerChanged);
     // Publishing notifies every browsing surface, so it must wait for the first
@@ -279,6 +282,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // The page leaves, so does its temporary bar entry.
+    groupedWallpaperNavController.exitPage();
     // The group's scope constrains browsing exactly like the gallery range, so
     // switching to another destination keeps it: the navigation layer marks that
     // case, and the mark is what separates it from a real close. A close (back to
@@ -1495,11 +1500,15 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           ),
       ],
       const PopupMenuDivider(),
-      // The page is a navigation destination of its own, reached from the
-      // visible-range page; it no longer derives or closes a bottom-bar entry, so
-      // the menu keeps no navigation switch. The retained handlers below and the
-      // nav-mode machinery are kept for now: whether the derived entry ships again
-      // is undecided.
+      // In the shared mode one entry hosts both pages, so the page needs its own
+      // way back to the range editor; with a temporary entry the range entry is
+      // still on the bar and the visitor simply taps it.
+      if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared)
+        _menuItem(_PageAction.visibleRange, AIcons.visibleRange, l10n.visibleRangePageTitle),
+      // The page's bottom-bar entry is temporary and appears with the page, so
+      // there is nothing to close from here; where it sits (or sharing the
+      // visible-range entry) is the "Wallpaper page" setting. The retained
+      // handlers below belong to the older close/reopen flow.
       if (gallery.isRestricted)
         _menuItem(
           _PageAction.cancelGalleryRange,
@@ -1844,10 +1853,16 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   /// Turns the group's decoy lock surface on or off.
   ///
-  /// Enabling copies the home range once in the controller, so the two start
-  /// identical and then narrow independently. The device may not support a live
-  /// wallpaper on the lock screen at all, which is worth saying at the moment the
-  /// user asks for one instead of leaving an inert range behind.
+  /// The split is a saved assignment, not a request to turn the wallpaper on: it
+  /// can be prepared while the grouped wallpaper is off, so the user picks what
+  /// home and lock will show before activating it. Like every other edit on this
+  /// page it waits for "save changes", which is also what re-bakes the running
+  /// wallpaper.
+  ///
+  /// The device-support check only makes sense while this wallpaper is actually
+  /// the system wallpaper — an inactive engine would report whatever the current
+  /// wallpaper is — so it is skipped otherwise instead of pushing the user into
+  /// the wallpaper chooser just to assign a range.
   Future<void> _toggleSeparateLockRange(WallpaperGroup group) async {
     if (_groupLocked) {
       _showBlocked();
@@ -1856,7 +1871,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final enabling = !group.separateLockRange;
     _selection.browse();
     await _controller.setSeparateLockRange(enabling);
-    if (!enabling || !mounted) return;
+    if (!enabling || !wallpaperEngineLink.isActive || !mounted) return;
     final status = await wallpaperEngineLink.lockSurfaceStatus();
     if (!mounted) return;
     if (status == GroupedWallpaperLockSurfaceStatus.none || status == GroupedWallpaperLockSurfaceStatus.other) {

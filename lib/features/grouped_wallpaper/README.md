@@ -58,6 +58,13 @@ sheet's write-back) back into the pool without disturbing the other surface.
   condition the home surface uses for the lock surface too, so the two start
   identical; `lockRangeSeeded` remembers that and later toggles only hide the
   lock marks, so the narrowing the user made survives.
+- **Prepared before activation.** The split and the H/L marks are stored data,
+  not a request to turn the wallpaper on: they can be configured while the
+  grouped wallpaper is off, and the engine picks them up when it becomes the
+  system wallpaper. The device-support check (`lockSurfaceStatus`) and the
+  wallpaper-chooser dialog only run while this wallpaper is actually active,
+  because that is the only time the answer means anything. When it is active,
+  toggling the split re-bakes at once instead of waiting for "save changes".
 - **One frame, not a queue.** The decoy advances only with time, so it has a
   single baked file (`state.json` `lock`) instead of the home queue's three
   slots. It is baked at the surface size with the group's lock effects already
@@ -99,33 +106,43 @@ sheet's write-back) back into the pool without disturbing the other surface.
 ## Navigation
 
 The wallpaper page is a navigation destination of its own, not a sub-page of the
-visible-range editor and not an entry the bar adds on its own: it is a settings
-page that is rarely opened, so the default bar does not carry it.
+visible-range editor, but the bar keeps it **off by default**: it is a settings
+page that is rarely opened.
 
-- The visible range page's More opens it with `AvesNavItem(route).goTo(topLevel:
-  true)`, the same navigation a bar destination performs: the stack is replaced,
-  and the bar highlights the entry when the user pinned it (and highlights
-  nothing when they did not).
-- The bar no longer derives a wallpaper entry. `withWallpaperNavDestinations`,
-  `GroupedWallpaperNavMode`, `GroupedWallpaperNavController` and the shared shell
-  are retained while whether that entry ships again is open, but nothing calls
-  them; `visibleRangeDestination` never leaves `range`, so a stale value (a
-  gesture cold start, a value stored by an older build) can never turn the range
-  entry into the wallpaper page.
-- `/wallpaper_groups` stays in the navigation editor, so a user who wants it on
-  the bar can pin it there; a pinned entry is theirs and the page never closes
-  it.
-- Notifications, the three-finger gesture and session restore deep-link the route
-  directly, so the page also opens without the destination being on the bar.
+- **Entry policy** (`wallpaper.groupedNavMode`, AppMeta, edited in Settings →
+  Visible & wallpaper → "Wallpaper page"): `shared` puts both pages behind the
+  visible-range entry (the entry keeps one slot, its icon and label follow the
+  page it renders), `separateLeft`/`separateRight` give the wallpaper page its
+  own entry beside the range entry. The default is `separateRight`.
+- **Temporary, not persistent.** The separate entry is derived only while the
+  wallpaper page is on screen (`GroupedWallpaperNavController.pageVisible`): with
+  a four-entry bar, opening the page shows five and leaving restores four. The
+  depth counter survives a page replaced by another one, where the new page
+  starts before the old disposes. The shared mode never changes the count.
+- The visible range page's More opens the page with `AvesNavItem(route).goTo(
+  topLevel: true)`, the same navigation a bar destination performs, so the stack
+  is replaced and the temporary entry is highlighted. In the shared mode it flips
+  `visibleRangeDestination` instead, keeping the single entry selected.
+- A user who pinned `/wallpaper_groups` in their own list owns the entry: it is
+  permanent, and no second one is derived.
+- In the shared mode the wallpaper page's More lists "Visible range": one entry
+  renders both pages, so the page itself has to offer the way back. With a
+  temporary entry that item is omitted, because the range entry is still on the
+  bar.
+- Notifications, the three-finger gesture and session restore deep-link the route.
+  In the shared mode the deep link is routed through the shell
+  (`VisibleRangeShellPage`, which passes `promptUnlock` on) so the bar still has
+  an entry to highlight; the unlock route keeps its reason for prompting.
 - The default bar is All / Favourites / Albums / Visible range: the video
   shortcut is gone and the range entry is stored like any other destination (so
   the user can move or remove it), while the builder still re-appends it when it
   is missing. Existing users keep their own list.
-- Settings → "Visible & wallpaper" collects the switches: the notification bar,
-  the lock switches, the history limit, the history page, the gestures page, the
-  photo-change animation, the frame retention, and the four Muzei
-  confirmations/prefetch options that used to sit under "Advanced". The group page
-  keeps the same actions as contextual shortcuts; both read one store.
+- Settings → "Visible & wallpaper" collects the switches: the wallpaper page
+  entry policy, the notification bar, the lock switches, the history limit, the
+  history page, the gestures page, the photo-change animation, the frame
+  retention, and the four Muzei confirmations/prefetch options that used to sit
+  under "Advanced". The group page keeps the same actions as contextual
+  shortcuts; both read one store.
 
 ## The engine
 
@@ -330,6 +347,14 @@ wallpaper fires before the app ever ran, which used to drop the gesture without 
 trace. The split-lock gate asks `KeyguardManager.isKeyguardLocked` at gesture
 time instead of trusting the cached broadcast state, so a missed
 `ACTION_USER_PRESENT` can no longer swallow every gesture.
+
+**Another live wallpaper can intercept the gesture.** Multi-finger touches are
+delivered to whichever live wallpaper is active, and an app that keeps its own
+service (Muzei, for example) may still consume them after this wallpaper is set,
+so the three-finger tap silently does nothing. Setting this wallpaper again, or
+clearing the other app's data / uninstalling it, hands the gesture back. Both the
+group page's About text and the gestures hint state this; there is nothing to fix
+in this code, and the notification still opens the view page.
 
 ### Scroll effect
 

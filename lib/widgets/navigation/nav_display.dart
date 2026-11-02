@@ -1,5 +1,8 @@
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
+import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -20,6 +23,13 @@ import 'package:aves/widgets/settings/settings_page.dart';
 import 'package:material_ui/material_ui.dart';
 
 class NavigationDisplay {
+  /// Whether the shared visible-range entry is currently showing the wallpaper.
+  ///
+  /// Only the shared mode has one entry for both pages; with a temporary entry
+  /// the wallpaper page has its own, and the range entry keeps its own icon.
+  static bool get _sharedEntryShowsWallpaper =>
+      groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared && visibleRangeDestination.value == VisibleRangeDestination.wallpaper;
+
   static String getFilterTitle(BuildContext context, CollectionFilter? filter) {
     final l10n = context.l10n;
     if (filter == null) return l10n.drawerCollectionAll;
@@ -59,7 +69,9 @@ class NavigationDisplay {
       case GroupedWallpaperPage.routeName:
         return l10n.wallpaperGroupsTitle;
       case VisibleRangePage.routeName:
-        return l10n.visibleRangePageTitle;
+        // One entry, two peer pages in the shared mode: the label and the icon
+        // follow whichever page the entry currently renders.
+        return _sharedEntryShowsWallpaper ? l10n.wallpaperGroupsTitle : l10n.visibleRangePageTitle;
       case SearchPage.routeName:
         return MaterialLocalizations.of(context).searchFieldLabel;
       case SettingsPage.routeName:
@@ -92,7 +104,7 @@ class NavigationDisplay {
       case GroupedWallpaperPage.routeName:
         return AIcons.wallpaper;
       case VisibleRangePage.routeName:
-        return AIcons.visibleRange;
+        return _sharedEntryShowsWallpaper ? AIcons.wallpaper : AIcons.visibleRange;
       case SearchPage.routeName:
         return AIcons.search;
       case SettingsPage.routeName:

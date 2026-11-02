@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
@@ -13,6 +15,8 @@ import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_actions.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/visible_range/services/visible_range_gate.dart';
+import 'package:aves/features/visible_range/view/visible_range_destination.dart';
+import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/features/wallpaper_lock/view/wallpaper_lock_prompt.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_cover.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_share_uri.dart';
@@ -284,6 +288,17 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
           // The group page is the "source" of what is on screen and is already
           // below this view, so going back is what the user means.
           navigator.pop();
+        } else if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared) {
+          // The shared entry hosts both pages: switch it and push the shell so
+          // the bar highlights the entry the user lands on.
+          _setSystemUiVisible(true);
+          visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
+          await navigator.pushReplacement(
+            MaterialPageRoute(
+              settings: const RouteSettings(name: VisibleRangePage.routeName),
+              builder: (_) => const VisibleRangeShellPage(selectCurrentWallpaperGroup: true),
+            ),
+          );
         } else {
           // Defensive: a view without its group page below replaces itself, so
           // back from the group page never returns to a stale artwork.

@@ -1,4 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_nav.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
@@ -20,51 +21,61 @@ void main() {
 
   List<String?> routes(List<AvesNavItem> items) => [for (final item in items) item.route];
 
-  test('the default mode puts the wallpaper right of the visible range', () {
+  test('the default mode puts the wallpaper right of the visible range while the page is open', () {
     expect(
-      routes(withWallpaperNavDestinations([all, albums], mode: defaultGroupedWallpaperNavMode, entryClosed: false)),
+      routes(withWallpaperNavDestinations([all, albums], mode: defaultGroupedWallpaperNavMode, pageVisible: true)),
       [CollectionPage.routeName, AlbumListPage.routeName, VisibleRangePage.routeName, GroupedWallpaperPage.routeName],
     );
   });
 
-  test('separateLeft puts it left of the visible range', () {
+  test('separateLeft puts it left of the visible range while the page is open', () {
     expect(
-      routes(withWallpaperNavDestinations([all, albums], mode: GroupedWallpaperNavMode.separateLeft, entryClosed: false)),
+      routes(withWallpaperNavDestinations([all, albums], mode: GroupedWallpaperNavMode.separateLeft, pageVisible: true)),
       [CollectionPage.routeName, AlbumListPage.routeName, GroupedWallpaperPage.routeName, VisibleRangePage.routeName],
     );
   });
 
   test('the entry follows the range entry wherever the user moved it', () {
     expect(
-      routes(withWallpaperNavDestinations([all, range, albums], mode: GroupedWallpaperNavMode.separateRight, entryClosed: false)),
+      routes(withWallpaperNavDestinations([all, range, albums], mode: GroupedWallpaperNavMode.separateRight, pageVisible: true)),
       [CollectionPage.routeName, VisibleRangePage.routeName, GroupedWallpaperPage.routeName, AlbumListPage.routeName],
     );
   });
 
-  test('the shared mode keeps the single shell entry', () {
+  test('the shared mode keeps the single shell entry even while the page is open', () {
     expect(
-      routes(withWallpaperNavDestinations([all, albums], mode: GroupedWallpaperNavMode.shared, entryClosed: false)),
+      routes(withWallpaperNavDestinations([all, albums], mode: GroupedWallpaperNavMode.shared, pageVisible: true)),
       [CollectionPage.routeName, AlbumListPage.routeName, VisibleRangePage.routeName],
     );
   });
 
-  test('a closed entry is not derived', () {
-    expect(
-      routes(withWallpaperNavDestinations([all, albums], mode: GroupedWallpaperNavMode.separateRight, entryClosed: true)),
-      [CollectionPage.routeName, AlbumListPage.routeName, VisibleRangePage.routeName],
-    );
+  test('the bar grows by one while the wallpaper page is open and shrinks back after', () {
+    // A user list of three entries plus the derived range entry: four normally.
+    const configured = [all, albums, AvesNavItem(route: CollectionPage.routeName)];
+    final closed = withWallpaperNavDestinations(configured, mode: GroupedWallpaperNavMode.separateRight, pageVisible: false);
+    expect(routes(closed), hasLength(4));
+    expect(routes(closed), isNot(contains(GroupedWallpaperPage.routeName)));
+
+    final open = withWallpaperNavDestinations(configured, mode: GroupedWallpaperNavMode.separateRight, pageVisible: true);
+    expect(routes(open), hasLength(5));
+    // Right of the range entry, i.e. last here.
+    expect(routes(open).last, GroupedWallpaperPage.routeName);
+
+    // Leaving the page takes the entry away again.
+    final after = withWallpaperNavDestinations(configured, mode: GroupedWallpaperNavMode.separateRight, pageVisible: false);
+    expect(routes(after), routes(closed));
   });
 
   test('an entry the user pinned is not duplicated', () {
     expect(
-      routes(withWallpaperNavDestinations([all, wallpaper, albums], mode: GroupedWallpaperNavMode.separateRight, entryClosed: false)),
+      routes(withWallpaperNavDestinations([all, wallpaper, albums], mode: GroupedWallpaperNavMode.separateRight, pageVisible: true)),
       [CollectionPage.routeName, GroupedWallpaperPage.routeName, AlbumListPage.routeName, VisibleRangePage.routeName],
     );
   });
 
   test('picking a photo derives nothing', () {
     expect(
-      routes(withWallpaperNavDestinations([all, albums], mode: GroupedWallpaperNavMode.separateRight, entryClosed: false, include: false)),
+      routes(withWallpaperNavDestinations([all, albums], mode: GroupedWallpaperNavMode.separateRight, pageVisible: true, include: false)),
       [CollectionPage.routeName, AlbumListPage.routeName],
     );
   });
@@ -93,6 +104,22 @@ void main() {
     expect(canReopenWallpaperNavEntry(mode: GroupedWallpaperNavMode.separateRight, entryClosed: true, pinned: true), isFalse);
     // The shared mode has no derived entry to close.
     expect(canReopenWallpaperNavEntry(mode: GroupedWallpaperNavMode.shared, entryClosed: true, pinned: false), isFalse);
+  });
+
+  test('the page marker is depth-based, so a replaced page never hides the entry', () {
+    final controller = GroupedWallpaperNavController();
+    expect(controller.pageVisible, isFalse);
+    controller.enterPage();
+    expect(controller.pageVisible, isTrue);
+    // A replacement page starts before the old one disposes.
+    controller.enterPage();
+    controller.exitPage();
+    expect(controller.pageVisible, isTrue);
+    controller.exitPage();
+    expect(controller.pageVisible, isFalse);
+    // A stray exit never underflows.
+    controller.exitPage();
+    expect(controller.pageVisible, isFalse);
   });
 
   group('merged wallpaper entry', () {

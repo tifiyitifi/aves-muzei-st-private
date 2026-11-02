@@ -2,6 +2,7 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.d
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +28,8 @@ void main() {
     expect(await link.prepare(), GroupedWallpaperSyncResult.notActive);
     expect(await link.syncNow(), GroupedWallpaperSyncResult.notActive);
     expect(await link.openChooser(), isFalse);
+    // An unattached link cannot measure the device, and unknown never narrows.
+    expect((await link.capability()).panVerdict, CapabilityVerdict.unknown);
   });
 
   test('refreshActive caches the probe result', () async {
@@ -170,6 +173,9 @@ class _FakeConnection implements WallpaperEngineConnection {
     if (failure != null) throw failure;
     return active;
   }
+
+  @override
+  Future<WallpaperCapability> capability() async => WallpaperCapability.unknown;
 
   @override
   Future<bool> restoreOffer() async {

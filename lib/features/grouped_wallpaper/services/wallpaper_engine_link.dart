@@ -2,6 +2,7 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.d
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 
 /// What the page needs from the wallpaper engine.
@@ -11,6 +12,9 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 abstract interface class WallpaperEngineConnection {
   /// Whether the grouped service is the current system wallpaper.
   Future<bool> isActive();
+
+  /// Where the wallpaper is bound and whether the launcher can pan it.
+  Future<WallpaperCapability> capability();
 
   /// Whether the wallpaper was in use and the system dropped it.
   Future<bool> restoreOffer();
@@ -149,6 +153,20 @@ class WallpaperEngineLink {
       _active = false;
     }
     return _active;
+  }
+
+  /// Where the wallpaper is bound and whether the launcher can pan it.
+  ///
+  /// A missing connection or a failing probe is [WallpaperCapability.unknown],
+  /// which never narrows a frame.
+  Future<WallpaperCapability> capability() async {
+    final connection = _connection;
+    if (connection == null) return WallpaperCapability.unknown;
+    try {
+      return await connection.capability();
+    } catch (_) {
+      return WallpaperCapability.unknown;
+    }
   }
 
   /// Re-asks whether the wallpaper was in use and the system dropped it.

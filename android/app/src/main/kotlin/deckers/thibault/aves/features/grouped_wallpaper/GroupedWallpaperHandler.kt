@@ -21,7 +21,9 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safe
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safeSuspend
@@ -63,6 +65,7 @@ class GroupedWallpaperHandler(
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "isActive" -> safe(call, result, ::isActive)
+            "capability" -> safe(call, result, ::capability)
             "restoreOffer" -> safe(call, result, ::restoreOffer)
             "reload" -> safe(call, result, ::reload)
             "openChooser" -> safe(call, result, ::openChooser)
@@ -79,6 +82,63 @@ class GroupedWallpaperHandler(
             "cancelNotification" -> safe(call, result, ::cancelNotification)
             else -> result.notImplemented()
         }
+    }
+
+    /**
+     * Reports what the device can actually do with this wallpaper, in one call.
+     *
+     * The app asks this before applying (to warn once on a device that will not
+     * pan) and before every bake (to decide how wide the frame should be). The
+     * answer therefore has to distinguish "measured as unsupported" from "not
+     * measured": a launcher reports its scroll step only after the wallpaper is
+     * bound, so an unbound device must not be narrowed.
+     */
+    private fun capability(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        val manager = WallpaperManager.getInstance(context)
+        val ours = GroupedLiveWallpaperService::class.java.name
+        // Before API 34 there is no per-surface live wallpaper, so the bound
+        // service is the system one (the same rule `isActive` uses).
+        val systemOurs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            manager.getWallpaperInfo(WallpaperManager.FLAG_SYSTEM)?.serviceName == ours
+        } else {
+            manager.wallpaperInfo?.serviceName == ours
+        }
+        // Android only separates the lock screen's live wallpaper from API 34.
+        val lockOurs = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            manager.getWallpaperInfo(WallpaperManager.FLAG_LOCK)?.serviceName == ours
+        val host = when {
+            systemOurs && lockOurs -> "both"
+            systemOurs -> "home"
+            lockOurs -> "lock"
+            else -> "none"
+        }
+        val launcher = try {
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName ?: ""
+        } catch (e: Exception) {
+            // A launcher the app cannot see is "unknown", never "fixed wallpaper".
+            Log.w(TAG, "failed to resolve the home launcher", e)
+            ""
+        }
+        // MIUI keeps its "scroll the wallpaper with the home pages" switch in
+        // Settings.Secure. Other ROMs have no such key, which answers null.
+        val span = try {
+            Settings.Secure.getString(context.contentResolver, "pref_key_wallpaper_screen_scrolled_span")?.toIntOrNull()
+        } catch (e: Exception) {
+            Log.w(TAG, "failed to read the wallpaper scroll setting", e)
+            null
+        }
+        val step = GroupedLiveWallpaperService.scrollStep.takeIf { it >= 0.0 }
+        result.success(
+            mapOf(
+                "host" to host,
+                "launcher" to launcher,
+                "model" to Build.MODEL.orEmpty(),
+                "scrollSpan" to span,
+                "scrollStep" to step,
+                "scrollOffsetMoved" to GroupedLiveWallpaperService.scrollOffsetMoved,
+            ),
+        )
     }
 
     private fun isActive(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {

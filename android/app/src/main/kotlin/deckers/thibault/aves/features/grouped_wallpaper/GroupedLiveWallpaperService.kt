@@ -37,6 +37,7 @@ import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillE
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillScheduler
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperTarget
 import net.rbgrn.android.glwallpaperservice.GLWallpaperService
+import kotlin.math.abs
 
 /**
  * Live wallpaper entry point of the grouped wallpaper.
@@ -72,18 +73,48 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             private set
 
         /**
-         * Records the launcher's scroll step.
+         * The launcher's last `xOffset`, or `-1` before the first callback.
          *
-         * @return whether the launcher just started panning, i.e. the step moved
-         * from "cannot pan" to a real one. The first callback arrives after the
-         * wallpaper was bound, so the frame already baked used the earlier
-         * answer; the caller asks for one refill so the photo on screen gains its
-         * wide frame now instead of on the next advance.
+         * Kept next to [scrollStep] because a step of zero is not proof on its
+         * own: some launchers scroll the wallpaper while reporting no step, and
+         * only the offset moving shows that they do.
          */
-        fun recordScrollStep(step: Float): Boolean {
-            val previous = scrollStep
+        @Volatile
+        var scrollOffset = -1.0
+            private set
+
+        /**
+         * Whether the launcher ever moved [scrollOffset] between callbacks.
+         *
+         * Monotonic: once the wallpaper visibly followed the home pages, this
+         * device can pan, whatever it reports as a step.
+         */
+        @Volatile
+        var scrollOffsetMoved = false
+            private set
+
+        /** How [recordOffsets] classifies what the launcher is doing. */
+        private fun panState(step: Double, moved: Boolean): Int = when {
+            step > 0.0 || moved -> 2
+            step == 0.0 -> 1
+            else -> 0
+        }
+
+        /**
+         * Records what the launcher reports on every `onOffsetsChanged`.
+         *
+         * @return whether the panning answer just changed, so the caller asks for
+         * one refill: the frame already baked used the earlier answer, and the
+         * photo on screen must gain its wide frame, or drop it, now. The first
+         * callback counts as a change, because "no step been reported" and "the
+         * launcher reports it never pans" are different answers.
+         */
+        fun recordOffsets(step: Float, offset: Float): Boolean {
+            val previous = panState(scrollStep, scrollOffsetMoved)
+            if (scrollOffset >= 0.0 && abs(offset - scrollOffset) > 0.001f) scrollOffsetMoved = true
             scrollStep = step.toDouble()
-            return previous <= 0.0 && step > 0f
+            scrollOffset = offset.toDouble()
+            return previous != panState(scrollStep, scrollOffsetMoved)
         }
 
         /** The live instance, so the notification's actions can refresh the bar. */
@@ -496,9 +527,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
                 Log.d(TAG, "scroll.step step=$xOffsetStep preview=$isPreview")
             }
             if (!isPreview) {
-                val startsPanning = GroupedLiveWallpaperService.recordScrollStep(xOffsetStep)
-                if (startsPanning) {
-                    Log.d(TAG, "scroll.step refill for the wider frame")
+                val panningChanged = GroupedLiveWallpaperService.recordOffsets(xOffsetStep, xOffset)
+                if (panningChanged) {
+                    Log.d(TAG, "scroll.step refill for the changed panning state")
                     requestRefill()
                 }
             }

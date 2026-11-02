@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/services/common/channel.dart';
@@ -28,6 +29,13 @@ class GroupedFrameWriteResult {
 abstract interface class GroupedWallpaperPlatform {
   /// Whether [GroupedLiveWallpaperService] is the current system wallpaper.
   Future<bool> isActive();
+
+  /// Where the wallpaper is bound and what the launcher can do with it.
+  ///
+  /// The engine asks before every bake: a device that cannot pan is baked at the
+  /// surface size instead of the photo's whole width. The page asks before
+  /// applying, to warn once.
+  Future<WallpaperCapability> capability();
 
   /// Whether the wallpaper was in use and the system dropped it.
   ///
@@ -127,6 +135,12 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
   Future<bool> isActive() async {
     final active = await _invoke<bool>('isActive');
     return active ?? false;
+  }
+
+  @override
+  Future<WallpaperCapability> capability() async {
+    final raw = await _invoke<Map<Object?, Object?>>('capability');
+    return WallpaperCapability.parse(raw);
   }
 
   @override

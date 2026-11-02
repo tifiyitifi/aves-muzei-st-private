@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
@@ -54,9 +55,14 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
   GroupedWallpaperState? _state;
   String? _previewPath;
 
+  /// Whether this device can pan the wallpaper at all, for the switch's note.
+  WallpaperCapability _capability = WallpaperCapability.unknown;
+
   WallpaperGroupRangeController get _controller => widget.controller;
 
   bool get _editingLock => _tabs.index == 1;
+
+  bool get _panUnsupported => _capability.panVerdict == CapabilityVerdict.unsupported;
 
   /// The values on screen: the surface being edited, honouring the link toggle.
   WallpaperEffects get _currentEffects => _editingLock ? _effects.effectiveLock : _effects.home;
@@ -82,12 +88,14 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
 
   Future<void> _loadPreview() async {
     final state = await wallpaperEngineLink.readState();
+    final capability = await wallpaperEngineLink.capability();
     // Only the group currently on the wallpaper has a baked preview; another
     // group's effects still save and apply when it plays next.
     final path = state?.groupId == widget.groupId ? await wallpaperEngineLink.currentPhotoPath() : null;
     if (!mounted) return;
     setState(() {
       _state = state;
+      _capability = capability;
       _previewPath = path;
     });
   }
@@ -188,9 +196,26 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      l10n.wallpaperUseScrollEffect,
-                      style: const TextStyle(color: Colors.white),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          l10n.wallpaperUseScrollEffect,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        // Keep the switch usable: the group keeps its own
+                        // preference, and a launcher that starts panning later
+                        // follows it without the user having to come back.
+                        if (_panUnsupported && _effects.homeScrollEffect)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              l10n.wallpaperScrollEffectUnsupported,
+                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   Switch(

@@ -2,6 +2,7 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.d
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_restore_notice.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
@@ -102,6 +103,9 @@ class _FakeConnection implements WallpaperEngineConnection {
 
   @override
   Future<bool> isActive() async => false;
+
+  @override
+  Future<WallpaperCapability> capability() async => WallpaperCapability.unknown;
 
   @override
   Future<bool> restoreOffer() async => offer;

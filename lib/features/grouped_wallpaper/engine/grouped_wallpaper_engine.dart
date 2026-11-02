@@ -20,6 +20,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_empty_notice.dart';
@@ -86,6 +87,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   /// The frame baked ahead of the queue, kept out of the cache's eviction.
   GroupedWallpaperSlot? _prewarmed;
+
+  /// The last capability line logged, so a sync never repeats it.
+  String? _lastCapabilityLog;
 
   /// Runs one pipeline at a time: the service's start request and the page's
   /// button must never bake two frames into the same file.
@@ -163,6 +167,9 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   @override
   Future<bool> isActive() => platform.isActive();
+
+  @override
+  Future<WallpaperCapability> capability() => platform.capability();
 
   @override
   Future<bool> restoreOffer() => platform.restoreOffer();
@@ -1722,12 +1729,26 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   /// Whether frames should keep the photo's whole width for the launcher to pan.
   ///
-  /// The switch is the user's alone. A launcher that never pans draws the wide
-  /// frame centered, which looks exactly like a cover crop, so following the
-  /// switch without asking for `xOffsetStep` is safe — and it removes the
-  /// "panning only starts after the launcher's first offset callback" gap, where
-  /// the wallpaper kept a cover-cropped frame and had nothing to pan.
-  Future<bool> _effectiveScrollEffect(GroupedWallpaperPlan plan) async => plan.effects.homeScrollEffect;
+  /// The switch is the user's alone, but it is only half the answer: a device
+  /// that cannot put this service on the home screen, or a launcher that never
+  /// pans, would draw the extra width as a centred crop while paying for the
+  /// bake and the texture. [WallpaperCapability.bakesWide] is deliberately
+  /// conservative — an unmeasured device keeps the wide frame — so a phone that
+  /// does pan is never narrowed by a missing answer.
+  Future<bool> _effectiveScrollEffect(GroupedWallpaperPlan plan) async {
+    if (!plan.effects.homeScrollEffect) return false;
+    final capability = await platform.capability();
+    final wide = capability.bakesWide;
+    // Logged on change only: the launcher reports its step on every frame, and
+    // the capability is re-read on every sync.
+    final line = 'capability host=${capability.host.name} launcher=${capability.launcherPackage} '
+        'span=${capability.scrollSpan} step=${capability.scrollStep} moved=${capability.scrollOffsetMoved} wide=$wide';
+    if (line != _lastCapabilityLog) {
+      _lastCapabilityLog = line;
+      groupedWallpaperLog.d(line);
+    }
+    return wide;
+  }
 
   /// The photo's whole width at the surface height, capped by the texture limit.
   ///

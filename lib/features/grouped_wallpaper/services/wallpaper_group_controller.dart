@@ -915,6 +915,18 @@ class WallpaperGroupController extends ChangeNotifier {
   /// Records that the user does not want the replacement warning again.
   Future<void> dismissOverwriteWarning() async => (await _openStore()).writeOverwriteDismissed(true);
 
+  /// Whether the capability warning still has to be shown for [deviceKey].
+  ///
+  /// The answer is stored rather than kept in memory: the point is to warn once
+  /// per device across restarts, and the key names the device and launcher so a
+  /// different launcher asks again.
+  Future<bool> shouldWarnCapability(String deviceKey) async {
+    final store = await _openStore();
+    return await store.readCapabilityWarned() != deviceKey;
+  }
+
+  Future<void> markCapabilityWarned(String deviceKey) async => (await _openStore()).writeCapabilityWarned(deviceKey);
+
   Future<WallpaperGroupStore> _openStore() async {
     final existing = _store;
     if (existing != null) return existing;

@@ -22,8 +22,10 @@ of the Muzei-style live wallpaper mechanism.
   effect (edited in the effects page), the full set of rule actions on the group page (move to
   base/restriction/supplement, open in a media set by replacing or appending,
   delete), per-permission locking, the usage history (page, notification entry,
-  configurable limit), "duplicate group", and the in-app notice that offers the
-  wallpaper back after an update made the system drop it.
+  configurable limit), "duplicate group", the in-app notice that offers the
+  wallpaper back after an update made the system drop it, and the device
+  capability probe that warns once before applying and bakes surface-sized
+  frames when the home screen cannot host or pan the wallpaper.
 - **Not done yet**: the notification's copy/share button (shown but disabled),
   filtering the management surfaces (settings, explorer, vaults,
   recycle bin) while a range is locked, temporary/permanent selection ranges,
@@ -378,13 +380,15 @@ surface, which is what the wallpaper always did. The renderer and
 `GroupedWallpaperViewport` need no change: a frame that is not wider than the
 surface simply has no pan range.
 
-Two guards keep the wider frame honest:
+Two rules keep the wider frame honest:
 
-- the switch alone decides: a launcher that never pans draws the wide frame
-  centered, which looks exactly like the surface crop, and a launcher that
-  reports no step (no callback yet) is no different. Asking for `xOffsetStep` is
-  what used to gate the wide frame, and that gate is what left the wallpaper
-  with nothing to pan when a launcher scrolled without reporting a step;
+- the switch is the user's, but it is only half the answer. `_effectiveScrollEffect`
+  also asks `WallpaperCapability`: a device that cannot host this service on the
+  home screen, or a launcher that reports it never pans, is baked at the surface
+  size instead. The capability is deliberately conservative — an unmeasured
+  device (no offset callback yet, or a service that is not bound) keeps the wide
+  frame — because a wrong "unsupported" would silently take the effect away from
+  a phone that does pan;
 - the lock screen does not pan, so the renderer centers its window (`offsetX`
   `0.5`) instead of leaving it on the last home page.
 
@@ -392,6 +396,66 @@ Two guards keep the wider frame honest:
 `surfaceHeight`, `scrollEffect`). A mismatch re-bakes once, which is what makes
 the switch immediate and also fixes rotation or a changed system dimension hint
 silently keeping a stretched frame.
+
+### Capability
+
+`WallpaperCapability` (`model/wallpaper_capability.dart`) is the one place that
+decides what the device can do. The native `capability` channel method answers in
+one call, because the page and the engine need the same facts at different times:
+
+| field | source | meaning |
+|---|---|---|
+| `host` | `getWallpaperInfo(FLAG_SYSTEM/FLAG_LOCK)` vs our service | `home`, `lock`, `both` or `none` |
+| `launcherPackage` | `resolveActivity(ACTION_MAIN/CATEGORY_HOME)` | the default home package |
+| `deviceModel` | `Build.MODEL` | remembers which devices were warned |
+| `scrollSpan` | `Settings.Secure pref_key_wallpaper_screen_scrolled_span` | MIUI's "scroll wallpaper" switch, null elsewhere |
+| `scrollStep` | the service's last `onOffsetsChanged` | `-1` → unknown, `0` → never pans, `> 0` → pans |
+| `scrollOffsetMoved` | whether `xOffset` ever changed between callbacks | proves panning even when the step stays `0` |
+
+`panVerdict` order (a positive answer always wins):
+
+1. `host == lock` → unsupported (that host never receives offsets);
+2. `scrollStep > 0` → supported;
+3. `scrollOffsetMoved` → supported (some launchers scroll while reporting no step);
+4. `scrollSpan == 0` → unsupported;
+5. `scrollStep == 0` → unsupported;
+6. otherwise → unknown.
+
+`hostVerdict` only drives the pre-apply warning, never the frame. It is
+unsupported when the launcher is a known fixed-wallpaper one (currently
+`com.miui.home`) and the home screen is not running our service. The list is
+intentionally short: a wrong entry costs one dismissible dialog, and entries are
+added only with evidence.
+
+`bakesWide` is `panVerdict != unsupported`. The behaviour matrix is therefore:
+
+| device | switch | host | frame |
+|---|---|---|---|
+| pans | on | home/both, step > 0 or moving offset | wide |
+| pans | off | any | surface |
+| HyperOS lock-only | on | lock | surface |
+| launcher never pans | on | home/both, step = 0, offset fixed | surface |
+| not measured yet | on | none or step unknown | **wide** |
+
+The last row is the rule that protects a panning phone: unknown never narrows.
+
+Two paths make the decision converge without the user re-applying:
+
+- the launcher's offset callbacks feed `recordOffsets`. It reports a change when
+  the panning answer leaves "unknown" (the first callback), when the step crosses
+  zero in **either** direction, or when the offset starts moving; the service
+  then asks for one refill, so `> 0 → 0` drops the wide frame and a moving
+  offset brings it back;
+- a host that only draws the lock screen never gets an offset callback at all,
+  so the page's `_refreshEngine` asks for one `prepare()` when the state says
+  wide but the capability says unsupported. `_isLayoutStale` makes every later
+  probe a no-op.
+
+The pre-apply warning is stored in AppMeta under
+`wallpaper.groupedCapabilityWarned` as `<model>|<launcher>`, so it appears once
+per device and again after a launcher change. `host == lock` also changes the
+page's status line to "Running on the lock screen only", and the effects page
+notes that the launcher does not pan while leaving the switch usable.
 
 ### Effects
 

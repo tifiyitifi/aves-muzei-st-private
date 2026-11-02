@@ -20,6 +20,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_empty_notice.dart';
@@ -508,23 +509,51 @@ void main() {
       expect(state.height, 200);
     });
 
-    test('a launcher that never pans still keeps the wide frame', () async {
+    test('a launcher that never pans gets the surface-sized frame', () async {
       planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
+      platform.host = WallpaperHost.home;
       platform.scrollStepValue = 0;
       serve(entries(12));
 
       await engine.prepare();
 
       final state = (await store.readState())!;
-      // The switch is the user's: a launcher with no pan draws the wide frame
-      // centered, which looks like the cover crop, so nothing is lost by keeping
-      // the photo's whole width.
-      expect(state.scrollEffect, isTrue);
-      expect(state.width, 600);
-      expect(platform.scrollStepReads, 0);
+      // The wide frame exists only for panning. A launcher that reports it never
+      // pans would draw the extra width as a centred crop, so it is not baked.
+      expect(state.scrollEffect, isFalse);
+      expect(state.width, 100);
+      expect(platform.capabilityReads, greaterThan(0));
     });
 
-    test('the switch is followed without asking the launcher', () async {
+    test('a device that cannot be measured keeps the wide frame', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
+      // No host yet: the wallpaper is not bound, so nothing is known about it.
+      serve(entries(12));
+
+      await engine.prepare();
+
+      final state = (await store.readState())!;
+      // Unknown must never narrow: a phone that pans would lose its effect.
+      expect(state.scrollEffect, isTrue);
+      expect(state.width, 600);
+    });
+
+    test('a moved offset keeps the wide frame even with a zero step', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
+      platform.host = WallpaperHost.home;
+      platform.scrollStepValue = 0;
+      // The launcher scrolls the wallpaper but reports no step.
+      platform.scrollOffsetMoved = true;
+      serve(entries(12));
+
+      await engine.prepare();
+
+      final state = (await store.readState())!;
+      expect(state.scrollEffect, isTrue);
+      expect(state.width, 600);
+    });
+
+    test('the switch is followed without asking for the launcher step', () async {
       planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
       serve(entries(12));
 
@@ -534,22 +563,49 @@ void main() {
       expect((await store.readState())!.scrollEffect, isTrue);
     });
 
-    test('a launcher stepping from no pan to panning keeps the same wide frame', () async {
+    test('a launcher that starts panning widens the same frame', () async {
       planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
+      platform.host = WallpaperHost.home;
       platform.scrollStepValue = 0;
+      serve(entries(12));
+
+      await engine.prepare();
+      final narrow = (await store.readState())!;
+      expect(narrow.scrollEffect, isFalse);
+      expect(narrow.width, 100);
+
+      // The launcher's first real offset callback reports a step: the layout is
+      // stale, so the same photo is re-baked wider instead of being replaced.
+      platform.scrollStepValue = 0.25;
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      final wide = (await store.readState())!;
+      expect(wide.scrollEffect, isTrue);
+      expect(wide.width, 600);
+      expect(wide.entryId, narrow.entryId);
+    });
+
+    test('a launcher that stops panning narrows once and stays narrow', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
+      platform.host = WallpaperHost.home;
+      platform.scrollStepValue = 0.25;
       serve(entries(12));
 
       await engine.prepare();
       final wide = (await store.readState())!;
       expect(wide.scrollEffect, isTrue);
-      expect(wide.width, 600);
 
-      // The launcher's step only changes how the renderer maps the offset onto
-      // the frame it already has: the engine has nothing to re-bake.
-      platform.scrollStepValue = 0.25;
+      // `onOffsetsChanged` now reports a zero step: the host is bound but the
+      // launcher does not move the wallpaper.
+      platform.scrollStepValue = 0;
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      final narrow = (await store.readState())!;
+      expect(narrow.scrollEffect, isFalse);
+      expect(narrow.width, 100);
+      expect(narrow.entryId, wide.entryId);
+      // One rebake, not a loop: the layout now matches the capability.
       expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
-      expect((await store.readState())!.width, 600);
-      expect((await store.readState())!.entryId, wide.entryId);
     });
 
     test('turning the group switch on re-bakes once and keeps the queue', () async {
@@ -1661,6 +1717,26 @@ class _FakePlatform implements GroupedWallpaperPlatform {
 
   @override
   Future<bool> isActive() async => active;
+
+  /// The capability the platform answers with; the engine reads it on every
+  /// bake to decide how wide the frame should be.
+  WallpaperHost host = WallpaperHost.none;
+  int? scrollSpan;
+  bool scrollOffsetMoved = false;
+  int capabilityReads = 0;
+
+  @override
+  Future<WallpaperCapability> capability() async {
+    capabilityReads++;
+    return WallpaperCapability(
+      host: host,
+      launcherPackage: 'com.example.launcher',
+      deviceModel: 'Test Model',
+      scrollSpan: scrollSpan,
+      scrollStep: scrollStepValue,
+      scrollOffsetMoved: scrollOffsetMoved,
+    );
+  }
 
   @override
   Future<bool> restoreOffer() async => offer;

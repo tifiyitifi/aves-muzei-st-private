@@ -502,6 +502,17 @@ void main() {
     expect(await controller.takeOverwriteWarning(active: false, disabled: false, hasFrame: true), isFalse);
   });
 
+  test('the capability warning is shown once per device and launcher', () async {
+    expect(await controller.shouldWarnCapability('Model|com.miui.home'), isTrue);
+    await controller.markCapabilityWarned('Model|com.miui.home');
+    // Same device, same launcher: the user already knows.
+    expect(await controller.shouldWarnCapability('Model|com.miui.home'), isFalse);
+    // Another launcher may pan, so it asks again.
+    expect(await controller.shouldWarnCapability('Model|com.example.launcher'), isTrue);
+    // Another device (the same launcher) starts over.
+    expect(await controller.shouldWarnCapability('Other Model|com.miui.home'), isTrue);
+  });
+
   test('enabling the split copies the home range into a durable lock range', () async {
     const id = 'wallpaper.group.dcim';
     final home = await controller.groupRange(id);

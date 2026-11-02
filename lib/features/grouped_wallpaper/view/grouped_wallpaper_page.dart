@@ -8,6 +8,7 @@ import 'package:aves/features/grouped_wallpaper/model/group_lock_rules.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_condition_pool.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_sections.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
@@ -216,6 +217,18 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// normally again without unlocking.
   bool get _groupLocked => wallpaperLockService.groupSwitchLocked;
 
+  /// The device's last measured wallpaper capability.
+  ///
+  /// Kept for the menu's status line and the pre-apply warning; the engine reads
+  /// its own copy when it bakes, because the answer changes with the launcher.
+  WallpaperCapability _capability = WallpaperCapability.unknown;
+
+  /// Whether this page already asked for the surface-sized re-bake.
+  ///
+  /// The state only stops saying "wide" once the bake succeeds, so without this
+  /// a failing bake would be retried on every resume while the page is open.
+  bool _alignRequested = false;
+
   /// The group the lock froze, if any.
   String? get _lockedGroupId => wallpaperLockService.groupSwitchLockedGroupId;
 
@@ -341,12 +354,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   }
 
   /// Re-reads whether the grouped wallpaper is active, whether it is turned on,
-  /// whether it may show its bar, whether frames pan with the home pages, and
-  /// what it is showing.
+  /// whether it may show its bar, where it is bound, whether frames pan with the
+  /// home pages, and what it is showing.
   Future<void> _refreshEngine() async {
     final active = await wallpaperEngineLink.refreshActive();
     await wallpaperEngineLink.refreshDisabled();
     await wallpaperEngineLink.refreshNotification();
+    _capability = await wallpaperEngineLink.capability();
     final state = await wallpaperEngineLink.readState();
     if (!mounted) return;
     // A notification switch or a background run can leave the wallpaper on an
@@ -356,6 +370,24 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       groupedWallpaperEmptyNotice.report(groupId: state.groupId, groupName: state.groupName);
     }
     await _warnIfOverwritten(state, active: active);
+    await _alignFrameWidth(state);
+  }
+
+  /// Replaces a wide frame the device cannot pan, once.
+  ///
+  /// The engine bakes before the system picker commits, so on a device that only
+  /// draws the lock screen the frame can still be the photo's whole width. That
+  /// host never receives an offset callback, so nothing would ever ask for the
+  /// surface-sized bake; this does, and [GroupedWallpaperSyncResult.unchanged]
+  /// keeps every later probe from re-baking. A device that can pan is left alone
+  /// here: its launcher reports the step itself.
+  Future<void> _alignFrameWidth(GroupedWallpaperState? state) async {
+    if (_alignRequested) return;
+    if (!wallpaperEngineLink.isPlaying || state == null || !state.hasPhoto) return;
+    if (!state.scrollEffect || _capability.panVerdict != CapabilityVerdict.unsupported) return;
+    _alignRequested = true;
+    groupedWallpaperLog.i('capability rebake width=surface host=${_capability.host.name} launcher=${_capability.launcherPackage}');
+    await wallpaperEngineLink.prepare();
   }
 
   /// Warns once when another wallpaper replaced this one.
@@ -1535,7 +1567,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           subtitle: _groupLocked
               ? l10n.wallpaperGroupLockedSubtitle
               : wallpaperEngineLink.isAttached
-              ? (group.current && wallpaperEngineLink.isPlaying ? l10n.wallpaperGroupAlreadyPlaying : null)
+              ? (group.current && wallpaperEngineLink.isPlaying
+                    // A host that only draws the lock screen is still "playing",
+                    // but saying so plainly is what explains a static home
+                    // wallpaper.
+                    ? (_capability.host == WallpaperHost.lock ? l10n.wallpaperGroupStatusLockOnly : l10n.wallpaperGroupAlreadyPlaying)
+                    : null)
               : l10n.wallpaperGroupEngineUnavailable,
         ),
       _menuItem(
@@ -1858,12 +1895,52 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   /// Opens the system live-wallpaper chooser for the grouped service.
   ///
-  /// The picker takes over the screen, so the engine state is re-read on resume
-  /// rather than here; this only reports an OEM that has no picker at all.
+  /// Warns once per device first. The picker takes over the screen, so the
+  /// engine state is re-read on resume rather than here; this only reports an
+  /// OEM that has no picker at all.
   Future<void> _setWallpaper() async {
+    if (!await _confirmCapability()) return;
     final opened = await wallpaperEngineLink.openChooser();
     if (!mounted || opened) return;
     _showMessage(context.l10n.wallpaperGroupChooserUnavailable);
+  }
+
+  /// Warns before applying on a device that cannot pan this wallpaper.
+  ///
+  /// Only a measured [CapabilityVerdict.unsupported] warns: an unbound device or
+  /// a launcher that has not reported its step yet is asked to apply as usual,
+  /// so a phone that does pan is never told otherwise. The warning is stored per
+  /// device + launcher, so changing the launcher asks once more.
+  Future<bool> _confirmCapability() async {
+    _capability = await wallpaperEngineLink.capability();
+    if (!_capability.warnsBeforeApply) return true;
+    if (!await _controller.groupController.shouldWarnCapability(_capability.warningKey)) return true;
+    if (!mounted) return false;
+    final l10n = context.l10n;
+    groupedWallpaperLog.i(
+      'capability warn host=${_capability.host.name} launcher=${_capability.launcherPackage} '
+      'span=${_capability.scrollSpan} step=${_capability.scrollStep} moved=${_capability.scrollOffsetMoved}',
+    );
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.wallpaperGroupCapabilityTitle),
+        content: Text(
+          [
+            if (_capability.hostVerdict == CapabilityVerdict.unsupported) l10n.wallpaperGroupCapabilityNoHome,
+            if (_capability.panVerdict == CapabilityVerdict.unsupported) l10n.wallpaperGroupCapabilityNoPan,
+            l10n.wallpaperGroupCapabilityNarrow,
+          ].join('\n\n'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(l10n.wallpaperGroupCapabilityContinue)),
+        ],
+      ),
+    );
+    if (confirmed != true) return false;
+    await _controller.groupController.markCapabilityWarned(_capability.warningKey);
+    return true;
   }
 
   /// Opens the immersive view of the photo the wallpaper is showing.

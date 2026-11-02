@@ -98,6 +98,14 @@ class WallpaperGroupStore {
   /// AppMeta key of "do not warn about another wallpaper replacing this one".
   static const keyOverwriteDismissed = 'wallpaper.groupedOverwriteDismissed';
 
+  /// AppMeta key of the device + launcher pair already warned about the home
+  /// screen not running (or not panning) this wallpaper.
+  ///
+  /// The warning is about the device, not about the group, and repeating it on
+  /// every apply would be noise. Storing the pair means switching to a launcher
+  /// that may behave differently asks once more.
+  static const keyCapabilityWarned = 'wallpaper.groupedCapabilityWarned';
+
   final AppDatabase db;
 
   new(this.db);
@@ -294,6 +302,15 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeOverwriteDismissed(bool dismissed) => AppMetaStore(db).write({keyOverwriteDismissed: dismissed ? 'true' : 'false'});
+
+  /// The device + launcher pair the capability warning was last shown on.
+  Future<String?> readCapabilityWarned() async {
+    final values = await AppMetaStore(db).read({keyCapabilityWarned});
+    final value = values[keyCapabilityWarned];
+    return value == null || value.isEmpty ? null : value;
+  }
+
+  Future<void> writeCapabilityWarned(String deviceKey) => AppMetaStore(db).write({keyCapabilityWarned: deviceKey});
 
   /// Writes one group's effects and bumps its `updatedAt` so the next bake sees
   /// the change.

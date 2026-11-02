@@ -65,6 +65,7 @@ class VisibleRangeAboutPage extends StatelessWidget {
       _AboutSection(body: l10n.aboutWallpaperScroll),
       _AboutSection(body: l10n.aboutWallpaperNotification),
       _AboutSection(body: l10n.aboutWallpaperLock),
+      _AboutSection(body: l10n.wallpaperGroupAboutSeparateLockRange),
       _AboutSection(body: l10n.aboutWallpaperOverwrite),
     ];
   }

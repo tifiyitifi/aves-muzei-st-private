@@ -46,6 +46,13 @@ class VisibleRangeCandidate extends Equatable {
   /// it cannot be selected, opened, counted or deleted.
   final bool placeholder;
 
+  /// Whether the tile is shown but cannot be edited.
+  ///
+  /// The wallpaper page uses it for the surface that is not being edited: both
+  /// surfaces are expanded, but the inactive one is a read-only summary, so a
+  /// tap must never write its conditions into the active surface's range.
+  final bool readOnly;
+
   const new({
     required this.id,
     required this.kind,
@@ -57,6 +64,7 @@ class VisibleRangeCandidate extends Equatable {
     this.preset,
     this.rule,
     this.placeholder = false,
+    this.readOnly = false,
   });
 
   factory fromPreset(VisibleRangePreset preset, {required bool active}) => VisibleRangeCandidate(
@@ -129,8 +137,9 @@ class VisibleRangeCandidate extends Equatable {
   /// Whether the candidate can be taken out to a media set.
   ///
   /// The result preview and 「Unrestricted」 are not conditions, and an empty
-  /// filter set would add nothing, so neither is a target.
-  bool get isApplicable => !isGallery && !isUnrestricted && !placeholder && filters.isNotEmpty;
+  /// filter set would add nothing, so neither is a target. A read-only surface is
+  /// a summary, not something the user can act on from the page.
+  bool get isApplicable => !isGallery && !isUnrestricted && !placeholder && !readOnly && filters.isNotEmpty;
 
   bool get isBuiltinRule => rule != null && isVisibleRangeBuiltinRule(rule!.id);
 
@@ -154,10 +163,26 @@ class VisibleRangeCandidate extends Equatable {
         preset: preset,
         rule: rule,
         placeholder: placeholder,
+        readOnly: readOnly,
+      );
+
+  /// The same candidate, shown as a read-only summary.
+  VisibleRangeCandidate copyWithReadOnly(bool readOnly) => VisibleRangeCandidate(
+        id: id,
+        kind: kind,
+        filters: filters,
+        labelKey: labelKey,
+        label: label,
+        description: description,
+        active: active,
+        preset: preset,
+        rule: rule,
+        placeholder: placeholder,
+        readOnly: readOnly,
       );
 
   @override
-  List<Object?> get props => [id, kind, filters, labelKey, label, description, active, placeholder];
+  List<Object?> get props => [id, kind, filters, labelKey, label, description, active, placeholder, readOnly];
 }
 
 /// A titled group of candidates.

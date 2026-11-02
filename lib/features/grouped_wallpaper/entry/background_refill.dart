@@ -19,7 +19,7 @@ Future<void> groupedWallpaperRefill({required bool advance, String? command}) as
       groupedWallpaperLog.i('refill.grouped command=${parsed.name}');
       return;
     }
-    final result = advance ? await engine.syncNow() : await engine.prepare();
+    final result = advance ? await engine.refill(advance: true) : await engine.prepare();
     groupedWallpaperLog.i('refill.grouped done advance=$advance result=${result.name}');
   } catch (error, stack) {
     groupedWallpaperLog.e('refill.grouped failed advance=$advance command=$command', error, stack);

@@ -1,5 +1,6 @@
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/grouped_wallpaper_history_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/services/common/services.dart';
 
 /// Writes one row of the grouped wallpaper's usage history.
@@ -15,6 +16,7 @@ abstract interface class GroupedWallpaperHistoryRecorder {
     required int groupNumber,
     required int usedAt,
     required int limit,
+    WallpaperSurface surface,
   });
 }
 
@@ -32,6 +34,7 @@ class DbGroupedWallpaperHistoryRecorder implements GroupedWallpaperHistoryRecord
     required int groupNumber,
     required int usedAt,
     required int limit,
+    WallpaperSurface surface = WallpaperSurface.home,
   }) async {
     final db = await (provider ?? getIt<AppDatabaseProvider>()).open();
     await GroupedWallpaperHistoryStore(db).record(
@@ -41,6 +44,7 @@ class DbGroupedWallpaperHistoryRecorder implements GroupedWallpaperHistoryRecord
       groupNumber: groupNumber,
       usedAt: usedAt,
       limit: limit,
+      surface: surface,
     );
   }
 }

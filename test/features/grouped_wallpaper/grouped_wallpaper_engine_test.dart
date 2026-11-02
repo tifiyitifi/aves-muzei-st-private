@@ -17,9 +17,11 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_re
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_entry.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
@@ -798,6 +800,77 @@ void main() {
     expect(await store.framesDir.exists(), isFalse);
   });
 
+  test('a split group bakes one decoy frame and records the lock surface', () async {
+    final homeRange = VisibleRange(id: wallpaperGroupRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    final lockRange = VisibleRange(id: wallpaperGroupLockRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.1'), updatedAt: 1);
+    planStore.plan = GroupedWallpaperPlan(
+      group: dcimGroup.copyWith(separateLockRange: true),
+      range: homeRange,
+      lockRange: lockRange,
+    );
+    serve(entries(5));
+
+    expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+    final state = (await store.readState())!;
+    expect(state.version, 7);
+    expect(state.lock, isNotNull);
+    expect(state.lockRangeId, lockRange.id);
+    expect(state.lock!.photo, isNot(state.currentSlot!.photo));
+    expect(store.lockPhotoOf(state.lock!), isNotNull);
+    // The home queue is untouched: the decoy is not one of its slots.
+    expect(state.slots.any((slot) => slot.photo == state.lock!.photo), isFalse);
+    expect(historyRecorder.rows.where((row) => row.surface == WallpaperSurface.lock), hasLength(1));
+  });
+
+  test('a split bake upgrades a v6 state so the native side reads the decoy', () async {
+    serve(entries(5));
+    await engine.prepare();
+    // Simulate an install that just updated: the frame on screen is a v6 file.
+    final before = (await store.readState())!;
+    await store.writeState(before.copyWith(version: 6));
+
+    final homeRange = VisibleRange(id: wallpaperGroupRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    final lockRange = VisibleRange(id: wallpaperGroupLockRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.1'), updatedAt: 1);
+    planStore.plan = GroupedWallpaperPlan(
+      group: dcimGroup.copyWith(separateLockRange: true),
+      range: homeRange,
+      lockRange: lockRange,
+    );
+
+    await engine.prepare();
+
+    final state = (await store.readState())!;
+    expect(state.version, GroupedWallpaperState.currentVersion);
+    expect(state.lock, isNotNull);
+  });
+
+  test('the decoy advances on refill, walks back, and is cleared when joined', () async {
+    final homeRange = VisibleRange(id: wallpaperGroupRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    final lockRange = VisibleRange(id: wallpaperGroupLockRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.1'), updatedAt: 1);
+    planStore.plan = GroupedWallpaperPlan(
+      group: dcimGroup.copyWith(separateLockRange: true),
+      range: homeRange,
+      lockRange: lockRange,
+    );
+    serve(entries(5));
+    await engine.prepare();
+    final first = (await store.readState())!.lock!.entryId;
+
+    await engine.refill(advance: true);
+    final second = (await store.readState())!.lock!.entryId;
+    expect(second, isNot(first));
+
+    await engine.previousLockArtwork();
+    expect((await store.readState())!.lock!.entryId, first);
+
+    planStore.plan = GroupedWallpaperPlan(group: dcimGroup, range: homeRange);
+    await engine.prepare();
+    final joined = (await store.readState())!;
+    expect(joined.lock, isNull);
+    expect(joined.lockRangeId, isEmpty);
+  });
+
   test('a locked range keeps rotating', () async {
     serve(entries(12));
     await engine.prepare();
@@ -1420,12 +1493,14 @@ class _FakeHistoryRecorder implements GroupedWallpaperHistoryRecorder {
     required int groupNumber,
     required int usedAt,
     required int limit,
+    WallpaperSurface surface = WallpaperSurface.home,
   }) async {
     rows.add(GroupedWallpaperHistoryEntry(
       entryId: entryId,
       groupId: groupId,
       groupName: groupName,
       groupNumber: groupNumber,
+      surface: surface,
       usedAt: usedAt,
     ));
     this.limit = limit;
@@ -1476,8 +1551,18 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   /// The surface that engine draws; the lock effect applies when true.
   bool lockScreenValue = false;
 
+  /// The surface the engine reports; a split group's decoy reports lock.
+  WallpaperSurface surfaceValue = WallpaperSurface.home;
+
+  /// The lock screen's owner, as the platform would report it.
+  GroupedWallpaperLockSurfaceStatus lockSurface = GroupedWallpaperLockSurfaceStatus.unknown;
+
   @override
-  Future<({int slot, bool lock})?> displayedSlot() async => displayedSlotValue == null ? null : (slot: displayedSlotValue!, lock: lockScreenValue);
+  Future<({int slot, bool lock, WallpaperSurface surface})?> displayedSlot() async =>
+      displayedSlotValue == null ? null : (slot: displayedSlotValue!, lock: lockScreenValue, surface: surfaceValue);
+
+  @override
+  Future<GroupedWallpaperLockSurfaceStatus> lockSurfaceStatus() async => lockSurface;
 
   @override
   Future<void> reload() async {

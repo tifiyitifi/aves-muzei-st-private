@@ -141,17 +141,25 @@ class WallpaperGroupStore {
                 effects: Value(jsonEncode(group.effects.toJsonMap())),
                 interval: Value(group.interval.seconds),
                 ordering: Value(group.ordering.name),
+                separateLockRange: Value(group.separateLockRange),
               ),
             );
       }
     });
   }
 
-  /// Deletes a group together with its visible range and applied-rule targets.
+  /// Deletes a group together with both of its visible ranges and applied-rule
+  /// targets.
+  ///
+  /// The lock range goes with the group even while the split is off: it is kept
+  /// hidden, not orphaned, and deleting the group must not leave an ownerless
+  /// range behind.
   Future<void> deleteGroup(String id) async {
     await db.transaction(() async {
       await (db.delete(db.wallpaperGroupRows)..where((t) => t.id.equals(id))).go();
-      await VisibleRangeStore(db).deleteRange(wallpaperGroupRangeId(id));
+      final ranges = VisibleRangeStore(db);
+      await ranges.deleteRange(wallpaperGroupRangeId(id));
+      await ranges.deleteRange(wallpaperGroupLockRangeId(id));
     });
   }
 
@@ -329,6 +337,7 @@ class WallpaperGroupStore {
         effects: _effects(row.effects, legacyScrollEffect: legacyScrollEffect),
         interval: WallpaperAdvanceInterval.fromSeconds(row.interval),
         ordering: GroupedWallpaperOrdering.tryParse(row.ordering),
+        separateLockRange: row.separateLockRange,
       );
 
   /// Parses the stored effects, falling back to identity when the value is from a

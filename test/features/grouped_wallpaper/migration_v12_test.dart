@@ -54,12 +54,12 @@ void main() {
 
     expect(
       await columnsOf(db, 'grouped_wallpaper_history'),
-      {'id', 'entryId', 'groupId', 'groupName', 'groupNumber', 'usedAt'},
+      {'id', 'entryId', 'groupId', 'groupName', 'groupNumber', 'surface', 'usedAt'},
     );
     final indexes = await db.customSelect("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_grouped_wallpaper_history_used_at'").get();
     expect(indexes, hasLength(1));
     final version = await db.customSelect('PRAGMA user_version').getSingle();
-    expect(version.data['user_version'], 12);
+    expect(version.data['user_version'], db.schemaVersion);
   });
 
   test('the upgrade leaves the existing groups alone', () async {

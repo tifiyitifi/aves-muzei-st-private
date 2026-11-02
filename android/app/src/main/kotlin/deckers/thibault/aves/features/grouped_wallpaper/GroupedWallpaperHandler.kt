@@ -21,6 +21,7 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safe
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safeSuspend
@@ -68,6 +69,7 @@ class GroupedWallpaperHandler(
             "wallpaperSize" -> safe(call, result, ::wallpaperSize)
             "scrollStep" -> safe(call, result, ::scrollStep)
             "displayedSlot" -> safe(call, result, ::displayedSlot)
+            "lockSurfaceStatus" -> safe(call, result, ::lockSurfaceStatus)
             "stateRoot" -> safe(call, result, ::stateRoot)
             "writeFrame" -> defaultScope.launch { safeSuspend(call, result, ::writeFrame) }
             "setRequestHandler" -> safe(call, result, ::setRequestHandler)
@@ -80,8 +82,37 @@ class GroupedWallpaperHandler(
     }
 
     private fun isActive(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
-        val info = WallpaperManager.getInstance(context).wallpaperInfo
-        result.success(info?.serviceName == GroupedLiveWallpaperService::class.java.name)
+        val manager = WallpaperManager.getInstance(context)
+        val ours = GroupedLiveWallpaperService::class.java.name
+        val active = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            manager.getWallpaperInfo(WallpaperManager.FLAG_SYSTEM)?.serviceName == ours ||
+                manager.getWallpaperInfo(WallpaperManager.FLAG_LOCK)?.serviceName == ours
+        } else {
+            manager.wallpaperInfo?.serviceName == ours
+        }
+        result.success(active)
+    }
+
+    /**
+     * Whether the system lock screen draws this app's live wallpaper.
+     *
+     * Android only separates the lock screen's live wallpaper from API 34, so an
+     * older device honestly answers `unknown` instead of guessing. The decoy
+     * surface is only useful when the answer is `ours`, which is what the page
+     * warns about.
+     */
+    private fun lockSurfaceStatus(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        val status = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            "unknown"
+        } else {
+            val info = WallpaperManager.getInstance(context).getWallpaperInfo(WallpaperManager.FLAG_LOCK)
+            when {
+                info == null -> "none"
+                info.serviceName == GroupedLiveWallpaperService::class.java.name -> "ours"
+                else -> "other"
+            }
+        }
+        result.success(mapOf("status" to status))
     }
 
     /**
@@ -179,10 +210,15 @@ class GroupedWallpaperHandler(
      * effect the renderer applied for that surface.
      */
     private fun displayedSlot(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        // A split group draws the decoy on the lock screen: it is not a queue
+        // slot, so the app is told which surface it is looking at instead.
+        val splitLock = GroupedLiveWallpaperService.lockScreenVisible &&
+            GroupedWallpaperStateFile.read(context)?.let { it.lock != null || it.lockRangeId.isNotEmpty() } == true
         result.success(
             mapOf(
-                "slot" to GroupedLiveWallpaperService.displayedSlot,
+                "slot" to if (splitLock) -1 else GroupedLiveWallpaperService.displayedSlot,
                 "lock" to GroupedLiveWallpaperService.lockScreenVisible,
+                "surface" to if (splitLock) "lock" else "home",
             ),
         )
     }

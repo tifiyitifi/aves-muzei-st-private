@@ -119,6 +119,22 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             private set
 
         /**
+         * Whether the wallpaper surface is actually visible.
+         *
+         * The battery gate uses it: a scheduled advance only bakes while the user
+         * can see the wallpaper, so two hours of video do not cost a dozen bakes.
+         * Screen-off and another app in front both count as invisible.
+         */
+        @Volatile
+        var wallpaperVisible = false
+            private set
+
+        /** Records the visibility the engine reports, for the refill gate. */
+        fun recordWallpaperVisible(visible: Boolean) {
+            wallpaperVisible = visible
+        }
+
+        /**
          * Drops a bar whose service is gone.
          *
          * A service the system or the OEM kills never runs `onDestroy`, so its
@@ -223,8 +239,18 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             }
             return
         }
+        val splitLock = GroupedLiveWallpaperService.lockScreenVisible && (state.lock != null || state.lockRangeId.isNotEmpty())
         val displayed = displayedSlot
-        val slot = if (displayed >= 0) state.slot(displayed) else state.currentSlot
+        // The lock screen describes the decoy. Showing the home title there would
+        // leak what the private group is playing, which is the whole point of the
+        // split surface.
+        val slot = if (splitLock) {
+            state.lock
+        } else if (displayed >= 0) {
+            state.slot(displayed)
+        } else {
+            state.currentSlot
+        }
         val foreground = realEngines > 0
         // The plain bar belongs to a wallpaper the system is showing. During the
         // picker preview, or when an engine outlives a replacement, this service
@@ -237,16 +263,16 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             }
             return
         }
-        val key = GroupedWallpaperNotification.contentKey(this, state, slot)
+        val key = GroupedWallpaperNotification.contentKey(this, state, slot, lock = splitLock)
         if (key == postedKey && foreground == postedAsForeground) return
         // With a real engine attached the bar has to be this service's foreground
         // notification: MIUI hides a silent, non-foreground one on the lock screen.
-        if (foreground && promoteToForeground(state, slot)) {
+        if (foreground && promoteToForeground(state, slot, lock = splitLock)) {
             postedKey = key
             postedAsForeground = true
             return
         }
-        GroupedWallpaperNotification.update(this, state, slot)
+        GroupedWallpaperNotification.update(this, state, slot, lock = splitLock)
         postedKey = key
         postedAsForeground = false
     }
@@ -269,8 +295,8 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
      * starting a second foreground service from the background is rejected. The
      * notification is `setOnlyAlertOnce`, so promoting it does not beep again.
      */
-    private fun promoteToForeground(state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?): Boolean {
-        val notification = GroupedWallpaperNotification.build(this, state, slot) ?: return false
+    private fun promoteToForeground(state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?, lock: Boolean = false): Boolean {
+        val notification = GroupedWallpaperNotification.build(this, state, slot, lock = lock) ?: return false
         // `specialUse` is only a known type from Android 14; older releases accept
         // the call without one.
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
@@ -433,11 +459,16 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
         override fun onVisibilityChanged(visible: Boolean) {
             super.onVisibilityChanged(visible)
+            if (!isPreview) GroupedLiveWallpaperService.recordWallpaperVisible(visible)
             if (!visible) return
             requestRender()
             // A frame can land while no engine is attached (process restart, a
             // reload lost during an engine swap), so re-check on every show.
             if (::renderer.isInitialized) renderer.requestReload()
+            // An advance that came due while the wallpaper was hidden is applied
+            // now, so the user sees the new photo on the first frame instead of
+            // paying for a bake nobody could see.
+            if (!isPreview) requestPendingAdvance()
         }
 
         override fun onOffsetsChanged(
@@ -505,6 +536,15 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
         private fun performGesture(threeFinger: Boolean) {
             if (!::renderer.isInitialized) return
+            // The decoy only advances with time: a double tap or a three-finger
+            // tap on the lock screen must not change what the user is hiding,
+            // and the bar's group switch is the intended action there.
+            val splitLock = GroupedWallpaperStateFile.read(this@GroupedLiveWallpaperService)
+                ?.let { it.lock != null || it.lockRangeId.isNotEmpty() } == true
+            if (lockScreenVisible && splitLock) {
+                Log.d(TAG, "gesture ignored on the split lock surface threeFinger=$threeFinger")
+                return
+            }
             val action = renderer.actionFor(threeFinger)
             Log.d(TAG, "gesture threeFinger=$threeFinger action=$action")
             when (action) {
@@ -557,6 +597,20 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             LiveWallpaperRefillScheduler.enqueueTapRefill(this@GroupedLiveWallpaperService, LiveWallpaperTarget.GROUPED)
         }
 
+        /**
+         * Applies an advance that came due while the wallpaper was hidden.
+         *
+         * The scheduled run deferred the bake to keep a video or a dark screen
+         * from costing frames, so the first moment the user can see the wallpaper
+         * is when it is owed one.
+         */
+        private fun requestPendingAdvance() {
+            if (!GroupedLiveWallpaperService.isRunning) return
+            if (!LiveWallpaperRefillScheduler.consumePendingAdvance(this@GroupedLiveWallpaperService, LiveWallpaperTarget.GROUPED)) return
+            Log.d(TAG, "advance.catchup")
+            LiveWallpaperRefillScheduler.enqueueAdvanceRefill(this@GroupedLiveWallpaperService, LiveWallpaperTarget.GROUPED)
+        }
+
         /** Opens the grouped wallpaper's view page, like Muzei's artwork view. */
         private fun openViewPage() {
             GroupedWallpaperAppBridge.requestView()
@@ -598,6 +652,10 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             // user's switch applies until the keyguard changes.
             GroupedWallpaperNotification.resetGroupActionsOverride()
             this@GroupedLiveWallpaperService.updateNotification()
+            // The keyguard is a visibility signal of its own: some launchers do
+            // not call onVisibilityChanged for the lock surface, so a deferred
+            // advance is also picked up here.
+            if (visible) requestPendingAdvance()
         }
     }
 }

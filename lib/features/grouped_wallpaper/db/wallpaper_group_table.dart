@@ -54,6 +54,16 @@ class WallpaperGroupRows extends Table {
   /// after the wallpaper moved are shown first, in order, then random.
   TextColumn get ordering => text().withDefault(const Constant('newThenRandom'))();
 
+  /// Whether the group's lock screen draws its own range instead of the home
+  /// one.
+  ///
+  /// The lock surface is a decoy: it exists so that whoever sees the lock screen
+  /// does not learn which group the home screen is playing. The home range is
+  /// always on and keeps its historical id; turning this on materializes a
+  /// second range owned by the group, and turning it off only hides that range
+  /// instead of deleting it, so the user's narrowing survives a toggle.
+  BoolColumn get separateLockRange => boolean().named('separateLockRange').withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

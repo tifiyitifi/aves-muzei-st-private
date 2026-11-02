@@ -48,13 +48,19 @@ object LiveWallpaperRefillScheduler {
 
     private const val PREF_AUTO_INTERVAL_PREFIX = "auto_interval_seconds_"
 
+    private const val PREF_PENDING_ADVANCE_PREFIX = "auto_pending_advance_"
+
     private fun tapWorkName(target: LiveWallpaperTarget) = "live_wallpaper_${target.id}_tap_refill"
 
     private fun autoWorkName(target: LiveWallpaperTarget) = "live_wallpaper_${target.id}_auto_advance"
 
     private fun commandWorkName(target: LiveWallpaperTarget) = "live_wallpaper_${target.id}_command"
 
+    private fun advanceWorkName(target: LiveWallpaperTarget) = "live_wallpaper_${target.id}_pending_advance"
+
     private fun intervalKey(target: LiveWallpaperTarget) = "$PREF_AUTO_INTERVAL_PREFIX${target.id}"
+
+    private fun pendingAdvanceKey(target: LiveWallpaperTarget) = "$PREF_PENDING_ADVANCE_PREFIX${target.id}"
 
     /**
      * Bounds shared with Dart's `WallpaperAdvanceInterval`.
@@ -128,6 +134,53 @@ object LiveWallpaperRefillScheduler {
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(commandWorkName(target), ExistingWorkPolicy.APPEND_OR_REPLACE, request)
         Log.d(TAG, "refill.command target=${target.id} command=$command")
+    }
+
+    /**
+     * Remembers that an advance came due while the wallpaper was invisible.
+     *
+     * The bake is deferred instead of skipped: the next time the surface is
+     * shown, [consumePendingAdvance] hands it to [enqueueAdvanceRefill]. This is
+     * what keeps an interval from baking a dozen frames behind a two-hour video.
+     */
+    fun markPendingAdvance(context: Context, target: LiveWallpaperTarget) {
+        context.getSharedPreferences(SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(pendingAdvanceKey(target), true)
+            .apply()
+    }
+
+    fun hasPendingAdvance(context: Context, target: LiveWallpaperTarget): Boolean =
+        context.getSharedPreferences(SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
+            .getBoolean(pendingAdvanceKey(target), false)
+
+    /** Reads and clears the deferred advance, so one catch-up is enqueued. */
+    fun consumePendingAdvance(context: Context, target: LiveWallpaperTarget): Boolean {
+        val prefs = context.getSharedPreferences(SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
+        val key = pendingAdvanceKey(target)
+        val pending = prefs.getBoolean(key, false)
+        if (pending) prefs.edit().remove(key).apply()
+        return pending
+    }
+
+    /**
+     * Runs one advance now, used for the catch-up when the wallpaper reappears.
+     *
+     * `KEEP` would drop the run while an older one is still queued, so it uses
+     * `APPEND_OR_REPLACE` like the tap refill: the catch-up must not be swallowed
+     * by a tap that is already running.
+     */
+    fun enqueueAdvanceRefill(context: Context, target: LiveWallpaperTarget) {
+        val request = OneTimeWorkRequestBuilder<LiveWallpaperRefillWorker>()
+            .setInputData(
+                workDataOf(
+                    LiveWallpaperRefillWorker.KEY_TARGET to target.id,
+                    LiveWallpaperRefillWorker.KEY_ADVANCE to true,
+                ),
+            )
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(advanceWorkName(target), ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+        Log.d(TAG, "refill.advance target=${target.id}")
     }
 
     /**

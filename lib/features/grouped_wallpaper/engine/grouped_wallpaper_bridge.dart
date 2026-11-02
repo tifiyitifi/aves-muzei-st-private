@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/services/common/channel.dart';
 import 'package:flutter/services.dart';
@@ -52,9 +54,13 @@ abstract interface class GroupedWallpaperPlatform {
   /// `state.json` records what was last baked, but the renderer can promote a
   /// slot on its own and a reload keeps drawing the slot it had, so the two can
   /// disagree. Only the engine knows which frame is on screen, and `lock` tells
-  /// whether that frame is the lock effect image. Returns null when no engine is
-  /// running.
-  Future<({int slot, bool lock})?> displayedSlot();
+  /// whether that frame is the lock effect image. [surface] distinguishes a home
+  /// slot from the split group's single decoy frame. Returns null when no engine
+  /// is running.
+  Future<({int slot, bool lock, WallpaperSurface surface})?> displayedSlot();
+
+  /// Whether the system lock screen draws this app's service.
+  Future<GroupedWallpaperLockSurfaceStatus> lockSurfaceStatus();
 
   /// Asks the renderer to re-read `state.json`.
   Future<void> reload();
@@ -149,11 +155,20 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
   }
 
   @override
-  Future<({int slot, bool lock})?> displayedSlot() async {
+  Future<({int slot, bool lock, WallpaperSurface surface})?> displayedSlot() async {
     final raw = await _invoke<Map<Object?, Object?>>('displayedSlot');
-    final slot = _number(raw?['slot']);
-    if (slot == null || slot < 0) return null;
-    return (slot: slot.toInt(), lock: raw?['lock'] == true);
+    if (raw == null) return null;
+    final surface = WallpaperSurface.parse(raw['surface'] as String?);
+    final slot = _number(raw['slot']);
+    // The decoy frame is not a queue slot, so it reports no slot id.
+    if (slot == null || slot < 0) return surface.isLock ? (slot: -1, lock: true, surface: surface) : null;
+    return (slot: slot.toInt(), lock: raw['lock'] == true, surface: surface);
+  }
+
+  @override
+  Future<GroupedWallpaperLockSurfaceStatus> lockSurfaceStatus() async {
+    final raw = await _invoke<Map<Object?, Object?>>('lockSurfaceStatus');
+    return GroupedWallpaperLockSurfaceStatus.parse(raw?['status'] as String?);
   }
 
   @override

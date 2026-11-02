@@ -6,12 +6,14 @@ import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
 import 'package:aves/services/common/services.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
 /// Edits the selected wallpaper group's visible range for the wallpaper page.
@@ -32,6 +34,12 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   /// AppMeta key of this page's group switcher style.
   static const keySwitcherStyle = 'wallpaper.page.groupSwitcherStyle';
 
+  /// AppMeta key of the surface the range editor is showing.
+  ///
+  /// It is a page preference, not a group setting: reopening the page returns to
+  /// the surface the user was last narrowing.
+  static const keySurface = 'wallpaper.page.surface';
+
   final WallpaperGroupController groupController;
   final AppDatabase? injectedDatabase;
 
@@ -45,6 +53,8 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   bool _loading = false;
   String? _selectedGroupId;
   VisibleRange? _range;
+  VisibleRange? _lockRange;
+  WallpaperSurface _surface = WallpaperSurface.home;
   VisibleRangeActiveStyle _activeStyle = VisibleRangeActiveStyle.section;
   WallpaperGroupSwitcherStyle _switcherStyle = WallpaperGroupSwitcherStyle.chips;
   int _rangeToken = 0;
@@ -67,15 +77,33 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   /// The group being viewed; null means group 0.
   String? get selectedGroupId => _selectedGroupId;
 
-  /// The selected group's range, or null for group 0.
-  VisibleRange? get range => _range;
+  /// The group being viewed, or null for group 0.
+  WallpaperGroup? get selectedGroup => groups.firstWhereOrNull((group) => group.id == _selectedGroupId);
+
+  /// The surface the editor is showing.
+  WallpaperSurface get surface => _surface;
+
+  /// Whether the viewed group has a decoy lock surface.
+  bool get separateLockRange => selectedGroup?.separateLockRange ?? false;
+
+  /// The viewed surface's range, or null for group 0.
+  VisibleRange? get range => _surface.isLock ? _lockRange : _range;
+
+  /// The viewed group's home range, whatever surface is active.
+  VisibleRange? get homeRange => _range;
+
+  /// The viewed group's lock range, or null when the split is off.
+  VisibleRange? get lockRange => _lockRange;
 
   VisibleRangeActiveStyle get activeStyle => _activeStyle;
 
   WallpaperGroupSwitcherStyle get switcherStyle => _switcherStyle;
 
   /// A locked range refuses edits, like on the visible-range page.
-  bool get canEdit => _range != null && !_range!.locked;
+  bool get canEdit {
+    final range = this.range;
+    return range != null && !range.locked;
+  }
 
   Future<void> init() async {
     if (_initialized) return;
@@ -88,6 +116,7 @@ class WallpaperGroupRangeController extends ChangeNotifier {
       final db = await _openDb();
       _activeStyle = VisibleRangeActiveStyle.parse((await AppMetaStore(db).read({keyActiveStyle}))[keyActiveStyle]);
       _switcherStyle = WallpaperGroupSwitcherStyle.parse((await AppMetaStore(db).read({keySwitcherStyle}))[keySwitcherStyle]);
+      _surface = WallpaperSurface.parse((await AppMetaStore(db).read({keySurface}))[keySurface]);
       _initialized = true;
       // Resume the group the page showed before it was rebuilt. The first open
       // in a process starts on group 0 (no browsing constraint); the page may
@@ -121,9 +150,12 @@ class WallpaperGroupRangeController extends ChangeNotifier {
 
   Future<void> _reloadRange(String id) async {
     final token = ++_rangeToken;
+    final group = groups.firstWhereOrNull((candidate) => candidate.id == id);
     final range = await groupController.groupRange(id);
+    final lockRange = group?.separateLockRange == true ? await groupController.groupRange(id, surface: WallpaperSurface.lock) : null;
     if (token != _rangeToken || _selectedGroupId != id) return;
     _range = range;
+    _lockRange = lockRange;
     notifyListeners();
   }
 
@@ -134,19 +166,53 @@ class WallpaperGroupRangeController extends ChangeNotifier {
       ..selectedGroupId = id;
     _selectedGroupId = id;
     _range = null;
+    _lockRange = null;
     _loading = id != null;
     final token = ++_rangeToken;
+    // A group without a decoy surface has nothing to show on the lock side, so
+    // the editor falls back to home instead of displaying an empty section.
+    final group = groups.firstWhereOrNull((candidate) => candidate.id == id);
+    if (_surface.isLock && group?.separateLockRange != true) await _setSurface(WallpaperSurface.home);
     notifyListeners();
     if (id == null) return;
     try {
       final range = await groupController.groupRange(id);
+      final lockRange = group?.separateLockRange == true ? await groupController.groupRange(id, surface: WallpaperSurface.lock) : null;
       // The user may have switched again while the range was loading.
       if (token != _rangeToken || _selectedGroupId != id) return;
       _range = range;
+      _lockRange = lockRange;
     } finally {
       if (token == _rangeToken) _loading = false;
       notifyListeners();
     }
+  }
+
+  /// Switches the range editor between the home and lock surfaces.
+  Future<void> switchSurface(WallpaperSurface surface) async {
+    if (_surface == surface) return;
+    if (surface.isLock && !separateLockRange) return;
+    await _setSurface(surface);
+    notifyListeners();
+  }
+
+  /// Turns the viewed group's decoy lock surface on or off.
+  ///
+  /// Enabling copies the home range once in the controller, so the two start
+  /// identical and then narrow independently; disabling only hides the lock
+  /// range and moves the editor back to home.
+  Future<void> setSeparateLockRange(bool enabled) async {
+    final id = _selectedGroupId;
+    if (id == null) return;
+    await groupController.setSeparateLockRange(id, enabled);
+    if (!enabled && _surface.isLock) await _setSurface(WallpaperSurface.home);
+    await _reloadRange(id);
+    notifyListeners();
+  }
+
+  Future<void> _setSurface(WallpaperSurface surface) async {
+    _surface = surface;
+    await AppMetaStore(await _openDb()).write({keySurface: surface.name});
   }
 
   Future<void> setActiveStyle(VisibleRangeActiveStyle style) async {
@@ -335,12 +401,16 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   /// from the group, so the group controller's save guard keeps another group's
   /// range out of this one.
   Future<void> _update(VisibleRange Function(VisibleRange range) transform, {bool allowLocked = false}) async {
-    final range = _range;
+    final range = this.range;
     if (range == null) return;
     if (range.locked && !allowLocked) return;
     final next = transform(range);
     if (next == range) return;
-    _range = next;
+    if (_surface.isLock) {
+      _lockRange = next;
+    } else {
+      _range = next;
+    }
     notifyListeners();
     try {
       await groupController.saveGroupRange(next);

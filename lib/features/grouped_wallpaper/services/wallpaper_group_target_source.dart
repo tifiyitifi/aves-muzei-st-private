@@ -1,4 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_pin.dart';
@@ -34,6 +35,22 @@ class WallpaperGroupTargetSource implements VisibleRangeTargetSource {
           locked: range.locked && !range.permissions.edit,
         ),
       );
+      // A split group pins to either surface independently: pinning to the lock
+      // range is what makes the decoy show the intended filters, and it must
+      // never write into the home range.
+      if (group.separateLockRange) {
+        final lockRange = await controller.groupRange(group.id, surface: WallpaperSurface.lock);
+        targets.add(
+          VisibleRangePinTarget(
+            rangeId: wallpaperGroupLockRangeId(group.id),
+            number: group.number,
+            name: group.name,
+            isGallery: false,
+            surface: WallpaperSurface.lock,
+            locked: lockRange.locked && !lockRange.permissions.edit,
+          ),
+        );
+      }
     }
     return targets;
   }

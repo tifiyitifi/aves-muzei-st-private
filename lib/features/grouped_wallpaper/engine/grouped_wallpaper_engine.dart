@@ -18,8 +18,10 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_command.
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -176,7 +178,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   /// [readState] moved to the slot the wallpaper engine is actually drawing.
   @override
-  Future<GroupedWallpaperState?> readDisplayedState() async => (await readDisplayedFrame())?.state;
+  Future<GroupedWallpaperState?> readDisplayedState({WallpaperSurface surface = WallpaperSurface.home}) async => (await readDisplayedFrame(surface: surface))?.state;
 
   /// The state, the slot drawn and the effect image, read in one snapshot.
   ///
@@ -185,15 +187,29 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// `current` alone therefore describes a photo the user may not be looking at,
   /// which is what made the three-finger view differ from the wallpaper. A
   /// missing or pruned slot falls back to the state: a stale answer beats none.
+  ///
+  /// [surface] picks which picture is described. The decoy lock frame is not a
+  /// slot, so it is read straight from the state; the home frame follows the
+  /// renderer's promotion as before.
   @override
-  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame() async {
+  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame({WallpaperSurface surface = WallpaperSurface.home}) async {
     final store = _store;
     final state = await store?.readState();
     if (store == null || state == null) return null;
+    if (surface.isLock) {
+      final lock = state.lock;
+      return GroupedWallpaperDisplayedFrame(
+        state: state,
+        photoPath: lock == null ? null : store.lockPhotoOf(lock)?.path,
+        lockScreen: true,
+        surface: WallpaperSurface.lock,
+      );
+    }
     final displayed = await platform.displayedSlot();
     // A slot the state no longer queues was pruned by a reload: the baked
-    // current is the best answer left, and its home effect is what it draws.
-    final drawn = displayed != null && state.slotById(displayed.slot) != null ? displayed : null;
+    // current is the best answer left, and its home effect is what it draws. A
+    // renderer drawing the decoy says nothing about the home surface.
+    final drawn = displayed != null && !displayed.surface.isLock && state.slotById(displayed.slot) != null ? displayed : null;
     final current = drawn?.slot ?? state.current;
     final lockScreen = drawn?.lock ?? false;
     final slot = state.slotById(current);
@@ -201,20 +217,30 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       state: current == state.current ? state : state.copyWith(current: current),
       photoPath: slot == null ? null : store.slotEffectPhotoOf(slot, lock: lockScreen)?.path,
       lockScreen: lockScreen,
+      surface: WallpaperSurface.home,
     );
   }
 
   /// Absolute path of the sharp photo on screen, for the effects editor.
   ///
   /// The editor applies its effect to the original pixels, so it wants neither
-  /// the baked home nor lock image.
+  /// the baked home nor lock image. The decoy has no sharp original: its one
+  /// baked file is the closest thing the editor can show.
   @override
-  Future<String?> currentPhotoPath() async {
-    final state = await readDisplayedState();
+  Future<String?> currentPhotoPath({WallpaperSurface surface = WallpaperSurface.home}) async {
+    final state = await readDisplayedState(surface: surface);
+    final store = _store;
+    if (surface.isLock) {
+      final lock = state?.lock;
+      return lock == null || store == null ? null : store.lockPhotoOf(lock)?.path;
+    }
     final slot = state?.currentSlot;
     if (slot == null) return null;
-    return _store?.slotPhotoOf(slot)?.path;
+    return store?.slotPhotoOf(slot)?.path;
   }
+
+  @override
+  Future<GroupedWallpaperLockSurfaceStatus> lockSurfaceStatus() => platform.lockSurfaceStatus();
 
   /// Records the explicit off/on switch without touching the current group.
   @override
@@ -365,8 +391,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   }
 
   /// One run driven by the background worker or an auto-advance interval.
+  ///
+  /// An interval is time passing for both surfaces, so it advances the decoy
+  /// too; the page's explicit "next photo" does not, because it targets the
+  /// home wallpaper the user is looking at.
   Future<GroupedWallpaperSyncResult> refill({required bool advance}) {
-    return _enqueue(() => _run(advance: advance, requireActive: false, activation: false));
+    return _enqueue(() => _run(advance: advance, requireActive: false, activation: false, advanceLock: advance));
   }
 
   /// Freezes or resumes the wallpaper without baking anything.
@@ -532,6 +562,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     required bool advance,
     required bool requireActive,
     required bool activation,
+    bool advanceLock = false,
   }) async {
     final store = _store;
     if (store == null) return GroupedWallpaperSyncResult.notActive;
@@ -572,73 +603,356 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         return GroupedWallpaperSyncResult.unchanged;
       }
 
-      // The renderer may have promoted a slot on its own; adopt it before
-      // deciding what to bake, or the freed slot would never be refilled. The
-      // renderer writes the runtime synchronously, so this read always sees the
-      // promotion that triggered this run.
-      final runtime = await store.readRuntime();
-      final adopted = _adoptRuntime(previous, runtime);
-      final promoted = adopted != null && !identical(adopted.state, previous);
-      if (promoted) {
-        groupedWallpaperLog.d('queue.adopt runtime current=${runtime?.current} generation=${runtime?.generation}');
-      }
       final surface = await _resolveTargetSize();
-      final scrollEffect = await _effectiveScrollEffect(plan);
-      final groupStale = _isStale(plan, adopted?.state ?? previous);
-      final layoutStale = _isLayoutStale(adopted?.state ?? previous, surface, scrollEffect);
-      final total = await entrySource.count(plan.range);
-      // A state written before the entry-keyed cache has to be rewritten once so
-      // the native bar learns `canPrevious` instead of staying greyed.
-      final migrated = previous?.needsUpgrade == true;
-
-      // A group change, or a photo that left the range, starts the walk over.
-      final current = adopted?.state ?? previous;
-      if (groupStale || current == null || !current.hasPhoto) {
-        return await _startOver(store, plan, previous, total: total, surface: surface, scrollEffect: scrollEffect);
+      // The home surface is what the user sees first and what the app drives, so
+      // it settles before the decoy. A failed home bake must not skip the decoy,
+      // and a failed decoy must not cost the home wallpaper: each surface
+      // records its own failure.
+      GroupedWallpaperSyncResult homeResult;
+      try {
+        homeResult = await _runHome(store, plan, previous, surface: surface, advance: advance);
+      } catch (error, stack) {
+        groupedWallpaperLog.e('sync failed', error, stack);
+        await _recordFailure(store, plan, previous);
+        homeResult = GroupedWallpaperSyncResult.failed;
       }
-
-      // A forward step walks the usage history: both neighbours are already
-      // baked, so a double tap, the interval and the bar's "next" are the same
-      // move, and only the newest record creates a new photo.
-      final move = advance ? _moveTo(current, current.next, navigated: true) : null;
-      if (move != null) {
-        final result = await _settle(
-          store,
-          plan,
-          move.state,
-          total: total,
-          surface: surface,
-          scrollEffect: scrollEffect,
-          newPhoto: move.newPhoto,
-          navigated: true,
-        );
-        if (result == GroupedWallpaperSyncResult.baked) await _restartAutoAdvance(plan);
-        return result;
+      if (plan.hasLockRange) {
+        try {
+          await _syncLock(store, plan, surface, advance: advanceLock);
+        } catch (error, stack) {
+          // The decoy keeps its last frame: a failed bake must never blank the
+          // home wallpaper or reveal the home range on the lock screen.
+          groupedWallpaperLog.w('lock surface sync failed', error, stack);
+        }
+      } else {
+        await _clearLock(store);
       }
-
-      // A promoted slot must be recorded even when nothing is baked, so the
-      // runtime stops matching and the next run starts from the new current.
-      if (!layoutStale && !promoted && !migrated && await _isQueueReady(store, total, current)) {
-        return GroupedWallpaperSyncResult.unchanged;
-      }
-      return await _settle(
-        store,
-        plan,
-        current,
-        total: total,
-        surface: surface,
-        scrollEffect: scrollEffect,
-        newPhoto: adopted?.newPhoto ?? false,
-        // The renderer may have kept a frame; a plain settle must not claim it
-        // was a history step, or it would override that decision.
-        navigated: false,
-      );
+      return homeResult;
     } catch (error, stack) {
       groupedWallpaperLog.e('sync failed', error, stack);
       await _recordFailure(store, plan, previous);
       return GroupedWallpaperSyncResult.failed;
     }
   }
+
+  /// Settles the home queue: the existing three-frame walk, unchanged.
+  Future<GroupedWallpaperSyncResult> _runHome(
+    GroupedWallpaperStateStore store,
+    GroupedWallpaperPlan plan,
+    GroupedWallpaperState? previous, {
+    required Size surface,
+    required bool advance,
+  }) async {
+    // The renderer may have promoted a slot on its own; adopt it before
+    // deciding what to bake, or the freed slot would never be refilled. The
+    // renderer writes the runtime synchronously, so this read always sees the
+    // promotion that triggered this run.
+    final runtime = await store.readRuntime();
+    final adopted = _adoptRuntime(previous, runtime);
+    final promoted = adopted != null && !identical(adopted.state, previous);
+    if (promoted) {
+      groupedWallpaperLog.d('queue.adopt runtime current=${runtime?.current} generation=${runtime?.generation}');
+    }
+    final scrollEffect = await _effectiveScrollEffect(plan);
+    final groupStale = _isStale(plan, adopted?.state ?? previous);
+    final layoutStale = _isLayoutStale(adopted?.state ?? previous, surface, scrollEffect);
+    final total = await entrySource.count(plan.range);
+    // A state written before the entry-keyed cache has to be rewritten once so
+    // the native bar learns `canPrevious` instead of staying greyed.
+    final migrated = previous?.needsUpgrade == true;
+
+    // A group change, or a photo that left the range, starts the walk over.
+    final current = adopted?.state ?? previous;
+    if (groupStale || current == null || !current.hasPhoto) {
+      return await _startOver(store, plan, previous, total: total, surface: surface, scrollEffect: scrollEffect);
+    }
+
+    // A forward step walks the usage history: both neighbours are already
+    // baked, so a double tap, the interval and the bar's "next" are the same
+    // move, and only the newest record creates a new photo.
+    final move = advance ? _moveTo(current, current.next, navigated: true) : null;
+    if (move != null) {
+      final result = await _settle(
+        store,
+        plan,
+        move.state,
+        total: total,
+        surface: surface,
+        scrollEffect: scrollEffect,
+        newPhoto: move.newPhoto,
+        navigated: true,
+      );
+      if (result == GroupedWallpaperSyncResult.baked) await _restartAutoAdvance(plan);
+      return result;
+    }
+
+    // A promoted slot must be recorded even when nothing is baked, so the
+    // runtime stops matching and the next run starts from the new current.
+    if (!layoutStale && !promoted && !migrated && await _isQueueReady(store, total, current)) {
+      return GroupedWallpaperSyncResult.unchanged;
+    }
+    return await _settle(
+      store,
+      plan,
+      current,
+      total: total,
+      surface: surface,
+      scrollEffect: scrollEffect,
+      newPhoto: adopted?.newPhoto ?? false,
+      // The renderer may have kept a frame; a plain settle must not claim it
+      // was a history step, or it would override that decision.
+      navigated: false,
+    );
+  }
+
+  /// Keeps the decoy lock surface on its own single frame.
+  ///
+  /// The lock screen exists to mask the home one: showing the home range there
+  /// would expose the very group the user is hiding. That is why a failed bake
+  /// leaves the previous decoy untouched (or nothing at all) instead of falling
+  /// back to the home photo, and why the surface has one frame rather than a
+  /// queue: it advances only with time, and a second three-frame walk would cost
+  /// memory and bakes for a move the user cannot make.
+  ///
+  /// [advance] is true only for a scheduled run: time passed, so a new photo is
+  /// due. [forceEntryId] is the view page walking back through the lock history.
+  Future<GroupedWallpaperSyncResult> _syncLock(
+    GroupedWallpaperStateStore store,
+    GroupedWallpaperPlan plan,
+    Size surface, {
+    required bool advance,
+    int? forceEntryId,
+  }) async {
+    final lockRange = plan.lockRange;
+    final state = await store.readState();
+    if (lockRange == null || state == null) return GroupedWallpaperSyncResult.unchanged;
+    final current = state.lock;
+    try {
+      final total = await entrySource.count(lockRange);
+      if (total <= 0) {
+        if (current == null && state.lockRangeId == lockRange.id) return GroupedWallpaperSyncResult.unchanged;
+        // Keep the split marker: the decoy has no photo, and the native side
+        // must draw its placeholder rather than fall back to the home frame.
+        await _writeLock(store, plan, state, null, keepSplit: true);
+        return GroupedWallpaperSyncResult.empty;
+      }
+      if (forceEntryId != null) {
+        final entry = await entrySource.entryById(lockRange, forceEntryId);
+        if (entry == null) return GroupedWallpaperSyncResult.unchanged;
+        final frame = await _bakeLockFrame(
+          store,
+          plan,
+          entry,
+          surface,
+          previous: current,
+          cursor: current?.cursor ?? 0,
+          newestEntryId: math.max(current?.newestEntryId ?? 0, entry.id),
+          promote: true,
+        );
+        await _writeLock(store, plan, state, frame);
+        await _recordLockShown(plan, frame);
+        return GroupedWallpaperSyncResult.baked;
+      }
+
+      final rangeChanged = state.lockRangeId != lockRange.id;
+      final layoutChanged = current == null || current.width != surface.width.round() || current.height != surface.height.round();
+      // `group.updatedAt` moves when the split toggles or the effects change;
+      // `lockRange.updatedAt` moves when this surface's filters change.
+      final effectsChanged = current != null && current.bakedAt < plan.group.updatedAt;
+      final rangeEdited = current != null && current.bakedAt < lockRange.updatedAt;
+      final missing = current == null || store.lockPhotoOf(current) == null;
+      final stale = current == null || rangeChanged || layoutChanged || effectsChanged || rangeEdited || missing;
+      if (!advance && !stale) return GroupedWallpaperSyncResult.unchanged;
+
+      // Time did not pass and the range did not move: only the pixels are stale
+      // (effects or layout). Re-bake the photo already on the decoy rather than
+      // picking a new one, so editing a slider does not change what is shown.
+      if (!advance && !rangeChanged && !missing) {
+        final reusable = current;
+        final entry = await entrySource.entryById(lockRange, reusable.entryId);
+        if (entry != null) {
+          final frame = await _bakeLockFrame(
+            store,
+            plan,
+            entry,
+            surface,
+            previous: reusable,
+            cursor: reusable.cursor,
+            newestEntryId: math.max(reusable.newestEntryId, entry.id),
+            promote: false,
+          );
+          await _writeLock(store, plan, state, frame);
+          return GroupedWallpaperSyncResult.baked;
+        }
+      }
+
+      // A new photo: either time passed, or the photo on the decoy left the
+      // range (a hidden filter, a locked vault).
+      final excluded = <int>{
+        if (current != null) current.entryId,
+        for (final entry in current?.recent ?? const <GroupedWallpaperRecentEntry>[]) entry.entryId,
+      };
+      for (var attempt = 0; attempt < maxBakeAttempts; attempt++) {
+        final pick = await entrySource.pick(
+          lockRange,
+          ordering: plan.ordering,
+          cursor: current?.cursor ?? 0,
+          attempt: attempt,
+          newestEntryId: current?.newestEntryId ?? 0,
+          excludeEntryIds: excluded,
+        );
+        final entry = pick.entry;
+        if (entry == null) break;
+        try {
+          final frame = await _bakeLockFrame(
+            store,
+            plan,
+            entry,
+            surface,
+            previous: current,
+            cursor: pick.offset >= 0 ? pick.offset + 1 : (current?.cursor ?? 0),
+            newestEntryId: math.max(current?.newestEntryId ?? 0, entry.id),
+            promote: true,
+          );
+          await _writeLock(store, plan, state, frame);
+          if (current?.entryId != frame.entryId) await _recordLockShown(plan, frame);
+          groupedWallpaperLog.d('lock.settled entry=${frame.entryId} cursor=${frame.cursor} count=$total');
+          return GroupedWallpaperSyncResult.baked;
+        } on GroupedWallpaperBakeException catch (error, stack) {
+          groupedWallpaperLog.w('lock bake failed entry=${entry.id} attempt=$attempt', error, stack);
+          excluded.add(entry.id);
+        }
+      }
+      return GroupedWallpaperSyncResult.unchanged;
+    } on GroupedWallpaperBakeException catch (error, stack) {
+      groupedWallpaperLog.w('lock surface bake failed', error, stack);
+      return GroupedWallpaperSyncResult.failed;
+    }
+  }
+
+  /// Drops the lock block when the group's surfaces are joined again.
+  ///
+  /// The lock range itself is kept by the group: turning the split off only
+  /// hides it, so re-enabling reuses the narrowing instead of copying home.
+  Future<void> _clearLock(GroupedWallpaperStateStore store) async {
+    final state = await store.readState();
+    if (state == null || (state.lock == null && state.lockRangeId.isEmpty)) return;
+    await _writeLock(store, null, state, null);
+  }
+
+  /// Writes the lock block, keeping the home queue and its generation intact
+  /// apart from the bump that tells the renderer to reload.
+  Future<void> _writeLock(GroupedWallpaperStateStore store, GroupedWallpaperPlan? plan, GroupedWallpaperState state, GroupedWallpaperLockFrame? frame, {bool keepSplit = false}) async {
+    final next = frame == null
+        ? state.copyWith(
+            version: GroupedWallpaperState.currentVersion,
+            generation: state.generation + 1,
+            clearLock: true,
+            needsUpgrade: false,
+            lockRangeId: keepSplit ? (plan?.lockRange?.id ?? state.lockRangeId) : '',
+          )
+        : state.copyWith(version: GroupedWallpaperState.currentVersion, generation: state.generation + 1, lock: frame, needsUpgrade: false, lockRangeId: plan?.lockRange?.id ?? state.lockRangeId);
+    await store.writeState(next);
+    await store.pruneFrames(keep: _keepPaths(next), maxFrames: plan == null ? math.max(6, math.min(state.historyLimit, 24)) : _frameCacheDepth(plan));
+    await platform.reload();
+  }
+
+  /// Bakes (or reuses) one lock frame for [entry].
+  ///
+  /// [promote] moves the entry to the front of the lock history, which is what
+  /// the view page's "previous lock photo" walks; a re-bake for a pixel-only
+  /// change keeps the order.
+  Future<GroupedWallpaperLockFrame> _bakeLockFrame(
+    GroupedWallpaperStateStore store,
+    GroupedWallpaperPlan plan,
+    AvesEntry entry,
+    Size surface, {
+    required GroupedWallpaperLockFrame? previous,
+    required int cursor,
+    required int newestEntryId,
+    required bool promote,
+  }) async {
+    final key = _lockFrameKey(plan, surface);
+    final title = entry.bestTitle ?? '';
+    final cached = store.cachedFrame(entry.id, key);
+    int width;
+    int height;
+    double darkness;
+    String photo;
+    if (cached != null) {
+      width = cached.width;
+      height = cached.height;
+      darkness = cached.darkness;
+      photo = cached.photo;
+    } else {
+      final bake = await frameBaker.bakeLockTo(
+        entry: entry,
+        targetSize: surface,
+        effects: plan.effects.effectiveLock,
+        photoPath: store.frameFile(entry.id, key, GroupedWallpaperStateStore.framePhotoFileName).path,
+      );
+      await store.writeFrameMeta(entry.id, key, width: bake.width, height: bake.height, darkness: bake.darkness, title: title, uri: entry.uri);
+      photo = store.framePath(entry.id, key, GroupedWallpaperStateStore.framePhotoFileName);
+      width = bake.width;
+      height = bake.height;
+      darkness = bake.darkness;
+    }
+    if (photo.isEmpty) throw GroupedWallpaperBakeException('the lock frame of entry ${entry.id} was not written');
+    final recent = promote
+        ? [
+            GroupedWallpaperRecentEntry(entryId: entry.id, uri: entry.uri, title: title, groupId: plan.group.id),
+            ...(previous?.recent ?? const <GroupedWallpaperRecentEntry>[]).where((candidate) => candidate.entryId != entry.id),
+          ].take(GroupedWallpaperState.maxRecent).toList(growable: false)
+        : previous?.recent ?? const <GroupedWallpaperRecentEntry>[];
+    return GroupedWallpaperLockFrame(
+      entryId: entry.id,
+      uri: entry.uri,
+      title: title,
+      photo: photo,
+      width: width,
+      height: height,
+      darkness: darkness,
+      bakedAt: now(),
+      cursor: cursor,
+      newestEntryId: newestEntryId,
+      recent: recent,
+    );
+  }
+
+  /// Steps the decoy to a new photo from the view page.
+  ///
+  /// The lock screen has no gesture, so this is the only manual way to change
+  /// it: the action is in the app's management page, not on the lock screen.
+  @override
+  Future<GroupedWallpaperSyncResult> nextLockArtwork() {
+    return _enqueue(() async {
+      final store = _store;
+      if (store == null) return GroupedWallpaperSyncResult.notActive;
+      final plan = await planStore.load();
+      if (plan.disabled || plan.isNone || !plan.hasLockRange) return GroupedWallpaperSyncResult.unchanged;
+      return _syncLock(store, plan, await _resolveTargetSize(), advance: true);
+    });
+  }
+
+  /// Steps the decoy back to a photo it already showed.
+  @override
+  Future<GroupedWallpaperSyncResult> previousLockArtwork() {
+    return _enqueue(() async {
+      final store = _store;
+      if (store == null) return GroupedWallpaperSyncResult.notActive;
+      final plan = await planStore.load();
+      if (plan.disabled || plan.isNone || !plan.hasLockRange) return GroupedWallpaperSyncResult.unchanged;
+      final state = await store.readState();
+      final current = state?.lock;
+      if (current == null) return GroupedWallpaperSyncResult.unchanged;
+      for (final candidate in current.recent) {
+        if (candidate.entryId == current.entryId) continue;
+        return _syncLock(store, plan, await _resolveTargetSize(), advance: false, forceEntryId: candidate.entryId);
+      }
+      return GroupedWallpaperSyncResult.unchanged;
+    });
+  }
+
 
   /// Steps the wallpaper through the usage history by [delta].
   ///
@@ -923,9 +1237,13 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         switchLocked: _groupSwitchLocked(),
         switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
         groups: _groupSnapshot(plan),
+        // The home queue may start over while the decoy keeps showing its own
+        // photo: clearing it here would blank the lock screen.
+        lock: state.lock,
+        lockRangeId: state.lockRangeId,
         bakedAt: now(),
       );
-      await store.clearSlots();
+      await store.clearSlots(keep: {if (state.lock != null) state.lock!.photo});
       await store.writeState(empty);
       await platform.reload();
       return (result: total <= 0 ? GroupedWallpaperSyncResult.empty : GroupedWallpaperSyncResult.unchanged, promoted: null);
@@ -1079,6 +1397,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       switchLocked: _groupSwitchLocked(),
       switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
       groups: _groupSnapshot(plan),
+      lock: state.lock,
+      lockRangeId: state.lockRangeId,
       bakedAt: now(),
     );
     await store.writeState(nextState);
@@ -1190,6 +1510,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// Every file the state may draw, for the frame cache's eviction.
   static Set<String> _framePaths(GroupedWallpaperState state) => {
         for (final slot in state.slots) ..._slotPaths(slot),
+        if (state.lock != null) state.lock!.photo,
       };
 
   static Set<String> _slotPaths(GroupedWallpaperSlot slot) => {
@@ -1292,6 +1613,16 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       scrollEffect,
     ]);
     return '${target.width.round()}x${target.height.round()}-${_fingerprint(effects)}';
+  }
+
+  /// Cache key of one lock frame at one layout.
+  ///
+  /// The decoy's pixels are the lock effects at the surface size, so those two
+  /// values are the whole key. It is prefixed so a lock frame can never collide
+  /// with a home frame of the same photo and layout.
+  static String _lockFrameKey(GroupedWallpaperPlan plan, Size target) {
+    final effects = jsonEncode(plan.effects.effectiveLock.toJsonMap());
+    return 'lock.${target.width.round()}x${target.height.round()}-${_fingerprint(effects)}';
   }
 
   /// A short, stable hash for a directory name.
@@ -1406,15 +1737,24 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// the history the walk is based on.
   Future<void> _recordShown(GroupedWallpaperPlan plan, GroupedWallpaperSlot slot) async {
     if (slot.entryId <= 0) return;
+    await _recordHistory(plan, entryId: slot.entryId, surface: WallpaperSurface.home);
+  }
+
+  /// Records a lock photo the decoy has never shown before.
+  Future<void> _recordLockShown(GroupedWallpaperPlan plan, GroupedWallpaperLockFrame frame) => _recordHistory(plan, entryId: frame.entryId, surface: WallpaperSurface.lock);
+
+  Future<void> _recordHistory(GroupedWallpaperPlan plan, {required int entryId, required WallpaperSurface surface}) async {
+    if (entryId <= 0) return;
     if (plan.historyLimit <= 0) return;
     try {
       await history.record(
-        entryId: slot.entryId,
+        entryId: entryId,
         groupId: plan.group.id,
         groupName: plan.group.name,
         groupNumber: plan.group.number,
         usedAt: now(),
         limit: plan.historyLimit,
+        surface: surface,
       );
     } catch (error, stack) {
       // A failed write must never cost the user their wallpaper.
@@ -1437,7 +1777,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// image would claim the wallpaper is still following the group.
   Future<void> _recordFailure(GroupedWallpaperStateStore store, GroupedWallpaperPlan? plan, GroupedWallpaperState? previous) async {
     try {
-      await store.clearSlots();
+      final lock = previous?.lock;
+      await store.clearSlots(keep: {if (lock != null) lock.photo});
       final state = plan != null
           ? GroupedWallpaperState(
               generation: (previous?.generation ?? 0) + 1,
@@ -1453,6 +1794,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               switchLocked: _groupSwitchLocked(),
               switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
               groups: _groupSnapshot(plan),
+              lock: lock,
+              lockRangeId: previous?.lockRangeId ?? '',
               bakedAt: now(),
             )
           : GroupedWallpaperState(
@@ -1469,6 +1812,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               switchLocked: _groupSwitchLocked(),
               switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
               groups: previous?.groups ?? const [],
+              lock: lock,
+              lockRangeId: previous?.lockRangeId ?? '',
               bakedAt: now(),
             );
       await store.writeState(state);

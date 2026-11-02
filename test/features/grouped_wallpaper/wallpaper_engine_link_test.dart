@@ -1,6 +1,8 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -185,13 +187,16 @@ class _FakeConnection implements WallpaperEngineConnection {
   Future<GroupedWallpaperState?> readState() async => state;
 
   @override
-  Future<GroupedWallpaperState?> readDisplayedState() async => state;
+  Future<GroupedWallpaperState?> readDisplayedState({WallpaperSurface surface = WallpaperSurface.home}) async => state;
 
   @override
-  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame() async => state == null ? null : GroupedWallpaperDisplayedFrame(state: state!);
+  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame({WallpaperSurface surface = WallpaperSurface.home}) async => state == null ? null : GroupedWallpaperDisplayedFrame(state: state!, surface: surface);
 
   @override
-  Future<String?> currentPhotoPath() async => null;
+  Future<String?> currentPhotoPath({WallpaperSurface surface = WallpaperSurface.home}) async => null;
+
+  @override
+  Future<GroupedWallpaperLockSurfaceStatus> lockSurfaceStatus() async => GroupedWallpaperLockSurfaceStatus.unknown;
 
   @override
   Future<GroupedWallpaperSyncResult> prepare({bool activation = false}) async {
@@ -249,6 +254,12 @@ class _FakeConnection implements WallpaperEngineConnection {
 
   @override
   Future<GroupedWallpaperSyncResult> nextArtwork() async => GroupedWallpaperSyncResult.unchanged;
+
+  @override
+  Future<GroupedWallpaperSyncResult> nextLockArtwork() async => GroupedWallpaperSyncResult.unchanged;
+
+  @override
+  Future<GroupedWallpaperSyncResult> previousLockArtwork() async => GroupedWallpaperSyncResult.unchanged;
 
   @override
   Future<bool> openChooser() async => true;

@@ -17,8 +17,10 @@
 package deckers.thibault.aves.features.live_wallpaper_refill
 
 import android.content.Context
+import android.os.PowerManager
 import android.util.Log
 import androidx.work.ListenableWorker
+import deckers.thibault.aves.features.grouped_wallpaper.GroupedLiveWallpaperService
 import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperAppBridge
 import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperRenderBus
 import deckers.thibault.aves.features.muzei_wallpaper.WallpaperAppBridge
@@ -50,6 +52,15 @@ object LiveWallpaperRefillTargets {
             Log.d(TAG, "refill.skip target=${target.id}: the page is listening")
             return ListenableWorker.Result.success()
         }
+        // A timed advance is only baked when its surface can actually be seen.
+        // Behind a video, or with the screen off, the bake would be invisible
+        // work; the advance is remembered and applied on the next show instead.
+        if (advance && command == null && target == LiveWallpaperTarget.GROUPED && !canBakeNow(context)) {
+            Log.d(TAG, "refill.defer target=${target.id}: the wallpaper is not visible")
+            LiveWallpaperRefillScheduler.markPendingAdvance(context, target)
+            LiveWallpaperRefillScheduler.rescheduleAutoAdvance(context, target)
+            return ListenableWorker.Result.success()
+        }
         Log.d(TAG, "refill.start target=${target.id} advance=$advance command=$command")
         return try {
             LiveWallpaperRefillEngine.refill(context, target, advance, command)
@@ -67,6 +78,13 @@ object LiveWallpaperRefillTargets {
             if (advance) LiveWallpaperRefillScheduler.rescheduleAutoAdvance(context, target)
             ListenableWorker.Result.success()
         }
+    }
+
+    /** Whether a bake would be seen: interactive screen and a visible surface. */
+    private fun canBakeNow(context: Context): Boolean {
+        val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!power.isInteractive) return false
+        return GroupedLiveWallpaperService.wallpaperVisible
     }
 
     /** Whether a mounted page serves this target's refill requests. */

@@ -1,6 +1,8 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 
 /// What the page needs from the wallpaper engine.
 ///
@@ -24,17 +26,20 @@ abstract interface class WallpaperEngineConnection {
   /// The renderer can promote a slot on its own, and a reload keeps drawing the
   /// slot it had, so `current` in `state.json` may name another photo than the
   /// one on screen. Surfaces that describe "the photo I am looking at" read this
-  /// instead.
-  Future<GroupedWallpaperState?> readDisplayedState();
+  /// instead. [surface] selects the decoy frame when the group splits them.
+  Future<GroupedWallpaperState?> readDisplayedState({WallpaperSurface surface});
 
   /// The state and the effect image on screen, read as one snapshot.
   ///
   /// The view page uses it so the title, the entry and the pixels it shows all
   /// describe the same frame, with the home or lock effect the renderer applied.
-  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame();
+  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame({WallpaperSurface surface});
 
   /// Absolute path of the sharp photo on screen, or null when there is none.
-  Future<String?> currentPhotoPath();
+  Future<String?> currentPhotoPath({WallpaperSurface surface});
+
+  /// Whether the system lock screen draws this app's live wallpaper.
+  Future<GroupedWallpaperLockSurfaceStatus> lockSurfaceStatus();
 
   /// Keeps a frame ready for the saved group, without requiring the service to
   /// be the system wallpaper yet.
@@ -75,6 +80,12 @@ abstract interface class WallpaperEngineConnection {
 
   /// Shows the next photo of the group, resuming a frozen wallpaper first.
   Future<GroupedWallpaperSyncResult> nextArtwork();
+
+  /// Steps the decoy lock surface to a new photo (the view page's action).
+  Future<GroupedWallpaperSyncResult> nextLockArtwork();
+
+  /// Steps the decoy lock surface back to a photo it already showed.
+  Future<GroupedWallpaperSyncResult> previousLockArtwork();
 
   /// Opens the system live-wallpaper chooser for this service.
   Future<bool> openChooser();
@@ -190,11 +201,20 @@ class WallpaperEngineLink {
 
   Future<GroupedWallpaperState?> readState() async => await _connection?.readState();
 
-  Future<GroupedWallpaperState?> readDisplayedState() async => await _connection?.readDisplayedState();
+  Future<GroupedWallpaperState?> readDisplayedState({WallpaperSurface surface = WallpaperSurface.home}) async => await _connection?.readDisplayedState(surface: surface);
 
-  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame() async => await _connection?.readDisplayedFrame();
+  Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame({WallpaperSurface surface = WallpaperSurface.home}) async => await _connection?.readDisplayedFrame(surface: surface);
 
-  Future<String?> currentPhotoPath() async => await _connection?.currentPhotoPath();
+  Future<String?> currentPhotoPath({WallpaperSurface surface = WallpaperSurface.home}) async => await _connection?.currentPhotoPath(surface: surface);
+
+  /// Whether the system lock screen draws this app's live wallpaper.
+  Future<GroupedWallpaperLockSurfaceStatus> lockSurfaceStatus() async {
+    try {
+      return await _connection?.lockSurfaceStatus() ?? GroupedWallpaperLockSurfaceStatus.unknown;
+    } catch (_) {
+      return GroupedWallpaperLockSurfaceStatus.unknown;
+    }
+  }
 
   Future<GroupedWallpaperSyncResult> prepare() async => await _connection?.prepare() ?? GroupedWallpaperSyncResult.notActive;
 
@@ -225,6 +245,10 @@ class WallpaperEngineLink {
   Future<GroupedWallpaperSyncResult> previousArtwork() async => await _connection?.previousArtwork() ?? GroupedWallpaperSyncResult.notActive;
 
   Future<GroupedWallpaperSyncResult> nextArtwork() async => await _connection?.nextArtwork() ?? GroupedWallpaperSyncResult.notActive;
+
+  Future<GroupedWallpaperSyncResult> nextLockArtwork() async => await _connection?.nextLockArtwork() ?? GroupedWallpaperSyncResult.notActive;
+
+  Future<GroupedWallpaperSyncResult> previousLockArtwork() async => await _connection?.previousLockArtwork() ?? GroupedWallpaperSyncResult.notActive;
 
   Future<bool> openChooser() async => await _connection?.openChooser() ?? false;
 }

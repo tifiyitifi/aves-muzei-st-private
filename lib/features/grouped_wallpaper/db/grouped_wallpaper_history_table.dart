@@ -6,9 +6,10 @@ import 'package:drift/drift.dart';
 /// only keeps the entry id and enough of the group to label the row after the
 /// group was renamed or deleted.
 ///
-/// The unique key is `(entryId, groupId)`: the same photo shown again updates its
-/// `usedAt` instead of adding a row, while the same photo in another group is a
-/// different wallpaper and keeps its own row.
+/// The unique key is `(entryId, groupId, surface)`: the same photo shown again
+/// updates its `usedAt` instead of adding a row, while the same photo in another
+/// group, or on the lock screen of the same group, is a different wallpaper and
+/// keeps its own row.
 class GroupedWallpaperHistoryRows extends Table {
   @override
   String get tableName => 'grouped_wallpaper_history';
@@ -25,9 +26,15 @@ class GroupedWallpaperHistoryRows extends Table {
   /// The group number at the time, for a group that has no name of its own.
   IntColumn get groupNumber => integer().named('groupNumber').withDefault(const Constant(0))();
 
+  /// `home` or `lock`, persisted by enum name.
+  ///
+  /// The two surfaces show different photos and keep separate walks, so their
+  /// records must not de-duplicate against each other.
+  TextColumn get surface => text().named('surface').withDefault(const Constant('home'))();
+
   /// When the photo was put on screen, in milliseconds since the epoch.
   IntColumn get usedAt => integer().named('usedAt')();
 
   @override
-  List<String> get customConstraints => const ['UNIQUE (entryId, groupId)'];
+  List<String> get customConstraints => const ['UNIQUE (entryId, groupId, surface)'];
 }

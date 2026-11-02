@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
@@ -61,6 +62,7 @@ enum _ViewAction {
   history,
   autoAdvance,
   toggleNotification,
+  switchSurface,
 }
 
 class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> with WidgetsBindingObserver {
@@ -70,6 +72,16 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
   AvesEntry? _entry;
   String? _photo;
   bool _loading = true;
+
+  /// The surface this page is describing.
+  ///
+  /// The split group draws a different photo on the lock screen; the menu
+  /// switches which one the page manages. The lock surface has no gesture, so
+  /// this in-app page is the only way to step it by hand.
+  WallpaperSurface _surface = WallpaperSurface.home;
+
+  /// Aspect ratio of the photo on screen, for the cover layout.
+  double? _aspect;
 
   /// Whether a previous/next step is in flight.
   ///
@@ -122,19 +134,26 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     // had): the entry, the title, the aspect ratio and the pixels below must all
     // describe the photo on screen. The snapshot also carries whether that
     // surface draws the lock effect image.
-    final frame = await wallpaperEngineLink.readDisplayedFrame();
+    final frame = await wallpaperEngineLink.readDisplayedFrame(surface: _surface);
     final state = frame?.state;
-    final uri = state?.currentSlot?.uri;
+    // The decoy is not a queue slot: its single frame carries the metadata.
+    final lock = _surface.isLock ? state?.lock : null;
+    final slot = _surface.isLock ? null : state?.currentSlot;
+    final uri = _surface.isLock ? lock?.uri : slot?.uri;
     AvesEntry? entry;
     if (uri != null && uri.isNotEmpty) {
       final entries = await localMediaDb.loadEntriesByUris({uri});
       entry = entries.firstOrNull;
     }
+    final aspect = _surface.isLock
+        ? (lock != null && lock.width > 0 && lock.height > 0 ? lock.width / lock.height : null)
+        : slot?.aspectRatio;
     if (!mounted) return;
     setState(() {
       _state = state;
       _entry = entry;
       _photo = frame?.photoPath;
+      _aspect = aspect;
       _loading = false;
     });
   }
@@ -150,7 +169,13 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      if (previous) {
+      if (_surface.isLock) {
+        if (previous) {
+          await wallpaperEngineLink.previousLockArtwork();
+        } else {
+          await wallpaperEngineLink.nextLockArtwork();
+        }
+      } else if (previous) {
         await wallpaperEngineLink.previousArtwork();
       } else {
         await wallpaperEngineLink.nextArtwork();
@@ -195,7 +220,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
   Future<void> _openWholeGroup() async {
     final groupId = _state?.groupId;
     if (groupId == null || groupId.isEmpty || groupId == wallpaperGroupNoneId) return;
-    final range = await wallpaperGroupController.groupRange(groupId);
+    final range = await wallpaperGroupController.groupRange(groupId, surface: _surface);
     if (!mounted) return;
     final mediaSet = wallpaperMediaSetFilter(range);
     _setSystemUiVisible(true);
@@ -295,7 +320,22 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
         await _openAutoAdvance();
       case _ViewAction.toggleNotification:
         await _toggleNotification();
+      case _ViewAction.switchSurface:
+        await _switchSurface();
     }
+  }
+
+  /// Switches the page between the home photo and the lock decoy.
+  ///
+  /// The menu entry only appears for a split group; the lock surface has no
+  /// gesture, so this page is where the user manages its previous/next by hand.
+  Future<void> _switchSurface() async {
+    if (_state?.lock == null && !_surface.isLock) return;
+    setState(() {
+      _surface = _surface.isLock ? WallpaperSurface.home : WallpaperSurface.lock;
+      _loading = true;
+    });
+    await _load();
   }
 
   /// Opens the playing group's auto-advance editor.
@@ -329,10 +369,16 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     final l10n = context.l10n;
     final state = _state;
     final entry = _entry;
-    final title = state?.entryTitle ?? '';
+    final lock = _surface.isLock ? state?.lock : null;
+    final title = _surface.isLock ? (lock?.title ?? '') : (state?.entryTitle ?? '');
     final canOpenGroup = state != null && state.groupId.isNotEmpty && state.groupId != wallpaperGroupNoneId;
-    final canPrevious = state != null && groupedWallpaperCanGoPrevious(state);
-    final canNext = state != null && groupedWallpaperCanGoNext(state);
+    final canPrevious = _surface.isLock ? (lock?.recent.any((record) => record.entryId != lock.entryId) ?? false) : state != null && groupedWallpaperCanGoPrevious(state);
+    final canNext = _surface.isLock ? lock != null : state != null && groupedWallpaperCanGoNext(state);
+    final subtitle = state == null
+        ? null
+        : _surface.isLock
+            ? state.groupName
+            : l10n.groupedWallpaperViewInfo(state.groupName, state.count);
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -355,7 +401,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
             LayoutBuilder(
               builder: (context, constraints) {
                 final viewportSize = constraints.biggest;
-                final childSize = coverSizeFor(viewportSize, state?.currentSlot?.aspectRatio);
+                final childSize = coverSizeFor(viewportSize, _aspect);
                 _syncViewport(childSize, viewportSize);
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -424,19 +470,19 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
                 // the same "look at the photo" surface, so they must not drift.
                 child: WallpaperArtworkPanel(
                   title: title.isEmpty ? null : title,
-                  subtitle: state == null ? null : l10n.groupedWallpaperViewInfo(state.groupName, state.count),
+                  subtitle: subtitle,
                   onViewArtwork: () => unawaited(_openInGallery()),
                   onOpenWith: () => unawaited(_openWith()),
                   actions: [
                     IconButton(
-                      tooltip: l10n.wallpaperGroupPreviousPhoto,
+                      tooltip: _surface.isLock ? l10n.wallpaperGroupLockPrevious : l10n.wallpaperGroupPreviousPhoto,
                       color: Colors.white,
                       disabledColor: Colors.white38,
                       onPressed: canPrevious && !_busy ? () => unawaited(_step(previous: true)) : null,
                       icon: const Icon(AIcons.previousArtwork),
                     ),
                     IconButton(
-                      tooltip: l10n.wallpaperGroupNextPhoto,
+                      tooltip: _surface.isLock ? l10n.wallpaperGroupLockNext : l10n.wallpaperGroupNextPhoto,
                       color: Colors.white,
                       disabledColor: Colors.white38,
                       onPressed: canNext && !_busy ? () => unawaited(_step(previous: false)) : null,
@@ -490,6 +536,16 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
                             PopupMenuItem(
                               value: _ViewAction.autoAdvance,
                               child: _menuRow(AIcons.autoAdvance, l10n.muzeiWallpaperAutoAdvance),
+                            ),
+                          // The decoy is managed here, not on the lock screen:
+                          // its gestures are deliberately inert.
+                          if (state?.lock != null)
+                            PopupMenuItem(
+                              value: _ViewAction.switchSurface,
+                              child: _menuRow(
+                                _surface.isLock ? AIcons.visibleRangeInactive : AIcons.visibleRangeActive,
+                                _surface.isLock ? l10n.wallpaperGroupViewHomeWallpaper : l10n.wallpaperGroupViewLockWallpaper,
+                              ),
                             ),
                           PopupMenuItem(
                             value: _ViewAction.toggleNotification,

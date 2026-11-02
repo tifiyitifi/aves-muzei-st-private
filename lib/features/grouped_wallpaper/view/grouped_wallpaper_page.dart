@@ -6,10 +6,12 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.d
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/group_lock_rules.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_sections.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
@@ -23,6 +25,7 @@ import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_action_dele
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_filter.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_section_key.dart';
+import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_surface_section_key.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_availability_label.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_tile.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
@@ -137,6 +140,8 @@ enum _PageAction {
   cancelGalleryRange,
   lockGroup,
   unlockGroup,
+  toggleSeparateLockRange,
+  switchSurface,
 }
 
 class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with WidgetsBindingObserver {
@@ -503,9 +508,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   }
 
   Future<void> _refreshStats() async {
-    final range = _controller.range;
     final filtersByKey = <String, Set<CollectionFilter>>{};
-    if (range != null) {
+    final ranges = [
+      ?_controller.range,
+      if (_controller.lockRange != null) _controller.lockRange!,
+    ];
+    for (final range in ranges) {
       for (final section in buildWallpaperGroupSections(range: range)) {
         for (final candidate in section.candidates) {
           // Empty-section slots are not conditions: querying the whole library
@@ -838,26 +846,45 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         for (final groupId in _groupFilters.keys) _groupItem(groupId),
       ];
     }
-    final range = _controller.range;
-    if (range == null) return result;
-    final supplementsOutside = range.order.isIntersectFirst;
-    for (final section in buildWallpaperGroupSections(range: range)) {
-      final real = section.candidates.where((candidate) => !candidate.placeholder).toList();
-      final countText = switch (section.kind) {
-        // The base is exclusive: the section already says so, and the count of
-        // the control tiles would only confuse it with conditions.
-        VisibleRangeCandidateKind.base => '',
-        VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement =>
-          real.isEmpty ? '' : '${real.where((candidate) => candidate.active).length}/${real.length}',
-      };
-      final key = VisibleRangeSectionKey(context, section.kind, countText: countText, supplementsOutside: supplementsOutside);
-      result[key] = [
-        for (final candidate in section.candidates) FilterGridItem<CollectionFilter>(VisibleRangeCandidateFilter(candidate), null),
-      ];
+    final activeRange = _controller.range;
+    if (activeRange == null) return result;
+    // Both surfaces are shown fully expanded: the decoy is compared against the
+    // home range, not hidden behind a tab. Only the active surface is editable;
+    // the other one is a read-only summary, because the range, the selection and
+    // the pin target all address one surface at a time.
+    final surfaces = <({WallpaperSurface surface, VisibleRange range, bool active})>[
+      (surface: WallpaperSurface.home, range: _controller.homeRange ?? activeRange, active: !_controller.surface.isLock),
+      if (_controller.lockRange != null) (surface: WallpaperSurface.lock, range: _controller.lockRange!, active: _controller.surface.isLock),
+    ];
+    for (final entry in surfaces) {
+      final readOnly = !entry.active;
+      final supplementsOutside = entry.range.order.isIntersectFirst;
+      for (final section in buildWallpaperGroupSections(range: entry.range)) {
+        final real = section.candidates.where((candidate) => !candidate.placeholder).toList();
+        final countText = switch (section.kind) {
+          // The base is exclusive: the section already says so, and the count of
+          // the control tiles would only confuse it with conditions.
+          VisibleRangeCandidateKind.base => '',
+          VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement =>
+            real.isEmpty ? '' : '${real.where((candidate) => candidate.active).length}/${real.length}',
+        };
+        final key = WallpaperGroupSurfaceSectionKey(
+          context,
+          surface: entry.surface,
+          active: entry.active,
+          kind: section.kind,
+          countText: countText,
+          supplementsOutside: supplementsOutside,
+        );
+        result[key] = [
+          for (final candidate in section.candidates)
+            FilterGridItem<CollectionFilter>(VisibleRangeCandidateFilter(readOnly ? candidate.copyWithReadOnly(true) : candidate), null),
+        ];
+      }
     }
     if (_controller.activeStyle == VisibleRangeActiveStyle.section) {
-      final active = buildWallpaperGroupActiveCandidates(range: range);
-      result[VisibleRangeActiveSectionKey(context, restricted: range.isRestricted)] = [
+      final active = buildWallpaperGroupActiveCandidates(range: activeRange);
+      result[VisibleRangeActiveSectionKey(context, restricted: activeRange.isRestricted)] = [
         for (final candidate in active) FilterGridItem<CollectionFilter>(VisibleRangeCandidateFilter(candidate, summary: true), null),
       ];
     }
@@ -915,7 +942,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   /// The group page selects only real conditions: the group's own base and its
   /// rules. Placeholders and the result preview are controls, not data.
-  bool _isSelectable(VisibleRangeCandidate candidate) => candidate.rule != null || isWallpaperGroupBaseCandidate(candidate);
+  bool _isSelectable(VisibleRangeCandidate candidate) => !candidate.readOnly && (candidate.rule != null || isWallpaperGroupBaseCandidate(candidate));
 
   /// Cover chips have no room for long text, so the empty-section slots use the
   /// short label in every layout.
@@ -987,6 +1014,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final candidateFilter = filter as VisibleRangeCandidateFilter;
     final candidate = candidateFilter.candidate;
     if (_controller.selectedGroupId == null) return;
+    // The inactive surface is a summary: a tap there must never write its
+    // conditions into the surface the editor owns.
+    if (candidate.readOnly) return;
     if (_selection.isSelecting) {
       if (_isSelectable(candidate)) _selection.toggleSelection(item);
       return;
@@ -1406,6 +1436,23 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       ),
       _menuItem(_PageAction.gestures, AIcons.gestures, l10n.wallpaperGroupGestures),
       _menuItem(_PageAction.history, AIcons.history, l10n.wallpaperGroupHistoryTitle),
+      if (group != null) ...[
+        // The decoy surface is opt-in per group: the home range stays mandatory,
+        // and turning the split off only hides the lock range.
+        _menuItem(
+          _PageAction.toggleSeparateLockRange,
+          group.separateLockRange ? AIcons.checked : AIcons.unselected,
+          l10n.wallpaperGroupSeparateLockRange,
+          enabled: !_groupLocked,
+          subtitle: _groupLocked ? l10n.wallpaperGroupLockedSubtitle : l10n.wallpaperGroupSeparateLockRangeSubtitle,
+        ),
+        if (group.separateLockRange)
+          _menuItem(
+            _PageAction.switchSurface,
+            _controller.surface.isLock ? AIcons.visibleRangeInactive : AIcons.visibleRangeActive,
+            _controller.surface.isLock ? l10n.wallpaperGroupShowHomeRange : l10n.wallpaperGroupShowLockRange,
+          ),
+      ],
       const PopupMenuDivider(),
       // The wallpaper page shares one bottom-bar entry with the visible-range
       // page in the shared mode; this switches that destination for the rest of
@@ -1537,6 +1584,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         await _openGestures();
       case _PageAction.history:
         await _openHistory();
+      case _PageAction.toggleSeparateLockRange:
+        if (group != null) await _toggleSeparateLockRange(group);
+      case _PageAction.switchSurface:
+        _selection.browse();
+        await _controller.switchSurface(_controller.surface.isLock ? WallpaperSurface.home : WallpaperSurface.lock);
+        _syncBrowsingOverlay();
+        await _refreshStats();
       case _PageAction.duplicateGroup:
         if (group != null) await _duplicateGroup(group);
       case _PageAction.cancelGalleryRange:
@@ -1749,6 +1803,48 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         builder: (_) => GroupedWallpaperHistoryPage(groupId: _controller.selectedGroupId),
       ),
     );
+  }
+
+  /// Turns the group's decoy lock surface on or off.
+  ///
+  /// Enabling copies the home range once in the controller, so the two start
+  /// identical and then narrow independently. The device may not support a live
+  /// wallpaper on the lock screen at all, which is worth saying at the moment the
+  /// user asks for one instead of leaving an inert range behind.
+  Future<void> _toggleSeparateLockRange(WallpaperGroup group) async {
+    if (_groupLocked) {
+      _showBlocked();
+      return;
+    }
+    final enabling = !group.separateLockRange;
+    _selection.browse();
+    await _controller.setSeparateLockRange(enabling);
+    if (!enabling || !mounted) return;
+    final status = await wallpaperEngineLink.lockSurfaceStatus();
+    if (!mounted) return;
+    if (status == GroupedWallpaperLockSurfaceStatus.none || status == GroupedWallpaperLockSurfaceStatus.other) {
+      await _showLockSurfaceUnsupported(status);
+    }
+  }
+
+  /// Explains that this device will not draw the decoy, with a way to fix it.
+  ///
+  /// A device older than Android 14 cannot report the lock wallpaper at all and
+  /// answers `unknown`: there is nothing useful to warn about, so the About page
+  /// carries the explanation instead of a dialog.
+  Future<void> _showLockSurfaceUnsupported(GroupedWallpaperLockSurfaceStatus status) async {
+    final l10n = context.l10n;
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text(status == GroupedWallpaperLockSurfaceStatus.other ? l10n.wallpaperGroupLockSurfaceOther : l10n.wallpaperGroupLockSurfaceUnsupported),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(l10n.wallpaperGroupLockSurfaceOpenChooser)),
+        ],
+      ),
+    );
+    if (open == true) await wallpaperEngineLink.openChooser();
   }
 
   /// Copies [group] into a new group and opens the copy.

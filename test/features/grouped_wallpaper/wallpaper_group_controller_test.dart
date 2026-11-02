@@ -3,6 +3,7 @@ import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
@@ -439,5 +440,70 @@ void main() {
     await controller.takeOverwriteWarning(active: true, disabled: false, hasFrame: true);
     await controller.dismissOverwriteWarning();
     expect(await controller.takeOverwriteWarning(active: false, disabled: false, hasFrame: true), isFalse);
+  });
+
+  test('enabling the split copies the home range into a durable lock range', () async {
+    const id = 'wallpaper.group.dcim';
+    final home = await controller.groupRange(id);
+
+    await controller.setSeparateLockRange(id, true);
+
+    final lock = await controller.groupRange(id, surface: WallpaperSurface.lock);
+    expect(lock.id, wallpaperGroupLockRangeId(id));
+    expect(lock.ownerId, wallpaperGroupLockOwnerId(id));
+    // The default values are the home ones: the decoy starts by showing exactly
+    // what the home screen shows.
+    expect(lock.baseFilters, home.baseFilters);
+    expect(lock.baseName, home.baseName);
+    expect(lock.order, home.order);
+
+    // Turning the switch off hides the range instead of deleting it.
+    await controller.setSeparateLockRange(id, false);
+    expect(controller.groups.firstWhere((group) => group.id == id).separateLockRange, isFalse);
+    expect(await controller.loadRangeById(wallpaperGroupLockRangeId(id)), isNull);
+    expect((await controller.groupRange(id, surface: WallpaperSurface.lock)).baseFilters, home.baseFilters);
+
+    // Re-enabling reuses the same rows.
+    await controller.setSeparateLockRange(id, true);
+    final again = await controller.groupRange(id, surface: WallpaperSurface.lock);
+    expect(again.baseFilters, home.baseFilters);
+  });
+
+  test('a lock range is only writable while the group splits its surfaces', () async {
+    const id = 'wallpaper.group.dcim';
+    await controller.setSeparateLockRange(id, true);
+    final lock = await controller.groupRange(id, surface: WallpaperSurface.lock);
+
+    expect(await controller.loadRangeById(wallpaperGroupLockRangeId(id)), isNotNull);
+    await controller.saveGroupRange(lock.copyWith(baseActive: false));
+    expect((await controller.groupRange(id, surface: WallpaperSurface.lock)).baseActive, isFalse);
+
+    await controller.setSeparateLockRange(id, false);
+    expect(() => controller.saveGroupRange(lock), throwsArgumentError);
+  });
+
+  test('deleting a split group drops both of its ranges', () async {
+    const id = 'wallpaper.group.dcim';
+    await controller.setSeparateLockRange(id, true);
+    expect(await controller.loadRangeById(wallpaperGroupLockRangeId(id)), isNotNull);
+
+    await controller.deleteGroups({id});
+
+    final ranges = VisibleRangeStore(db);
+    expect(await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: id), isNull);
+    expect(await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId(id)), isNull);
+  });
+
+  test('a split group copy owns new home and lock ranges', () async {
+    const id = 'wallpaper.group.dcim';
+    await controller.setSeparateLockRange(id, true);
+    final copy = await controller.duplicateGroup(id, name: 'copy');
+    expect(copy, isNotNull);
+    expect(copy!.separateLockRange, isTrue);
+
+    final lock = await controller.groupRange(copy.id, surface: WallpaperSurface.lock);
+    expect(lock.ownerId, wallpaperGroupLockOwnerId(copy.id));
+    expect(lock.id, wallpaperGroupLockRangeId(copy.id));
+    expect(lock.baseFilters, (await controller.groupRange(id, surface: WallpaperSurface.lock)).baseFilters);
   });
 }

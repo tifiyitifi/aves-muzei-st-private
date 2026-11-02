@@ -344,6 +344,32 @@ void main() {
     expect(runtime.matches(state.copyWith(generation: 4)), isFalse);
   });
 
+  test('a v7 lock frame round-trips and a v6 file reads no decoy', () {
+    const lock = GroupedWallpaperLockFrame(
+      entryId: 12,
+      uri: 'content://media/12',
+      title: 'IMG_12',
+      photo: 'frames/12/lock.100x200-abcd/photo.webp',
+      width: 100,
+      height: 200,
+      darkness: .4,
+      bakedAt: 5,
+      cursor: 3,
+      newestEntryId: 12,
+      recent: [GroupedWallpaperRecentEntry(entryId: 12), GroupedWallpaperRecentEntry(entryId: 11)],
+    );
+    final current = state.copyWith(lock: lock, lockRangeId: 'group.1.lock.range');
+    final parsed = GroupedWallpaperState.tryFromJsonMap(current.toJsonMap())!;
+    expect(parsed.lock, lock);
+    expect(parsed.hasLock, isTrue);
+    expect(parsed.lockRangeId, 'group.1.lock.range');
+
+    final v6 = state.copyWith(version: 6).toJsonMap()..remove('lock')..remove('lockRangeId');
+    final upgraded = GroupedWallpaperState.tryFromJsonMap(v6)!;
+    expect(upgraded.lock, isNull);
+    expect(upgraded.lockRangeId, isEmpty);
+  });
+
   test('the runtime round-trips through JSON', () {
     const runtime = GroupedWallpaperRuntime(generation: 3, current: 1, next: 2, refillRequested: true);
     expect(GroupedWallpaperRuntime.tryFromJsonMap(runtime.toJsonMap()), runtime);

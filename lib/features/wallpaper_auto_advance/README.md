@@ -34,6 +34,17 @@ WallpaperIntervalCatalog  (defaultInterval, shippedDefaults, defaults, customs)
   unreadable document seeds the shipped list; an intentional
   `{"defaults":[],"customs":[]}` is never re-seeded.
 
+## Visibility gate (grouped wallpaper)
+
+A due grouped advance is only baked while its surface can be seen: the screen is
+interactive and `GroupedLiveWallpaperService.wallpaperVisible` is true (home or
+lock). Otherwise the worker records `auto_pending_advance_<target>` in the
+shared scheduler preferences, re-arms the countdown, and returns without waking
+the Dart engine. When the surface becomes visible again, the service consumes
+the flag and enqueues one advance refill. The interval is therefore wall-clock
+time, applied at the next moment it is observable: two hours of video cost zero
+bakes, and returning to the home screen costs one. Muzei is unchanged.
+
 ## Actions
 
 | Action | Option list | Selections |

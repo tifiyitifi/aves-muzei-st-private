@@ -4,6 +4,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
@@ -259,6 +260,103 @@ class GroupedWallpaperGroup extends Equatable {
   List<Object?> get props => [id, number, name];
 }
 
+/// The single frame the lock screen draws.
+///
+/// Unlike the home queue, the lock surface has no neighbours: it advances only
+/// with time, so there is nothing to promote and no texture to prewarm. [photo]
+/// is the final file, with the lock effects already baked in, which is why it
+/// carries no `effectHome`/`effectLock` split.
+@immutable
+class GroupedWallpaperLockFrame extends Equatable {
+  final int entryId;
+  final String uri;
+  final String title;
+
+  /// Photo path relative to the state root, lock effects included.
+  final String photo;
+
+  final int width;
+  final int height;
+
+  /// Average luminance of the frame, in `0..1`.
+  final double darkness;
+
+  /// When the frame was baked, so an effects or range edit re-bakes it.
+  final int bakedAt;
+
+  /// In-order position remembered for the next time-only advance.
+  final int cursor;
+
+  /// Highest entry id shown on this surface, for the "new photos first" order.
+  final int newestEntryId;
+
+  /// Photos this surface has shown, newest first.
+  ///
+  /// The lock screen has no queue, so "previous lock photo" in the view page
+  /// walks this list instead of a baked neighbour.
+  final List<GroupedWallpaperRecentEntry> recent;
+
+  const new({
+    required this.entryId,
+    this.uri = '',
+    this.title = '',
+    required this.photo,
+    this.width = 0,
+    this.height = 0,
+    this.darkness = .5,
+    this.bakedAt = 0,
+    this.cursor = 0,
+    this.newestEntryId = 0,
+    this.recent = const [],
+  });
+
+  Map<String, Object?> toJsonMap() => {
+        'entryId': entryId,
+        'uri': uri,
+        'title': title,
+        'photo': photo,
+        'width': width,
+        'height': height,
+        'darkness': darkness,
+        'bakedAt': bakedAt,
+        'cursor': cursor,
+        'newestEntryId': newestEntryId,
+        'recent': recent.map((entry) => entry.toJsonMap()).toList(),
+      };
+
+  static GroupedWallpaperLockFrame? tryFromJsonMap(Map<String, Object?> json) {
+    final entryId = GroupedWallpaperSlot._slotInt(json['entryId']);
+    final photo = GroupedWallpaperSlot._slotString(json['photo']);
+    if (entryId == null || entryId <= 0 || photo.isEmpty) return null;
+    final recent = <GroupedWallpaperRecentEntry>[];
+    final seen = <int>{};
+    final rawRecent = json['recent'];
+    if (rawRecent is List) {
+      for (final rawEntry in rawRecent) {
+        if (rawEntry is! Map || recent.length >= GroupedWallpaperState.maxRecent) continue;
+        final entry = GroupedWallpaperRecentEntry.tryFromJsonMap(rawEntry.map((key, value) => MapEntry(key.toString(), value)));
+        if (entry != null && seen.add(entry.entryId)) recent.add(entry);
+      }
+    }
+    return GroupedWallpaperLockFrame(
+      entryId: entryId,
+      uri: GroupedWallpaperSlot._slotString(json['uri']),
+      title: GroupedWallpaperSlot._slotString(json['title']),
+      photo: photo,
+      width: GroupedWallpaperSlot._slotInt(json['width']) ?? 0,
+      height: GroupedWallpaperSlot._slotInt(json['height']) ?? 0,
+      darkness: GroupedWallpaperSlot._slotDouble(json['darkness']) ?? .5,
+      bakedAt: GroupedWallpaperSlot._slotInt(json['bakedAt']) ?? 0,
+      cursor: GroupedWallpaperSlot._slotInt(json['cursor']) ?? 0,
+      newestEntryId: GroupedWallpaperSlot._slotInt(json['newestEntryId']) ?? 0,
+      recent: List.unmodifiable(recent),
+    );
+  }
+
+  @override
+  List<Object?> get props => [entryId, uri, title, photo, width, height, darkness, bakedAt, cursor, newestEntryId, recent];
+}
+
 /// Dart-owned `state.json` of the grouped wallpaper.
 ///
 /// This is the contract between the Flutter engine and the native renderer: only
@@ -281,7 +379,8 @@ class GroupedWallpaperState extends Equatable {
   /// [cursor], [newestEntryId]); v4 added the group id of a recent entry; v5
   /// added the rewind stack ([rewind], [rewindCursor]) and [navigated]; v6 made
   /// both neighbours explicit ([previous], [next]) so the native side can step
-  /// through the records without baking. Older files are read with those at
+  /// through the records without baking; v7 added the single decoy frame the lock
+  /// screen draws ([lock], [lockRangeId]). Older files are read with those at
   /// their defaults, so an upgrade never loses the frame on screen.
   /// [notification], the [surfaceWidth] / [surfaceHeight] layout,
   /// [scrollEffect], [historyLimit], [switchLocked], [switchLockedGroupId] and
@@ -289,7 +388,7 @@ class GroupedWallpaperState extends Equatable {
   /// means "on" for the bar and "unknown" for the layout, which re-bakes once.
   /// A v4 file seeds [rewind] from [recent], so "previous" works right after the
   /// update.
-  static const int currentVersion = 6;
+  static const int currentVersion = 7;
 
   /// How many recently shown photos are remembered.
   ///
@@ -436,6 +535,21 @@ class GroupedWallpaperState extends Equatable {
   /// waking the app.
   final List<GroupedWallpaperGroup> groups;
 
+  /// The single frame the lock screen draws, or null when its surface is not
+  /// split from home.
+  ///
+  /// It is deliberately outside [slots]: the decoy advances only with time, so a
+  /// second three-frame queue would double the memory and the bakes for a move
+  /// the user cannot make.
+  final GroupedWallpaperLockFrame? lock;
+
+  /// The id of the range [lock] was baked from; empty when the surfaces are not
+  /// split.
+  ///
+  /// The engine compares it with the plan's lock range id, so a range edit
+  /// re-bakes the decoy even when the group's `updatedAt` did not move.
+  final String lockRangeId;
+
   final int bakedAt;
 
   const new({
@@ -469,6 +583,8 @@ class GroupedWallpaperState extends Equatable {
     this.switchLocked = false,
     this.switchLockedGroupId = '',
     this.groups = const [],
+    this.lock,
+    this.lockRangeId = '',
     this.bakedAt = 0,
   });
 
@@ -518,8 +634,15 @@ class GroupedWallpaperState extends Equatable {
 
   int get height => currentSlot?.height ?? 0;
 
-  /// The state before anything was baked for [group]: the renderer shows its
-  /// placeholder until the first sync.
+  /// Whether the lock screen draws its own frame.
+  bool get hasLock => lock != null;
+
+  int? get lockEntryId => lock?.entryId;
+
+  String get lockTitle => lock?.title ?? '';
+
+  /// Whether the state before anything was baked for [group]: the renderer shows
+  /// its placeholder until the first sync.
   factory pending({required WallpaperGroup group, required String groupName, int generation = 0}) => GroupedWallpaperState(
         generation: generation,
         status: GroupedWallpaperStatus.unavailable,
@@ -559,6 +682,9 @@ class GroupedWallpaperState extends Equatable {
     bool? switchLocked,
     String? switchLockedGroupId,
     List<GroupedWallpaperGroup>? groups,
+    GroupedWallpaperLockFrame? lock,
+    bool clearLock = false,
+    String? lockRangeId,
     int? bakedAt,
   }) => GroupedWallpaperState(
         version: version ?? this.version,
@@ -591,6 +717,8 @@ class GroupedWallpaperState extends Equatable {
         switchLocked: switchLocked ?? this.switchLocked,
         switchLockedGroupId: switchLockedGroupId ?? this.switchLockedGroupId,
         groups: groups ?? this.groups,
+        lock: clearLock ? null : (lock ?? this.lock),
+        lockRangeId: lockRangeId ?? this.lockRangeId,
         bakedAt: bakedAt ?? this.bakedAt,
       );
 
@@ -643,6 +771,8 @@ class GroupedWallpaperState extends Equatable {
         'switchLocked': switchLocked,
         'switchLockedGroupId': switchLockedGroupId,
         'groups': groups.map((group) => group.toJsonMap()).toList(),
+        'lock': lock?.toJsonMap(),
+        'lockRangeId': lockRangeId,
         'bakedAt': bakedAt,
       };
 
@@ -655,6 +785,7 @@ class GroupedWallpaperState extends Equatable {
       2 || 3 || 4 => _fromQueued(json, status, needsUpgrade: true),
       5 => _fromQueued(json, status, needsUpgrade: true),
       6 => _fromQueued(json, status, needsUpgrade: false),
+      7 => _fromQueued(json, status, needsUpgrade: false),
       _ => null,
     };
   }
@@ -728,6 +859,9 @@ class GroupedWallpaperState extends Equatable {
       }
     }
 
+    final rawLock = json['lock'];
+    final lock = rawLock is Map ? GroupedWallpaperLockFrame.tryFromJsonMap(rawLock.map((key, value) => MapEntry(key.toString(), value))) : null;
+
     // The limit bounds the walk, so it is read before the stack.
     final historyLimit = GroupedWallpaperHistoryLimit.sanitize(_int(json['historyLimit']) ?? GroupedWallpaperHistoryLimit.defaultLimit);
     final groupId = _string(json['groupId']);
@@ -790,6 +924,8 @@ class GroupedWallpaperState extends Equatable {
       switchLocked: json['switchLocked'] == true,
       switchLockedGroupId: _string(json['switchLockedGroupId']),
       groups: List.unmodifiable(groups),
+      lock: lock,
+      lockRangeId: _string(json['lockRangeId']),
       bakedAt: _int(json['bakedAt']) ?? 0,
     );
     // `ready` without a frame is a contradiction: show the placeholder instead
@@ -811,7 +947,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, previous, next, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, transitionMs, frameRetention, switchLocked, switchLockedGroupId, groups, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, previous, next, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, transitionMs, frameRetention, switchLocked, switchLockedGroupId, groups, lock, lockRangeId, bakedAt];
 }
 
 /// Native-owned `runtime.json`.
@@ -881,5 +1017,12 @@ class GroupedWallpaperDisplayedFrame {
   /// lock effect image.
   final bool lockScreen;
 
-  const new({required this.state, this.photoPath, this.lockScreen = false});
+  /// The surface this snapshot describes.
+  ///
+  /// A split group draws different photos on the two surfaces, so the page asks
+  /// for one of them explicitly instead of inferring it from [lockScreen], which
+  /// only says which effect image of a home slot was used.
+  final WallpaperSurface surface;
+
+  const new({required this.state, this.photoPath, this.lockScreen = false, this.surface = WallpaperSurface.home});
 }

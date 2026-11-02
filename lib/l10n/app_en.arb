@@ -2122,6 +2122,31 @@
   "wallpaperGroupHistoryLimit": "History limit",
   "wallpaperGroupHistoryLimitHint": "0–1000. Changing this does not clear old records; it only affects new ones.",
   "wallpaperGroupHistorySwitchGroup": "Switch group",
+  "wallpaperGroupSeparateLockRange": "Home and lock use different wallpapers",
+  "wallpaperGroupSeparateLockRangeSubtitle": "The lock screen shows its own decoy range while the home screen keeps this group's range.",
+  "wallpaperGroupSurfaceHome": "Home",
+  "wallpaperGroupSurfaceLock": "Lock screen",
+  "wallpaperGroupShowHomeRange": "Show the home range",
+  "wallpaperGroupShowLockRange": "Show the lock range",
+  "wallpaperGroupViewHomeWallpaper": "View the home wallpaper",
+  "wallpaperGroupViewLockWallpaper": "View the lock wallpaper",
+  "wallpaperGroupHistoryHome": "Show home history",
+  "wallpaperGroupHistoryLock": "Show lock history",
+  "wallpaperGroupLockPrevious": "Previous lock photo",
+  "wallpaperGroupLockNext": "Next lock photo",
+  "wallpaperGroupLockSurfaceUnsupported": "This device does not draw a live wallpaper on the lock screen, so the lock range will be saved but not shown. Open the system wallpaper chooser to check.",
+  "wallpaperGroupLockSurfaceOther": "The lock screen currently shows another live wallpaper, so the lock range will not be shown. Open the system wallpaper chooser to set this one.",
+  "wallpaperGroupLockSurfaceOpenChooser": "Open wallpaper chooser",
+  "visibleRangePinTargetLock": "{name} · lock",
+  "@visibleRangePinTargetLock": {
+    "description": "Pin target label for a wallpaper group's lock surface",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "wallpaperGroupAboutSeparateLockRange": "Some devices do not support a live wallpaper on the lock screen. In that case the lock range is still saved, but it is never drawn, and the lock screen keeps its own wallpaper.",
   "wallpaperGroupHistoryClearDontAsk": "Do not ask again",
   "wallpaperGroupHistoryClearConfirmToggle": "Confirm before clearing",
   "wallpaperGroupHistoryCount": "{count, plural, =0{No record} =1{1 record} other{{count} records}}",

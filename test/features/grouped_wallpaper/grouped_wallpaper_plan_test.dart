@@ -68,6 +68,32 @@ void main() {
     expect(plan.isNone, isFalse);
   });
 
+  test('loads both surfaces of a split group, and only home when split off', () async {
+    await groups.saveGroups([group('a', current: true).copyWith(separateLockRange: true)]);
+    await ranges.saveRange(range('a', base: {PathFilter('/dcim')}));
+    await ranges.saveRange(
+      VisibleRange(
+        id: wallpaperGroupLockRangeId('a'),
+        scope: VisibleRangeScope.wallpaper,
+        ownerId: wallpaperGroupLockOwnerId('a'),
+        baseFilters: {PathFilter('/pictures')},
+        createdAt: 1,
+        updatedAt: 2,
+      ),
+    );
+
+    final split = await planStore.load();
+    expect(split.range?.baseFilters, {PathFilter('/dcim')});
+    expect(split.lockRange?.baseFilters, {PathFilter('/pictures')});
+    expect(split.hasLockRange, isTrue);
+
+    await groups.saveGroups([group('a', current: true)]);
+    final joined = await planStore.load();
+    expect(joined.range?.baseFilters, {PathFilter('/dcim')});
+    expect(joined.lockRange, isNull);
+    expect(joined.hasLockRange, isFalse);
+  });
+
   test('falls back to group 0 when no group is current', () async {
     await groups.saveGroups([group('a'), group('b')]);
     await ranges.saveRange(range('a', base: {PathFilter('/dcim')}));

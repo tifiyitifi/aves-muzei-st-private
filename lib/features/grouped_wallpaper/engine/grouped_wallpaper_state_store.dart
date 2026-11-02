@@ -307,6 +307,13 @@ class GroupedWallpaperStateStore {
     return file.existsSync() ? file : slotPhotoOf(slot);
   }
 
+  /// The baked file of the lock surface, or null when it is not on disk.
+  File? lockPhotoOf(GroupedWallpaperLockFrame lock) {
+    if (lock.photo.isEmpty) return null;
+    final file = File(p.joinAll([root.path, ...lock.photo.split('/')]));
+    return file.existsSync() ? file : null;
+  }
+
   /// Whether the stored effect path exists, without falling back to the sharp
   /// photo: the queue is not ready when a baked effect was deleted.
   bool effectPhotoExists(String photo) {
@@ -392,10 +399,18 @@ class GroupedWallpaperStateStore {
   }
 
   /// Removes every baked photo, so the renderer falls back to its placeholder.
-  Future<void> clearSlots() async {
+  ///
+  /// [keep] names files the state still draws: the decoy lock frame survives a
+  /// home failure, because blanking the lock screen would expose the home
+  /// wallpaper it exists to mask.
+  Future<void> clearSlots({Set<String> keep = const {}}) async {
     try {
+      if (keep.isEmpty) {
+        if (await framesDir.exists()) await framesDir.delete(recursive: true);
+      } else {
+        await pruneFrames(keep: keep, maxFrames: keep.length);
+      }
       if (await slotsDir.exists()) await slotsDir.delete(recursive: true);
-      if (await framesDir.exists()) await framesDir.delete(recursive: true);
       // v1 kept one photo at the root; a state written by an older build may
       // still point at it.
       final legacy = File(p.join(root.path, GroupedWallpaperState.photoFileNameV1));

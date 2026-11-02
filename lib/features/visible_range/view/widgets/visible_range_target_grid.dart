@@ -82,7 +82,11 @@ class _TargetCell extends StatelessWidget {
             ? colors.primaryContainer
             : colors.surfaceContainerHighest;
     final foreground = locked ? colors.onSurface.withValues(alpha: .38) : selected ? colors.onPrimaryContainer : colors.onSurfaceVariant;
-    final label = target.isGallery ? context.l10n.visibleRangePinTargetGallery : target.name;
+    final label = target.isGallery
+        ? context.l10n.visibleRangePinTargetGallery
+        : target.surface.isLock
+            ? context.l10n.visibleRangePinTargetLock(target.name)
+            : target.name;
 
     return Material(
       color: background,

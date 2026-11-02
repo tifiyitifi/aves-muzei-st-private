@@ -2,6 +2,7 @@ import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/grouped_wallpaper/db/grouped_wallpaper_history_store.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -23,13 +24,14 @@ void main() {
 
   tearDown(() => db.close());
 
-  Future<void> record(int entryId, {String groupId = 'group.1', int usedAt = 1, int limit = 200}) => store.record(
+  Future<void> record(int entryId, {String groupId = 'group.1', int usedAt = 1, int limit = 200, WallpaperSurface surface = WallpaperSurface.home}) => store.record(
         entryId: entryId,
         groupId: groupId,
         groupName: '@wallpaperGroupDefaultDcim',
         groupNumber: 1,
         usedAt: usedAt,
         limit: limit,
+        surface: surface,
       );
 
   test('records a shown photo with its group snapshot', () async {
@@ -60,6 +62,22 @@ void main() {
 
     expect(await store.count(), 2);
     expect((await store.load()).map((row) => row.groupId), ['group.2', 'group.1']);
+  });
+
+  test('the same photo on the lock surface is a separate row', () async {
+    await record(7, usedAt: 100);
+    await record(7, usedAt: 200, surface: WallpaperSurface.lock);
+
+    expect(await store.count(), 2);
+    expect(await store.count(surface: WallpaperSurface.home), 1);
+    expect(await store.count(surface: WallpaperSurface.lock), 1);
+    expect((await store.load(surface: WallpaperSurface.lock)).single.usedAt, 200);
+    expect((await store.load(surface: WallpaperSurface.home)).single.usedAt, 100);
+
+    // Re-showing the home photo updates only the home row.
+    await record(7, usedAt: 300);
+    expect((await store.load(surface: WallpaperSurface.home)).single.usedAt, 300);
+    expect((await store.load(surface: WallpaperSurface.lock)).single.usedAt, 200);
   });
 
   test('a zero limit records nothing', () async {

@@ -409,8 +409,9 @@ object GroupedWallpaperNotification {
      * when this key changes keeps the bar identical on screen while the counter
      * stays quiet.
      */
-    fun contentKey(context: Context, state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?): String = buildString {
+    fun contentKey(context: Context, state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?, lock: Boolean = false): String = buildString {
         append(state.status).append('|')
+        append(lock).append('|')
         append(state.groupNumber).append('|')
         append(state.groupName).append('|')
         // The limit greys the "previous" button, so it is part of what the bar
@@ -440,7 +441,7 @@ object GroupedWallpaperNotification {
      * [slot] is the photo on screen, which can be a slot the renderer promoted
      * natively before Dart wrote a new state. It is null when nothing is baked.
      */
-    fun update(context: Context, state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?) {
+    fun update(context: Context, state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?, lock: Boolean = false) {
         if (state.status == GroupedWallpaperFileState.STATUS_DISABLED) {
             cancel(context)
             return
@@ -448,7 +449,7 @@ object GroupedWallpaperNotification {
         val manager = NotificationManagerCompat.from(context)
         if (!manager.areNotificationsEnabled()) return
 
-        val notification = build(context, state, slot) ?: return
+        val notification = build(context, state, slot, lock = lock) ?: return
         try {
             manager.notify(NOTIFICATION_ID, notification)
         } catch (t: Throwable) {
@@ -464,7 +465,7 @@ object GroupedWallpaperNotification {
      * [GroupedLiveWallpaperService] passes it to `startForeground`; [update] posts
      * the same notification outside the foreground-service path.
      */
-    fun build(context: Context, state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?): Notification? {
+    fun build(context: Context, state: GroupedWallpaperFileState, slot: GroupedWallpaperSlotFile?, lock: Boolean = false): Notification? {
         if (state.status == GroupedWallpaperFileState.STATUS_DISABLED) return null
         ensureChannel(context)
         appContext = context.applicationContext
@@ -483,8 +484,8 @@ object GroupedWallpaperNotification {
             // Android 12+ otherwise holds a foreground-service notification back
             // for about ten seconds, which reads as "the lock screen has no bar".
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .setCustomContentView(buildViews(context, big = false, groupActions = groupActions, state = state, slot = slot))
-            .setCustomBigContentView(buildViews(context, big = true, groupActions = groupActions, state = state, slot = slot))
+            .setCustomContentView(buildViews(context, big = false, groupActions = groupActions, state = state, slot = slot, lock = lock))
+            .setCustomBigContentView(buildViews(context, big = true, groupActions = groupActions, state = state, slot = slot, lock = lock))
             .build()
     }
 
@@ -600,6 +601,7 @@ object GroupedWallpaperNotification {
         groupActions: Boolean,
         state: GroupedWallpaperFileState,
         slot: GroupedWallpaperSlotFile?,
+        lock: Boolean = false,
     ): RemoteViews {
         val layout = if (big) R.layout.grouped_wallpaper_notification_big else R.layout.grouped_wallpaper_notification_normal
         val views = RemoteViews(context.packageName, layout)
@@ -611,7 +613,10 @@ object GroupedWallpaperNotification {
         // the stricter "ready", so an old locked file cannot offer a group switch
         // the app may refuse.
         val ready = state.status == GroupedWallpaperFileState.STATUS_READY && !switching
-        val navigable = (state.status == GroupedWallpaperFileState.STATUS_READY || state.status == GroupedWallpaperFileState.STATUS_LOCKED) && !switching
+        // The decoy has no home queue to step through: on the lock screen the bar's
+        // priority is switching groups, and a photo button there would change the
+        // wallpaper the user is not looking at.
+        val navigable = (state.status == GroupedWallpaperFileState.STATUS_READY || state.status == GroupedWallpaperFileState.STATUS_LOCKED) && !switching && !lock
         val fallback = context.getString(R.string.grouped_wallpaper_notification_fallback_title)
 
         val badge = when {

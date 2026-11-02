@@ -52,6 +52,27 @@ abstract interface class GroupedFrameBaker {
     required String effectHomePath,
     required String effectLockPath,
   });
+
+  /// Bakes the lock surface's one frame into [photoPath].
+  ///
+  /// [photoPath] is the final image with [effects] already applied, because the
+  /// decoy has no sharp original and no second effect file to fall back to.
+  Future<GroupedLockFrameBake> bakeLockTo({
+    required AvesEntry entry,
+    required Size targetSize,
+    required WallpaperEffects effects,
+    required String photoPath,
+  });
+}
+
+/// What one lock frame bake produced: the pixels are already in the caller's
+/// file, and only the metadata travels back.
+class GroupedLockFrameBake {
+  final int width;
+  final int height;
+  final double darkness;
+
+  const new({required this.width, required this.height, required this.darkness});
 }
 
 /// The effect image of each surface.
@@ -103,6 +124,24 @@ class SkiaFrameBaker implements GroupedFrameBaker {
       darkness: bake.darkness,
       homeEffect: effects.home,
       lockEffect: effects.lock,
+    );
+  }
+
+  @override
+  Future<GroupedLockFrameBake> bakeLockTo({
+    required AvesEntry entry,
+    required Size targetSize,
+    required WallpaperEffects effects,
+    required String photoPath,
+  }) async {
+    // `home == lock` makes the baker render one effect pass and hand it back as
+    // the home image; the lock file is that image, not a second copy.
+    final bake = await baker.bake(entry: entry, targetSize: targetSize, home: effects, lock: effects);
+    await _writeAtomically(File(photoPath), bake.effectsHomePng);
+    return GroupedLockFrameBake(
+      width: bake.size.width.round(),
+      height: bake.size.height.round(),
+      darkness: bake.darkness,
     );
   }
 }
@@ -180,6 +219,43 @@ class NativeFrameBaker implements GroupedFrameBaker {
       homeEffect: effects.home,
       lockEffect: effects.lock,
     );
+  }
+
+  @override
+  Future<GroupedLockFrameBake> bakeLockTo({
+    required AvesEntry entry,
+    required Size targetSize,
+    required WallpaperEffects effects,
+    required String photoPath,
+  }) async {
+    if (entry.isVideo || entry.isSvg) {
+      return fallback.bakeLockTo(entry: entry, targetSize: targetSize, effects: effects, photoPath: photoPath);
+    }
+    // The platform writes the sharp crop to a sibling scratch file; the effect
+    // pass then overwrites the destination, so the stored frame is exactly what
+    // the lock screen draws.
+    final scratch = '$photoPath.sharp';
+    final written = await platform.writeFrame(entry: entry, targetSize: targetSize, photoPath: scratch, quality: quality);
+    if (written == null) {
+      return fallback.bakeLockTo(entry: entry, targetSize: targetSize, effects: effects, photoPath: photoPath);
+    }
+    final darkness = GroupedWallpaperBaker.darknessOf(written.thumbnail);
+    final size = Size(written.width.toDouble(), written.height.toDouble());
+    final sharp = File(scratch);
+    try {
+      if (effects.isIdentity) {
+        await sharp.rename(photoPath);
+      } else {
+        final bytes = await fallback.baker.renderEffectsFromFile(sharp, size, effects, darkness);
+        await _writeAtomically(File(photoPath), bytes);
+      }
+    } finally {
+      // The scratch is only an intermediate; a failed write must not leave it
+      // behind for the frame cache to sweep much later.
+      if (await sharp.exists()) await sharp.delete();
+    }
+    groupedWallpaperLog.d('frame.lock entry=${entry.id} size=${written.width}x${written.height} darkness=${darkness.toStringAsFixed(3)}');
+    return GroupedLockFrameBake(width: written.width, height: written.height, darkness: darkness);
   }
 }
 

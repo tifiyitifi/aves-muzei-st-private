@@ -28,6 +28,14 @@ class GroupedWallpaperPlan extends Equatable {
   /// The group's saved range; null for group 0, which narrows nothing.
   final VisibleRange? range;
 
+  /// The group's saved lock range, or null when its lock screen draws the home
+  /// range.
+  ///
+  /// The lock surface is the decoy: it exists so the lock screen does not reveal
+  /// which group the home screen is playing, so it has its own media set and its
+  /// own single baked frame.
+  final VisibleRange? lockRange;
+
   /// Whether the grouped wallpaper was explicitly turned off.
   ///
   /// Disabling keeps the last frame on screen and stops following the group; it
@@ -75,6 +83,7 @@ class GroupedWallpaperPlan extends Equatable {
   const new({
     required this.group,
     this.range,
+    this.lockRange,
     this.disabled = false,
     this.gestures = const GroupedWallpaperGestures(),
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
@@ -93,11 +102,14 @@ class GroupedWallpaperPlan extends Equatable {
   /// The group's home/lock effects, applied to every slot this plan bakes.
   WallpaperEffectsConfig get effects => group.effects;
 
+  /// Whether the lock screen draws its own range.
+  bool get hasLockRange => lockRange != null;
+
   /// Whether a frame should follow [group] right now.
   bool get enabled => !disabled && !group.isNone;
 
   @override
-  List<Object?> get props => [group, range, disabled, gestures, ordering, interval, groups, notification, historyLimit, transition, frameRetention];
+  List<Object?> get props => [group, range, lockRange, disabled, gestures, ordering, interval, groups, notification, historyLimit, transition, frameRetention];
 }
 
 /// Reads and updates [GroupedWallpaperPlan].
@@ -177,10 +189,13 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
         frameRetention: frameRetention,
       );
     }
-    final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
+    final ranges = VisibleRangeStore(db);
+    final range = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
+    final lockRange = group.separateLockRange ? await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId(group.id)) : null;
     return GroupedWallpaperPlan(
       group: group,
       range: range,
+      lockRange: lockRange,
       disabled: disabled,
       gestures: gestures,
       ordering: group.ordering,
@@ -225,10 +240,13 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       ]));
     }
     await store.writeDisabled(false);
-    final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
+    final ranges = VisibleRangeStore(db);
+    final range = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
+    final lockRange = group.separateLockRange ? await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId(group.id)) : null;
     return GroupedWallpaperPlan(
       group: group.copyWith(current: true),
       range: range,
+      lockRange: lockRange,
       gestures: gestures,
       ordering: group.ordering,
       interval: group.interval,
@@ -267,10 +285,13 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     await store.saveGroups(normalizeWallpaperGroups([
       for (final group in groups) group.copyWith(current: group.id == target.id),
     ]));
-    final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: target.id);
+    final ranges = VisibleRangeStore(db);
+    final range = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: target.id);
+    final lockRange = target.separateLockRange ? await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId(target.id)) : null;
     return GroupedWallpaperPlan(
       group: target.copyWith(current: true),
       range: range,
+      lockRange: lockRange,
       disabled: await store.readDisabled(),
       gestures: await store.readGestures(),
       ordering: target.ordering,

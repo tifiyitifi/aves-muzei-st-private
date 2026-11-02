@@ -8,6 +8,7 @@ import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_entry.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_history_group_dialog.dart';
@@ -49,6 +50,7 @@ class GroupedWallpaperHistoryPage extends StatefulWidget {
 
 enum _HistoryAction {
   switchGroup,
+  switchSurface,
   limit,
   clear,
   toggleClearConfirm,
@@ -62,6 +64,7 @@ class _GroupedWallpaperHistoryPageState extends State<GroupedWallpaperHistoryPag
   List<WallpaperGroup> _groups = const [];
   WallpaperGroup? _group;
   String? _groupId;
+  WallpaperSurface _surface = WallpaperSurface.home;
   int _rowCount = 0;
   int _limit = GroupedWallpaperHistoryLimit.defaultLimit;
   bool _loaded = false;
@@ -82,7 +85,7 @@ class _GroupedWallpaperHistoryPageState extends State<GroupedWallpaperHistoryPag
       final groupStore = WallpaperGroupStore(db);
       final groups = await groupStore.loadGroups();
       await _resolveScope(groups);
-      final rows = await GroupedWallpaperHistoryStore(db).load(groupId: _groupId);
+      final rows = await GroupedWallpaperHistoryStore(db).load(groupId: _groupId, surface: _surface);
       // The browsing source never materializes entries in this fork (the paged
       // engine loads rows on demand), so the photos are read straight from the
       // database by id; looking them up in `CollectionSource` returned nothing
@@ -135,6 +138,8 @@ class _GroupedWallpaperHistoryPageState extends State<GroupedWallpaperHistoryPag
     switch (action) {
       case _HistoryAction.switchGroup:
         await _switchGroup();
+      case _HistoryAction.switchSurface:
+        await _switchSurface();
       case _HistoryAction.limit:
         await _editLimit();
       case _HistoryAction.clear:
@@ -189,12 +194,21 @@ class _GroupedWallpaperHistoryPageState extends State<GroupedWallpaperHistoryPag
     final store = GroupedWallpaperHistoryStore(await _openDb());
     final counts = <String, int>{};
     for (final group in _groups) {
-      counts[group.id] = await store.count(groupId: group.id);
+      counts[group.id] = await store.count(groupId: group.id, surface: _surface);
     }
     if (!mounted) return;
     final id = await showGroupedWallpaperHistoryGroupDialog(context, groups: _groups, counts: counts, selectedGroupId: _groupId);
     if (id == null || !mounted) return;
     setState(() => _groupId = id);
+    await _load();
+  }
+
+  /// Switches the page between the home and lock surfaces.
+  ///
+  /// The two surfaces show different photos and keep separate records, so the
+  /// rows must not mix: the scope is `(group | all) × surface`.
+  Future<void> _switchSurface() async {
+    setState(() => _surface = _surface.isLock ? WallpaperSurface.home : WallpaperSurface.lock);
     await _load();
   }
 
@@ -259,6 +273,14 @@ class _GroupedWallpaperHistoryPageState extends State<GroupedWallpaperHistoryPag
                   value: _HistoryAction.switchGroup,
                   child: _menuRow(AIcons.group, l10n.wallpaperGroupHistorySwitchGroup, subtitle: group == null ? null : wallpaperGroupName(context, group)),
                 ),
+              PopupMenuItem(
+                value: _HistoryAction.switchSurface,
+                child: _menuRow(
+                  _surface.isLock ? AIcons.visibleRangeInactive : AIcons.visibleRangeActive,
+                  _surface.isLock ? l10n.wallpaperGroupHistoryHome : l10n.wallpaperGroupHistoryLock,
+                  subtitle: _surface.isLock ? l10n.wallpaperGroupSurfaceLock : l10n.wallpaperGroupSurfaceHome,
+                ),
+              ),
               PopupMenuItem(
                 value: _HistoryAction.limit,
                 child: _menuRow(AIcons.edit, '${l10n.wallpaperGroupHistoryLimit} ($_limit)'),

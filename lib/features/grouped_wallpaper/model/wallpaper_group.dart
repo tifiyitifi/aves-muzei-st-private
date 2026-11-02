@@ -11,12 +11,35 @@ import 'package:flutter/foundation.dart';
 /// persist or migrate for it.
 const String wallpaperGroupNoneId = 'none';
 
-/// Visible-range id owned by a wallpaper group.
+/// Visible-range id owned by a wallpaper group's home surface.
 ///
 /// Derived from the group id instead of stored on the group row, so a group and
-/// its range can never drift apart: one group owns exactly one `wallpaper`-scope
-/// range, and renumbering the groups never moves a range.
+/// its range can never drift apart: one group owns exactly one home range, and
+/// renumbering the groups never moves a range. The value predates the split with
+/// the lock surface, so keeping it is what lets an existing install upgrade
+/// without moving any of its data.
 String wallpaperGroupRangeId(String groupId) => '$groupId.range';
+
+/// Visible-range id owned by a wallpaper group's lock surface.
+///
+/// Derived like the home id, so a split group can never point its two surfaces
+/// at each other's range.
+String wallpaperGroupLockRangeId(String groupId) => '$groupId.lock.range';
+
+/// Owner id of a group's lock range.
+///
+/// The owner is the surface, not the group, because a range is read and written
+/// by owner: sharing the group id would make the two surfaces overwrite one
+/// another.
+String wallpaperGroupLockOwnerId(String groupId) => '$groupId.lock';
+
+/// The group a lock owner id belongs to, or null when [ownerId] is a home owner.
+String? wallpaperGroupIdOfLockOwner(String ownerId) {
+  const suffix = '.lock';
+  if (!ownerId.endsWith(suffix)) return null;
+  final groupId = ownerId.substring(0, ownerId.length - suffix.length);
+  return groupId.isEmpty ? null : groupId;
+}
 
 /// One wallpaper group: the unit that owns a visible range.
 ///
@@ -58,6 +81,17 @@ class WallpaperGroup extends Equatable {
   /// How the next photo is chosen within this group.
   final GroupedWallpaperOrdering ordering;
 
+  /// Whether the group's lock screen draws its own range instead of the home
+  /// one.
+  ///
+  /// The lock surface is a decoy: it shows a public range while the home screen
+  /// keeps the private one, so someone who picks up the device sees nothing of
+  /// what the home screen is playing. The home range is mandatory and keeps its
+  /// historical id; the lock range is created by copying the home range, and
+  /// turning the split off only hides it, so re-enabling never loses the
+  /// narrowing the user made.
+  final bool separateLockRange;
+
   const new({
     required this.id,
     this.number = 0,
@@ -70,6 +104,7 @@ class WallpaperGroup extends Equatable {
     this.effects = const WallpaperEffectsConfig(),
     this.interval = WallpaperAdvanceInterval.off,
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
+    this.separateLockRange = false,
   });
 
   /// The fixed group 0 entry: no row, no range, no wallpaper change.
@@ -96,6 +131,7 @@ class WallpaperGroup extends Equatable {
     WallpaperEffectsConfig? effects,
     WallpaperAdvanceInterval? interval,
     GroupedWallpaperOrdering? ordering,
+    bool? separateLockRange,
   }) {
     return WallpaperGroup(
       id: id,
@@ -109,9 +145,10 @@ class WallpaperGroup extends Equatable {
       effects: effects ?? this.effects,
       interval: interval ?? this.interval,
       ordering: ordering ?? this.ordering,
+      separateLockRange: separateLockRange ?? this.separateLockRange,
     );
   }
 
   @override
-  List<Object?> get props => [id, number, name, description, enabled, current, createdAt, updatedAt, effects, interval, ordering];
+  List<Object?> get props => [id, number, name, description, enabled, current, createdAt, updatedAt, effects, interval, ordering, separateLockRange];
 }

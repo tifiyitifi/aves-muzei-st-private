@@ -8,7 +8,7 @@ of the Muzei-style live wallpaper mechanism.
 - **Done**: group model, layout invariants, bundled defaults (JSON), storage
   (`wallpaper_groups` table, schema v7; `baseActive` in v9; per-group `effects`
   in v10; per-group `interval`/`ordering` in v11; `grouped_wallpaper_history` in
-  v12), controller with the page's
+  v12; `separateLockRange` and the history `surface` in v13), controller with the page's
   in-memory draft, the wallpaper-group page reachable from the visible-range
   page's More menu / its own bottom-bar entry, the engine's closed loop (Dart
   baking + native slot queue), global gestures, the immersive view page, per-group
@@ -28,7 +28,50 @@ of the Muzei-style live wallpaper mechanism.
   recycle bin) while a range is locked, temporary/permanent selection ranges,
   Aves Copy, and import/export.
 
-## The bottom-bar entry
+## Split lock surface (home / lock)
+
+A group may draw a different wallpaper on the lock screen than on the home
+screen. The lock surface is a **decoy**: it exists so whoever sees the lock
+screen does not learn which group the home screen is playing. A user can keep a
+private group at home and a public one on the lock screen, and landing on the
+lock screen then masks the home wallpaper without changing it. Two consequences
+shape the design:
+
+- the lock screen always draws the **lock range**, and an unknown or failed
+  state never falls back to the home photo (fail closed);
+- the notification's priority on the lock screen is **switching groups**, not
+  changing the photo.
+
+The home range is mandatory and keeps its historical id
+(`wallpaperGroupRangeId`); turning the switch on creates `$groupId.lock.range`
+with owner `$groupId.lock`, once, by copying the home range. Turning the switch
+off only hides that range: re-enabling reuses the narrowing the user already
+made. Deleting a group deletes both ranges and their rules.
+
+- **One frame, not a queue.** The decoy advances only with time, so it has a
+  single baked file (`state.json` `lock`) instead of the home queue's three
+  slots. It is baked at the surface size with the group's lock effects already
+  applied: no scroll-wide frame, no pan centering, no prewarm, no rewind stack.
+- **No gesture.** A double tap or a three-finger tap on the lock screen is
+  ignored; the app's view page has a home/lock switch and its previous/next
+  controls are the only manual way to step the decoy.
+- **Shared interval.** The group's interval advances both surfaces in one run.
+  An interval run picks a new decoy photo; a home "next photo" does not touch
+  the lock surface.
+- **History by surface.** `grouped_wallpaper_history.surface` splits the
+  records, and the history page's More menu filters by surface. Clearing still
+  clears everything.
+- **Battery.** A scheduled advance is applied only while the wallpaper is
+  visible (home or lock) and the screen is interactive. Otherwise the run is
+  deferred: the advance is marked pending, the next countdown is armed, and a
+  catch-up run starts the moment the surface is shown again. A two-hour video
+  therefore costs zero bakes instead of a dozen.
+- **Detection.** From Android 14, `getWallpaperInfo(FLAG_LOCK)` reports whether
+  the lock screen draws a live wallpaper. The page warns when the decoy cannot
+  be shown (`none`/`other`); older devices answer `unknown` and only the About
+  text explains the limit.
+
+
 
 The wallpaper is a peer of the visible range, not a hidden sub-page of it, so the
 bar derives its own entry instead of writing it into `bottomNavigationActions`:

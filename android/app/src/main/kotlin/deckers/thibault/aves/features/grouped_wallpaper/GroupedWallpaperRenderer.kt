@@ -112,6 +112,10 @@ class GroupedWallpaperRenderer(
     private class LoadedFrame(
         val state: GroupedWallpaperFileState,
         val bitmaps: Map<Int, Bitmap>,
+        /** The decoy frame decoded for the lock surface, when it changed. */
+        val lockBitmap: Bitmap?,
+        val lockEntryId: Int,
+        val lockPhoto: String,
         /** The surface epoch the `uploaded` snapshot belongs to. */
         val epoch: Int,
         /** The effect image picked when the bitmaps were decoded. */
@@ -172,6 +176,22 @@ class GroupedWallpaperRenderer(
     /** The last state read from disk, used for gestures and the runtime. */
     @Volatile
     private var state: GroupedWallpaperFileState? = null
+
+    /**
+     * The one decoy texture the split lock surface draws.
+     *
+     * The lock screen has no queue, so it does not enter [textures] (which is
+     * keyed by promotable slot id) and no retention or promotion path touches it.
+     * It is kept while the group splits its surfaces and dropped when they join.
+     */
+    @Volatile
+    private var lockUploaded: UploadedSlot? = null
+
+    /** What [lockUploaded] was decoded from, so a reload can skip re-decoding. */
+    @Volatile
+    private var lockUploadedEntryId: Int = -1
+    @Volatile
+    private var lockUploadedPhoto: String = ""
 
     /** The slot on screen; a local promotion moves it before Dart writes. */
     @Volatile
@@ -338,6 +358,14 @@ class GroupedWallpaperRenderer(
     private fun dropLostFrames(): List<Int> {
         val lost = textures.filterValues { !GLES20.glIsTexture(it.texture) }.keys.toList()
         for (id in lost) textures.remove(id)
+        // The decoy belongs to the same context: a lost texture must be decoded
+        // again, or the lock screen would fall back to the home frame.
+        val decoy = lockUploaded
+        if (decoy != null && !GLES20.glIsTexture(decoy.texture)) {
+            lockUploaded = null
+            lockUploadedEntryId = -1
+            lockUploadedPhoto = ""
+        }
         // A fading frame belongs to the same context; one that did not survive
         // must not be drawn from a dead id.
         val fade = fading
@@ -376,6 +404,23 @@ class GroupedWallpaperRenderer(
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         if (program == 0) return
+
+        // The split lock surface draws its own single frame, not the home queue.
+        // There is nothing to fade between: the two pictures are independent.
+        // While the group is split, a missing decoy must fall back to the
+        // placeholder, never to the home frame: doing so would reveal exactly
+        // what the lock screen is meant to mask.
+        val currentState = state
+        val splitLock = lockScreenVisible && currentState != null && (currentState.lock != null || currentState.lockRangeId.isNotEmpty())
+        if (splitLock) {
+            val decoy = lockUploaded
+            if (decoy != null) {
+                drawSlot(decoy, alpha = 1f)
+            } else if (placeholderTexture != 0) {
+                drawQuad(placeholderVertexBuffer, placeholderTexCoords, placeholderTexture, alpha = 1f)
+            }
+            return
+        }
 
         val current = textures[displayed]
         val fade = fading
@@ -501,8 +546,14 @@ class GroupedWallpaperRenderer(
         if (lockScreenVisible == visible) return
         lockScreenVisible = visible
         Log.d(TAG, "lockScreen.visible=$visible")
+        // The decoy texture is uploaded lazily, but a switch to it must not wait
+        // for the reload when it is already there.
+        requestRender()
         requestReload()
     }
+
+    /** Whether the renderer is drawing the lock surface. */
+    fun isLockScreenVisible(): Boolean = lockScreenVisible
 
     /** The action bound to a gesture, from the latest `state.json`. */
     fun actionFor(threeFinger: Boolean): String {
@@ -660,6 +711,19 @@ class GroupedWallpaperRenderer(
             if (bitmap == null) failed.add(slot.id) else bitmaps[slot.id] = bitmap
         }
         val limitNeighbours = state.frameRetention.limitsNeighbours(state.scrollEffect)
+        // The decoy is only decoded while the lock screen is drawn: it is not
+        // part of the home queue, and decoding it on every home reload would cost
+        // a bitmap for a frame nobody sees.
+        val lockFrame = state.lock
+        var lockBitmap: Bitmap? = null
+        if (lockScreen && lockFrame != null && (lockUploadedEntryId != lockFrame.entryId || lockUploadedPhoto != lockFrame.photo)) {
+            val file = GroupedWallpaperStateFile.photoFile(context, lockFrame.photo)
+            if (file == null) {
+                Log.w(TAG, "lock.decode.missing entry=${lockFrame.entryId}")
+            } else {
+                lockBitmap = decode(file)
+            }
+        }
         // The frame the wallpaper is about to show is decoded first: a limited
         // reload must not queue it behind neighbours it is going to evict. A
         // buffered tap is the other frame worth decoding, or the tap could never
@@ -682,8 +746,8 @@ class GroupedWallpaperRenderer(
         // A slot that silently vanishes is what makes the wallpaper look like it
         // went back a photo; the reload log makes the difference between "skipped
         // because it is already on the GPU" and "nothing decoded" readable.
-        Log.d(TAG, "reload.loaded epoch=$epoch stateGen=${state.generation} skip=$skipped decode=${bitmaps.keys.sorted()} failed=$failed")
-        return LoadedFrame(state, bitmaps, epoch, lockScreen)
+        Log.d(TAG, "reload.loaded epoch=$epoch stateGen=${state.generation} skip=$skipped decode=${bitmaps.keys.sorted()} failed=$failed lock=${lockBitmap != null}")
+        return LoadedFrame(state, bitmaps, lockBitmap, lockFrame?.entryId ?: -1, lockFrame?.photo ?: "", epoch, lockScreen)
     }
 
     private fun decode(file: File): Bitmap? = try {
@@ -745,8 +809,38 @@ class GroupedWallpaperRenderer(
             // Every genuine write triggers its own reload, so there is nothing to
             // chase; keeping the current frame is better than rewinding.
             loaded.bitmaps.values.forEach { it.recycle() }
+            loaded.lockBitmap?.recycle()
             Log.d(TAG, "reload.discard reason=generation loaded=${loaded.state.generation} current=$previousGeneration")
             return
+        }
+
+        // The decoy lives outside the home queue: it is one texture, kept while
+        // the group splits its surfaces and dropped when they join again. A
+        // missing decode keeps the old decoy rather than blanking the lock screen.
+        val decoy = next.lock
+        if (decoy == null) {
+            lockUploaded?.let { deleteTexture(it.texture) }
+            lockUploaded = null
+            lockUploadedEntryId = -1
+            lockUploadedPhoto = ""
+        } else {
+            val bitmap = loaded.lockBitmap
+            if (bitmap != null) {
+                try {
+                    val aspect = bitmap.width.toFloat() / bitmap.height.toFloat().coerceAtLeast(1f)
+                    val existing = lockUploaded
+                    lockUploaded = if (existing == null) {
+                        UploadedSlot(loaded.lockEntryId, loaded.lockPhoto, createTexture(bitmap), aspect)
+                    } else {
+                        upload(existing.texture, bitmap)
+                        UploadedSlot(loaded.lockEntryId, loaded.lockPhoto, existing.texture, aspect)
+                    }
+                    lockUploadedEntryId = loaded.lockEntryId
+                    lockUploadedPhoto = loaded.lockPhoto
+                } finally {
+                    bitmap.recycle()
+                }
+            }
         }
 
         for ((id, bitmap) in loaded.bitmaps) {

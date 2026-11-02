@@ -150,6 +150,17 @@ data class GroupedWallpaperFileState(
      * whose frames were surface-sized.
      */
     val scrollEffect: Boolean = false,
+    /**
+     * The single frame the lock screen draws when the group splits its surfaces.
+     *
+     * It is already the final decoy image (lock effects baked in), so the
+     * renderer uploads [GroupedWallpaperSlotFile.photo] as-is and the notification
+     * describes this photo instead of the home one. Null when the surfaces are
+     * joined, in which case the lock screen draws [currentSlot]'s lock effect.
+     */
+    val lock: GroupedWallpaperSlotFile? = null,
+    /** The range the decoy was baked from; empty when the surfaces are joined. */
+    val lockRangeId: String = "",
 ) {
     fun slot(id: Int): GroupedWallpaperSlotFile? = slots.firstOrNull { it.id == id }
 
@@ -242,7 +253,7 @@ object GroupedWallpaperStateFile {
             if (status.isEmpty()) return null
             when (version) {
                 1 -> readV1(json, status)
-                2, 3, 4, 5, 6 -> readQueued(json, status)
+                2, 3, 4, 5, 6, 7 -> readQueued(json, status)
                 else -> {
                     Log.w(TAG, "ignoring state.json of another version")
                     null
@@ -304,6 +315,18 @@ object GroupedWallpaperStateFile {
             }
         }
         val gestures = json.optJSONObject("gestures")
+        val lock = json.optJSONObject("lock")?.let { raw ->
+            val entryId = raw.optInt("entryId", -1)
+            val photo = raw.optString("photo", "")
+            // The decoy is one frame, not a queue slot: `id` is never used by the
+            // renderer, which keys its texture on the surface instead.
+            if (entryId <= 0 || photo.isEmpty()) null else GroupedWallpaperSlotFile(
+                id = -1,
+                entryId = entryId,
+                photo = photo,
+                title = raw.optString("title", ""),
+            )
+        }
         val groups = mutableListOf<GroupedWallpaperGroupFile>()
         val rawGroups = json.optJSONArray("groups")
         if (rawGroups != null) {
@@ -350,6 +373,8 @@ object GroupedWallpaperStateFile {
             // builds kept every frame.
             frameRetention = GroupedFrameRetention.parse(json.optString("frameRetention")),
             scrollEffect = json.optBoolean("scrollEffect", false),
+            lock = lock,
+            lockRangeId = json.optString("lockRangeId", ""),
         )
     }
 

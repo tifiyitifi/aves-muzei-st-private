@@ -164,9 +164,15 @@ data class GroupedWallpaperFileState(
 ) {
     fun slot(id: Int): GroupedWallpaperSlotFile? = slots.firstOrNull { it.id == id }
 
-    /** The slot to draw, or null when there is nothing to draw. */
+    /**
+     * The slot to draw, or null when there is nothing to draw.
+     *
+     * `emptyGroup` keeps the slots the previous group baked: Dart records the new
+     * group but deliberately leaves the frame on screen, so the bar and a
+     * restarted renderer still describe that kept photo.
+     */
     val currentSlot: GroupedWallpaperSlotFile?
-        get() = if (status == STATUS_READY || status == STATUS_LOCKED || status == STATUS_DISABLED) slot(current) else null
+        get() = if (status == STATUS_READY || status == STATUS_LOCKED || status == STATUS_DISABLED || status == STATUS_EMPTY_GROUP) slot(current) else null
 
     /** Whether a forward step has a queued frame to show. */
     val canPromote: Boolean

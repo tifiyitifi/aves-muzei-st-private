@@ -15,7 +15,6 @@ import 'package:flutter/foundation.dart';
 /// lives in AppMeta rather than in the v1 settings store.
 class GroupedWallpaperNavController extends ChangeNotifier {
   GroupedWallpaperNavMode _mode = defaultGroupedWallpaperNavMode;
-  bool _entryClosed = false;
 
   /// How many wallpaper pages are on screen right now.
   ///
@@ -26,13 +25,6 @@ class GroupedWallpaperNavController extends ChangeNotifier {
   int _pageDepth = 0;
 
   GroupedWallpaperNavMode get mode => _mode;
-
-  /// Whether the user closed the derived entry from a page's menu.
-  ///
-  /// Retained with the rest of the nav-mode machinery while that entry's future
-  /// is undecided; it no longer gates the derivation, which follows
-  /// [pageVisible] instead.
-  bool get entryClosed => _entryClosed;
 
   /// Whether the wallpaper page is on screen.
   ///
@@ -70,7 +62,6 @@ class GroupedWallpaperNavController extends ChangeNotifier {
     try {
       final store = WallpaperGroupStore(await getIt<AppDatabaseProvider>().open());
       _mode = await store.readNavMode();
-      _entryClosed = await store.readNavEntryClosed();
     } catch (error, stack) {
       groupedWallpaperLog.e('failed to load the wallpaper navigation mode', error, stack);
     }
@@ -85,15 +76,6 @@ class GroupedWallpaperNavController extends ChangeNotifier {
     notifyListeners();
     await _write((store) => store.writeNavMode(mode));
   }
-
-  Future<void> setEntryClosed(bool closed) async {
-    if (_entryClosed == closed) return;
-    _entryClosed = closed;
-    notifyListeners();
-    await _write((store) => store.writeNavEntryClosed(closed));
-  }
-
-  Future<void> toggleEntryClosed() => setEntryClosed(!_entryClosed);
 
   Future<void> _write(Future<void> Function(WallpaperGroupStore store) write) async {
     try {

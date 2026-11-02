@@ -125,10 +125,14 @@ page that is rarely opened.
   `visibleRangeDestination` instead, keeping the single entry selected.
 - A user who pinned `/wallpaper_groups` in their own list owns the entry: it is
   permanent, and no second one is derived.
-- In the shared mode the wallpaper page's More lists "Visible range": one entry
-  renders both pages, so the page itself has to offer the way back. With a
-  temporary entry that item is omitted, because the range entry is still on the
-  bar.
+- **Closing is the counterpart of opening.** The wallpaper page's More ends with
+  "Close wallpaper page" in every mode. An unsaved draft is never dropped
+  silently: the dialog offers Save (applies the draft and re-bakes), Discard and
+  Cancel. Closing clears the group's browsing scope, so the gallery returns to
+  its own visible range. In the shared mode it flips the one entry back to the
+  range page, icon and label included; with a temporary entry it navigates to the
+  range page and the page's `dispose` takes the entry away. A pinned entry stays,
+  because it is the user's own navigation item.
 - Notifications, the three-finger gesture and session restore deep-link the route.
   In the shared mode the deep link is routed through the shell
   (`VisibleRangeShellPage`, which passes `promptUnlock` on) so the bar still has
@@ -663,12 +667,24 @@ through a handful. `newestEntryId`, `cursor` and `recent` live in `state.json`
 
 `state.json` is Dart-owned and read-only for the native side, and it carries what
 the notification will need (group number, resolved group name, entry, count,
-status). Every outcome is recorded instead of thrown: an empty group, a missing
-photo or a failed bake all end in the grey placeholder, while a turned-off
-feature keeps the frame it stopped on. A locked range is a normal rotation: the
-lock guards editing and browsing, not the photos. A
-failed *prefetch* keeps the frame and the queue; only a group with no usable
-photo at all falls back to the placeholder.
+status). Outcomes are recorded instead of thrown: a missing photo or a failed
+bake ends in the grey placeholder, while a turned-off feature keeps the frame it
+stopped on. A locked range is a normal rotation: the lock guards editing and
+browsing, not the photos. A failed *prefetch* keeps the frame and the queue.
+
+**An empty group does nothing on screen.** A group whose range matches no photo
+(no image at all, or restrictions that match none) records the new group and its
+`count: 0`, but keeps every slot, the current frame and the decoy exactly as they
+were: no `clearSlots`, no reload to the placeholder. The wallpaper is a surface
+people see without opening the app, and a grey placeholder would look like the
+feature broke and would draw attention to what is being hidden; keeping the last
+picture is less disruptive and never reveals another group's content. The app
+explains the no-op once per empty group (the notice is deduped until a successful
+bake ends the episode); the notification and the page still describe the empty
+group the user selected. The same paragraph is in the About page. A split whose
+lock range is empty keeps its previous decoy for the same reason; only a split
+that has never baked a decoy has nothing to keep, and that first bake is the one
+case where the native placeholder is unavoidable.
 
 The slot the renderer is actually drawing is not in `state.json`: a promotion
 from a tap or the bar moves it before Dart writes. The app asks the live renderer
@@ -754,8 +770,10 @@ would otherwise look like a fresh activation.
 - **Deleting or disabling the group that was playing** keeps its last frame and
   turns the feature off; it never switches to another group.
 - **Activation with no group current** (the service starting while nothing is
-  selected and the feature was not turned off) adopts the first enabled group, so
-  turning the wallpaper on never leaves the placeholder.
+  selected and the feature was not turned off) adopts the first enabled group
+  instead of leaving the current flag unset. If that group matches no photo the
+  empty-group rule applies: the prior frame is kept, and only a first activation
+  with no frame at all can show the placeholder.
 
 The page shows one state icon per card: play on the group that is really playing,
 and stop on group 0 whenever the grouped wallpaper is not playing (not the system
@@ -877,6 +895,17 @@ and deletes it. Older builds materialized that catalogue into every group; it is
 pruned on every start (not only on a defaults bump), so a restored backup cannot
 bring it back.
 
+The bundle also ships four **shared orientation restrictions** — landscape,
+portrait, not landscape and not portrait — and every group gets them, including
+groups that already exist on an upgrade and groups created afterwards. They are
+demonstrations that make an empty group easy to produce while testing. Home marks
+`notPortrait` and lock marks `portrait`; the two unmarked conditions stay in the
+pool so the page can switch them on. The base is marked for both surfaces and
+`lockRangeSeeded` is set, so enabling the split later uses these prepared lock
+conditions instead of copying the home marks; `separateLockRange` itself is left
+alone. The ids are `<groupId>.rule.default.<key>`, which is also what keeps the
+prune pass from deleting the unmarked pair.
+
 Each group range starts with the 「All images」 tile, the wallpaper counterpart of
 the gallery page's 「Unrestricted」. It is not a condition: its image filter set is
 what gives it the images' cover and count (the same count the group cards show),
@@ -930,7 +959,7 @@ on the live wallpaper running or on which group is playing: only on the group th
 page has selected.
 
 The scope is app-wide, like the gallery range, and lives until the user selects
-group 0, closes the page or its entry, or the process dies. A destination switch
+group 0, closes the page, or the process dies. A destination switch
 removes the page but keeps the scope: the navigation layer marks that `dispose`,
 which is what lets the media set resolve against the group. The scope is
 in-memory only, so a process restart starts on group 0 (or adopts the group the

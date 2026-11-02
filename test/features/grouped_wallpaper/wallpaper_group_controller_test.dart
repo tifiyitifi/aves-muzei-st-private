@@ -31,14 +31,26 @@ void main() {
   late AppDatabase db;
   late WallpaperGroupController controller;
 
-  List<WallpaperGroupDefinition> definitions({bool resolvable = true}) => [
-    const WallpaperGroupDefinition(id: 'wallpaper.group.all', nameKey: 'wallpaperGroupDefaultAll', current: true),
-    if (resolvable)
-      WallpaperGroupDefinition(id: 'wallpaper.group.dcim', nameKey: 'wallpaperGroupDefaultDcim', filters: {PathFilter('/dcim')})
-    else
-      WallpaperGroupDefinition(id: 'wallpaper.group.dcim', nameKey: 'wallpaperGroupDefaultDcim', filters: {wallpaperDenyAllFilter()}),
-    WallpaperGroupDefinition(id: 'wallpaper.group.pictures', nameKey: 'wallpaperGroupDefaultPictures', filters: {PathFilter('/pictures')}),
+  /// The shipped bundle's shared demonstration conditions, with filters kept
+  /// simple: the seeding test cares about ids and surface marks, not pixels.
+  List<WallpaperGroupRuleDefinition> defaultRules() => [
+    WallpaperGroupRuleDefinition(key: 'landscape', nameKey: 'visibleRangePresetLandscape', filters: {MimeFilter.image}),
+    WallpaperGroupRuleDefinition(key: 'portrait', nameKey: 'visibleRangePresetPortrait', filters: {MimeFilter.image}, surfaces: WallpaperConditionSurfaces.lock),
+    WallpaperGroupRuleDefinition(key: 'notLandscape', nameKey: 'visibleRangePresetNotLandscape', filters: {MimeFilter.image}),
+    WallpaperGroupRuleDefinition(key: 'notPortrait', nameKey: 'visibleRangePresetNotPortrait', filters: {MimeFilter.image}, surfaces: WallpaperConditionSurfaces.home),
   ];
+
+  List<WallpaperGroupDefinition> definitions({bool resolvable = true, bool withRules = true}) {
+    final rules = withRules ? defaultRules() : const <WallpaperGroupRuleDefinition>[];
+    return [
+      WallpaperGroupDefinition(id: 'wallpaper.group.all', nameKey: 'wallpaperGroupDefaultAll', current: true, rules: rules),
+      if (resolvable)
+        WallpaperGroupDefinition(id: 'wallpaper.group.dcim', nameKey: 'wallpaperGroupDefaultDcim', filters: {PathFilter('/dcim')}, rules: rules)
+      else
+        WallpaperGroupDefinition(id: 'wallpaper.group.dcim', nameKey: 'wallpaperGroupDefaultDcim', filters: {wallpaperDenyAllFilter()}, rules: rules),
+      WallpaperGroupDefinition(id: 'wallpaper.group.pictures', nameKey: 'wallpaperGroupDefaultPictures', filters: {PathFilter('/pictures')}, rules: rules),
+    ];
+  }
 
   WallpaperGroupController makeController({List<WallpaperGroupDefinition>? bundle}) => WallpaperGroupController(
     injectedDatabase: db,
@@ -84,15 +96,37 @@ void main() {
     expect(restarted.groups, hasLength(3));
   });
 
-  test('seeds each group with its exclusive base and no rules', () async {
+  test('seeds each group with its exclusive base and the demonstration restrictions', () async {
     final dcim = await controller.groupRange('wallpaper.group.dcim');
     // A wallpaper group does not copy the gallery's restriction/supplement
-    // catalogue: it starts with its one base.
-    expect(dcim.rules, isEmpty);
+    // catalogue: home starts with its one base plus the notPortrait rule.
+    expect(dcim.rules, hasLength(1));
+    expect(dcim.rules.single.id, endsWith('.notPortrait'));
+    expect(dcim.baseFilters, {PathFilter('/dcim')});
 
     final all = await controller.groupRange('wallpaper.group.all');
-    expect(all.rules, isEmpty);
+    expect(all.rules, hasLength(1));
     expect(all.baseFilters, isEmpty);
+  });
+
+  test('the seeded restrictions prepare both surfaces without opening the split', () async {
+    const id = 'wallpaper.group.dcim';
+    final group = controller.groups.firstWhere((group) => group.id == id);
+    expect(group.separateLockRange, isFalse);
+    // The lock marks are already in place, so enabling the split must not copy
+    // the home marks over them.
+    expect(group.lockRangeSeeded, isTrue);
+
+    final pool = await controller.groupPool(id);
+    final byKey = {for (final rule in pool.rules) rule.id.substring(rule.id.lastIndexOf('.') + 1): rule};
+    expect(byKey.keys, containsAll(['landscape', 'portrait', 'notLandscape', 'notPortrait']));
+    expect(byKey['landscape']!.surfaces, 0);
+    expect(byKey['portrait']!.surfaces, WallpaperConditionSurfaces.lock);
+    expect(byKey['notLandscape']!.surfaces, 0);
+    expect(byKey['notPortrait']!.surfaces, WallpaperConditionSurfaces.home);
+    // The base is shared with the lock surface, so the decoy shows the group's
+    // folder rather than the whole library.
+    expect(pool.baseSurfaces, WallpaperConditionSurfaces.all);
   });
 
   test('a group whose folder was not resolvable is seeded closed', () async {
@@ -191,6 +225,22 @@ void main() {
     });
   });
 
+  test('a defaults bump seeds the restrictions into groups that already exist', () async {
+    const id = 'wallpaper.group.dcim';
+    final store = VisibleRangeStore(db);
+    final saved = (await store.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: id))!;
+    await store.saveRange(saved.copyWith(rules: const []));
+    await WallpaperGroupStore(db).writeDefaultsVersion(WallpaperGroupController.defaultsVersion - 1);
+
+    final restarted = makeController();
+    await restarted.init();
+
+    final pool = await restarted.groupPool(id);
+    expect(pool.rules, hasLength(4));
+    expect(pool.rules.map((rule) => rule.id.substring(rule.id.lastIndexOf('.') + 1)).toSet(), {'landscape', 'portrait', 'notLandscape', 'notPortrait'});
+    expect(restarted.groups.firstWhere((group) => group.id == id).lockRangeSeeded, isTrue);
+  });
+
   test('deleting a middle group renumbers and keeps the current group', () async {
     await controller.selectCurrent('wallpaper.group.pictures');
     expect(await controller.deleteGroup('wallpaper.group.dcim'), isTrue);
@@ -272,7 +322,11 @@ void main() {
 
     final range = await controller.groupRange(added.id);
     expect(range.baseFilters, isEmpty);
-    expect(range.rules, isEmpty);
+    // Every new group gets the same demonstration conditions and prepares the
+    // lock marks, while the split itself stays off.
+    expect(range.rules.single.id, endsWith('.notPortrait'));
+    expect(added.separateLockRange, isFalse);
+    expect(added.lockRangeSeeded, isTrue);
 
     await controller.saveGroupRange(range.copyWith(baseFilters: {PathFilter('/trips')}));
     expect((await controller.groupRange(added.id)).baseFilters, {PathFilter('/trips')});
@@ -516,10 +570,44 @@ void main() {
     expect(lock.baseFilters, (await controller.groupRange(id, surface: WallpaperSurface.lock)).baseFilters);
   });
 
-  test('enabling the split seeds the lock marks once and reuses them afterwards', () async {
+  test('the split uses the pre-seeded lock conditions instead of copying the home marks', () async {
     const id = 'wallpaper.group.dcim';
     final pool = await controller.groupPool(id);
     await controller.saveGroupPool(
+      pool.copyWith(
+        rules: [
+          ...pool.rules,
+          VisibleRangeRule(id: 'r1', rangeId: pool.id, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.video}, surfaces: WallpaperConditionSurfaces.home),
+        ],
+      ),
+    );
+
+    await controller.setSeparateLockRange(id, true);
+    final split = await controller.groupPool(id);
+    // The base and the seeded conditions already carry their marks; the user's
+    // home-only rule is not copied, because the lock surface was configured when
+    // the group was seeded.
+    expect(split.baseSurfaces, WallpaperConditionSurfaces.all);
+    expect(split.ruleById('$id.rule.default.notPortrait')!.surfaces, WallpaperConditionSurfaces.home);
+    expect(split.ruleById('$id.rule.default.portrait')!.surfaces, WallpaperConditionSurfaces.lock);
+    expect(split.ruleById('r1')!.surfaces, WallpaperConditionSurfaces.home);
+
+    // Re-enabling keeps the marks the user left behind.
+    await controller.setSeparateLockRange(id, false);
+    await controller.setSeparateLockRange(id, true);
+    final reused = await controller.groupPool(id);
+    expect(reused.ruleById('$id.rule.default.portrait')!.surfaces, WallpaperConditionSurfaces.lock);
+    expect(reused.ruleById('r1')!.surfaces, WallpaperConditionSurfaces.home);
+  });
+
+  test('a group without bundled conditions copies the home marks on first split', () async {
+    final fresh = AppDatabase(NativeDatabase.memory());
+    addTearDown(fresh.close);
+    final seeded = WallpaperGroupController(injectedDatabase: fresh, defaultLoader: () async => definitions(withRules: false));
+    await seeded.init();
+    const id = 'wallpaper.group.dcim';
+    final pool = await seeded.groupPool(id);
+    await seeded.saveGroupPool(
       pool.copyWith(
         rules: [
           VisibleRangeRule(id: 'r1', rangeId: pool.id, kind: VisibleRangeRuleKind.restriction, filters: {MimeFilter.video}, surfaces: WallpaperConditionSurfaces.home),
@@ -527,18 +615,8 @@ void main() {
       ),
     );
 
-    await controller.setSeparateLockRange(id, true);
-    // The first enable copies the home marks so the two surfaces start identical.
-    expect((await controller.groupPool(id)).baseSurfaces, WallpaperConditionSurfaces.all);
-    expect((await controller.groupPool(id)).ruleById('r1')!.surfaces, WallpaperConditionSurfaces.all);
-
-    // The user drops the rule from the lock surface.
-    await controller.saveGroupRange((await controller.groupRange(id, surface: WallpaperSurface.lock)).copyWith(rules: const []));
-    expect((await controller.groupPool(id)).ruleById('r1')!.surfaces, WallpaperConditionSurfaces.home);
-
-    // Re-enabling reuses the marks instead of resurrecting the home rule on lock.
-    await controller.setSeparateLockRange(id, false);
-    await controller.setSeparateLockRange(id, true);
-    expect((await controller.groupPool(id)).ruleById('r1')!.surfaces, WallpaperConditionSurfaces.home);
+    await seeded.setSeparateLockRange(id, true);
+    expect((await seeded.groupPool(id)).baseSurfaces, WallpaperConditionSurfaces.all);
+    expect((await seeded.groupPool(id)).ruleById('r1')!.surfaces, WallpaperConditionSurfaces.all);
   });
 }

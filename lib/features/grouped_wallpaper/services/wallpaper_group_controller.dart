@@ -36,7 +36,7 @@ class WallpaperGroupController extends ChangeNotifier {
   /// no longer ship, while a renamed or narrowed group keeps what the user made
   /// of it. Seeded rule candidates are pruned on every start instead, so an
   /// older database cannot resurrect them.
-  static const defaultsVersion = 3;
+  static const defaultsVersion = 4;
 
   /// Prefix of the built-in group ids, so a bundle bump can tell them apart from
   /// the user's own groups.
@@ -76,6 +76,12 @@ class WallpaperGroupController extends ChangeNotifier {
   bool _dirty = false;
   final Map<String, VisibleRange> _ranges = {};
   final Set<String> _deletedIds = {};
+
+  /// The bundled demonstration conditions, loaded once and shared by every group.
+  ///
+  /// Null until the bundle has been read. The defaults pass caches it while
+  /// seeding; [addGroup] loads it lazily on a start where no defaults bump ran.
+  List<WallpaperGroupRuleDefinition>? _defaultRules;
 
   bool get initialized => _initialized;
 
@@ -168,6 +174,8 @@ class WallpaperGroupController extends ChangeNotifier {
     }
     final definitions = await defaultLoader();
     if (definitions.isEmpty) return null;
+    // Every definition carries the same shared list; the first one is the bundle.
+    _defaultRules = definitions.first.rules;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final ranges = VisibleRangeStore(store.db);
@@ -197,8 +205,8 @@ class WallpaperGroupController extends ChangeNotifier {
           // A base name is only shown when the base is not 「unrestricted」.
           baseName: definition.filters.isEmpty ? '' : '@${definition.nameKey}',
           baseFilters: definition.filters,
-          // A bundled base belongs to the home surface: the lock marks are seeded
-          // from it the first time the group splits.
+          // The base starts on home; the seed pass below also marks it for lock,
+          // so enabling the split never re-copies the home marks.
           baseSurfaces: definition.filters.isEmpty ? 0 : WallpaperConditionSurfaces.home,
           createdAt: now,
           updatedAt: now,
@@ -211,10 +219,79 @@ class WallpaperGroupController extends ChangeNotifier {
       await store.deleteGroup(dropped.id);
     }
 
-    final restored = _applyBundledCurrent(normalizeWallpaperGroups(next), definitions, previousVersion: previousVersion);
+    // Seed the demonstration conditions into every group, not only the ones the
+    // bundle created: a bump must reach an install that already has its groups.
+    // The pass is idempotent and only adds the ids it owns.
+    for (final group in next) {
+      final pool = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id) ?? _emptyPool(group.id);
+      final seeded = _seedDefaultRules(pool, groupId: group.id, now: now);
+      if (seeded != pool) await ranges.saveRange(seeded);
+    }
+    var restored = _applyBundledCurrent(normalizeWallpaperGroups(next), definitions, previousVersion: previousVersion);
+    if (_defaultRules!.isNotEmpty) {
+      // The lock conditions are already marked, so the first split must keep them
+      // instead of copying the home marks over them.
+      restored = [
+        for (final group in restored) group.lockRangeSeeded ? group : group.copyWith(lockRangeSeeded: true),
+      ];
+    }
     await store.saveGroups(restored);
     await store.writeDefaultsVersion(defaultsVersion);
     return restored;
+  }
+
+  /// Adds the bundle's demonstration restrictions to [pool].
+  ///
+  /// Only ids the pool does not already have are added, so a user's rename,
+  /// kind change or surface marks on a seeded rule survive. The lock base mark
+  /// and the group's `lockRangeSeeded` flag are prepared together: they are what
+  /// make the split use the same base plus the lock rule when the user turns it
+  /// on, instead of copying the home marks.
+  VisibleRange _seedDefaultRules(VisibleRange pool, {required String groupId, required int now}) {
+    final defaults = _defaultRules ?? const <WallpaperGroupRuleDefinition>[];
+    if (defaults.isEmpty) return pool;
+    final existing = {for (final rule in pool.rules) rule.id};
+    var position = pool.rulesOf(VisibleRangeRuleKind.restriction).fold<int>(-1, (max, rule) => rule.position > max ? rule.position : max) + 1;
+    final seeded = <VisibleRangeRule>[];
+    for (final definition in defaults) {
+      final id = definition.idFor(groupId);
+      if (existing.contains(id)) continue;
+      seeded.add(
+        VisibleRangeRule(
+          id: id,
+          rangeId: wallpaperGroupRangeId(groupId),
+          kind: VisibleRangeRuleKind.restriction,
+          position: position++,
+          label: '@${definition.nameKey}',
+          filters: definition.filters,
+          active: true,
+          surfaces: definition.surfaces,
+        ),
+      );
+    }
+    if (seeded.isEmpty) return pool;
+    final usesBase = pool.baseFilters.isNotEmpty;
+    return pool.copyWith(
+      // A lock mark on the base is only meaningful when there is a base to use.
+      baseSurfaces: usesBase ? WallpaperConditionSurfaces.withSurface(pool.baseSurfaces, WallpaperSurface.lock, true) : pool.baseSurfaces,
+      rules: [...pool.rules, ...seeded],
+      updatedAt: now,
+    );
+  }
+
+  /// Loads the bundled conditions on a start where the defaults pass did not run.
+  Future<List<WallpaperGroupRuleDefinition>> _loadDefaultRules() async {
+    final cached = _defaultRules;
+    if (cached != null) return cached;
+    try {
+      final definitions = await defaultLoader();
+      return _defaultRules = definitions.firstOrNull?.rules ?? const [];
+    } catch (error, stack) {
+      // A missing bundle must not block creating a group: it simply starts with
+      // no demonstration conditions, exactly like an injected test bundle.
+      groupedWallpaperLog.w('failed to load the wallpaper group defaults', error, stack);
+      return _defaultRules = const [];
+    }
   }
 
   /// Drops the rule candidates an older defaults version seeded into a group.
@@ -222,15 +299,18 @@ class WallpaperGroupController extends ChangeNotifier {
   /// Only rules that are still used by neither surface and still carry their
   /// bundled `@` label go: a mark on a surface or a rename is the user's decision
   /// and outlives the bundle. Ids are prefixed with the group id, so a user rule
-  /// is never caught.
+  /// is never caught. The current bundle's own ids live under `.default.` and are
+  /// kept even without a mark: the page lists those conditions so the user can
+  /// switch them on, which is the point of the demonstration set.
   static Future<void> _pruneSeededRules(VisibleRangeStore ranges, Iterable<WallpaperGroup> groups) async {
     for (final group in groups) {
       final range = await ranges.loadRange(scope: VisibleRangeScope.wallpaper, ownerId: group.id);
       if (range == null) continue;
       final prefix = '${group.id}.rule.';
+      final defaultPrefix = '${group.id}.rule.default.';
       final kept = [
         for (final rule in range.rules)
-          if (!(rule.id.startsWith(prefix) && !WallpaperConditionSurfaces.any(rule.surfaces) && rule.label.startsWith('@'))) rule,
+          if (!(rule.id.startsWith(prefix) && !rule.id.startsWith(defaultPrefix) && !WallpaperConditionSurfaces.any(rule.surfaces) && rule.label.startsWith('@'))) rule,
       ];
       if (kept.length != range.rules.length) {
         await ranges.saveRange(range.copyWith(rules: kept));
@@ -358,19 +438,40 @@ class WallpaperGroupController extends ChangeNotifier {
   ///
   /// A new group starts unrestricted: the user just created it, so showing every
   /// image until they narrow it is the expected behaviour. Failing closed only
-  /// applies to a bundled group whose folder could not be resolved.
+  /// applies to a bundled group whose folder could not be resolved. It receives
+  /// the same demonstration restrictions as every other group, so the empty-group
+  /// path is reachable without hand-editing a range first.
   Future<WallpaperGroup> addGroup({String name = '', String description = ''}) async {
     _requireInitialized();
+    await _loadDefaultRules();
     final now = _now;
+    final hasDefaults = _defaultRules?.isNotEmpty ?? false;
     final group = WallpaperGroup(
       id: 'group.$now.${_idSequence++}',
       name: name.trim(),
       description: description.trim(),
       enabled: true,
+      // The lock conditions are prepared even though the split stays off.
+      lockRangeSeeded: hasDefaults,
       createdAt: now,
       updatedAt: now,
     );
-    await _writeGroups([..._groups, group]);
+    final pool = _seedDefaultRules(_emptyPool(group.id), groupId: group.id, now: now);
+    final next = normalizeWallpaperGroups([..._groups, group]);
+    if (_draftActive) {
+      _groups = next;
+      _ranges[group.id] = pool;
+      _dirty = true;
+      notifyListeners();
+      return _groups.firstWhere((candidate) => candidate.id == group.id);
+    }
+    final store = await _openStore();
+    await store.db.transaction(() async {
+      await store.saveGroups(next);
+      await VisibleRangeStore(store.db).saveRange(pool);
+    });
+    _groups = next;
+    notifyListeners();
     return _groups.firstWhere((candidate) => candidate.id == group.id);
   }
 

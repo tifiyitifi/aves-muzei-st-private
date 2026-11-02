@@ -80,9 +80,6 @@ class WallpaperGroupStore {
   /// different groups, and the switch trades memory for an instant tap.
   static const keyFrameRetention = 'wallpaper.groupedFrameRetention';
 
-  /// AppMeta key of the user closing the derived bottom-bar entry.
-  static const keyNavEntryClosed = 'wallpaper.groupedNavEntryClosed';
-
   /// AppMeta key of "do not ask before clearing the whole usage history".
   ///
   /// Clearing is all-or-nothing, so the confirmation dialog is the only guard.
@@ -281,14 +278,6 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeFrameRetention(GroupedWallpaperFrameRetention retention) => AppMetaStore(db).write({keyFrameRetention: retention.name});
-
-  /// Whether the user closed the derived bottom-bar entry.
-  Future<bool> readNavEntryClosed() async {
-    final values = await AppMetaStore(db).read({keyNavEntryClosed});
-    return values[keyNavEntryClosed] == 'true';
-  }
-
-  Future<void> writeNavEntryClosed(bool closed) => AppMetaStore(db).write({keyNavEntryClosed: closed ? 'true' : 'false'});
 
   /// Whether the grouped wallpaper has already been the system wallpaper.
   Future<bool> readWasActive() async {

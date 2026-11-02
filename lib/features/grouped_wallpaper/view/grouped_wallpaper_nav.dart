@@ -46,49 +46,6 @@ List<AvesNavItem> withWallpaperNavDestinations(
   ];
 }
 
-/// Whether the derived wallpaper entry is hidden and can be brought back.
-///
-/// Closing the entry sends the user back to the visible range page, so that page
-/// owns the way back: without it the only control would live on the page the
-/// missing entry leads to. A pinned entry belongs to the user's own list and is
-/// managed in the navigation editor instead, and the shared mode has no derived
-/// entry to close.
-bool canReopenWallpaperNavEntry({
-  required GroupedWallpaperNavMode mode,
-  required bool entryClosed,
-  required bool pinned,
-}) => mode != GroupedWallpaperNavMode.shared && entryClosed && !pinned;
-
-/// What the visible-range page's single wallpaper entry offers.
-///
-/// The page used to list "open the groups" and "bring the entry back" as two
-/// items, which read as duplicates; they are one toggle now. [close] is the only
-/// alternative to [open]: either the bar's derived entry is shown, so the menu
-/// hides it, or it is gone, so the menu brings it back.
-enum WallpaperNavEntryAction {
-  /// Shows the wallpaper page, reopening its bar entry if it was closed.
-  open,
-
-  /// Hides the bar's derived wallpaper entry.
-  close,
-}
-
-/// The action behind the visible-range page's merged wallpaper entry.
-///
-/// A pinned entry belongs to the user's own list and is managed in the
-/// navigation editor, so this menu never hides it; the shared mode has no
-/// derived entry either, so both modes always open.
-WallpaperNavEntryAction wallpaperNavEntryAction({
-  required GroupedWallpaperNavMode mode,
-  required bool entryClosed,
-  required bool pinned,
-}) {
-  if (canReopenWallpaperNavEntry(mode: mode, entryClosed: entryClosed, pinned: pinned)) return WallpaperNavEntryAction.open;
-  // The derived entry is on the bar, so the menu offers to hide it.
-  if (mode != GroupedWallpaperNavMode.shared && !pinned) return WallpaperNavEntryAction.close;
-  return WallpaperNavEntryAction.open;
-}
-
 /// The destinations the bar adds on its own, on top of the user's own list.
 ///
 /// The navigation editor lists `bottomNavigationActions` as editable buttons and

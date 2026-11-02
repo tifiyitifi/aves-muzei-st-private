@@ -26,3 +26,16 @@ GroupedWallpaperNavMode groupedWallpaperNavModeFrom(String? value) => GroupedWal
       (mode) => mode.name == value,
       orElse: () => defaultGroupedWallpaperNavMode,
     );
+
+/// How closing the wallpaper page returns to the visible range.
+///
+/// In the shared mode one bottom-bar entry renders both pages, so closing only
+/// flips that entry back in place. With a temporary entry the page is its own
+/// route, so closing navigates to the range page and lets the page's `dispose`
+/// take the entry away.
+enum WallpaperPageCloseTarget {
+  rangeInPlace,
+  rangePage,
+}
+
+WallpaperPageCloseTarget wallpaperPageCloseTarget(GroupedWallpaperNavMode mode) => mode == GroupedWallpaperNavMode.shared ? WallpaperPageCloseTarget.rangeInPlace : WallpaperPageCloseTarget.rangePage;

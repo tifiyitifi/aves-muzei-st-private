@@ -22,6 +22,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_sur
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_empty_notice.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -616,6 +617,13 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         await _recordFailure(store, plan, previous);
         homeResult = GroupedWallpaperSyncResult.failed;
       }
+      // An empty home group keeps the whole switch: the decoy must not move to a
+      // group whose home surface could not produce a photo.
+      if (homeResult == GroupedWallpaperSyncResult.baked) {
+        groupedWallpaperEmptyNotice.clearEpisode();
+      } else if (homeResult == GroupedWallpaperSyncResult.empty) {
+        return homeResult;
+      }
       if (plan.hasLockRange) {
         try {
           await _syncLock(store, plan, surface, advance: advanceLock);
@@ -663,6 +671,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
     // A group change, or a photo that left the range, starts the walk over.
     final current = adopted?.state ?? previous;
+    // No photo at all (an empty library, or restrictions that match none) keeps
+    // the frame already on screen: the group is recorded, but the placeholder is
+    // never drawn over it.
+    if (total <= 0) {
+      return await _recordEmptyGroup(store, plan, current);
+    }
     if (groupStale || current == null || !current.hasPhoto) {
       return await _startOver(store, plan, previous, total: total, surface: surface, scrollEffect: scrollEffect);
     }
@@ -730,10 +744,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     try {
       final total = await entrySource.count(lockRange);
       if (total <= 0) {
-        if (current == null && state.lockRangeId == lockRange.id) return GroupedWallpaperSyncResult.unchanged;
-        // Keep the split marker: the decoy has no photo, and the native side
-        // must draw its placeholder rather than fall back to the home frame.
-        await _writeLock(store, plan, state, null, keepSplit: true);
+        // Keep the previous decoy rather than blanking the lock screen with the
+        // placeholder. A split that never baked a decoy has nothing to keep; the
+        // native side then draws its placeholder, which is the only alternative
+        // to revealing the home frame.
+        groupedWallpaperLog.i('empty.lock id=${lockRange.id} kept=${current != null}');
         return GroupedWallpaperSyncResult.empty;
       }
       if (forceEntryId != null) {
@@ -1788,6 +1803,61 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     if (previous == null || previous.status == GroupedWallpaperStatus.disabled) return;
     await store.writeState(previous.copyWith(generation: previous.generation + 1, status: GroupedWallpaperStatus.disabled));
     await platform.reload();
+  }
+
+  /// Records a group that resolves to no photo without touching the frame.
+  ///
+  /// The wallpaper is seen without opening the app, so replacing a working photo
+  /// with the grey placeholder because a range matched nothing would look like
+  /// the feature broke. The new group is still written — the notification, the
+  /// page and a later run all describe the group the user selected — while the
+  /// slots, the current slot and the decoy stay exactly as they were. The notice
+  /// lets the page explain the no-op once.
+  Future<GroupedWallpaperSyncResult> _recordEmptyGroup(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, GroupedWallpaperState? previous) async {
+    final recorded = previous != null && previous.groupId == plan.group.id && previous.status == GroupedWallpaperStatus.emptyGroup && previous.count == 0;
+    if (!recorded) {
+      final next = previous?.copyWith(
+            version: GroupedWallpaperState.currentVersion,
+            generation: previous.generation + 1,
+            status: GroupedWallpaperStatus.emptyGroup,
+            groupId: plan.group.id,
+            groupNumber: plan.group.number,
+            groupName: _resolveName(plan.group),
+            count: 0,
+            needsUpgrade: false,
+            ordering: plan.ordering,
+            gestures: plan.gestures,
+            notification: plan.notification,
+            historyLimit: plan.historyLimit,
+            transitionMs: plan.transition.durationMs,
+            frameRetention: plan.frameRetention,
+            switchLocked: _groupSwitchLocked(),
+            switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
+            groups: _groupSnapshot(plan),
+            bakedAt: now(),
+          ) ??
+          GroupedWallpaperState(
+            generation: 1,
+            status: GroupedWallpaperStatus.emptyGroup,
+            groupId: plan.group.id,
+            groupNumber: plan.group.number,
+            groupName: _resolveName(plan.group),
+            gestures: plan.gestures,
+            notification: plan.notification,
+            historyLimit: plan.historyLimit,
+            transitionMs: plan.transition.durationMs,
+            frameRetention: plan.frameRetention,
+            switchLocked: _groupSwitchLocked(),
+            switchLockedGroupId: wallpaperLockService.groupSwitchLockedGroupId ?? '',
+            groups: _groupSnapshot(plan),
+            bakedAt: now(),
+          );
+      await store.writeState(next);
+      await platform.reload();
+      groupedWallpaperLog.i('empty.group id=${plan.group.id} keptCurrent=${next.current} count=0');
+    }
+    groupedWallpaperEmptyNotice.report(groupId: plan.group.id, groupName: _resolveName(plan.group));
+    return GroupedWallpaperSyncResult.empty;
   }
 
   /// A failed sync leaves the placeholder, never the previous photo: a stale

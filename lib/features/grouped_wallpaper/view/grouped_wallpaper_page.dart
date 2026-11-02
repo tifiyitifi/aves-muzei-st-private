@@ -13,6 +13,7 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_sections.d
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_switcher.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_empty_notice.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
@@ -125,8 +126,7 @@ enum _PageAction {
   renameRule,
   deleteSelectedConditions,
   deleteSelectedGroups,
-  visibleRange,
-  toggleNavEntry,
+  closePage,
   saveChanges,
   discardChanges,
   syncNow,
@@ -143,6 +143,12 @@ enum _PageAction {
   unlockGroup,
   toggleSeparateLockRange,
   switchSurface,
+}
+
+/// What closing the page does with the unsaved draft.
+enum _CloseChoice {
+  save,
+  discard,
 }
 
 class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with WidgetsBindingObserver {
@@ -197,6 +203,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// Whether the page last published a non-null group scope, for logging only.
   bool _scopeActive = false;
 
+  /// Whether the empty-group dialog is already scheduled for this frame.
+  ///
+  /// The notice can fire while the page is building (a sync request from the
+  /// service); the flag collapses repeated reports into one dialog.
+  bool _emptyDialogScheduled = false;
+
   /// Whether the group switch lock freezes the page.
   ///
   /// The lock freezes one group, not the page: group 0 and the locked group stay
@@ -225,14 +237,21 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       _syncBrowsingOverlay();
-      if (!mounted || !widget.promptUnlock || !_groupLocked) return;
-      await promptGroupSwitchUnlock(context);
+      if (mounted && widget.promptUnlock && _groupLocked) {
+        await promptGroupSwitchUnlock(context);
+        if (!mounted) return;
+      }
+      // An empty group reached from a notification or a background run keeps its
+      // notice until a page can explain it; this is that page.
+      _onEmptyNotice();
     });
     // The browsing scope is shared with the pages pushed over this one, so a
     // strip there can suspend the gallery range and this page must follow.
     VisibleRangeGate.overlayListenable.addListener(_onBrowseScopeChanged);
     visibleRangeController.addListener(_onBrowseScopeChanged);
     wallpaperLockService.addListener(_onLockChanged);
+    // The engine reports an empty group here, whatever surface triggered it.
+    groupedWallpaperEmptyNotice.addListener(_onEmptyNotice);
     unawaited(_initController());
     unawaited(_refreshEngine());
   }
@@ -287,13 +306,14 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     // The group's scope constrains browsing exactly like the gallery range, so
     // switching to another destination keeps it: the navigation layer marks that
     // case, and the mark is what separates it from a real close. A close (back to
-    // home, the entry's own toggle, group 0) clears it so the rest of the app
+    // home, "Close wallpaper page", group 0) clears it so the rest of the app
     // returns to the gallery range. The listeners go first: clearing the scope
     // notifies, and a disposed page must not react. The clear is deferred,
     // because `dispose` runs with the widget tree locked.
     VisibleRangeGate.overlayListenable.removeListener(_onBrowseScopeChanged);
     visibleRangeController.removeListener(_onBrowseScopeChanged);
     wallpaperLockService.removeListener(_onLockChanged);
+    groupedWallpaperEmptyNotice.removeListener(_onEmptyNotice);
     final groupId = _controller.selectedGroupId;
     if (VisibleRangeGate.takeWallpaperScopePreserve()) {
       groupedWallpaperLog.i('scope.keep group=$groupId reason=destination');
@@ -329,6 +349,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     await wallpaperEngineLink.refreshNotification();
     final state = await wallpaperEngineLink.readState();
     if (!mounted) return;
+    // A notification switch or a background run can leave the wallpaper on an
+    // empty group before this page is opened; the state is then the only record
+    // of why nothing changed.
+    if (state != null && state.status == GroupedWallpaperStatus.emptyGroup) {
+      groupedWallpaperEmptyNotice.report(groupId: state.groupId, groupName: state.groupName);
+    }
     await _warnIfOverwritten(state, active: active);
   }
 
@@ -360,31 +386,91 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     }
   }
 
-  /// Closes or reopens the bottom bar's own entry for this page.
+  /// Closes the page and returns to the visible range editor.
   ///
-  /// Closing removes the entry the page was reached from, so the page hands the
-  /// screen back to the visible range it sits next to instead of staying on a
-  /// destination the bar no longer shows.
-  Future<void> _toggleNavEntry() async {
-    // A pinned entry belongs to the user's own navigation list, so the page never
-    // closes it.
-    if (_wallpaperEntryPinned) return;
-    final closing = !groupedWallpaperNavController.entryClosed;
-    await groupedWallpaperNavController.toggleEntryClosed();
-    if (!closing || !mounted) return;
-    // The entry goes away, so does its browsing constraint: only an unlocked
-    // browse on another destination is left.
+  /// The visible-range page opens this one, so closing is its counterpart. An
+  /// unsaved draft would be silently lost by navigating away, so it asks first:
+  /// saving applies the draft (and re-bakes), discarding drops it, cancelling
+  /// stays on the page.
+  ///
+  /// The group's browsing scope is cleared on the way out. It may constrain the
+  /// gallery while the page is open, but closing must leave the album on the
+  /// gallery's own visible range again.
+  Future<void> _closePage() async {
+    if (!await _confirmClose()) return;
+    if (!mounted) return;
     VisibleRangeGate.clearWallpaperScope();
-    groupedWallpaperLog.i('scope.clear reason=entry-closed');
-    visibleRangeDestination.value = VisibleRangeDestination.range;
-    unawaited(
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          settings: const RouteSettings(name: VisibleRangePage.routeName),
-          builder: (_) => const VisibleRangeShellPage(),
-        ),
+    groupedWallpaperLog.i('scope.clear reason=wallpaper-page-closed');
+    switch (wallpaperPageCloseTarget(groupedWallpaperNavController.mode)) {
+      case WallpaperPageCloseTarget.rangeInPlace:
+        // One entry hosts both pages: flipping it back keeps the bar's highlight
+        // on the destination the user is looking at.
+        visibleRangeDestination.value = VisibleRangeDestination.range;
+      case WallpaperPageCloseTarget.rangePage:
+        // The page is its own route. Replacing it with the range page lets the
+        // temporary bar entry go away with the page, exactly as it appeared when
+        // the page opened. A pinned entry stays because it is the user's own.
+        await const AvesNavItem(route: VisibleRangePage.routeName).goTo(context, topLevel: true);
+    }
+  }
+
+  /// Resolves the unsaved draft before the page is closed.
+  ///
+  /// Returns false when the user cancelled or the save/discard did not complete.
+  Future<bool> _confirmClose() async {
+    if (!_controller.dirty) return true;
+    final l10n = context.l10n;
+    final choice = await showDialog<_CloseChoice>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text(l10n.wallpaperGroupCloseConfirm),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
+          TextButton(onPressed: () => Navigator.pop(context, _CloseChoice.discard), child: Text(l10n.wallpaperGroupDiscardChanges)),
+          // Saving is blocked while the group switch lock is on, exactly like the
+          // menu's own "Save changes" entry.
+          TextButton(onPressed: _groupLocked ? null : () => Navigator.pop(context, _CloseChoice.save), child: Text(l10n.wallpaperGroupSaveChanges)),
+        ],
       ),
     );
+    switch (choice) {
+      case null:
+        return false;
+      case _CloseChoice.discard:
+        await _controller.discardDraft();
+        return true;
+      case _CloseChoice.save:
+        await _saveDraft();
+        return mounted;
+    }
+  }
+
+  /// Explains once why switching to an empty group changed nothing.
+  ///
+  /// The engine keeps the frame already on screen instead of replacing it with
+  /// the placeholder, so without this the switch looks broken. The notice dedupes
+  /// per empty episode, so a sync loop does not make the dialog reappear.
+  void _onEmptyNotice() {
+    if (!mounted || _emptyDialogScheduled || !groupedWallpaperEmptyNotice.isPending) return;
+    _emptyDialogScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _emptyDialogScheduled = false;
+      if (!mounted) return;
+      final groupName = groupedWallpaperEmptyNotice.groupName;
+      if (groupName == null) return;
+      final l10n = context.l10n;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(l10n.wallpaperGroupEmptyTitle),
+          content: Text(l10n.wallpaperGroupEmptyMessage(groupName)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
+          ],
+        ),
+      );
+      groupedWallpaperEmptyNotice.dismiss();
+    });
   }
 
   /// Re-bakes the saved frame when the group list or a range changed.
@@ -1500,15 +1586,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           ),
       ],
       const PopupMenuDivider(),
-      // In the shared mode one entry hosts both pages, so the page needs its own
-      // way back to the range editor; with a temporary entry the range entry is
-      // still on the bar and the visitor simply taps it.
-      if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared)
-        _menuItem(_PageAction.visibleRange, AIcons.visibleRange, l10n.visibleRangePageTitle),
-      // The page's bottom-bar entry is temporary and appears with the page, so
-      // there is nothing to close from here; where it sits (or sharing the
-      // visible-range entry) is the "Wallpaper page" setting. The retained
-      // handlers below belong to the older close/reopen flow.
+      // The counterpart of the visible range page's "Open wallpaper groups":
+      // closing keeps the unsaved draft from being lost, then returns to the
+      // range editor. The temporary bar entry goes away with the page; in the
+      // shared mode the one entry flips back instead.
+      _menuItem(_PageAction.closePage, AIcons.cancel, l10n.wallpaperGroupClosePage),
       if (gallery.isRestricted)
         _menuItem(
           _PageAction.cancelGalleryRange,
@@ -1593,23 +1675,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     return _controller.groups.firstWhereOrNull((group) => group.id == id);
   }
 
-  /// Whether the user put the wallpaper group page in their own navigation list.
-  ///
-  /// Such an entry is theirs to keep or remove from the navigation editor, so
-  /// the page menu must not offer to close it.
-  bool get _wallpaperEntryPinned => settings.bottomNavigationActions.any((item) => item.route == GroupedWallpaperPage.routeName);
-
   Future<void> _onMenuSelected(_PageAction action) async {
     final group = _selectedGroup;
     switch (action) {
-      case _PageAction.visibleRange:
-        // Switching the shared entry back to the range page closes this one: the
-        // group must stop constraining browsing.
-        VisibleRangeGate.clearWallpaperScope();
-        groupedWallpaperLog.i('scope.clear reason=wallpaper-page-closed');
-        visibleRangeDestination.value = VisibleRangeDestination.range;
-      case _PageAction.toggleNavEntry:
-        await _toggleNavEntry();
+      case _PageAction.closePage:
+        await _closePage();
       case _PageAction.saveChanges:
         await _saveDraft();
       case _PageAction.discardChanges:
@@ -1725,13 +1795,16 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     await _controller.selectCurrent(group.id);
     if (_controller.dirty) await _controller.saveDraft();
     await wallpaperEngineLink.setDisabled(false);
-    await wallpaperEngineLink.prepare();
+    final result = await wallpaperEngineLink.prepare();
     await _refreshEngine();
     if (!mounted) return;
     if (!wallpaperEngineLink.isActive) {
       await _setWallpaper();
       return;
     }
+    // The group is now current in the database but has no photo: the wallpaper
+    // deliberately keeps the previous frame, and the empty notice explains it.
+    if (result == GroupedWallpaperSyncResult.empty) return;
     _showMessage(context.l10n.wallpaperGroupWallpaperSet(wallpaperGroupName(context, group)));
   }
 
@@ -1764,14 +1837,21 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final result = await wallpaperEngineLink.syncNow();
     await _refreshEngine();
     if (!mounted) return;
+    if (result == GroupedWallpaperSyncResult.empty) {
+      // The notice owns the explanation. If this empty episode was already
+      // explained, a short message keeps the action from looking ignored without
+      // showing the dialog again.
+      if (!groupedWallpaperEmptyNotice.isPending) _showMessage(context.l10n.wallpaperGroupSyncEmpty);
+      return;
+    }
     _showMessage(
       switch (result) {
         GroupedWallpaperSyncResult.baked => context.l10n.wallpaperGroupSyncDone,
-        GroupedWallpaperSyncResult.empty => context.l10n.wallpaperGroupSyncEmpty,
         GroupedWallpaperSyncResult.disabled => context.l10n.wallpaperGroupSyncDisabled,
         GroupedWallpaperSyncResult.unchanged => context.l10n.wallpaperGroupSyncDone,
         GroupedWallpaperSyncResult.notActive => context.l10n.wallpaperGroupSyncInactive,
         GroupedWallpaperSyncResult.failed => context.l10n.wallpaperGroupSyncFailed,
+        GroupedWallpaperSyncResult.empty => context.l10n.wallpaperGroupSyncEmpty,
       },
     );
   }

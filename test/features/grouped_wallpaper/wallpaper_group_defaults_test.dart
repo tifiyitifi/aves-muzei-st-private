@@ -1,4 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/data/default_groups.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_condition_pool.dart';
 import 'package:aves/model/filters/container/set_or.dart';
 import 'package:aves/model/filters/path.dart';
 import 'package:aves/services/common/services.dart';
@@ -89,5 +90,43 @@ void main() {
     expect(definitions.every((definition) => definition.enabled), isTrue);
     expect(definitions.last.filters, isEmpty);
     expect(definitions.take(2).every((definition) => definition.filters.single is PathFilter), isTrue);
+  });
+
+  test('the shipped bundle shares the orientation restrictions with every group', () async {
+    final definitions = await loadWallpaperGroupDefinitions(standardPath: (standard) => '/standard/$standard');
+    final rules = definitions.first.rules;
+
+    expect(rules.map((rule) => rule.key), ['landscape', 'portrait', 'notLandscape', 'notPortrait']);
+    expect(rules.map((rule) => rule.nameKey), [
+      'visibleRangePresetLandscape',
+      'visibleRangePresetPortrait',
+      'visibleRangePresetNotLandscape',
+      'visibleRangePresetNotPortrait',
+    ]);
+    expect(definitions.every((definition) => identical(definition.rules, rules)), isTrue);
+    expect(rules[0].surfaces, 0);
+    expect(rules[1].surfaces, WallpaperConditionSurfaces.lock);
+    expect(rules[2].surfaces, 0);
+    expect(rules[3].surfaces, WallpaperConditionSurfaces.home);
+    expect(rules.every((rule) => rule.filters.isNotEmpty), isTrue);
+    // The id segment the prune pass relies on.
+    expect(rules.first.idFor('wallpaper.group.dcim'), 'wallpaper.group.dcim.rule.default.landscape');
+  });
+
+  test('a malformed restriction is skipped without losing the others', () {
+    final definitions = parseWallpaperGroupBundle(
+      '''
+      {
+        "restrictions": [
+          {"key": "landscape", "nameKey": "visibleRangePresetLandscape", "filters": [{"type": "aspect_ratio", "threshold": 1.0, "op": ">"}]},
+          {"key": "", "nameKey": "x", "filters": []},
+          {"key": "empty", "nameKey": "x", "filters": []}
+        ],
+        "groups": [{"id": "a", "nameKey": "wallpaperGroupDefaultAll"}]
+      }
+      ''',
+    );
+
+    expect(definitions.single.rules.map((rule) => rule.key), ['landscape']);
   });
 }

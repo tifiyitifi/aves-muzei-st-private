@@ -30,7 +30,6 @@ void main() {
   test('the default is a temporary entry right of the visible range', () async {
     final controller = GroupedWallpaperNavController();
     expect(controller.mode, GroupedWallpaperNavMode.separateRight);
-    expect(controller.entryClosed, isFalse);
     // The entry only shows while the wallpaper page is open.
     expect(controller.derivesEntry, isFalse);
     controller.enterPage();
@@ -63,27 +62,6 @@ void main() {
     final reloaded = GroupedWallpaperNavController();
     await reloaded.load();
     expect(reloaded.mode, GroupedWallpaperNavMode.shared);
-  });
-
-  test('the close switch is still stored, but no longer gates the entry', () async {
-    final controller = GroupedWallpaperNavController();
-    controller.enterPage();
-
-    await controller.setEntryClosed(true);
-
-    expect(controller.entryClosed, isTrue);
-    // Visibility follows the open page now, not the old close switch.
-    expect(controller.derivesEntry, isTrue);
-    expect(await WallpaperGroupStore(db).readNavEntryClosed(), isTrue);
-
-    final reloaded = GroupedWallpaperNavController();
-    await reloaded.load();
-    expect(reloaded.entryClosed, isTrue);
-
-    await controller.toggleEntryClosed();
-    expect(controller.entryClosed, isFalse);
-    expect(controller.derivesEntry, isTrue);
-    expect(await WallpaperGroupStore(db).readNavEntryClosed(), isFalse);
   });
 
   test('an unreadable stored mode falls back to the default', () async {

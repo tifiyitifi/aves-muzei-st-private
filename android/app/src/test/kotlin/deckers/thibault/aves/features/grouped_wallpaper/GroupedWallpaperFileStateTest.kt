@@ -17,6 +17,7 @@
 package deckers.thibault.aves.features.grouped_wallpaper
 
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -57,6 +58,17 @@ class GroupedWallpaperFileStateTest {
     @Test
     fun `a legacy locked state still promotes the queued next slot`() {
         assertTrue(state(GroupedWallpaperFileState.STATUS_LOCKED, next = 1).canPromote)
+    }
+
+    @Test
+    fun `an empty group keeps the slot the previous group baked`() {
+        // Dart records the empty group without clearing its slots, so the bar and
+        // a restarted renderer still have the frame the wallpaper is showing.
+        val kept = state(GroupedWallpaperFileState.STATUS_EMPTY_GROUP, count = 0).copy(
+            slots = listOf(GroupedWallpaperSlotFile(id = 0, entryId = 1, photo = "slots/0.png")),
+        )
+        assertNotNull(kept.currentSlot)
+        assertFalse(kept.canPromote)
     }
 
     @Test

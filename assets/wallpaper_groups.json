@@ -1,5 +1,31 @@
 {
-  "version": 2,
+  "version": 3,
+  "restrictions": [
+    {
+      "key": "landscape",
+      "nameKey": "visibleRangePresetLandscape",
+      "surfaces": [],
+      "filters": [{"type": "aspect_ratio", "threshold": 1.0, "op": ">"}]
+    },
+    {
+      "key": "portrait",
+      "nameKey": "visibleRangePresetPortrait",
+      "surfaces": ["lock"],
+      "filters": [{"type": "aspect_ratio", "threshold": 1.0, "op": "<"}]
+    },
+    {
+      "key": "notLandscape",
+      "nameKey": "visibleRangePresetNotLandscape",
+      "surfaces": [],
+      "filters": [{"type": "aspect_ratio", "threshold": 1.0, "op": ">", "reversed": true}]
+    },
+    {
+      "key": "notPortrait",
+      "nameKey": "visibleRangePresetNotPortrait",
+      "surfaces": ["home"],
+      "filters": [{"type": "aspect_ratio", "threshold": 1.0, "op": "<", "reversed": true}]
+    }
+  ],
   "groups": [
     {
       "id": "wallpaper.group.pictures",

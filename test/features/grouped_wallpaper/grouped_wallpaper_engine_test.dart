@@ -22,6 +22,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transiti
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_empty_notice.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
@@ -91,6 +92,7 @@ void main() {
   }
 
   setUp(() async {
+    groupedWallpaperEmptyNotice.clearEpisode();
     dir = await Directory.systemTemp.createTemp('aves_grouped_engine_');
     platform = _FakePlatform(dir.path);
     baker = _FakeBaker();
@@ -782,9 +784,12 @@ void main() {
     });
   });
 
-  test('an empty group clears the photos and records the empty state', () async {
+  test('an empty group records the new group and keeps the frame already on screen', () async {
     serve(entries(2));
     await engine.prepare();
+    final before = (await store.readState())!;
+    final keptEntry = before.entryId;
+    final keptFrame = before.currentSlot!.photo;
 
     serve(const []);
     planStore.plan = const GroupedWallpaperPlan(
@@ -794,10 +799,51 @@ void main() {
     expect(await engine.prepare(), GroupedWallpaperSyncResult.empty);
 
     final state = (await store.readState())!;
+    // The new group is recorded, so the notification and the page describe the
+    // group the user picked...
     expect(state.status, GroupedWallpaperStatus.emptyGroup);
-    expect(state.queueLength, 0);
-    expect(state.hasPhoto, isFalse);
-    expect(await store.framesDir.exists(), isFalse);
+    expect(state.groupId, 'group.2');
+    expect(state.groupNumber, 2);
+    expect(state.count, 0);
+    // ...while the frame on screen is untouched: no placeholder, no cleared files.
+    expect(state.current, before.current);
+    expect(state.queueLength, before.queueLength);
+    expect(state.entryId, keptEntry);
+    expect(state.currentSlot!.photo, keptFrame);
+    expect(await store.framesDir.exists(), isTrue);
+    expect(groupedWallpaperEmptyNotice.isPending, isTrue);
+    expect(groupedWallpaperEmptyNotice.groupName, 'DCIM');
+
+    // A retry of the same empty group reports the notice but does not rewrite the
+    // state or bump the generation.
+    final generation = state.generation;
+    expect(await engine.prepare(), GroupedWallpaperSyncResult.empty);
+    expect((await store.readState())!.generation, generation);
+  });
+
+  test('an empty lock range keeps the previous decoy', () async {
+    final homeRange = VisibleRange(id: wallpaperGroupRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    final lockRange = VisibleRange(id: wallpaperGroupLockRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.1'), updatedAt: 1);
+    planStore.plan = GroupedWallpaperPlan(
+      group: dcimGroup.copyWith(separateLockRange: true),
+      range: homeRange,
+      lockRange: lockRange,
+    );
+    serve(entries(5));
+    await engine.prepare();
+    final before = (await store.readState())!;
+    final decoy = before.lock!;
+    expect(store.lockPhotoOf(decoy), isNotNull);
+
+    // Only the lock range becomes empty: the home surface keeps its photo, so the
+    // decoy must not be replaced by the placeholder.
+    entrySource.lockTotal = 0;
+    expect(await engine.prepare(), isNot(GroupedWallpaperSyncResult.failed));
+
+    final state = (await store.readState())!;
+    expect(state.lock, decoy);
+    expect(state.lockRangeId, before.lockRangeId);
+    expect(store.lockPhotoOf(state.lock!), isNotNull);
   });
 
   test('a split group bakes one decoy frame and records the lock surface', () async {
@@ -1873,12 +1919,15 @@ class _FakeEntrySource implements GroupedWallpaperEntrySource {
   int total = 0;
   int newest = 0;
 
+  /// Count returned for a split surface's lock range; null uses [total].
+  int? lockTotal;
+
   VisibleRange? lastRange;
   GroupedWallpaperOrdering? lastOrdering;
   int? lastNewestEntryId;
 
   @override
-  Future<int> count(VisibleRange? range) async => total;
+  Future<int> count(VisibleRange? range) async => range != null && wallpaperGroupIdOfLockOwner(range.ownerId) != null ? lockTotal ?? total : total;
 
   @override
   Future<int> newPhotoMarker(VisibleRange? range) async => newest;

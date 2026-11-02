@@ -31,6 +31,9 @@ enum GroupedWallpaperStatus {
   disabled,
 
   /// The group resolves to no image.
+  ///
+  /// The frame already on screen is kept (see the engine's empty-group path):
+  /// the state describes the empty group, but its slots stay drawable.
   emptyGroup,
 
   /// Reading, querying, baking or writing failed.
@@ -52,7 +55,7 @@ enum GroupedWallpaperSyncResult {
   /// A photo was baked and is now on screen.
   baked,
 
-  /// The group resolves to no image: the placeholder is on screen.
+  /// The group resolves to no image: the frame already on screen was kept.
   empty,
 
   /// The grouped wallpaper is turned off: its last frame was kept.

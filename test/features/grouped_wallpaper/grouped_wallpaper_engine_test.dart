@@ -871,6 +871,72 @@ void main() {
     expect(joined.lockRangeId, isEmpty);
   });
 
+  test('previous lock photo skips a record that left the range', () async {
+    final homeRange = VisibleRange(id: wallpaperGroupRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    final lockRange = VisibleRange(id: wallpaperGroupLockRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.1'), updatedAt: 1);
+    planStore.plan = GroupedWallpaperPlan(group: dcimGroup.copyWith(separateLockRange: true), range: homeRange, lockRange: lockRange);
+    final all = entries(5);
+    serve(all);
+    await engine.prepare();
+    await engine.refill(advance: true);
+    await engine.refill(advance: true);
+    final walk = (await store.readState())!.lock!.recent.map((record) => record.entryId).toList();
+    expect(walk, hasLength(3));
+    final dead = walk[1];
+
+    // The photo left the range (a hidden filter, a locked vault): the walk must
+    // step over it instead of returning on it and leaving "previous" a no-op.
+    serve(all.where((entry) => entry.id != dead).toList());
+
+    expect(await engine.previousLockArtwork(), GroupedWallpaperSyncResult.baked);
+    expect((await store.readState())!.lock!.entryId, walk[2]);
+  });
+
+  test('previous lock photo trims records that can no longer be shown', () async {
+    final homeRange = VisibleRange(id: wallpaperGroupRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    final lockRange = VisibleRange(id: wallpaperGroupLockRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.1'), updatedAt: 1);
+    planStore.plan = GroupedWallpaperPlan(group: dcimGroup.copyWith(separateLockRange: true), range: homeRange, lockRange: lockRange);
+    final all = entries(5);
+    serve(all);
+    await engine.prepare();
+    await engine.refill(advance: true);
+    final walk = (await store.readState())!.lock!.recent.map((record) => record.entryId).toList();
+    expect(walk, hasLength(2));
+    final dead = walk[1];
+
+    serve(all.where((entry) => entry.id != dead).toList());
+    expect(await engine.previousLockArtwork(), GroupedWallpaperSyncResult.unchanged);
+
+    // Nothing older can be shown, so the dead record leaves the walk: the view
+    // page greys "previous" instead of offering a step that does nothing.
+    final lock = (await store.readState())!.lock!;
+    expect(lock.entryId, walk[0]);
+    expect(lock.recent.map((record) => record.entryId), [walk[0]]);
+  });
+
+  test('the lock walk forgets records from the group that was left', () async {
+    final homeRange = VisibleRange(id: wallpaperGroupRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    final lockRange = VisibleRange(id: wallpaperGroupLockRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    planStore.plan = GroupedWallpaperPlan(group: dcimGroup.copyWith(separateLockRange: true), range: homeRange, lockRange: lockRange);
+    serve(entries(5));
+    await engine.prepare();
+    await engine.refill(advance: true);
+    expect((await store.readState())!.lock!.recent, hasLength(2));
+
+    const other = WallpaperGroup(id: 'group.2', number: 2, name: 'B', current: true, updatedAt: 20);
+    planStore.plan = GroupedWallpaperPlan(
+      group: other.copyWith(separateLockRange: true),
+      range: VisibleRange(id: wallpaperGroupRangeId('group.2'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.2', updatedAt: 2),
+      lockRange: VisibleRange(id: wallpaperGroupLockRangeId('group.2'), scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.2'), updatedAt: 2),
+    );
+    await engine.prepare();
+
+    final lock = (await store.readState())!.lock!;
+    // A record of another group can never be resolved by this range, so keeping
+    // it would only make "previous" a dead button.
+    expect(lock.recent.every((record) => record.groupId == 'group.2'), isTrue);
+  });
+
   test('a locked range keeps rotating', () async {
     serve(entries(12));
     await engine.prepare();
@@ -1493,7 +1559,7 @@ class _FakeHistoryRecorder implements GroupedWallpaperHistoryRecorder {
     required int groupNumber,
     required int usedAt,
     required int limit,
-    WallpaperSurface surface = WallpaperSurface.home,
+    required WallpaperSurface surface,
   }) async {
     rows.add(GroupedWallpaperHistoryEntry(
       entryId: entryId,

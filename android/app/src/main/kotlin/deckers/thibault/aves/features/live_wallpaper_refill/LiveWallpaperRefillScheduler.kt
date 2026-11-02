@@ -196,7 +196,9 @@ object LiveWallpaperRefillScheduler {
         val previous = prefs.getInt(key, 0)
         val manager = WorkManager.getInstance(context)
         if (clamped <= 0) {
-            prefs.edit().putInt(key, 0).apply()
+            // Turning the interval off also drops a deferred advance: re-enabling
+            // it later must not bake for a schedule that was cancelled.
+            prefs.edit().putInt(key, 0).remove(pendingAdvanceKey(target)).apply()
             manager.cancelUniqueWork(autoWorkName(target))
             Log.d(TAG, "auto.schedule target=${target.id} off")
             return

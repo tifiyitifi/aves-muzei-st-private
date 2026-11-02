@@ -16,7 +16,7 @@ abstract interface class GroupedWallpaperHistoryRecorder {
     required int groupNumber,
     required int usedAt,
     required int limit,
-    WallpaperSurface surface,
+    required WallpaperSurface surface,
   });
 }
 
@@ -34,7 +34,7 @@ class DbGroupedWallpaperHistoryRecorder implements GroupedWallpaperHistoryRecord
     required int groupNumber,
     required int usedAt,
     required int limit,
-    WallpaperSurface surface = WallpaperSurface.home,
+    required WallpaperSurface surface,
   }) async {
     final db = await (provider ?? getIt<AppDatabaseProvider>()).open();
     await GroupedWallpaperHistoryStore(db).record(

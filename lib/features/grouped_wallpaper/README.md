@@ -52,9 +52,15 @@ made. Deleting a group deletes both ranges and their rules.
   single baked file (`state.json` `lock`) instead of the home queue's three
   slots. It is baked at the surface size with the group's lock effects already
   applied: no scroll-wide frame, no pan centering, no prewarm, no rewind stack.
-- **No gesture.** A double tap or a three-finger tap on the lock screen is
-  ignored; the app's view page has a home/lock switch and its previous/next
+- **No gesture, and no bar photo step.** A double tap or a three-finger tap on
+  the lock screen is ignored, and the bar greys its photo button there (the
+  group buttons stay live, because switching groups is the lock surface's
+  priority). The app's view page has a home/lock switch, and its previous/next
   controls are the only manual way to step the decoy.
+- **The walk is per group and self-healing.** A record that left the range, or
+  that belongs to a group the user switched away from, is skipped when stepping
+  back, and dropped once nothing older can be shown, so "previous lock photo"
+  never stays a dead button.
 - **Shared interval.** The group's interval advances both surfaces in one run.
   An interval run picks a new decoy photo; a home "next photo" does not touch
   the lock surface.

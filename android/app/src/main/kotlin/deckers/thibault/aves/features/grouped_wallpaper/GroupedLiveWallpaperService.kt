@@ -337,6 +337,10 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
     private fun onRealEngineDestroyed() {
         realEngines = (realEngines - 1).coerceAtLeast(0)
         if (realEngines != 0) return
+        // The last real surface is gone, so nothing can be seen any more: leaving
+        // this true would let a scheduled advance bake for a wallpaper the user
+        // no longer has.
+        recordWallpaperVisible(false)
         LiveWallpaperRefillEngine.holdWarm(false)
         // The bar outlives the engine that drew it: demote, then post it as a
         // normal notification so it does not vanish with the foreground state.
@@ -618,11 +622,13 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
         override fun onDestroy() {
             Log.d(TAG, "engine.destroy")
-            try {
-                applicationContext.unregisterReceiver(lockScreenReceiver)
-            } catch (e: IllegalArgumentException) {
-                // Already unregistered with the engine.
-                Log.d(TAG, "lock screen receiver was not registered", e)
+            if (!isPreview) {
+                try {
+                    applicationContext.unregisterReceiver(lockScreenReceiver)
+                } catch (e: IllegalArgumentException) {
+                    // Already unregistered with the engine.
+                    Log.d(TAG, "lock screen receiver was not registered", e)
+                }
             }
             if (::renderer.isInitialized) {
                 queueEvent { renderer.destroy() }
@@ -632,22 +638,29 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         }
 
         private fun registerLockScreenReceiver() {
+            val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            lockScreenVisible = keyguard.isKeyguardLocked
+            // A picker preview owns a temporary surface and is torn down when the
+            // picker closes: letting it register would overwrite the real
+            // wallpaper's keyguard state and post the bar from a preview. It still
+            // reads the current state, so it is drawn with the effect the lock
+            // screen would use.
+            if (isPreview) return
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_USER_PRESENT)
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_SCREEN_ON)
             }
             applicationContext.registerReceiver(lockScreenReceiver, filter)
-            val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-            lockScreenVisible = keyguard.isKeyguardLocked
             GroupedLiveWallpaperService.lockScreenVisible = lockScreenVisible
         }
 
         private fun updateLockScreen(visible: Boolean) {
             if (lockScreenVisible == visible) return
             lockScreenVisible = visible
-            GroupedLiveWallpaperService.lockScreenVisible = visible
             if (::renderer.isInitialized) renderer.setLockScreenVisible(visible)
+            if (isPreview) return
+            GroupedLiveWallpaperService.lockScreenVisible = visible
             // Locking or unlocking returns the bar to its default button set; the
             // user's switch applies until the keyguard changes.
             GroupedWallpaperNotification.resetGroupActionsOverride()

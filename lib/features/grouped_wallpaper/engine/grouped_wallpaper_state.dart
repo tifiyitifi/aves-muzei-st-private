@@ -353,6 +353,24 @@ class GroupedWallpaperLockFrame extends Equatable {
     );
   }
 
+  /// The same decoy with a different walk.
+  ///
+  /// "Previous lock photo" needs to drop records that can no longer be shown
+  /// without re-baking the frame, so the bar stops offering a dead step.
+  GroupedWallpaperLockFrame withRecent(List<GroupedWallpaperRecentEntry> recent) => GroupedWallpaperLockFrame(
+        entryId: entryId,
+        uri: uri,
+        title: title,
+        photo: photo,
+        width: width,
+        height: height,
+        darkness: darkness,
+        bakedAt: bakedAt,
+        cursor: cursor,
+        newestEntryId: newestEntryId,
+        recent: recent,
+      );
+
   @override
   List<Object?> get props => [entryId, uri, title, photo, width, height, darkness, bakedAt, cursor, newestEntryId, recent];
 }

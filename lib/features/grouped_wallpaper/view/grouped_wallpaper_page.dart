@@ -509,9 +509,11 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   Future<void> _refreshStats() async {
     final filtersByKey = <String, Set<CollectionFilter>>{};
+    // Both surfaces are laid out at once, so both must keep their counts fresh;
+    // `range` alone is only the surface that is currently editable.
     final ranges = [
-      ?_controller.range,
-      if (_controller.lockRange != null) _controller.lockRange!,
+      ?_controller.homeRange,
+      ?_controller.lockRange,
     ];
     for (final range in ranges) {
       for (final section in buildWallpaperGroupSections(range: range)) {
@@ -914,6 +916,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     }
     final candidateFilter = filter as VisibleRangeCandidateFilter;
     final candidate = candidateFilter.candidate;
+    final selectable = !candidateFilter.summary && _isSelectable(candidate);
     return MetaData(
       metaData: ScalerMetadata(item),
       child: ListenableBuilder(
@@ -930,7 +933,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           // The result preview and the empty-section slots carry no state; the
           // base and rule tiles do, including 「Unrestricted」.
           showStateIcon: !candidate.isGallery && !candidate.placeholder,
-          selectable: !candidateFilter.summary && _isSelectable(candidate),
+          selectable: selectable,
+          // The shared selector resolves the pressed row from the layout, not
+          // from its own selectable list, so a tile that must not be selected
+          // has to consume the long press itself. Without this the read-only
+          // inactive surface could enter the selection, and deleting its base
+          // would clear the editable surface's base instead.
+          onLongPress: selectable ? null : () {},
           selecting: _selection.isSelecting,
           selected: _selection.selectedItems.contains(item),
           labelOverride: _labelOverride(context, candidate),
@@ -1162,7 +1171,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
             tooltip: context.l10n.visibleRangeActionDelete,
             onPressed: () => unawaited(_deleteSelectedConditions()),
           ),
-        if (groups.isNotEmpty)
+        if (groups.isNotEmpty && !_groupLocked)
           IconButton(
             icon: const Icon(AIcons.delete),
             tooltip: context.l10n.wallpaperGroupDeleteSelected,
@@ -1198,7 +1207,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         if (rules.length == 1 && candidates.length == 1 && !hasBase) _menuItem(_PageAction.editRule, AIcons.edit, context.l10n.visibleRangeEditRule),
         if (rules.length == 1 && candidates.length == 1 && !hasBase) _menuItem(_PageAction.renameRule, AIcons.rename, context.l10n.visibleRangeActionRename),
         if (rules.isNotEmpty || hasBase) _menuItem(_PageAction.deleteSelectedConditions, AIcons.delete, context.l10n.visibleRangeActionDelete),
-        if (groups.isNotEmpty) _menuItem(_PageAction.deleteSelectedGroups, AIcons.delete, context.l10n.wallpaperGroupDeleteSelected),
+        if (groups.isNotEmpty && !_groupLocked) _menuItem(_PageAction.deleteSelectedGroups, AIcons.delete, context.l10n.wallpaperGroupDeleteSelected),
       ];
     }
     return _menuEntries(context);
@@ -1206,9 +1215,14 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   List<VisibleRangeCandidate> _selectedCandidates(Selection<FilterGridItem<CollectionFilter>> selection) {
     if (!selection.isSelecting) return const [];
+    // The inactive surface is a read-only summary. Its tiles are not meant to
+    // enter the selection at all, but the shared grid selector resolves the
+    // pressed row from the layout rather than from its selectable list, so this
+    // is the one place that guarantees no action is ever applied to it.
     return [
       for (final item in selection.selectedItems)
-        if (item.filter is VisibleRangeCandidateFilter) (item.filter as VisibleRangeCandidateFilter).candidate,
+        if (item.filter case VisibleRangeCandidateFilter filter)
+          if (!filter.candidate.readOnly) filter.candidate,
     ];
   }
 
@@ -1260,6 +1274,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// Deletes the selected group cards. The group controller keeps at least one
   /// group, so a selection that would empty the list is refused as a whole.
   Future<void> _deleteSelectedGroups() async {
+    // A group that was selected before the lock was set must not be deleted
+    // behind the lock's back.
+    if (_groupLocked) {
+      _showGroupLocked();
+      return;
+    }
     final ids = _selectedGroupIds();
     if (ids.isEmpty) return;
     final confirmed = await showDialog<bool>(

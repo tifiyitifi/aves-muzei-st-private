@@ -28,33 +28,39 @@ class GroupedWallpaperHistoryStore {
     required int groupNumber,
     required int usedAt,
     required int limit,
-    WallpaperSurface surface = WallpaperSurface.home,
+    required WallpaperSurface surface,
   }) async {
     if (entryId <= 0) return;
     final max = GroupedWallpaperHistoryLimit.sanitize(limit);
     if (max <= 0) return;
     await db.transaction(() async {
-      final updated = await (db.update(db.groupedWallpaperHistoryRows)
-            ..where((t) => t.entryId.equals(entryId) & t.groupId.equals(groupId) & t.surface.equals(surface.name)))
-          .write(
-        GroupedWallpaperHistoryRowsCompanion(
-          groupName: Value(groupName),
-          groupNumber: Value(groupNumber),
-          usedAt: Value(usedAt),
-        ),
-      );
-      if (updated == 0) {
-        await db.into(db.groupedWallpaperHistoryRows).insert(
-              GroupedWallpaperHistoryRowsCompanion.insert(
-                entryId: entryId,
-                groupId: groupId,
-                usedAt: usedAt,
+      // One atomic upsert on the (entryId, groupId, surface) key. A read-then-
+      // write would let the UI and the background isolate both see "no row" and
+      // make one of them fail its insert on the unique constraint.
+      await db.into(db.groupedWallpaperHistoryRows).insert(
+            GroupedWallpaperHistoryRowsCompanion.insert(
+              entryId: entryId,
+              groupId: groupId,
+              usedAt: usedAt,
+              groupName: Value(groupName),
+              groupNumber: Value(groupNumber),
+              surface: Value(surface.name),
+            ),
+            onConflict: DoUpdate(
+              (old) => GroupedWallpaperHistoryRowsCompanion(
                 groupName: Value(groupName),
                 groupNumber: Value(groupNumber),
-                surface: Value(surface.name),
+                usedAt: Value(usedAt),
               ),
-            );
-      }
+              // The row is de-duplicated by this key, not by the autoincrement
+              // id, so the conflict target has to name it.
+              target: [
+                db.groupedWallpaperHistoryRows.entryId,
+                db.groupedWallpaperHistoryRows.groupId,
+                db.groupedWallpaperHistoryRows.surface,
+              ],
+            ),
+          );
       // Keep the newest `max` rows. `id` breaks ties so two photos shown in the
       // same millisecond still prune deterministically.
       await db.customStatement(

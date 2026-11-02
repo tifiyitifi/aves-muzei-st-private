@@ -320,7 +320,11 @@ object GroupedWallpaperNotification {
             return
         }
         val state = GroupedWallpaperStateFile.read(context) ?: return
-        update(context, state, state.currentSlot)
+        // The bar outlives the service, so this fallback has to describe the same
+        // surface the service would: on the lock screen that is the decoy, never
+        // the home photo the user is hiding.
+        val splitLock = GroupedLiveWallpaperService.lockScreenVisible && (state.lock != null || state.lockRangeId.isNotEmpty())
+        update(context, state, if (splitLock) state.lock else state.currentSlot, lock = splitLock)
     }
 
     private fun scheduleTimeout() {
@@ -657,7 +661,7 @@ object GroupedWallpaperNotification {
         )
 
         val buttons = if (groupActions) {
-            levelButtons(context, big, state, ready, switching)
+            levelButtons(context, big, state, ready, switching, lockSurface = lock)
         } else {
             // With recording off the engine refuses "previous", so the bar greys
             // the button instead of offering an action that does nothing.
@@ -761,7 +765,7 @@ object GroupedWallpaperNotification {
      * asks for the PIN. The group buttons grey out as soon as the lock is set, so
      * the bar never offers a switch the app would refuse.
      */
-    private fun levelButtons(context: Context, big: Boolean, state: GroupedWallpaperFileState, ready: Boolean, switching: Boolean): List<NotificationButton> {
+    private fun levelButtons(context: Context, big: Boolean, state: GroupedWallpaperFileState, ready: Boolean, switching: Boolean, lockSurface: Boolean = false): List<NotificationButton> {
         val locked = lockedFor(state)
         val canSwitch = !locked && !switching
         val previousGroup = NotificationButton(
@@ -790,7 +794,9 @@ object GroupedWallpaperNotification {
             R.drawable.baseline_next_24,
             ACTION_NEXT_ARTWORK,
             context.getString(R.string.grouped_wallpaper_action_next),
-            enabled = ready,
+            // The decoy is not the queue the user is looking at: on the lock
+            // surface a photo step would change the hidden home wallpaper.
+            enabled = ready && !lockSurface,
         )
         if (!big) return listOf(previousGroup, nextGroup, lock, next)
         return listOf(

@@ -901,7 +901,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     final recent = promote
         ? [
             GroupedWallpaperRecentEntry(entryId: entry.id, uri: entry.uri, title: title, groupId: plan.group.id),
-            ...(previous?.recent ?? const <GroupedWallpaperRecentEntry>[]).where((candidate) => candidate.entryId != entry.id),
+            // The walk belongs to the group that is playing: a record left over
+            // from the group the user switched away from can never be shown by
+            // this range, and keeping it would make "previous" a dead button.
+            ...(previous?.recent ?? const <GroupedWallpaperRecentEntry>[])
+                .where((candidate) => candidate.entryId != entry.id && candidate.groupId == plan.group.id),
           ].take(GroupedWallpaperState.maxRecent).toList(growable: false)
         : previous?.recent ?? const <GroupedWallpaperRecentEntry>[];
     return GroupedWallpaperLockFrame(
@@ -944,11 +948,26 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       if (plan.disabled || plan.isNone || !plan.hasLockRange) return GroupedWallpaperSyncResult.unchanged;
       final state = await store.readState();
       final current = state?.lock;
-      if (current == null) return GroupedWallpaperSyncResult.unchanged;
+      if (state == null || current == null) return GroupedWallpaperSyncResult.unchanged;
+      final surface = await _resolveTargetSize();
+      // A record can stay in the walk after it left the range (a hidden filter,
+      // a locked vault) or after the user switched group. Skip those instead of
+      // returning on the first one: that would keep "previous" a no-op for as
+      // long as the dead record sits at the front of the list.
+      final dead = <int>{};
       for (final candidate in current.recent) {
         if (candidate.entryId == current.entryId) continue;
-        return _syncLock(store, plan, await _resolveTargetSize(), advance: false, forceEntryId: candidate.entryId);
+        if (!dead.add(candidate.entryId)) continue;
+        final result = await _syncLock(store, plan, surface, advance: false, forceEntryId: candidate.entryId);
+        if (result != GroupedWallpaperSyncResult.unchanged) return result;
       }
+      if (dead.isEmpty) return GroupedWallpaperSyncResult.unchanged;
+      // Nothing left can be shown: drop the dead tail so the view page greys
+      // "previous" instead of offering a step that always does nothing.
+      final kept = current.recent.where((candidate) => !dead.contains(candidate.entryId)).toList(growable: false);
+      if (kept.length == current.recent.length) return GroupedWallpaperSyncResult.unchanged;
+      await _writeLock(store, plan, state, current.withRecent(kept));
+      await platform.refreshNotification();
       return GroupedWallpaperSyncResult.unchanged;
     });
   }

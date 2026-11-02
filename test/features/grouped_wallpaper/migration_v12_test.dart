@@ -7,6 +7,11 @@ import '../../helpers/sqlite3_loader.dart';
 
 /// Schema v11 -> v12 adds the grouped wallpaper's usage history without touching
 /// the groups it describes.
+///
+/// `AppDatabase` always migrates to the current schema, so this fixture runs the
+/// whole chain and asserts the latest table shape. v13's own step is covered by
+/// `migration_v13_test.dart`; this file keeps the "an old install keeps its
+/// groups and history" contract.
 void main() {
   setUpAll(ensureSqlite3Loaded);
 

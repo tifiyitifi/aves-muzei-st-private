@@ -54,7 +54,11 @@ carries a `surfaces` bit mask (`1` home, `2` lock; the base's mask is
 (`projectWallpaperGroupRange`), with the historical per-surface ids, so
 `state.json`, the decoy range id and the history keep addressing the same
 ranges. The page lists each condition once with two marks; only the lamped
-surface is edited, and tapping a tile switches that surface's mark.
+surface is edited, and tapping a tile switches that surface's mark. With the
+split on, the page ends with one section per surface: the lamp marks the one being
+edited, its first tile is the result preview (count and cover), and the other
+section lists its conditions read-only. There is no third "current range" section,
+because the lamped section already is it.
 `mergeWallpaperGroupRange` folds an externally written projection back into the
 pool without disturbing the other surface; it is kept as the compatibility path
 for a writer that still addresses a single surface, while the pin sheet and the

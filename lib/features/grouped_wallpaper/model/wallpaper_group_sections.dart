@@ -83,21 +83,28 @@ List<VisibleRangeCandidateSection> buildWallpaperGroupPoolSections({required Vis
 /// The list is read-only: it says what that surface shows, and the pool sections
 /// above are where the same conditions are edited. A surface that applies nothing
 /// keeps one 「None」 slot so the section never collapses to an empty header.
-List<VisibleRangeCandidate> buildWallpaperGroupSurfaceCandidates({required VisibleRange range}) {
+///
+/// [includeResult] prepends the result preview, so the lamped surface shows what
+/// its conditions produce before listing them: the page uses it instead of a
+/// separate "current range" section, which would repeat the same conditions.
+List<VisibleRangeCandidate> buildWallpaperGroupSurfaceCandidates({required VisibleRange range, bool includeResult = false}) {
   final base = range.baseActive && range.baseFilters.isNotEmpty ? VisibleRangeCandidate.customBase(name: range.baseName, filters: range.baseFilters) : null;
-  final candidates = [
+  final conditions = [
     ?base,
     for (final kind in range.order.isIntersectFirst ? [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement] : [VisibleRangeRuleKind.supplement, VisibleRangeRuleKind.restriction])
       for (final rule in range.activeRulesOf(kind)) VisibleRangeCandidate.fromRule(rule),
   ];
-  if (candidates.isNotEmpty) return candidates;
   return [
-    const VisibleRangeCandidate(
-      id: '${wallpaperGroupSectionNoneIdPrefix}surface',
-      kind: VisibleRangeCandidateKind.base,
-      filters: {},
-      labelKey: 'wallpaperGroupSectionNone',
-      placeholder: true,
-    ),
+    if (includeResult) VisibleRangeCandidate.gallery,
+    if (conditions.isEmpty)
+      const VisibleRangeCandidate(
+        id: '${wallpaperGroupSectionNoneIdPrefix}surface',
+        kind: VisibleRangeCandidateKind.base,
+        filters: {},
+        labelKey: 'wallpaperGroupSectionNone',
+        placeholder: true,
+      )
+    else
+      ...conditions,
   ];
 }

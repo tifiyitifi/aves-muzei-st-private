@@ -140,6 +140,24 @@ void main() {
     expect(candidates.where((candidate) => candidate.placeholder), isEmpty);
   });
 
+  test('a surface summary can lead with the result preview', () {
+    final range = VisibleRange(
+      id: 'wallpaper.group.dcim.range',
+      scope: VisibleRangeScope.wallpaper,
+      ownerId: 'wallpaper.group.dcim',
+      baseName: 'DCIM',
+      baseFilters: {PathFilter('/dcim')},
+      rules: [rule('r1', VisibleRangeRuleKind.restriction)],
+    );
+    final candidates = buildWallpaperGroupSurfaceCandidates(range: range, includeResult: true);
+    // The lamped surface reads like the gallery page's current-range section:
+    // the result first, then the conditions that produce it.
+    expect(candidates.map((candidate) => candidate.id), [VisibleRangeCandidate.galleryId, VisibleRangeCandidate.customBaseId, 'r1']);
+    expect(candidates.first.isGallery, isTrue);
+    // The preview is not a condition: it cannot be selected or applied.
+    expect(candidates.first.isApplicable, isFalse);
+  });
+
   test('an empty surface summary keeps one None slot', () {
     const range = VisibleRange(
       id: 'wallpaper.group.dcim.lock.range',
@@ -149,5 +167,10 @@ void main() {
     final candidates = buildWallpaperGroupSurfaceCandidates(range: range);
     expect(candidates, hasLength(1));
     expect(candidates.single.placeholder, isTrue);
+
+    // The result preview does not replace the None slot: an empty surface still
+    // says it applies nothing, even when it is the lamped one.
+    final withResult = buildWallpaperGroupSurfaceCandidates(range: range, includeResult: true);
+    expect(withResult.map((candidate) => candidate.id), [VisibleRangeCandidate.galleryId, '${wallpaperGroupSectionNoneIdPrefix}surface']);
   });
 }

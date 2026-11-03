@@ -36,10 +36,12 @@ void main() {
 
   testWidgets('rule headers show active over total', (tester) async {
     expect((await keyFor(tester, VisibleRangeCandidateKind.restriction, countText: '2/12')).title, 'additional restrictions 2/12');
-    expect((await keyFor(tester, VisibleRangeCandidateKind.supplement, countText: '0/12')).title, 'supplements outside the base 0/12');
+    // Supplements are the "extra display" section in either evaluation order:
+    // the title stays short instead of spelling the order out.
+    expect((await keyFor(tester, VisibleRangeCandidateKind.supplement, countText: '0/12')).title, 'extra display 0/12');
     expect(
       (await keyFor(tester, VisibleRangeCandidateKind.supplement, countText: '1/12', supplementsOutside: false)).title,
-      'supplements inside the restrictions 1/12',
+      'extra display 1/12',
     );
   });
 

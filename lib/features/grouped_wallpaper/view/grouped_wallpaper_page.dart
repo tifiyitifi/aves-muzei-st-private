@@ -742,7 +742,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
                     // states: a range must not cross from one into the other.
                     sameSelectionScope: _sameSelectionScope,
                     tileBuilder: _buildTile,
-                    footerBuilder: _controller.activeStyle == VisibleRangeActiveStyle.section ? null : _buildFooter,
+                    // A split group repeats each surface as its own section, so
+                    // the footer would be a third copy of the same conditions.
+                    footerBuilder: _controller.separateLockRange || _controller.activeStyle == VisibleRangeActiveStyle.section ? null : _buildFooter,
                   ),
                 );
               },
@@ -1050,21 +1052,23 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     }
     if (_controller.separateLockRange) {
       // The two surfaces end the page: the lamp says which one the sections above
-      // are editing, and each one lists what it actually applies.
+      // are editing, and each one lists what it actually applies. The lamped
+      // surface also previews its result, so the page needs no third "current
+      // range" section repeating the same conditions.
       for (final entry in [
         (surface: WallpaperSurface.home, range: _controller.homeRange, active: !surface.isLock),
         (surface: WallpaperSurface.lock, range: _controller.lockRange, active: surface.isLock),
       ]) {
         final range = entry.range;
         if (range == null) continue;
-        final candidates = buildWallpaperGroupSurfaceCandidates(range: range);
-        final countText = '${candidates.where((candidate) => !candidate.placeholder).length}';
+        final candidates = buildWallpaperGroupSurfaceCandidates(range: range, includeResult: entry.active);
+        final countText = '${candidates.where((candidate) => !candidate.placeholder && !candidate.isGallery).length}';
         result[WallpaperGroupSurfaceSectionKey(context, surface: entry.surface, active: entry.active, countText: countText)] = [
           for (final candidate in candidates) FilterGridItem<CollectionFilter>(VisibleRangeCandidateFilter(candidate.copyWithReadOnly(true), summary: true, surface: entry.surface), null),
         ];
       }
     } else if (_controller.activeStyle == VisibleRangeActiveStyle.section) {
-      final active = buildWallpaperGroupSurfaceCandidates(range: activeRange);
+      final active = buildWallpaperGroupSurfaceCandidates(range: activeRange, includeResult: true);
       result[VisibleRangeActiveSectionKey(context, restricted: activeRange.isRestricted)] = [
         for (final candidate in active) FilterGridItem<CollectionFilter>(VisibleRangeCandidateFilter(candidate, summary: true), null),
       ];
@@ -1684,7 +1688,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           group.separateLockRange ? AIcons.checked : AIcons.unselected,
           l10n.wallpaperGroupSeparateLockRange,
           enabled: !_groupLocked,
-          subtitle: _groupLocked ? l10n.wallpaperGroupLockedSubtitle : l10n.wallpaperGroupSeparateLockRangeSubtitle,
+          subtitle: _groupLocked ? l10n.wallpaperGroupLockedSubtitle : null,
         ),
         if (group.separateLockRange)
           _menuItem(

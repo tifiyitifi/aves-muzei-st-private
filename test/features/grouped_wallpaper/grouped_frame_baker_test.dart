@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:aves/features/grouped_wallpaper/engine/grouped_frame_baker.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_baker.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_bridge.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_frame_geometry.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
@@ -233,6 +234,7 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   Future<GroupedFrameWriteResult?> writeFrame({
     required AvesEntry entry,
     required Size targetSize,
+    required GroupedFrameGeometry geometry,
     required String photoPath,
     required int quality,
   }) async =>

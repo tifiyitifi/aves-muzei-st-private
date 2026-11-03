@@ -35,6 +35,94 @@ object FrameDecodeSize {
         if (rotationDegrees % 180 == 0) targetWidth to targetHeight else targetHeight to targetWidth
 }
 
+/** How a photo is mapped onto a surface whose aspect ratio it does not match. */
+internal enum class FrameFitMode {
+    FILL,
+    FIT,
+    STRETCH;
+
+    companion object {
+        /** Parses the name Dart sends, with FILL as the historical default. */
+        fun parse(raw: String?): FrameFitMode = when (raw) {
+            "fit" -> FIT
+            "stretch" -> STRETCH
+            else -> FILL
+        }
+    }
+}
+
+/** Scale and translation of one photo inside a target frame. */
+internal data class FitTransform(
+    val scaleX: Float,
+    val scaleY: Float,
+    val translateX: Float,
+    val translateY: Float,
+)
+
+/**
+ * The fit half of the frame geometry, mirroring Flutter's `BoxFit`:
+ *
+ * - [FrameFitMode.FILL] covers the target and crops the overflow (centered);
+ * - [FrameFitMode.FIT] shows the whole photo and letterboxes it (centered);
+ * - [FrameFitMode.STRETCH] scales each axis independently.
+ *
+ * The quarter turn is applied by the writer's canvas, so this object only sees
+ * the target box in the rotated coordinate space. Pure so the host tests can
+ * assert the numbers the reference implementation (`ImageFitPolicy`) documents.
+ */
+internal object FrameFit {
+    fun transform(
+        sourceWidth: Int,
+        sourceHeight: Int,
+        targetWidth: Int,
+        targetHeight: Int,
+        mode: FrameFitMode,
+    ): FitTransform {
+        require(sourceWidth > 0 && sourceHeight > 0) { "Source dimensions must be positive" }
+        require(targetWidth > 0 && targetHeight > 0) { "Target dimensions must be positive" }
+
+        val widthScale = targetWidth.toFloat() / sourceWidth
+        val heightScale = targetHeight.toFloat() / sourceHeight
+        return when (mode) {
+            FrameFitMode.STRETCH -> FitTransform(
+                scaleX = widthScale,
+                scaleY = heightScale,
+                translateX = 0f,
+                translateY = 0f,
+            )
+
+            FrameFitMode.FILL -> centered(
+                sourceWidth = sourceWidth,
+                sourceHeight = sourceHeight,
+                targetWidth = targetWidth,
+                targetHeight = targetHeight,
+                scale = maxOf(widthScale, heightScale),
+            )
+
+            FrameFitMode.FIT -> centered(
+                sourceWidth = sourceWidth,
+                sourceHeight = sourceHeight,
+                targetWidth = targetWidth,
+                targetHeight = targetHeight,
+                scale = minOf(widthScale, heightScale),
+            )
+        }
+    }
+
+    private fun centered(
+        sourceWidth: Int,
+        sourceHeight: Int,
+        targetWidth: Int,
+        targetHeight: Int,
+        scale: Float,
+    ) = FitTransform(
+        scaleX = scale,
+        scaleY = scale,
+        translateX = (targetWidth - sourceWidth * scale) / 2f,
+        translateY = (targetHeight - sourceHeight * scale) / 2f,
+    )
+}
+
 /**
  * Keeps the frame writer inside the wallpaper's own directory.
  *

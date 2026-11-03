@@ -334,6 +334,8 @@ class GroupedWallpaperHandler(
                 targetHeight = targetHeight,
                 outputPath = outputPath,
                 quality = call.argument<Int>("quality") ?: GroupedFrameWriter.DEFAULT_QUALITY,
+                extraRotationDegrees = call.argument<Int>("extraRotationDegrees") ?: 0,
+                fit = call.argument<String>("fit") ?: "fill",
             ),
         )
         result.success(

@@ -5,7 +5,9 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_frame_geometry.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_framing.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/images.dart';
 import 'package:aves/model/entry/extensions/props.dart';
@@ -92,38 +94,54 @@ class GroupedWallpaperBaker {
     );
   }
 
-  /// Bakes the sharp crop and both effect images from [entry].
+  /// Bakes the sharp home frame, the optional lock base, and both effect images.
   ///
   /// [lock] must already be the effective lock effects: when the user links the
   /// surfaces, the caller passes the home values for both, exactly as Muzei
   /// shares one blurred layer.
+  ///
+  /// [homeGeometry] and [lockGeometry] are the *resolved* rotation and fit of
+  /// each surface, applied before the effects. When [lockSharesHomeBase] is true
+  /// the lock surface reuses the home frame, so a device with one surface
+  /// configuration pays for one decode and one extra encode at most.
   Future<GroupedWallpaperBake> bake({
     required AvesEntry entry,
     required Size targetSize,
     required WallpaperEffects home,
     required WallpaperEffects lock,
+    GroupedFrameGeometry homeGeometry = const GroupedFrameGeometry(),
+    GroupedFrameGeometry lockGeometry = const GroupedFrameGeometry(),
+    Size? lockTargetSize,
+    bool lockSharesHomeBase = true,
   }) async {
     final target = clampTargetSize(targetSize);
+    final lockTarget = lockSharesHomeBase ? target : clampTargetSize(lockTargetSize ?? targetSize);
     final watch = Stopwatch()..start();
     final timings = <String, int>{};
-    ui.Image? decoded, sharp;
+    ui.Image? decoded, sharp, lockSharp;
     try {
-      final source = await _timed(timings, 'decode', () => _decode(entry, target));
+      // One decode for both surfaces: the required resolution is the larger of
+      // the two, after undoing the quarter turn that will be applied later.
+      final source = await _timed(timings, 'decode', () => _decode(entry, _decodeTarget(target, homeGeometry, lockTarget, lockGeometry)));
       decoded = source;
-      final cropped = await _timed(timings, 'crop', () => _coverCrop(source, target));
+      final cropped = await _timed(timings, 'crop', () => _renderFrame(source, target, homeGeometry));
       sharp = cropped;
       final sharpPng = await _timed(timings, 'encode', () => _encodePng(cropped));
       final darkness = await _timed(timings, 'darkness', () => _measureDarkness(cropped));
+      final bool lockUsesOwnBase = !lockSharesHomeBase;
+      final lockBase = lockUsesOwnBase ? await _timed(timings, 'crop', () => _renderFrame(source, lockTarget, lockGeometry)) : cropped;
+      if (lockBase != cropped) lockSharp = lockBase;
+      final lockBasePng = lockUsesOwnBase ? await _timed(timings, 'encode', () => _encodePng(lockBase)) : sharpPng;
       final homePng = home.isIdentity ? sharpPng : await _timed(timings, 'effects', () => _renderEffects(sharp: cropped, effects: home, darkness: darkness));
-      final lockPng = lock == home
+      final lockPng = lock.isIdentity
+          ? lockBasePng
+          : lock == home && !lockUsesOwnBase
           ? homePng
-          : lock.isIdentity
-              ? sharpPng
-              : await _timed(timings, 'effects', () => _renderEffects(sharp: cropped, effects: lock, darkness: darkness));
+          : await _timed(timings, 'effects', () => _renderEffects(sharp: lockBase, effects: lock, darkness: darkness));
       groupedWallpaperLog.d(
         'bake.done entry=${entry.id} target=${target.width.round()}x${target.height.round()} ms=${watch.elapsedMilliseconds}'
         ' decode=${timings['decode']} crop=${timings['crop']} darkness=${timings['darkness']}'
-        ' effects=${timings['effects'] ?? 0} encode=${timings['encode']}',
+        ' effects=${timings['effects'] ?? 0} encode=${timings['encode'] ?? 0}',
       );
       return GroupedWallpaperBake(
         sharpPng: sharpPng,
@@ -138,6 +156,7 @@ class GroupedWallpaperBaker {
       groupedWallpaperLog.e('bake failed entry=${entry.id} target=$target', error, stack);
       throw GroupedWallpaperBakeException('failed to bake entry ${entry.id}', cause: error);
     } finally {
+      lockSharp?.dispose();
       sharp?.dispose();
       decoded?.dispose();
     }
@@ -165,7 +184,7 @@ class GroupedWallpaperBaker {
   /// Decodes the artwork at cover resolution.
   ///
   /// `getFullImage` already applies EXIF orientation (and user rotation), so the
-  /// decoded bitmap is in display orientation and only needs a cover crop.
+  /// decoded bitmap is in display orientation and only needs the frame geometry.
   Future<ui.Image> _decode(AvesEntry entry, Size target) async {
     final provider = _resizeForCover(_imageProvider(entry), entry, target);
     final completer = Completer<ui.Image>();
@@ -196,6 +215,20 @@ class GroupedWallpaperBaker {
     }
   }
 
+  /// The decode bounds one surface needs, before the quarter turn is applied.
+  ///
+  /// Glide/the decoder crops in the stored orientation, so a quarter turn has to
+  /// swap the requested sides: decoding to the display size first and rotating
+  /// afterwards would cut the wrong part of the photo and lose resolution.
+  static Size _decodeTargetFor(Size target, GroupedFrameGeometry geometry) => geometry.quarterTurns.isOdd ? Size(target.height, target.width) : target;
+
+  /// The decode bounds both surfaces need, as one box.
+  static Size _decodeTarget(Size homeTarget, GroupedFrameGeometry home, Size lockTarget, GroupedFrameGeometry lock) {
+    final a = _decodeTargetFor(homeTarget, home);
+    final b = _decodeTargetFor(lockTarget, lock);
+    return Size(math.max(a.width, b.width), math.max(a.height, b.height));
+  }
+
   ImageProvider _resizeForCover(ImageProvider provider, AvesEntry entry, Size target) {
     if (entry.isSvg) return provider;
     final (width, height) = _decodeSize(entry.displaySize, target);
@@ -223,38 +256,59 @@ class GroupedWallpaperBaker {
     );
   }
 
-  /// Center-crops [image] to [target] using a cover fit.
-  Future<ui.Image> _coverCrop(ui.Image image, Size target) async {
+  /// Renders [image] into a [target]-sized frame with [geometry].
+  ///
+  /// The quarter turn is applied by rotating the canvas about the frame centre,
+  /// then the photo is fitted into the target box that is swapped for an odd
+  /// turn. That keeps the operation order explicit — orient the photo first,
+  /// then fit it — and needs no intermediate rotated bitmap.
+  Future<ui.Image> _renderFrame(ui.Image image, Size target, GroupedFrameGeometry geometry) async {
+    final turns = geometry.quarterTurns % 4;
     final sourceWidth = image.width.toDouble();
     final sourceHeight = image.height.toDouble();
-    final targetAspect = target.width / target.height;
-    final sourceAspect = sourceWidth / sourceHeight;
-    final ui.Rect source;
-    if (sourceAspect > targetAspect) {
-      final width = sourceHeight * targetAspect;
-      source = ui.Rect.fromLTWH((sourceWidth - width) / 2, 0, width, sourceHeight);
-    } else {
-      final height = sourceWidth / targetAspect;
-      source = ui.Rect.fromLTWH(0, (sourceHeight - height) / 2, sourceWidth, height);
-    }
-    final destination = ui.Rect.fromLTWH(0, 0, target.width, target.height);
+    final rotatedFrame = turns.isOdd ? Size(target.height, target.width) : target;
+    final (scaleX, scaleY) = switch (geometry.fit) {
+      WallpaperImageFit.fill => _uniformScale(sourceWidth, sourceHeight, rotatedFrame, cover: true),
+      WallpaperImageFit.fit => _uniformScale(sourceWidth, sourceHeight, rotatedFrame, cover: false),
+      // Stretch scales each axis independently, so the whole photo covers the
+      // frame with a distortion instead of bars or a crop.
+      WallpaperImageFit.stretch => (rotatedFrame.width / sourceWidth, rotatedFrame.height / sourceHeight),
+    };
+    final destination = ui.Rect.fromCenter(
+      center: Offset.zero,
+      width: sourceWidth * scaleX,
+      height: sourceHeight * scaleY,
+    );
+    final source = ui.Rect.fromLTWH(0, 0, sourceWidth, sourceHeight);
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     // Wallpapers are opaque; an image with alpha must not show the previous
     // wallpaper or undefined GL memory through it.
-    canvas.drawRect(destination, ui.Paint()..color = const ui.Color(0xFF000000));
+    canvas.drawRect(ui.Rect.fromLTWH(0, 0, target.width, target.height), ui.Paint()..color = const ui.Color(0xFF000000));
+    canvas.save();
+    canvas.translate(target.width / 2, target.height / 2);
+    if (turns != 0) canvas.rotate(math.pi / 2 * turns);
     canvas.drawImageRect(
       image,
       source,
       destination,
       ui.Paint()..filterQuality = ui.FilterQuality.high,
     );
+    canvas.restore();
     final picture = recorder.endRecording();
     try {
       return await picture.toImage(target.width.round(), target.height.round());
     } finally {
       picture.dispose();
     }
+  }
+
+  /// A centered, uniform scale that either covers or fits [frame].
+  static (double, double) _uniformScale(double sourceWidth, double sourceHeight, Size frame, {required bool cover}) {
+    final widthScale = frame.width / sourceWidth;
+    final heightScale = frame.height / sourceHeight;
+    final scale = cover ? math.max(widthScale, heightScale) : math.min(widthScale, heightScale);
+    return (scale, scale);
   }
 
   /// Renders the effect image of a frame that was already baked to [photo].

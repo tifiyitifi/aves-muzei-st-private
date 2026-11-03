@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_baker.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_bridge.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_frame_geometry.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/props.dart';
@@ -51,6 +52,10 @@ abstract interface class GroupedFrameBaker {
     required String photoPath,
     required String effectHomePath,
     required String effectLockPath,
+    GroupedFrameGeometry homeGeometry = const GroupedFrameGeometry(),
+    GroupedFrameGeometry lockGeometry = const GroupedFrameGeometry(),
+    Size? lockTargetSize,
+    bool lockSharesHomeBase = true,
   });
 
   /// Bakes the lock surface's one frame into [photoPath].
@@ -62,6 +67,7 @@ abstract interface class GroupedFrameBaker {
     required Size targetSize,
     required WallpaperEffects effects,
     required String photoPath,
+    GroupedFrameGeometry geometry = const GroupedFrameGeometry(),
   });
 }
 
@@ -78,14 +84,20 @@ class GroupedLockFrameBake {
 /// The effect image of each surface.
 ///
 /// An identity effect draws the sharp frame, so it writes nothing. Linked
-/// surfaces share the home image instead of storing the same bytes twice.
-({GroupedFrameEffect home, GroupedFrameEffect lock}) groupedFrameEffects(WallpaperEffects home, WallpaperEffects lock) {
+/// surfaces share the home image instead of storing the same bytes twice — but
+/// only when the lock surface really draws the home base: with its own framing
+/// it needs its own file, even for the identity, because that file is the
+/// geometry rendering.
+({GroupedFrameEffect home, GroupedFrameEffect lock}) groupedFrameEffects(WallpaperEffects home, WallpaperEffects lock, {bool lockSharesHomeBase = true}) {
   final homeEffect = home.isIdentity ? GroupedFrameEffect.none : GroupedFrameEffect.home;
-  final lockEffect = lock.isIdentity
-      ? GroupedFrameEffect.none
-      : lock == home
-          ? GroupedFrameEffect.home
-          : GroupedFrameEffect.lock;
+  final GroupedFrameEffect lockEffect;
+  if (!lockSharesHomeBase) {
+    lockEffect = GroupedFrameEffect.lock;
+  } else if (lock.isIdentity) {
+    lockEffect = GroupedFrameEffect.none;
+  } else {
+    lockEffect = lock == home ? GroupedFrameEffect.home : GroupedFrameEffect.lock;
+  }
   return (home: homeEffect, lock: lockEffect);
 }
 
@@ -108,9 +120,22 @@ class SkiaFrameBaker implements GroupedFrameBaker {
     required String photoPath,
     required String effectHomePath,
     required String effectLockPath,
+    GroupedFrameGeometry homeGeometry = const GroupedFrameGeometry(),
+    GroupedFrameGeometry lockGeometry = const GroupedFrameGeometry(),
+    Size? lockTargetSize,
+    bool lockSharesHomeBase = true,
   }) async {
-    final bake = await baker.bake(entry: entry, targetSize: targetSize, home: home, lock: lock);
-    final effects = groupedFrameEffects(home, lock);
+    final bake = await baker.bake(
+      entry: entry,
+      targetSize: targetSize,
+      home: home,
+      lock: lock,
+      homeGeometry: homeGeometry,
+      lockGeometry: lockGeometry,
+      lockTargetSize: lockTargetSize,
+      lockSharesHomeBase: lockSharesHomeBase,
+    );
+    final effects = groupedFrameEffects(home, lock, lockSharesHomeBase: lockSharesHomeBase);
     await _writeAtomically(File(photoPath), bake.sharpPng);
     if (effects.home == GroupedFrameEffect.home) {
       await _writeAtomically(File(effectHomePath), bake.effectsHomePng);
@@ -133,10 +158,18 @@ class SkiaFrameBaker implements GroupedFrameBaker {
     required Size targetSize,
     required WallpaperEffects effects,
     required String photoPath,
+    GroupedFrameGeometry geometry = const GroupedFrameGeometry(),
   }) async {
     // `home == lock` makes the baker render one effect pass and hand it back as
     // the home image; the lock file is that image, not a second copy.
-    final bake = await baker.bake(entry: entry, targetSize: targetSize, home: effects, lock: effects);
+    final bake = await baker.bake(
+      entry: entry,
+      targetSize: targetSize,
+      home: effects,
+      lock: effects,
+      homeGeometry: geometry,
+      lockGeometry: geometry,
+    );
     await _writeAtomically(File(photoPath), bake.effectsHomePng);
     return GroupedLockFrameBake(
       width: bake.size.width.round(),
@@ -173,6 +206,10 @@ class NativeFrameBaker implements GroupedFrameBaker {
     required String photoPath,
     required String effectHomePath,
     required String effectLockPath,
+    GroupedFrameGeometry homeGeometry = const GroupedFrameGeometry(),
+    GroupedFrameGeometry lockGeometry = const GroupedFrameGeometry(),
+    Size? lockTargetSize,
+    bool lockSharesHomeBase = true,
   }) async {
     // The platform's image pipeline has no video thumbnail settings, and SVG is
     // rasterized by the Dart region provider, so both keep the Dart path.
@@ -185,9 +222,19 @@ class NativeFrameBaker implements GroupedFrameBaker {
         photoPath: photoPath,
         effectHomePath: effectHomePath,
         effectLockPath: effectLockPath,
+        homeGeometry: homeGeometry,
+        lockGeometry: lockGeometry,
+        lockTargetSize: lockTargetSize,
+        lockSharesHomeBase: lockSharesHomeBase,
       );
     }
-    final written = await platform.writeFrame(entry: entry, targetSize: targetSize, photoPath: photoPath, quality: quality);
+    final written = await platform.writeFrame(
+      entry: entry,
+      targetSize: targetSize,
+      geometry: homeGeometry,
+      photoPath: photoPath,
+      quality: quality,
+    );
     if (written == null) {
       // No service, an undecodable format or a failing channel: the fallback is
       // the contract, not a degraded mode.
@@ -200,22 +247,73 @@ class NativeFrameBaker implements GroupedFrameBaker {
         photoPath: photoPath,
         effectHomePath: effectHomePath,
         effectLockPath: effectLockPath,
+        homeGeometry: homeGeometry,
+        lockGeometry: lockGeometry,
+        lockTargetSize: lockTargetSize,
+        lockSharesHomeBase: lockSharesHomeBase,
       );
     }
-    final darkness = GroupedWallpaperBaker.darknessOf(written.thumbnail);
-    final effects = groupedFrameEffects(home, lock);
-    final size = Size(written.width.toDouble(), written.height.toDouble());
-    if (effects.home == GroupedFrameEffect.home) {
-      await _writeAtomically(File(effectHomePath), await fallback.baker.renderEffectsFromFile(File(photoPath), size, home, darkness));
+    final effects = groupedFrameEffects(home, lock, lockSharesHomeBase: lockSharesHomeBase);
+    final homeSize = Size(written.width.toDouble(), written.height.toDouble());
+    final homeDarkness = GroupedWallpaperBaker.darknessOf(written.thumbnail);
+    // The lock base is a second native write only when it cannot reuse the home
+    // frame; its scratch file is removed once the surface file is published.
+    var lockBase = File(photoPath);
+    var lockSize = homeSize;
+    var lockDarkness = homeDarkness;
+    try {
+      if (!lockSharesHomeBase) {
+        // A `.tmp` name lets the state store's sweep collect the scratch if the
+        // process dies between the two writes.
+        lockBase = File('$photoPath.lock.tmp');
+        final lockWritten = await platform.writeFrame(
+          entry: entry,
+          targetSize: lockTargetSize ?? targetSize,
+          geometry: lockGeometry,
+          photoPath: lockBase.path,
+          quality: quality,
+        );
+        if (lockWritten == null) {
+          groupedWallpaperLog.d('frame.native lock fallback entry=${entry.id}');
+          return await fallback.bakeTo(
+            entry: entry,
+            targetSize: targetSize,
+            home: home,
+            lock: lock,
+            photoPath: photoPath,
+            effectHomePath: effectHomePath,
+            effectLockPath: effectLockPath,
+            homeGeometry: homeGeometry,
+            lockGeometry: lockGeometry,
+            lockTargetSize: lockTargetSize,
+            lockSharesHomeBase: lockSharesHomeBase,
+          );
+        }
+        lockSize = Size(lockWritten.width.toDouble(), lockWritten.height.toDouble());
+        lockDarkness = GroupedWallpaperBaker.darknessOf(lockWritten.thumbnail);
+      }
+      if (effects.home == GroupedFrameEffect.home) {
+        await _writeAtomically(File(effectHomePath), await fallback.baker.renderEffectsFromFile(File(photoPath), homeSize, home, homeDarkness));
+      }
+      if (effects.lock == GroupedFrameEffect.lock) {
+        if (lock.isIdentity) {
+          // Identity effects still need the file when the lock has its own
+          // geometry: it is that rendering, not an effect pass.
+          await _moveAtomically(lockBase, File(effectLockPath));
+        } else {
+          await _writeAtomically(File(effectLockPath), await fallback.baker.renderEffectsFromFile(lockBase, lockSize, lock, lockDarkness));
+        }
+      }
+    } finally {
+      // The scratch is only an intermediate; a failed write must not leave it
+      // behind for the frame cache to sweep much later.
+      if (!lockSharesHomeBase && await lockBase.exists()) await lockBase.delete();
     }
-    if (effects.lock == GroupedFrameEffect.lock) {
-      await _writeAtomically(File(effectLockPath), await fallback.baker.renderEffectsFromFile(File(photoPath), size, lock, darkness));
-    }
-    groupedWallpaperLog.d('frame.native entry=${entry.id} size=${written.width}x${written.height} darkness=${darkness.toStringAsFixed(3)}');
+    groupedWallpaperLog.d('frame.native entry=${entry.id} size=${written.width}x${written.height} darkness=${homeDarkness.toStringAsFixed(3)}');
     return GroupedFrameBake(
       width: written.width,
       height: written.height,
-      darkness: darkness,
+      darkness: homeDarkness,
       homeEffect: effects.home,
       lockEffect: effects.lock,
     );
@@ -227,24 +325,25 @@ class NativeFrameBaker implements GroupedFrameBaker {
     required Size targetSize,
     required WallpaperEffects effects,
     required String photoPath,
+    GroupedFrameGeometry geometry = const GroupedFrameGeometry(),
   }) async {
     if (entry.isVideo || entry.isSvg) {
-      return fallback.bakeLockTo(entry: entry, targetSize: targetSize, effects: effects, photoPath: photoPath);
+      return fallback.bakeLockTo(entry: entry, targetSize: targetSize, effects: effects, photoPath: photoPath, geometry: geometry);
     }
     // The platform writes the sharp crop to a sibling scratch file; the effect
     // pass then overwrites the destination, so the stored frame is exactly what
     // the lock screen draws.
     final scratch = '$photoPath.sharp';
-    final written = await platform.writeFrame(entry: entry, targetSize: targetSize, photoPath: scratch, quality: quality);
+    final written = await platform.writeFrame(entry: entry, targetSize: targetSize, geometry: geometry, photoPath: scratch, quality: quality);
     if (written == null) {
-      return fallback.bakeLockTo(entry: entry, targetSize: targetSize, effects: effects, photoPath: photoPath);
+      return fallback.bakeLockTo(entry: entry, targetSize: targetSize, effects: effects, photoPath: photoPath, geometry: geometry);
     }
     final darkness = GroupedWallpaperBaker.darknessOf(written.thumbnail);
     final size = Size(written.width.toDouble(), written.height.toDouble());
     final sharp = File(scratch);
     try {
       if (effects.isIdentity) {
-        await sharp.rename(photoPath);
+        await _moveAtomically(sharp, File(photoPath));
       } else {
         final bytes = await fallback.baker.renderEffectsFromFile(sharp, size, effects, darkness);
         await _writeAtomically(File(photoPath), bytes);
@@ -275,4 +374,12 @@ Future<void> _writeAtomically(File file, Uint8List bytes) async {
     groupedWallpaperLog.e('failed to write the wallpaper frame ${file.path}', error, stack);
     rethrow;
   }
+}
+
+/// Publishes [source] at [destination], replacing it atomically on Android.
+Future<void> _moveAtomically(File source, File destination) async {
+  if (source.path == destination.path) return;
+  await destination.parent.create(recursive: true);
+  if (await destination.exists()) await destination.delete();
+  await source.rename(destination.path);
 }

@@ -22,12 +22,14 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notifica
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_frame_geometry.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_empty_notice.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_framing.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/props.dart';
@@ -629,6 +631,106 @@ void main() {
 
       expect(await engine.prepare(), GroupedWallpaperSyncResult.unchanged);
       expect(baker.bakeCount, 4);
+    });
+
+    test('a framing change re-bakes the photo on screen instead of picking another', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final first = (await store.readState())!;
+      final firstEntry = first.currentSlot?.entryId;
+
+      // The effects page writes the group config and bumps `updatedAt` past the
+      // last bake; that is a display-only edit, so the walk must not restart.
+      planStore.plan = GroupedWallpaperPlan(
+        group: noScrollGroup.copyWith(
+          updatedAt: 2000,
+          effects: const WallpaperEffectsConfig(
+            homeScrollEffect: false,
+            framingHome: WallpaperFraming(fit: WallpaperImageFit.fit),
+          ),
+        ),
+      );
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      final rebound = (await store.readState())!;
+      expect(rebound.currentSlot?.entryId, firstEntry, reason: 'the photo stays, only its pixels change');
+      expect(rebound.currentSlot?.photo, isNot(first.currentSlot?.photo), reason: 'the cache key includes the framing');
+    });
+
+    test('a landscape photo is turned on a portrait surface when the framing asks for it', () async {
+      planStore.plan = GroupedWallpaperPlan(
+        group: noScrollGroup.copyWith(
+          effects: const WallpaperEffectsConfig(
+            homeScrollEffect: false,
+            framingHome: WallpaperFraming(rotation: WallpaperRotation.clockwise),
+          ),
+        ),
+      );
+      serve(entries(12));
+
+      await engine.prepare();
+
+      // The fake entries are 300x100 and the surface is 100x300.
+      expect(baker.lastHomeGeometry.quarterTurns, 1);
+      expect(baker.lastHomeGeometry.fit, WallpaperImageFit.fill);
+      expect(baker.lastLockGeometry.quarterTurns, 0, reason: 'the lock framing is still off');
+      expect(baker.lastLockSharesHomeBase, isFalse, reason: 'the lock needs an upright base');
+    });
+
+    test('the wide home frame ignores framing while the lock keeps its own', () async {
+      const framing = WallpaperFraming(rotation: WallpaperRotation.clockwise);
+      planStore.plan = GroupedWallpaperPlan(
+        group: dcimGroup.copyWith(
+          effects: const WallpaperEffectsConfig(framingHome: framing, framingLock: framing),
+        ),
+      );
+      platform.host = WallpaperHost.home;
+      platform.scrollStepValue = 0.25;
+      serve(entries(12));
+
+      await engine.prepare();
+
+      final state = (await store.readState())!;
+      expect(state.scrollEffect, isTrue);
+      // A wide frame already has the photo's own aspect: rotating or letterboxing
+      // it would only fight the launcher's pan.
+      expect(baker.lastHomeGeometry, const GroupedFrameGeometry());
+      // The lock never pans, so its framing applies and it needs its own base.
+      expect(baker.lastLockGeometry.quarterTurns, 1);
+      expect(baker.lastLockSharesHomeBase, isFalse);
+    });
+
+    test('a random rotation keeps its seed across a re-bake', () async {
+      const effects = WallpaperEffectsConfig(
+        homeScrollEffect: false,
+        framingHome: WallpaperFraming(rotation: WallpaperRotation.random),
+      );
+      planStore.plan = GroupedWallpaperPlan(group: noScrollGroup.copyWith(effects: effects));
+      serve(entries(12));
+
+      await engine.prepare();
+      final first = (await store.readState())!;
+      final seed = first.currentSlot?.rotationSeed;
+      expect(seed, isNotNull);
+
+      // A display-only edit re-bakes the same slot; the drawn direction must not
+      // flip while the photo is on screen.
+      planStore.plan = GroupedWallpaperPlan(
+        group: noScrollGroup.copyWith(
+          updatedAt: 2000,
+          effects: const WallpaperEffectsConfig(
+            homeScrollEffect: false,
+            framingHome: WallpaperFraming(rotation: WallpaperRotation.random, fit: WallpaperImageFit.stretch),
+          ),
+        ),
+      );
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+
+      final rebound = (await store.readState())!;
+      expect(rebound.currentSlot?.entryId, first.currentSlot?.entryId);
+      expect(rebound.currentSlot?.rotationSeed, seed);
     });
 
     test('a surface change re-bakes once', () async {
@@ -1897,6 +1999,7 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   Future<GroupedFrameWriteResult?> writeFrame({
     required AvesEntry entry,
     required Size targetSize,
+    required GroupedFrameGeometry geometry,
     required String photoPath,
     required int quality,
   }) async => null;
@@ -1923,12 +2026,19 @@ class _FakeBaker extends GroupedWallpaperBaker {
     required Size targetSize,
     required WallpaperEffects home,
     required WallpaperEffects lock,
+    GroupedFrameGeometry homeGeometry = const GroupedFrameGeometry(),
+    GroupedFrameGeometry lockGeometry = const GroupedFrameGeometry(),
+    Size? lockTargetSize,
+    bool lockSharesHomeBase = true,
   }) async {
     bakeCount++;
     lastEntry = entry;
     lastTarget = targetSize;
     lastHome = home;
     lastLock = lock;
+    lastHomeGeometry = homeGeometry;
+    lastLockGeometry = lockGeometry;
+    lastLockSharesHomeBase = lockSharesHomeBase;
     await onBake?.call();
     final failure = error;
     if (failure != null) throw failure;
@@ -1941,6 +2051,10 @@ class _FakeBaker extends GroupedWallpaperBaker {
       darkness: .5,
     );
   }
+
+  GroupedFrameGeometry lastHomeGeometry = const GroupedFrameGeometry();
+  GroupedFrameGeometry lastLockGeometry = const GroupedFrameGeometry();
+  bool lastLockSharesHomeBase = true;
 }
 
 class _FakePlanStore implements GroupedWallpaperPlanStore {

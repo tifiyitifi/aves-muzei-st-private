@@ -103,6 +103,13 @@ class GroupedWallpaperSlot extends Equatable {
   /// preview to reproduce the baked dim.
   final double darkness;
 
+  /// Seed of the slot's one random rotation direction.
+  ///
+  /// Drawn when the photo is selected, so a re-bake of the same slot never flips
+  /// it. Null for a state written before random rotation existed; the engine
+  /// then draws one and writes it back.
+  final int? rotationSeed;
+
   const new({
     required this.id,
     required this.entryId,
@@ -114,6 +121,7 @@ class GroupedWallpaperSlot extends Equatable {
     this.width = 0,
     this.height = 0,
     this.darkness = .5,
+    this.rotationSeed,
   });
 
   double? get aspectRatio => width > 0 && height > 0 ? width / height : null;
@@ -129,6 +137,7 @@ class GroupedWallpaperSlot extends Equatable {
         'width': width,
         'height': height,
         'darkness': darkness,
+        if (rotationSeed != null) 'rotationSeed': rotationSeed,
       };
 
   static GroupedWallpaperSlot? tryFromJsonMap(Map<String, Object?> json) {
@@ -147,6 +156,7 @@ class GroupedWallpaperSlot extends Equatable {
       width: _slotInt(json['width']) ?? 0,
       height: _slotInt(json['height']) ?? 0,
       darkness: _slotDouble(json['darkness']) ?? .5,
+      rotationSeed: _slotInt(json['rotationSeed']),
     );
   }
 
@@ -157,7 +167,7 @@ class GroupedWallpaperSlot extends Equatable {
   static String _slotString(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [id, entryId, uri, title, photo, effectHome, effectLock, width, height, darkness];
+  List<Object?> get props => [id, entryId, uri, title, photo, effectHome, effectLock, width, height, darkness, rotationSeed];
 }
 
 /// One photo the wallpaper has shown, for the "recently shown" exclusion and for
@@ -300,6 +310,11 @@ class GroupedWallpaperLockFrame extends Equatable {
   /// walks this list instead of a baked neighbour.
   final List<GroupedWallpaperRecentEntry> recent;
 
+  /// Seed of the decoy's one random rotation direction.
+  ///
+  /// Kept so re-baking the same photo for an effect change cannot flip it.
+  final int? rotationSeed;
+
   const new({
     required this.entryId,
     this.uri = '',
@@ -312,6 +327,7 @@ class GroupedWallpaperLockFrame extends Equatable {
     this.cursor = 0,
     this.newestEntryId = 0,
     this.recent = const [],
+    this.rotationSeed,
   });
 
   Map<String, Object?> toJsonMap() => {
@@ -326,6 +342,7 @@ class GroupedWallpaperLockFrame extends Equatable {
         'cursor': cursor,
         'newestEntryId': newestEntryId,
         'recent': recent.map((entry) => entry.toJsonMap()).toList(),
+        if (rotationSeed != null) 'rotationSeed': rotationSeed,
       };
 
   static GroupedWallpaperLockFrame? tryFromJsonMap(Map<String, Object?> json) {
@@ -354,6 +371,7 @@ class GroupedWallpaperLockFrame extends Equatable {
       cursor: GroupedWallpaperSlot._slotInt(json['cursor']) ?? 0,
       newestEntryId: GroupedWallpaperSlot._slotInt(json['newestEntryId']) ?? 0,
       recent: List.unmodifiable(recent),
+      rotationSeed: GroupedWallpaperSlot._slotInt(json['rotationSeed']),
     );
   }
 
@@ -373,10 +391,11 @@ class GroupedWallpaperLockFrame extends Equatable {
         cursor: cursor,
         newestEntryId: newestEntryId,
         recent: recent,
+        rotationSeed: rotationSeed,
       );
 
   @override
-  List<Object?> get props => [entryId, uri, title, photo, width, height, darkness, bakedAt, cursor, newestEntryId, recent];
+  List<Object?> get props => [entryId, uri, title, photo, width, height, darkness, bakedAt, cursor, newestEntryId, recent, rotationSeed];
 }
 
 /// Dart-owned `state.json` of the grouped wallpaper.

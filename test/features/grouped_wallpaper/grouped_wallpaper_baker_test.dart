@@ -2,7 +2,9 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_baker.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_frame_geometry.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_framing.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:flutter/painting.dart';
@@ -216,6 +218,123 @@ void main() {
       ),
       throwsA(isA<GroupedWallpaperBakeException>()),
     );
+  });
+
+  group('framing', () {
+    test('a clockwise quarter turn rotates the photo before the fit', () async {
+      // Quadrants: top-left red, top-right green, bottom-left blue, bottom-right
+      // white. A clockwise turn puts the source bottom-left at the target's
+      // top-left, and the source top-left at the target's top-right.
+      final source = await createPng(40, 20, (canvas) {
+        canvas.drawRect(const ui.Rect.fromLTWH(0, 0, 20, 10), ui.Paint()..color = const ui.Color(0xFFFF0000));
+        canvas.drawRect(const ui.Rect.fromLTWH(20, 0, 20, 10), ui.Paint()..color = const ui.Color(0xFF00FF00));
+        canvas.drawRect(const ui.Rect.fromLTWH(0, 10, 20, 10), ui.Paint()..color = const ui.Color(0xFF0000FF));
+        canvas.drawRect(const ui.Rect.fromLTWH(20, 10, 20, 10), ui.Paint()..color = const ui.Color(0xFFFFFFFF));
+      });
+      final bake = await bakerFor(source).bake(
+        entry: entry(width: 40, height: 20),
+        targetSize: const Size(20, 40),
+        home: const WallpaperEffects(),
+        lock: const WallpaperEffects(),
+        homeGeometry: const GroupedFrameGeometry(quarterTurns: 1),
+      );
+
+      final image = await decodePng(bake.sharpPng);
+      try {
+        expect(image.width, 20);
+        expect(image.height, 40);
+        final rgba = await rawRgba(image);
+        final (r0, g0, b0) = pixel(rgba, image.width, 2, 2);
+        expect(b0, greaterThan(200), reason: 'source bottom-left (blue) becomes top-left');
+        expect(r0, lessThan(60));
+        final (r1, g1, b1) = pixel(rgba, image.width, 17, 2);
+        expect(r1, greaterThan(200), reason: 'source top-left (red) becomes top-right');
+        expect(g1, lessThan(60));
+        expect(b1, lessThan(60));
+        final (r2, g2, b2) = pixel(rgba, image.width, 2, 37);
+        expect(r2, greaterThan(200), reason: 'source bottom-right (white) becomes bottom-left');
+        expect(g2, greaterThan(200));
+        expect(b2, greaterThan(200));
+        final (r3, g3, b3) = pixel(rgba, image.width, 17, 37);
+        expect(g3, greaterThan(200), reason: 'source top-right (green) becomes bottom-right');
+        expect(r3, lessThan(60));
+        expect(b3, lessThan(60));
+      } finally {
+        image.dispose();
+      }
+    });
+
+    test('fit letterboxes with opaque black bars', () async {
+      final source = await createPng(40, 20, (canvas) => canvas.drawRect(const ui.Rect.fromLTWH(0, 0, 40, 20), ui.Paint()..color = const ui.Color(0xFF3366CC)));
+      final bake = await bakerFor(source).bake(
+        entry: entry(width: 40, height: 20),
+        targetSize: const Size(20, 40),
+        home: const WallpaperEffects(),
+        lock: const WallpaperEffects(),
+        homeGeometry: const GroupedFrameGeometry(fit: WallpaperImageFit.fit),
+      );
+
+      final image = await decodePng(bake.sharpPng);
+      try {
+        final rgba = await rawRgba(image);
+        final (rBar, gBar, bBar) = pixel(rgba, image.width, 10, 1);
+        expect([rBar, gBar, bBar], everyElement(lessThan(10)), reason: 'bar must be opaque black');
+        final (r, g, b) = pixel(rgba, image.width, 10, 20);
+        expect(b, greaterThan(150), reason: 'the photo itself is centered');
+        expect(r, lessThan(90));
+      } finally {
+        image.dispose();
+      }
+    });
+
+    test('stretch fills both axes', () async {
+      final source = await createPng(40, 20, (canvas) {
+        canvas.drawRect(const ui.Rect.fromLTWH(0, 0, 20, 20), ui.Paint()..color = const ui.Color(0xFFFF0000));
+        canvas.drawRect(const ui.Rect.fromLTWH(20, 0, 20, 20), ui.Paint()..color = const ui.Color(0xFF0000FF));
+      });
+      final bake = await bakerFor(source).bake(
+        entry: entry(width: 40, height: 20),
+        targetSize: const Size(20, 40),
+        home: const WallpaperEffects(),
+        lock: const WallpaperEffects(),
+        homeGeometry: const GroupedFrameGeometry(fit: WallpaperImageFit.stretch),
+      );
+
+      final image = await decodePng(bake.sharpPng);
+      try {
+        final rgba = await rawRgba(image);
+        final (rLeft, gLeft, bLeft) = pixel(rgba, image.width, 5, 20);
+        expect(rLeft, greaterThan(200));
+        expect(bLeft, lessThan(60));
+        final (rRight, gRight, bRight) = pixel(rgba, image.width, 15, 20);
+        expect(bRight, greaterThan(200));
+        expect(rRight, lessThan(60));
+      } finally {
+        image.dispose();
+      }
+    });
+
+    test('a lock-specific geometry writes its own lock base', () async {
+      final source = await createPng(40, 20, (canvas) => canvas.drawRect(const ui.Rect.fromLTWH(0, 0, 40, 20), ui.Paint()..color = const ui.Color(0xFF3366CC)));
+      final bake = await bakerFor(source).bake(
+        entry: entry(width: 40, height: 20),
+        targetSize: const Size(20, 40),
+        home: const WallpaperEffects(),
+        lock: const WallpaperEffects(),
+        homeGeometry: const GroupedFrameGeometry(),
+        lockGeometry: const GroupedFrameGeometry(fit: WallpaperImageFit.fit),
+        lockSharesHomeBase: false,
+      );
+
+      expect(bake.effectsLockPng, isNot(equals(bake.sharpPng)));
+      final lock = await decodePng(bake.effectsLockPng);
+      try {
+        expect(lock.width, 20);
+        expect(lock.height, 40);
+      } finally {
+        lock.dispose();
+      }
+    });
   });
 }
 

@@ -40,7 +40,10 @@ abstract interface class WallpaperEngineConnection {
   /// describe the same frame, with the home or lock effect the renderer applied.
   Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame({WallpaperSurface surface});
 
-  /// Absolute path of the sharp photo on screen, or null when there is none.
+  /// Absolute path of the image one surface draws, or null when there is none.
+  ///
+  /// The home surface returns the sharp base; the lock surface returns the final
+  /// image with its effects and framing baked in (see the engine's override).
   Future<String?> currentPhotoPath({WallpaperSurface surface});
 
   /// Whether the system lock screen draws this app's live wallpaper.

@@ -1,4 +1,5 @@
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_framing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -157,6 +158,35 @@ void main() {
       expect(unlinked.link, isFalse);
       expect(unlinked.home.blur, 10);
       expect(unlinked.lock.blur, 10);
+    });
+
+    test('framing is stored per surface and is not linked', () {
+      const config = WallpaperEffectsConfig(
+        framingHome: WallpaperFraming(rotation: WallpaperRotation.clockwise, fit: WallpaperImageFit.fit),
+        framingLock: WallpaperFraming(rotation: WallpaperRotation.random, fit: WallpaperImageFit.stretch),
+      );
+
+      // The link toggle is about the effect sliders; each surface judges its own
+      // orientation, so framing is deliberately not copied.
+      final linked = config.withLink(linked: true, fromLock: true);
+      expect(linked.framingHome, config.framingHome);
+      expect(linked.framingLock, config.framingLock);
+
+      final edited = config.withFraming(onLock: true, value: const WallpaperFraming(rotation: WallpaperRotation.counterClockwise));
+      expect(edited.framingHome, config.framingHome);
+      expect(edited.framingLock.rotation, WallpaperRotation.counterClockwise);
+      expect(edited.framingLock.fit, WallpaperImageFit.fill, reason: 'the edit replaces the whole framing value');
+    });
+
+    test('framing survives the config JSON', () {
+      const config = WallpaperEffectsConfig(
+        framingHome: WallpaperFraming(rotation: WallpaperRotation.clockwise, fit: WallpaperImageFit.fit),
+        framingLock: WallpaperFraming(rotation: WallpaperRotation.random, fit: WallpaperImageFit.stretch),
+      );
+      expect(WallpaperEffectsConfig.fromJsonMap(config.toJsonMap()), config);
+      // A config written before framing existed reads the identity framing.
+      expect(WallpaperEffectsConfig.fromJsonMap(const {}).framingHome, const WallpaperFraming());
+      expect(WallpaperEffectsConfig.fromJsonMap(const {}).framingLock, const WallpaperFraming());
     });
   });
 }

@@ -19,7 +19,9 @@ of the Muzei-style live wallpaper mechanism.
   baked and cached, so a step never waits for a bake), the
   four-layout notification with photo, group and lock actions, the
   availability label under the group switcher, the per-group home-screen scroll
-  effect (edited in the effects page), the full set of rule actions on the group page (move to
+  effect (edited in the effects page), per-group image framing (auto rotation of
+  landscape photos plus screen fill / fit / stretch, also edited in the effects
+  page), the full set of rule actions on the group page (move to
   base/restriction/supplement, open in a media set by replacing or appending,
   delete), per-permission locking, the usage history (page, notification entry,
   configurable limit), "duplicate group", the in-app notice that offers the
@@ -482,6 +484,52 @@ bypassing the range draft: effects are display preferences, and the live
 wallpaper should follow them without a separate "save". Its copy action opens a
 group grid with the app-wide XOR-range gesture and writes the same configuration
 to every selected group in one transaction.
+
+### Framing (rotation and image fit)
+
+Each surface also owns a framing: a rotation and an image fit, stored in the same
+`effects` JSON as `framingHome`/`framingLock`, so no schema migration was needed
+and an upgraded group reads the identity framing. The link toggle deliberately
+does not cover it: the two surfaces judge their own orientation.
+
+- **Order is orientation first, then fit.** A frame is rotated and only then
+  mapped onto the surface, so choosing "stretch" never changes which photos are
+  rotated.
+- **Fit** is `fill` (cover, the historical behaviour), `fit` (contain, with opaque
+  black bars) or `stretch` (each axis independently).
+- **Rotation** is `off`, `clockwise`, `counterClockwise` or `random`. Only the
+  *direction* is the user's: whether a photo is rotated is decided per photo.
+- **The decision.** With the oriented photo aspect `a` and the surface aspect
+  `s`, cover/contain prefer the orientation whose aspect is closest to the
+  surface (`|ln(a/s)|`), and stretch prefers the one with less distortion — the
+  same comparison. The rotated candidate (`|ln(1/(a·s))|`) must be closer by
+  `2·ln(1.2)` (`wallpaperRotationMargin`): on a typical phone that is a
+  landscape photo of at least `1.2:1` (`wallpaperRotationAspectThreshold`, a 44%
+  larger visible area), and a landscape surface rotates portrait photos
+  symmetrically. A square surface is neutral, and nearly square photos are left
+  alone.
+- **Random** draws at *selection* time: the slot (and the lock decoy) carries a
+  `rotationSeed`, and the direction is derived from it. A re-bake (an effect
+  slider, a layout change, a step back through the history) therefore never flips
+  the photo that is on screen, while the next photo draws again.
+- **The scroll effect wins.** A wide home frame already has the photo's own
+  aspect, so the home rotation and fit are ignored while the launcher pans (the
+  controls are greyed but keep their values); the lock screen never pans, so its
+  framing always applies. A default lock framing reuses the wide home base, as it
+  always did; a custom one bakes a second surface-sized base and a `lock.png`
+  even for the identity effects.
+- **Baking** applies the geometry natively in `GroupedFrameWriter` (`FrameFit` is
+  a host-tested pure object; Flutter's `BoxFit` is the same math) and in the Dart
+  fallback, before the effects. The effect pass stays in Dart, and the cache key
+  includes the resolved geometry, so a framing edit misses the cache instead of
+  showing the previous rendering.
+- **Effects edits keep the photo.** `setEffects` bumps the group's `updatedAt`;
+  the engine now treats that as a pixel-only change and re-bakes the photo on
+  screen, instead of starting the walk over and replacing the picture on every
+  slider change. A range edit still starts over (`range.updatedAt`).
+- The effects page previews the baked frame (the home base with live GPU effects,
+  the final lock image as-is), so rotation, fit and a random direction are
+  exactly what the wallpaper draws.
 
 ### The notification
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_frame_geometry.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/services/common/channel.dart';
@@ -103,8 +104,9 @@ abstract interface class GroupedWallpaperPlatform {
   /// Opens the system live-wallpaper chooser for this service.
   Future<bool> openChooser();
 
-  /// Decodes [entry], covers it to [targetSize] and writes the frame to
-  /// [photoPath], which must be inside the state root.
+  /// Decodes [entry], renders it at [targetSize] with [geometry] (rotation and
+  /// image fit) and writes the frame to [photoPath], which must be inside the
+  /// state root.
   ///
   /// Returns null when the platform cannot bake this entry (no service, an
   /// undecodable format, a failing channel); the caller then falls back to the
@@ -112,6 +114,7 @@ abstract interface class GroupedWallpaperPlatform {
   Future<GroupedFrameWriteResult?> writeFrame({
     required AvesEntry entry,
     required Size targetSize,
+    required GroupedFrameGeometry geometry,
     required String photoPath,
     required int quality,
   });
@@ -224,6 +227,7 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
   Future<GroupedFrameWriteResult?> writeFrame({
     required AvesEntry entry,
     required Size targetSize,
+    required GroupedFrameGeometry geometry,
     required String photoPath,
     required int quality,
   }) async {
@@ -238,6 +242,8 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
       'targetHeight': targetSize.height.round(),
       'outputPath': photoPath,
       'quality': quality,
+      'extraRotationDegrees': geometry.rotationDegrees,
+      'fit': geometry.fit.name,
     });
     if (raw == null) return null;
     final width = raw['width'];

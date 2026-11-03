@@ -43,6 +43,87 @@ class GroupedFrameMathTest {
     }
 
     @Test
+    fun `fill center-crops the overflow on the long axis`() {
+        val transform = FrameFit.transform(
+            sourceWidth = 400,
+            sourceHeight = 200,
+            targetWidth = 100,
+            targetHeight = 100,
+            mode = FrameFitMode.FILL,
+        )
+
+        assertEquals(0.5f, transform.scaleX, TOLERANCE)
+        assertEquals(0.5f, transform.scaleY, TOLERANCE)
+        assertEquals(-50f, transform.translateX, TOLERANCE)
+        assertEquals(0f, transform.translateY, TOLERANCE)
+    }
+
+    @Test
+    fun `fit letterboxes and centers the whole image`() {
+        val transform = FrameFit.transform(
+            sourceWidth = 400,
+            sourceHeight = 200,
+            targetWidth = 100,
+            targetHeight = 100,
+            mode = FrameFitMode.FIT,
+        )
+
+        assertEquals(0.25f, transform.scaleX, TOLERANCE)
+        assertEquals(0.25f, transform.scaleY, TOLERANCE)
+        assertEquals(0f, transform.translateX, TOLERANCE)
+        assertEquals(25f, transform.translateY, TOLERANCE)
+    }
+
+    @Test
+    fun `stretch scales each axis independently without translation`() {
+        val transform = FrameFit.transform(
+            sourceWidth = 400,
+            sourceHeight = 200,
+            targetWidth = 100,
+            targetHeight = 100,
+            mode = FrameFitMode.STRETCH,
+        )
+
+        assertEquals(0.25f, transform.scaleX, TOLERANCE)
+        assertEquals(0.5f, transform.scaleY, TOLERANCE)
+        assertEquals(0f, transform.translateX, TOLERANCE)
+        assertEquals(0f, transform.translateY, TOLERANCE)
+    }
+
+    @Test
+    fun `fit modes parse the names Dart persists`() {
+        assertEquals(FrameFitMode.FILL, FrameFitMode.parse(null))
+        assertEquals(FrameFitMode.FILL, FrameFitMode.parse("fill"))
+        assertEquals(FrameFitMode.FIT, FrameFitMode.parse("fit"))
+        assertEquals(FrameFitMode.STRETCH, FrameFitMode.parse("stretch"))
+        assertEquals(FrameFitMode.FILL, FrameFitMode.parse("unknown"))
+    }
+
+    @Test
+    fun `a quarter turn fits the photo into the swapped target box`() {
+        // A landscape 400x200 photo rendered into a portrait 100x300 frame with a
+        // clockwise quarter turn: in the rotated coordinate space the target is
+        // 300x100, so the cover scale is 0.75 and the 300x150 drawing is centered
+        // and cropped by the target after the rotation.
+        val transform = FrameFit.transform(
+            sourceWidth = 400,
+            sourceHeight = 200,
+            targetWidth = 300,
+            targetHeight = 100,
+            mode = FrameFitMode.FILL,
+        )
+
+        assertEquals(0.75f, transform.scaleX, TOLERANCE)
+        assertEquals(0.75f, transform.scaleY, TOLERANCE)
+        assertEquals(0f, transform.translateX, TOLERANCE)
+        assertEquals(-25f, transform.translateY, TOLERANCE)
+    }
+
+    private companion object {
+        const val TOLERANCE = 0.0001f
+    }
+
+    @Test
     fun `a frame path inside the root is allowed`(@TempDir root: File) {
         assertTrue(FrameOutputPath.isInside(root, File(root, "frames/1/100x100/photo.webp")))
     }

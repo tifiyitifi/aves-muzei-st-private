@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_framing.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
@@ -109,6 +110,11 @@ class WallpaperEffects with Equatable {
 }
 
 /// Home and lock effects, plus Muzei's optional link toggle.
+///
+/// For the grouped wallpaper this is also the group's display configuration: it
+/// carries [homeScrollEffect] and the per-surface framing (rotation and image
+/// fit). The plain Muzei wallpaper shares the type but leaves the framing at its
+/// defaults, so those fields serialize with neutral values there.
 @immutable
 class WallpaperEffectsConfig with Equatable {
   final WallpaperEffects home;
@@ -122,11 +128,22 @@ class WallpaperEffectsConfig with Equatable {
   /// counterpart: offering one would be a switch with no visible effect.
   final bool homeScrollEffect;
 
+  /// Rotation and fit of the home surface.
+  final WallpaperFraming framingHome;
+
+  /// Rotation and fit of the lock surface.
+  ///
+  /// Deliberately independent of [link]: linking is about the effect sliders,
+  /// while the lock screen's framing is judged against the lock surface.
+  final WallpaperFraming framingLock;
+
   const new({
     this.home = const WallpaperEffects(),
     this.lock = const WallpaperEffects(),
     this.link = false,
     this.homeScrollEffect = true,
+    this.framingHome = const WallpaperFraming(),
+    this.framingLock = const WallpaperFraming(),
   });
 
   /// The lock-surface values actually rendered.
@@ -157,18 +174,30 @@ class WallpaperEffectsConfig with Equatable {
     WallpaperEffects? lock,
     bool? link,
     bool? homeScrollEffect,
+    WallpaperFraming? framingHome,
+    WallpaperFraming? framingLock,
   }) => WallpaperEffectsConfig(
     home: home ?? this.home,
     lock: lock ?? this.lock,
     link: link ?? this.link,
     homeScrollEffect: homeScrollEffect ?? this.homeScrollEffect,
+    framingHome: framingHome ?? this.framingHome,
+    framingLock: framingLock ?? this.framingLock,
   );
+
+  /// [this] with [value] stored on the surface being edited.
+  ///
+  /// The link toggle does not copy framing: it is edited per surface, and the
+  /// lock screen's framing is judged against its own surface.
+  WallpaperEffectsConfig withFraming({required bool onLock, required WallpaperFraming value}) => onLock ? copyWith(framingLock: value) : copyWith(framingHome: value);
 
   Map<String, Object?> toJsonMap() => {
     'home': home.toJsonMap(),
     'lock': lock.toJsonMap(),
     'link': link,
     'homeScrollEffect': homeScrollEffect,
+    'framingHome': framingHome.toJsonMap(),
+    'framingLock': framingLock.toJsonMap(),
   };
 
   /// Reads a stored config.
@@ -183,6 +212,8 @@ class WallpaperEffectsConfig with Equatable {
       lock: WallpaperEffects.fromJsonMap(_map(json['lock']) ?? const {}),
       link: json['link'] == true,
       homeScrollEffect: scrollEffect is bool ? scrollEffect : legacyScrollEffect,
+      framingHome: WallpaperFraming.fromJsonMap(_map(json['framingHome'])),
+      framingLock: WallpaperFraming.fromJsonMap(_map(json['framingLock'])),
     );
   }
 
@@ -192,5 +223,5 @@ class WallpaperEffectsConfig with Equatable {
   }
 
   @override
-  List<Object?> get props => [home, lock, link, homeScrollEffect];
+  List<Object?> get props => [home, lock, link, homeScrollEffect, framingHome, framingLock];
 }

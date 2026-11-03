@@ -22,10 +22,12 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_sur
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_frame_geometry.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_empty_notice.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_framing.dart';
 import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:collection/collection.dart';
@@ -230,18 +232,24 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     );
   }
 
-  /// Absolute path of the sharp photo on screen, for the effects editor.
+  /// Absolute path of the image one surface draws, for the effects editor.
   ///
-  /// The editor applies its effect to the original pixels, so it wants neither
-  /// the baked home nor lock image. The decoy has no sharp original: its one
-  /// baked file is the closest thing the editor can show.
+  /// The home surface returns its sharp base, so the editor can filter it on the
+  /// GPU as the sliders move. The lock surface returns its final file instead
+  /// (the decoy, or the home queue's lock image): that file already has the lock
+  /// effects and the lock framing baked in, so filtering it again would apply
+  /// them twice.
   @override
   Future<String?> currentPhotoPath({WallpaperSurface surface = WallpaperSurface.home}) async {
     final state = await readDisplayedState(surface: surface);
     final store = _store;
     if (surface.isLock) {
       final lock = state?.lock;
-      return lock == null || store == null ? null : store.lockPhotoOf(lock)?.path;
+      if (lock != null) return store?.lockPhotoOf(lock)?.path;
+      // No split: the lock screen draws the home queue through its lock image,
+      // which may be the sharp home base when the lock effects are the identity.
+      final slot = state?.currentSlot;
+      return slot == null || store == null ? null : store.slotEffectPhotoOf(slot, lock: true)?.path;
     }
     final slot = state?.currentSlot;
     if (slot == null) return null;
@@ -722,8 +730,13 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       groupedWallpaperLog.d('queue.adopt runtime current=${runtime?.current} generation=${runtime?.generation}');
     }
     final scrollEffect = await _effectiveScrollEffect(plan);
-    final groupStale = _isStale(plan, adopted?.state ?? previous);
-    final layoutStale = _isLayoutStale(adopted?.state ?? previous, surface, scrollEffect);
+    final known = adopted?.state ?? previous;
+    final groupStale = _isStale(plan, known);
+    final layoutStale = _isLayoutStale(known, surface, scrollEffect);
+    // A display-only edit (effects, framing, the scroll switch) bumps the
+    // group's `updatedAt` too. It must re-bake the photo on screen, not start the
+    // walk over: changing a slider should never replace the picture.
+    final configStale = _isConfigStale(plan, known);
     final total = await entrySource.count(plan.range);
     // A state written before the entry-keyed cache has to be rewritten once so
     // the native bar learns `canPrevious` instead of staying greyed.
@@ -762,7 +775,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
     // A promoted slot must be recorded even when nothing is baked, so the
     // runtime stops matching and the next run starts from the new current.
-    if (!layoutStale && !promoted && !migrated && await _isQueueReady(store, total, current)) {
+    if (!layoutStale && !configStale && !promoted && !migrated && await _isQueueReady(store, total, current)) {
       return GroupedWallpaperSyncResult.unchanged;
     }
     return await _settle(
@@ -823,6 +836,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
           cursor: current?.cursor ?? 0,
           newestEntryId: math.max(current?.newestEntryId ?? 0, entry.id),
           promote: true,
+          rotationSeed: current != null && current.entryId == entry.id ? current.rotationSeed : null,
         );
         await _writeLock(store, plan, state, frame);
         await _recordLockShown(plan, frame);
@@ -855,6 +869,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             cursor: reusable.cursor,
             newestEntryId: math.max(reusable.newestEntryId, entry.id),
             promote: false,
+            rotationSeed: reusable.rotationSeed,
           );
           await _writeLock(store, plan, state, frame);
           return GroupedWallpaperSyncResult.baked;
@@ -946,8 +961,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     required int cursor,
     required int newestEntryId,
     required bool promote,
+    int? rotationSeed,
   }) async {
-    final key = _lockFrameKey(plan, surface);
+    final seed = rotationSeed ?? _newRotationSeed();
+    final geometry = _geometryFor(framing: plan.effects.framingLock, entry: entry, surface: surface, seed: seed, lock: true);
+    final key = _lockFrameKey(plan, surface, geometry);
     final title = entry.bestTitle ?? '';
     final cached = store.cachedFrame(entry.id, key);
     int width;
@@ -964,6 +982,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         entry: entry,
         targetSize: surface,
         effects: plan.effects.effectiveLock,
+        geometry: geometry,
         photoPath: store.frameFile(entry.id, key, GroupedWallpaperStateStore.framePhotoFileName).path,
       );
       await store.writeFrameMeta(entry.id, key, width: bake.width, height: bake.height, darkness: bake.darkness, title: title, uri: entry.uri);
@@ -995,6 +1014,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       cursor: cursor,
       newestEntryId: newestEntryId,
       recent: recent,
+      rotationSeed: seed,
     );
   }
 
@@ -1303,7 +1323,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     required bool newPhoto,
     required bool navigated,
   }) async {
-    final layoutStale = _isLayoutStale(state, surface, scrollEffect);
+    final layoutStale = _isLayoutStale(state, surface, scrollEffect) || _isConfigStale(plan, state);
     // A prewarmed frame belongs to the layout it was baked for; keeping it after
     // a layout or effect change would only hold a file the queue can never draw.
     if (layoutStale) _prewarmed = null;
@@ -1351,7 +1371,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       return (result: result, promoted: null);
     }
     if (layoutStale || !_slotUsable(store, currentSlot)) {
-      currentSlot = await _slotForEntry(store, plan, currentEntry, currentSlot.id, surface, scrollEffect);
+      currentSlot = await _slotForEntry(store, plan, currentEntry, currentSlot.id, surface, scrollEffect, rotationSeed: currentSlot.rotationSeed);
     }
     slots[currentSlot.id] = currentSlot;
     usedIds.add(currentSlot.id);
@@ -1388,7 +1408,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
           rewind = rewind.take(cursor + 1).toList(growable: false);
           previousSlot = null;
         } else {
-          previousSlot = await _slotForEntry(store, plan, entry, claimId(queued), surface, scrollEffect);
+          previousSlot = await _slotForEntry(store, plan, entry, claimId(queued), surface, scrollEffect, rotationSeed: queued != null && queued.entryId == entry.id ? queued.rotationSeed : null);
           usedIds.add(previousSlot.id);
           slots[previousSlot.id] = previousSlot;
         }
@@ -1410,7 +1430,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
           cursor = 0;
           nextSlot = null;
         } else {
-          nextSlot = await _slotForEntry(store, plan, entry, claimId(queued), surface, scrollEffect);
+          nextSlot = await _slotForEntry(store, plan, entry, claimId(queued), surface, scrollEffect, rotationSeed: queued != null && queued.entryId == entry.id ? queued.rotationSeed : null);
           usedIds.add(nextSlot.id);
           slots[nextSlot.id] = nextSlot;
         }
@@ -1545,7 +1565,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       if (pick.offset >= 0) cursor = pick.offset + 1;
       final id = _nextSlotId(usedIds);
       try {
-        final slot = await _slotForEntry(store, plan, entry, id, surface, scrollEffect);
+        final slot = await _slotForEntry(store, plan, entry, id, surface, scrollEffect, rotationSeed: _seedForEntry(entry));
         usedIds.add(id);
         return (slot: slot, cursor: cursor);
       } on GroupedWallpaperBakeException catch (error, stack) {
@@ -1640,13 +1660,25 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   /// The frame of [entry] for slot [id], from the cache when it was baked before.
   ///
-  /// The cache key carries the target size and the effects, so a hit is exactly
-  /// the frame this slot would have produced: stepping back through the usage
-  /// history costs a file reference instead of a decode, an effect pass and an
-  /// encode.
-  Future<GroupedWallpaperSlot> _slotForEntry(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, AvesEntry entry, int id, Size surface, bool scrollEffect) async {
+  /// The cache key carries the target size, the effects and the resolved
+  /// geometry, so a hit is exactly the frame this slot would have produced:
+  /// stepping back through the usage history costs a file reference instead of a
+  /// decode, an effect pass and an encode.
+  ///
+  /// [rotationSeed] is the slot's one random direction. It is passed on a re-bake
+  /// so the same photo never flips while it stays on screen, and left null when
+  /// the wallpaper selects a new photo.
+  Future<GroupedWallpaperSlot> _slotForEntry(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, AvesEntry entry, int id, Size surface, bool scrollEffect, {int? rotationSeed}) async {
+    final seed = rotationSeed ?? _newRotationSeed();
     final target = scrollEffect ? _scrollTarget(surface, entry) : surface;
-    final key = _frameKey(plan, target, scrollEffect);
+    // A wide frame already has the photo's own aspect, so rotation and fit would
+    // only letterbox or crop a frame the launcher is about to pan. The lock
+    // screen never pans, so its framing always applies.
+    final homeGeometry = scrollEffect ? const GroupedFrameGeometry() : _geometryFor(framing: plan.effects.framingHome, entry: entry, surface: surface, seed: seed, lock: false);
+    final lockGeometry = _geometryFor(framing: plan.effects.framingLock, entry: entry, surface: surface, seed: seed, lock: true);
+    final homeOnSurface = scrollEffect ? const GroupedFrameGeometry() : homeGeometry;
+    final lockSharesHomeBase = lockGeometry == homeOnSurface;
+    final key = _frameKey(plan, target, scrollEffect, homeGeometry, lockGeometry, lockSharesHomeBase);
     final title = entry.bestTitle ?? '';
     final cached = store.cachedFrame(entry.id, key);
     if (cached != null) {
@@ -1661,6 +1693,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         width: cached.width,
         height: cached.height,
         darkness: cached.darkness,
+        rotationSeed: seed,
       );
     }
     final bake = await frameBaker.bakeTo(
@@ -1668,6 +1701,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       targetSize: target,
       home: plan.effects.home,
       lock: plan.effects.effectiveLock,
+      homeGeometry: homeGeometry,
+      lockGeometry: lockGeometry,
+      lockTargetSize: surface,
+      lockSharesHomeBase: lockSharesHomeBase,
       photoPath: store.frameFile(entry.id, key, GroupedWallpaperStateStore.framePhotoFileName).path,
       effectHomePath: store.frameFile(entry.id, key, GroupedWallpaperStateStore.slotEffectHomeFileName).path,
       effectLockPath: store.frameFile(entry.id, key, GroupedWallpaperStateStore.slotEffectLockFileName).path,
@@ -1695,30 +1732,65 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       width: bake.width,
       height: bake.height,
       darkness: bake.darkness,
+      rotationSeed: seed,
     );
   }
 
   /// Cache key of one photo at one layout.
   ///
-  /// The surface and the effects decide every pixel of a baked frame, so a change
-  /// to either must miss the cache instead of showing the previous rendering.
-  static String _frameKey(GroupedWallpaperPlan plan, Size target, bool scrollEffect) {
+  /// The surface, the effects and the resolved geometry decide every pixel of a
+  /// baked frame, so a change to any of them must miss the cache instead of
+  /// showing the previous rendering.
+  static String _frameKey(GroupedWallpaperPlan plan, Size target, bool scrollEffect, GroupedFrameGeometry homeGeometry, GroupedFrameGeometry lockGeometry, bool lockSharesHomeBase) {
     final effects = jsonEncode([
       plan.effects.home.toJsonMap(),
       plan.effects.effectiveLock.toJsonMap(),
       scrollEffect,
+      homeGeometry.toJsonMap(),
+      lockGeometry.toJsonMap(),
+      lockSharesHomeBase,
     ]);
     return '${target.width.round()}x${target.height.round()}-${_fingerprint(effects)}';
   }
 
   /// Cache key of one lock frame at one layout.
   ///
-  /// The decoy's pixels are the lock effects at the surface size, so those two
-  /// values are the whole key. It is prefixed so a lock frame can never collide
-  /// with a home frame of the same photo and layout.
-  static String _lockFrameKey(GroupedWallpaperPlan plan, Size target) {
-    final effects = jsonEncode(plan.effects.effectiveLock.toJsonMap());
+  /// The decoy's pixels are the lock effects and the resolved lock geometry at
+  /// the surface size, so those values are the whole key. It is prefixed so a
+  /// lock frame can never collide with a home frame of the same photo and layout.
+  static String _lockFrameKey(GroupedWallpaperPlan plan, Size target, GroupedFrameGeometry geometry) {
+    final effects = jsonEncode([plan.effects.effectiveLock.toJsonMap(), geometry.toJsonMap()]);
     return 'lock.${target.width.round()}x${target.height.round()}-${_fingerprint(effects)}';
+  }
+
+  /// A fresh random direction for a photo the wallpaper just selected.
+  static int _newRotationSeed() => math.Random().nextInt(1 << 31);
+
+  /// The geometry of one surface for [entry].
+  ///
+  /// The rotation setting only picks the *direction*: whether to rotate at all is
+  /// decided by the photo and the surface aspect (see `wallpaperNeedsRotation`).
+  GroupedFrameGeometry _geometryFor({
+    required WallpaperFraming framing,
+    required AvesEntry entry,
+    required Size surface,
+    required int seed,
+    required bool lock,
+  }) => GroupedFrameGeometry(
+    quarterTurns: wallpaperRotationQuarterTurns(
+      photoSize: entry.displaySize,
+      surfaceSize: surface,
+      rotation: framing.rotation,
+      randomClockwise: wallpaperRandomClockwise(seed, lock: lock),
+    ),
+    fit: framing.fit,
+  );
+
+  /// The seed the prewarmed frame of [entry] used, so a pick that lands on it is
+  /// a cache hit instead of a second bake with another random direction.
+  int? _seedForEntry(AvesEntry entry) {
+    final prewarmed = _prewarmed;
+    return prewarmed != null && prewarmed.entryId == entry.id ? prewarmed.rotationSeed : null;
   }
 
   /// A short, stable hash for a directory name.
@@ -1759,16 +1831,24 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   /// Whether [previous] was baked for another group, or before its range changed.
   ///
-  /// Saving a draft or switching the group bumps `updatedAt`, so a changed group
-  /// always re-bakes; an unchanged one keeps the queue it already has instead of
-  /// cycling through other images on every app start.
+  /// Saving a draft or switching the group bumps the range's (and the group's)
+  /// `updatedAt`, so a changed *content* always starts the walk over. A group's
+  /// own `updatedAt` also moves for display-only edits (effects, framing, the
+  /// scroll switch); those must keep the photo on screen, so they are handled by
+  /// [_isConfigStale] instead of replacing the picture on every slider change.
   static bool _isStale(GroupedWallpaperPlan plan, GroupedWallpaperState? previous) {
     if (previous == null) return true;
     if (previous.groupId != plan.group.id) return true;
-    if (previous.bakedAt < plan.group.updatedAt) return true;
     if (previous.bakedAt < (plan.range?.updatedAt ?? 0)) return true;
     return false;
   }
+
+  /// Whether [state] was baked before a display-only group edit.
+  ///
+  /// Such an edit does not change which photos the range contains, so the engine
+  /// re-bakes the photo on screen at the new effects or geometry instead of
+  /// picking another one.
+  static bool _isConfigStale(GroupedWallpaperPlan plan, GroupedWallpaperState? state) => state == null || state.bakedAt < plan.group.updatedAt;
 
   /// Whether [previous] was baked for another surface or scroll effect.
   ///

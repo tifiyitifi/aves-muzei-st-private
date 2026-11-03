@@ -53,8 +53,10 @@ carries a `surfaces` bit mask (`1` home, `2` lock; the base's mask is
 `state.json`, the decoy range id and the history keep addressing the same
 ranges. The page lists each condition once with two marks; only the lamped
 surface is edited, and tapping a tile switches that surface's mark.
-`mergeWallpaperGroupRange` folds an externally written projection (the pin
-sheet's write-back) back into the pool without disturbing the other surface.
+`mergeWallpaperGroupRange` folds an externally written projection back into the
+pool without disturbing the other surface; it is kept as the compatibility path
+for a writer that still addresses a single surface, while the pin sheet and the
+write-back list write the pool itself (see *Pinning*).
 
 - **Seeding the split.** Turning the switch on the first time marks every
   condition the home surface uses for the lock surface too, so the two start
@@ -955,9 +957,12 @@ its default restriction/supplement candidates: those belong to the visible-range
 page. Conditions are added by pinning them from a media set, and the group page
 only works on what is already there: it shows, toggles, renames, moves a rule to
 another section or to the base, opens it in a media set (replacing or appending),
-and deletes it. Older builds materialized that catalogue into every group; it is
-pruned on every start (not only on a defaults bump), so a restored backup cannot
-bring it back.
+and deletes it. A pinned condition joins the pool **unmarked**, so it changes
+nothing until Home, Lock or both are marked on the group page; pinning a base
+replaces the pool's base but keeps the marks it already had, because activating
+or deactivating a surface's base would silently change a privacy range. Older
+builds materialized that catalogue into every group; it is pruned on every start
+(not only on a defaults bump), so a restored backup cannot bring it back.
 
 The bundle also ships four **shared orientation restrictions** — landscape,
 portrait, not landscape and not portrait — and every group gets them, including
@@ -1003,9 +1008,15 @@ nothing.
 
 Group cards take part in multi-selection in all three switcher styles: a tap
 toggles them while the page is selecting, and a long press starts a selection
-with that group. Group 0 is never selectable. Deleting the selected groups keeps
-at least one group and stays a draft until it is saved; deleting the viewed group
-moves the page to the first remaining one.
+with that group (or flips the interval from the anchor, like any other grid). The
+page has **two independent multi-select states**: a group selection and a
+condition selection. They share one grid and one `Selection`, so the gesture layer
+narrows the selectable rows to the scope already in play
+(`wallpaper_page_selection.dart`, `FilterGridPage.sameSelectionScope`); a range
+can never cross from the conditions into the group cards above them, and the app
+bar only offers that scope's actions. Group 0 is never selectable. Deleting the
+selected groups keeps at least one group and stays a draft until it is saved;
+deleting the viewed group moves the page to the first remaining one.
 
 ## Browsing scopes
 
@@ -1045,6 +1056,12 @@ page publishes another group. The switcher shows the availability label under it
 「Available wallpaper」, or 「Available wallpaper (browsing restricted)」 while the
 gallery range narrows browsing; temporarily ignoring the gallery range forces the
 first, because browsing is then unrestricted.
+
+In the chips and five-column switcher styles the switcher is a `headerBuilder`
+sliver between the app bar and the sections, so it shifts the layout space every
+selection hit test resolves against. `FilterGridPage` measures it and
+`GridSelectionGestureDetector` subtracts it, which is what makes a long press
+select the tile under the finger instead of the row above.
 
 Locking a group (`group_lock_rules.dart`, persisted in AppMeta) pins the
 switcher to group 0 and the locked group, disables edits to the locked group's

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
-import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
@@ -26,7 +25,6 @@ import 'package:aves/model/selection.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/theme/icons.dart';
-import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/common/grid/scaling.dart';
 import 'package:aves/widgets/common/identity/aves_filter_chip.dart';
@@ -701,10 +699,13 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   Future<void> _activate(VisibleRangeRule rule, VisibleRangeActivationMode mode) async {
-    final current = mediaSetTab.currentFilters ?? const <CollectionFilter>{};
-    final target = mode == VisibleRangeActivationMode.override ? rule.filters : {...current, ...rule.filters};
     _browseSelection();
-    await AvesNavItem(route: CollectionPage.routeName, filters: target).goTo(context, topLevel: false);
+    await applyVisibleRangeCandidates(
+      context,
+      rangeId: _controller.gallery.id,
+      candidates: [VisibleRangeCandidate.fromRule(rule)],
+      replace: mode == VisibleRangeActivationMode.override,
+    );
   }
 
   /// Takes the selected candidates out to the media set.

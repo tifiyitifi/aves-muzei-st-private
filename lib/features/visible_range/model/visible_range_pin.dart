@@ -1,4 +1,3 @@
-import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:equatable/equatable.dart';
@@ -7,8 +6,9 @@ import 'package:flutter/foundation.dart';
 /// One place the current filters can be pinned to.
 ///
 /// [number] is the badge shown in the target grid: `0` is the gallery's single
-/// visible range, `1..n` are wallpaper groups. A split group appears twice, once
-/// per surface, because pinning to its lock range must not touch the home one.
+/// visible range, `1..n` are wallpaper groups. A group is one target, not one
+/// per surface: a pinned condition joins the group's shared condition pool and
+/// stays unmarked, so Home and Lock each decide later whether they use it.
 /// The list is resolved per open, so a group added a moment ago appears without a
 /// restart.
 @immutable
@@ -20,11 +20,6 @@ class VisibleRangePinTarget extends Equatable {
   final String name;
   final bool isGallery;
 
-  /// The surface of the group this target writes to; the gallery has no surface.
-  ///
-  /// The label distinguishes a split group's lock target from its home one.
-  final WallpaperSurface surface;
-
   /// The target refuses edits, so the grid greys it out.
   final bool locked;
 
@@ -33,7 +28,6 @@ class VisibleRangePinTarget extends Equatable {
     required this.number,
     required this.name,
     required this.isGallery,
-    this.surface = WallpaperSurface.home,
     this.locked = false,
   });
 
@@ -42,12 +36,11 @@ class VisibleRangePinTarget extends Equatable {
         number: number,
         name: name,
         isGallery: isGallery,
-        surface: surface,
         locked: locked ?? this.locked,
       );
 
   @override
-  List<Object?> get props => [rangeId, number, name, isGallery, surface, locked];
+  List<Object?> get props => [rangeId, number, name, isGallery, locked];
 }
 
 /// What the pin sheet asks for: one filter set, one name/description, and the

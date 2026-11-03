@@ -9,6 +9,7 @@ import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/common/extensions/media_query.dart';
 import 'package:aves/widgets/common/grid/sections/list_layout.dart';
 import 'package:aves_utils/aves_utils.dart';
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
@@ -18,6 +19,22 @@ class GridSelectionGestureDetector<T> extends StatefulWidget {
   final List<T> items;
   final ScrollController scrollController;
   final ValueNotifier<double> appBarHeightNotifier;
+
+  /// Extent of a fixed header shown between the app bar and the sections.
+  ///
+  /// The layout space starts below it, so the hit test has to subtract it the
+  /// same way it subtracts the app bar. The header scrolls with the content, so
+  /// it only offsets the position and never the auto-scroll insets.
+  final ValueListenable<double>? headerHeight;
+
+  /// Whether [item] belongs to the same selection as [selected].
+  ///
+  /// A page can show several grids in one scroll view (the wallpaper page's
+  /// groups and conditions); this keeps a range from crossing into the other
+  /// grid. Evaluated at press time against the live selection, so the page does
+  /// not have to rebuild the grid to change the allowed rows.
+  final bool Function(T item, Set<T> selected)? sameSelectionScope;
+
   final Widget child;
 
   const new({
@@ -27,6 +44,8 @@ class GridSelectionGestureDetector<T> extends StatefulWidget {
     required this.items,
     required this.scrollController,
     required this.appBarHeightNotifier,
+    this.headerHeight,
+    this.sameSelectionScope,
     required this.child,
   });
 
@@ -40,6 +59,13 @@ class _GridSelectionGestureDetectorState<T> extends State<GridSelectionGestureDe
   late Offset _localPosition;
   late EdgeInsets _scrollableInsets;
   late double _scrollSpeedFactor;
+
+  /// The rows the current press may range over, captured when it started.
+  ///
+  /// The page scopes a selection to one grid; keeping the narrowed list for the
+  /// whole gesture is what stops a drag from painting rows of the other grid.
+  List<T> _rangeItems = const [];
+
   Timer? _selectionUpdateTimer;
   Timer? _scrollMonitoringTimer;
   var _isScrolling = false;
@@ -49,6 +75,8 @@ class _GridSelectionGestureDetectorState<T> extends State<GridSelectionGestureDe
   ScrollController get scrollController => widget.scrollController;
 
   double get appBarHeight => widget.appBarHeightNotifier.value;
+
+  double get headerHeight => widget.headerHeight?.value ?? 0;
 
   double get scrollableWidth {
     final scrollableContext = widget.scrollableKey.currentContext!;
@@ -100,20 +128,26 @@ class _GridSelectionGestureDetectorState<T> extends State<GridSelectionGestureDe
               final fromItem = _getItemAt(details.localPosition);
               if (fromItem == null) return;
 
-              Feedback.forLongPress(context);
               final selection = context.read<Selection<T>>();
+              // The layout resolves the pressed row from its position, not from
+              // the caller's selectable list, so a row the page scoped out (a
+              // summary, another grid's cards) must not start a selection.
+              final scopedItems = _scopeItems(fromItem, selection);
+              if (!scopedItems.any((item) => selection.isSameItem(item, fromItem))) return;
+              Feedback.forLongPress(context);
               if (selection.isSelecting) {
                 // A long press while selecting flips the interval from the
                 // anchor to the pressed row. This and the drag below stay two
                 // independent contributions: the flip settles the rows in
                 // between, then painting continues from the pressed row, where
                 // `_selecting` is again what decides between adding and erasing.
-                selection.rangeXorTo(items, fromItem);
+                selection.rangeXorTo(scopedItems, fromItem);
               } else {
                 selection.toggleSelection(fromItem);
               }
               _selecting = selection.isSelected([fromItem]);
-              _fromIndex = items.indexOf(fromItem);
+              _rangeItems = scopedItems;
+              _fromIndex = scopedItems.indexOf(fromItem);
               _lastToIndex = _fromIndex;
               _scrollableInsets = EdgeInsets.only(
                 top: appBarHeight,
@@ -145,12 +179,25 @@ class _GridSelectionGestureDetectorState<T> extends State<GridSelectionGestureDe
               if (item == null) return;
 
               final selection = context.read<Selection<T>>();
+              if (!_scopeItems(item, selection).any((candidate) => selection.isSameItem(candidate, item))) return;
               selection.toggleSelection(item);
             }
           : null,
       longPressTimeout: settings.longPressTimeout,
       child: widget.child,
     );
+  }
+
+  /// The rows a press on [pressed] may select, in display order.
+  ///
+  /// Without a scope seam this is every selectable item. With one, the page
+  /// narrows it to the grid the press belongs to, so neither the flip nor the
+  /// drag can reach the other grid's rows.
+  List<T> _scopeItems(T pressed, Selection<T> selection) {
+    final accept = widget.sameSelectionScope;
+    if (accept == null) return items;
+    final selected = selection.selectedItems;
+    return items.where((item) => accept(item, selected)).toList();
   }
 
   void _onScrollChanged() {
@@ -181,7 +228,7 @@ class _GridSelectionGestureDetectorState<T> extends State<GridSelectionGestureDe
 
     final toItem = _getItemAt(_localPosition);
     if (toItem != null) {
-      _toggleSelectionToIndex(items.indexOf(toItem));
+      _toggleSelectionToIndex(_rangeItems.indexOf(toItem));
     }
   }
 
@@ -215,7 +262,7 @@ class _GridSelectionGestureDetectorState<T> extends State<GridSelectionGestureDe
     // as of Flutter v1.22.5, `hitTest` on the `ScrollView` render object works fine when it is static,
     // but when it is scrolling (through controller animation), result is incomplete and children are missing,
     // so we use custom layout computation instead to find the item.
-    final offset = Offset(0, scrollController.offset - appBarHeight) + localPosition;
+    final offset = Offset(0, scrollController.offset - appBarHeight - headerHeight) + localPosition;
     final sectionedListLayout = context.read<SectionedListLayout<T>>();
     return sectionedListLayout.getItemAt(context.isRtl ? Offset(scrollableWidth - offset.dx, offset.dy) : offset);
   }
@@ -223,7 +270,7 @@ class _GridSelectionGestureDetectorState<T> extends State<GridSelectionGestureDe
   void _toggleSelectionToIndex(int toIndex) {
     if (toIndex == -1) return;
 
-    Iterable<T> getRange(int start, int end) => start < end && 0 <= start && end <= items.length ? items.getRange(start, end) : {};
+    Iterable<T> getRange(int start, int end) => start < end && 0 <= start && end <= _rangeItems.length ? _rangeItems.getRange(start, end) : {};
     final selection = context.read<Selection<T>>();
     void addRange(int start, int end) => selection.addToSelection(getRange(start, end));
     void removeRange(int start, int end) => selection.removeFromSelection(getRange(start, end));

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
-import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/group_lock_rules.dart';
@@ -29,8 +28,10 @@ import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_filter.dart
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_section_key.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_surface_section_key.dart';
+import 'package:aves/features/grouped_wallpaper/view/wallpaper_page_selection.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_availability_label.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_tile.dart';
+import 'package:aves/features/selection_xor/selection_xor.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/services/visible_range_apply.dart';
@@ -55,7 +56,6 @@ import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/theme/format.dart';
 import 'package:aves/theme/icons.dart';
-import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/common/grid/scaling.dart';
 import 'package:aves/widgets/common/identity/aves_filter_chip.dart';
@@ -681,11 +681,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           settingsRouteKey: GroupedWallpaperPage.routeName,
           // Only applicable candidates take part in the selection: the result
           // preview and the unrestricted base are shown but cannot be selected,
-          // so a "select all" must not pick them up either.
-          itemBuilder: () => sections.values.expand((list) => list).where((item) {
-            final filter = item.filter;
-            return filter is VisibleRangeCandidateFilter && !filter.summary && _isSelectable(filter.candidate);
-          }).toList(),
+          // so a "select all" must not pick them up either. The list follows the
+          // current selection scope, so the page's two grids never mix.
+          itemBuilder: () => _selectionItems(sections),
           // The page keeps its own view preferences, so the layout dialog shows
           // the same controls as the visible-range page but writes this page's
           // keys.
@@ -734,9 +732,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
                     onTileTap: (item, navigate) => _onTileTap(item),
                     selectableItem: (item) {
                       final filter = item.filter;
-                      if (filter is WallpaperGroupFilter) return filter.groupId != null;
+                      if (filter is WallpaperGroupFilter) return filter.groupId != null && !_groupLocked;
                       return filter is VisibleRangeCandidateFilter && !filter.summary && _isSelectable(filter.candidate);
                     },
+                    // Group cards and conditions are two different multi-select
+                    // states: a range must not cross from one into the other.
+                    sameSelectionScope: _sameSelectionScope,
                     tileBuilder: _buildTile,
                     footerBuilder: _controller.activeStyle == VisibleRangeActiveStyle.section ? null : _buildFooter,
                   ),
@@ -786,7 +787,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     return ListenableBuilder(
       listenable: _selection,
       builder: (context, _) {
-        final selecting = _selection.isSelecting;
+        final selecting = _selection.isSelecting && wallpaperPageItemInScope(_scope, isGroup: true);
+        // While either grid is selecting, the switcher must not change the viewed
+        // group: that would reset the selection mid-edit.
+        final browsing = !_selection.isSelecting;
         final viewedId = _controller.selectedGroupId;
         final selectedIds = _selectedGroupIds();
         return Column(
@@ -806,8 +810,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
                       avatar: wallpaperEngineLink.isPlaying ? null : Icon(AIcons.wallpaperStopped, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       label: Text(l10n.wallpaperGroupNone),
                       // Group 0 is a view choice, never part of a delete selection.
-                      selected: !selecting && viewedId == null,
-                      onSelected: selecting ? null : (_) => unawaited(_controller.selectGroup(null)),
+                      selected: browsing && viewedId == null,
+                      onSelected: browsing ? (_) => unawaited(_controller.selectGroup(null)) : null,
                       showCheckmark: false,
                     ),
                   ),
@@ -823,13 +827,13 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
                           child: ChoiceChip(
                             avatar: selecting ? Icon(selectedIds.contains(group.id) ? AIcons.selected : AIcons.unselected, size: 18) : _groupStateIcon(context, group),
                             label: Text('${group.number}  ${wallpaperGroupName(context, group)}'),
-                            selected: selecting ? selectedIds.contains(group.id) : viewedId == group.id,
+                            selected: selecting ? selectedIds.contains(group.id) : browsing && viewedId == group.id,
                             labelStyle: group.enabled && _groupSelectable(group.id) ? null : TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             showCheckmark: false,
                             // A locked group cannot be opened: the chip greys out
                             // and the tap does nothing, while group 0 and the
                             // locked group stay live.
-                            onSelected: selecting || !_groupSelectable(group.id) ? null : (_) => _onGroupCardTap(group.id),
+                            onSelected: !browsing || !_groupSelectable(group.id) ? null : (_) => _onGroupCardTap(group.id),
                           ),
                         ),
                       ),
@@ -851,7 +855,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     return ListenableBuilder(
       listenable: _selection,
       builder: (context, _) {
-        final selecting = _selection.isSelecting;
+        final selecting = _selection.isSelecting && wallpaperPageItemInScope(_scope, isGroup: true);
         final selectedIds = _selectedGroupIds();
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -904,10 +908,52 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   FilterGridItem<CollectionFilter> _groupItem(String groupId) => FilterGridItem<CollectionFilter>(_buildGroupFilter(groupId), null);
 
+  /// Which grid the page's current multi-selection belongs to.
+  ///
+  /// Group cards select what to manage, condition tiles select what to apply or
+  /// edit. They share one grid and one [Selection], so the page has to keep the
+  /// two states apart itself.
+  WallpaperPageSelectionScope get _scope => wallpaperPageSelectionScope(_selection.selectedItems.map((item) => item.filter));
+
+  /// The rows the current selection may hold, in display order.
+  ///
+  /// A selection already in play only offers its own scope, so "select all" can
+  /// never mix the group cards with the conditions.
+  List<FilterGridItem<CollectionFilter>> _selectionItems(Map<ChipSectionKey, List<FilterGridItem<CollectionFilter>>> sections) {
+    final scope = _scope;
+    if (_selection.isSelecting && scope == WallpaperPageSelectionScope.none) return const [];
+    return sections.values.expand((list) => list).where((item) {
+      final filter = item.filter;
+      if (filter is WallpaperGroupFilter) {
+        return filter.groupId != null && !_groupLocked && wallpaperPageItemInScope(scope, isGroup: true);
+      }
+      return filter is VisibleRangeCandidateFilter && !filter.summary && _isSelectable(filter.candidate) && wallpaperPageItemInScope(scope, isGroup: false);
+    }).toList();
+  }
+
+  /// Whether [item] may join the selection that already holds [selected].
+  ///
+  /// A fresh selection takes the scope of the pressed item; an existing one keeps
+  /// its own, so a press in the other grid does nothing.
+  bool _sameSelectionScope(FilterGridItem<CollectionFilter> item, Set<FilterGridItem<CollectionFilter>> selected) {
+    final scope = wallpaperPageSelectionScope(selected.map((item) => item.filter));
+    final effective = scope == WallpaperPageSelectionScope.none ? wallpaperPageItemScope(item.filter) : scope;
+    return wallpaperPageItemInScope(effective, isGroup: item.filter is WallpaperGroupFilter);
+  }
+
+  /// The selectable group cards in display order, for the XOR-range gesture.
+  List<FilterGridItem<CollectionFilter>> _groupItems() => [
+        if (!_groupLocked)
+          for (final group in _controller.groups) _groupItem(group.id),
+      ];
+
   /// A group card switches the viewed group, or joins the selection while the
-  /// page is selecting. Group 0 is a view choice and is never selectable.
+  /// page is selecting groups. Group 0 is a view choice and is never selectable.
   void _onGroupCardTap(String? groupId) {
     if (_selection.isSelecting) {
+      // A condition selection must not grow a group card: switching what is
+      // managed mid-edit is exactly what the two-scope rule prevents.
+      if (_scope == WallpaperPageSelectionScope.conditions) return;
       if (groupId != null && !_groupLocked) _selection.toggleSelection(_groupItem(groupId));
       return;
     }
@@ -918,12 +964,17 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     unawaited(_controller.selectGroup(groupId));
   }
 
-  /// Long press starts multi-selection with this group, mirroring the condition
+  /// Long press starts or extends the group selection, mirroring the condition
   /// tiles' selection mode. Group selection leads to management actions, which a
   /// locked group freezes.
   void _onGroupCardLongPress(String? groupId) {
     if (groupId == null || _groupLocked) return;
-    _selection.toggleSelection(_groupItem(groupId));
+    // A condition selection owns the gesture: a press here must not add groups.
+    if (_selection.isSelecting && _scope == WallpaperPageSelectionScope.conditions) return;
+    final items = _groupItems();
+    final target = items.firstWhereOrNull((item) => _selection.isSameItem(item, _groupItem(groupId)));
+    if (target == null) return;
+    _selection.rangeXorTo(items, target);
   }
 
   void _showGroupLocked() {
@@ -1029,7 +1080,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
             filter: filter,
             tileLayout: settings.getTileLayout(GroupedWallpaperPage.routeName),
             tileSize: tileSize,
-            selecting: _selection.isSelecting,
+            selecting: _selection.isSelecting && wallpaperPageItemInScope(_scope, isGroup: true),
             selected: _selectedGroupIds().contains(filter.groupId),
             onTap: () => _onGroupCardTap(filter.groupId),
             // Always provide a handler so the shared grid selector does not treat
@@ -1041,7 +1092,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     }
     final candidateFilter = filter as VisibleRangeCandidateFilter;
     final candidate = candidateFilter.candidate;
-    final selectable = !candidateFilter.summary && _isSelectable(candidate);
+    // `All images` is a base slot, not a condition, so it must not be selectable;
+    // the group cards above are another selection scope entirely.
+    final selectable = !candidateFilter.summary && _isSelectable(candidate) && wallpaperPageItemInScope(_scope, isGroup: false);
     return MetaData(
       metaData: ScalerMetadata(item),
       child: ListenableBuilder(
@@ -1071,7 +1124,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
                   lock: WallpaperConditionSurfaces.contains(candidate.surfaces, WallpaperSurface.lock),
                 )
               : null,
-          selecting: _selection.isSelecting,
+          selecting: _selection.isSelecting && wallpaperPageItemInScope(_scope, isGroup: false),
           selected: _selection.selectedItems.contains(item),
           labelOverride: _labelOverride(context, candidate),
           onTap: () => _onTileTap(item),
@@ -1160,6 +1213,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     }
     if (candidate.readOnly) return;
     if (_selection.isSelecting) {
+      // Group management owns the selection: a condition must not join it.
+      if (_scope == WallpaperPageSelectionScope.groups) return;
       if (_isSelectable(candidate)) _selection.toggleSelection(item);
       return;
     }
@@ -1389,13 +1444,16 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// Takes the selected candidates out to the media set, exactly like the
   /// visible-range page: the union of their filters is appended and every
   /// target is remembered for the pin sheet's write-back list.
+  ///
+  /// A group is remembered by its pool id, because the condition is shared by
+  /// both surfaces and the write-back must edit it once.
   Future<void> _applySelectionToMediaSet() async {
     final range = _controller.range;
     if (!_selection.isSelecting || range == null) return;
     final candidates = _selectedCandidates(_selection);
     if (candidates.isEmpty) return;
     _selection.browse();
-    await applyVisibleRangeCandidates(context, rangeId: range.id, candidates: candidates);
+    await applyVisibleRangeCandidates(context, rangeId: _controller.pool?.id ?? range.id, candidates: candidates);
   }
 
   Future<void> _deleteSelectedConditions() async {
@@ -1508,11 +1566,22 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
 
   /// Opens the media set with the rule's conditions, replacing what it shows or
   /// appending to it. Nothing is written: the user keeps working there.
+  ///
+  /// The target is remembered exactly like the multi-select path, so the pin
+  /// sheet can write the current filters back over this rule. A group is
+  /// addressed by its pool, whatever surface is being edited, because the
+  /// condition is shared.
   Future<void> _activateRule(VisibleRangeRule rule, {required bool replace}) async {
-    final current = mediaSetTab.currentFilters ?? const <CollectionFilter>{};
-    final target = replace ? rule.filters : {...current, ...rule.filters};
+    final range = _controller.range;
+    if (range == null) return;
+    final rangeId = _controller.pool?.id ?? range.id;
     _selection.browse();
-    await AvesNavItem(route: CollectionPage.routeName, filters: target).goTo(context, topLevel: false);
+    await applyVisibleRangeCandidates(
+      context,
+      rangeId: rangeId,
+      candidates: [VisibleRangeCandidate.fromRule(rule)],
+      replace: replace,
+    );
   }
 
   List<PopupMenuEntry<_PageAction>> _menuEntries(BuildContext context) {

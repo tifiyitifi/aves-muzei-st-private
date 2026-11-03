@@ -1,11 +1,15 @@
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
-import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_pin.dart';
 import 'package:aves/features/visible_range/services/visible_range_target_source.dart';
 
-/// Exposes the wallpaper groups' ranges to the visible-range feature.
+/// Exposes the wallpaper groups' condition pools to the visible-range feature.
+///
+/// A group is one pin target, not one per surface: a pinned condition belongs to
+/// the group's pool and starts unmarked, so the group page is where the user says
+/// whether Home, Lock or both should use it. That also keeps a pin from silently
+/// changing what a surface shows.
 ///
 /// The groups are loaded lazily here: assigning the source at startup must not
 /// wait for the bundled asset, and every entry point (`pinTargets`, write-back,
@@ -23,34 +27,18 @@ class WallpaperGroupTargetSource implements VisibleRangeTargetSource {
     await controller.init();
     final targets = <VisibleRangePinTarget>[];
     for (final group in controller.groups) {
-      final range = await controller.groupRange(group.id);
+      final pool = await controller.groupPool(group.id);
       targets.add(
         VisibleRangePinTarget(
           rangeId: wallpaperGroupRangeId(group.id),
           number: group.number,
           name: group.name,
           isGallery: false,
-          // A locked range refuses writes unless its frozen permissions allow
+          // A locked pool refuses writes unless its frozen permissions allow
           // editing, the same rule the range page applies.
-          locked: range.locked && !range.permissions.edit,
+          locked: pool.locked && !pool.permissions.edit,
         ),
       );
-      // A split group pins to either surface independently: pinning to the lock
-      // range is what makes the decoy show the intended filters, and it must
-      // never write into the home range.
-      if (group.separateLockRange) {
-        final lockRange = await controller.groupRange(group.id, surface: WallpaperSurface.lock);
-        targets.add(
-          VisibleRangePinTarget(
-            rangeId: wallpaperGroupLockRangeId(group.id),
-            number: group.number,
-            name: group.name,
-            isGallery: false,
-            surface: WallpaperSurface.lock,
-            locked: lockRange.locked && !lockRange.permissions.edit,
-          ),
-        );
-      }
     }
     return targets;
   }
@@ -58,13 +46,13 @@ class WallpaperGroupTargetSource implements VisibleRangeTargetSource {
   @override
   Future<VisibleRange?> loadRange(String rangeId) async {
     await controller.init();
-    return controller.loadRangeById(rangeId);
+    return controller.loadPoolByRangeId(rangeId);
   }
 
   @override
   Future<void> saveRange(VisibleRange range) async {
     await controller.init();
-    await controller.saveGroupRange(range);
+    await controller.savePoolByRangeId(range);
   }
 }
 

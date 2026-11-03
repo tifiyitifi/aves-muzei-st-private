@@ -422,14 +422,81 @@ class WallpaperGroupController extends ChangeNotifier {
 
   /// The stored range with [rangeId], or null when it belongs to no group.
   ///
-  /// The pin sheet and the write-back list address a range by id, while a group
-  /// owns exactly one derived id per surface, so this is the reverse lookup.
+  /// This is the historical per-surface lookup: a group owns one derived id per
+  /// surface, so this is the reverse lookup a surface-addressed writer (the
+  /// compatibility path around [saveGroupRange]) still uses. Pin targets and the
+  /// write-back list address the shared pool instead, see [loadPoolByRangeId].
   Future<VisibleRange?> loadRangeById(String rangeId) async {
     for (final group in _groups) {
       if (wallpaperGroupRangeId(group.id) == rangeId) return groupRange(group.id);
       if (group.separateLockRange && wallpaperGroupLockRangeId(group.id) == rangeId) {
         return groupRange(group.id, surface: WallpaperSurface.lock);
       }
+    }
+    return null;
+  }
+
+  /// The condition pool [rangeId] addresses, or null when it belongs to no group.
+  ///
+  /// External owners pin and write back by range id, and a group still has two
+  /// historical ids (home and lock). Both resolve to the one pool, so a pin adds a
+  /// shared, unmarked condition instead of activating it on a single surface.
+  Future<VisibleRange?> loadPoolByRangeId(String rangeId) async {
+    final groupId = _groupIdOfRangeId(rangeId);
+    return groupId == null ? null : groupPool(groupId);
+  }
+
+  /// Saves a pool written by an external owner through a historical range id.
+  ///
+  /// The value is normalized to the pool's own id and owner, so a caller that
+  /// still addresses the lock id cannot create a second row or mark a surface.
+  Future<void> savePoolByRangeId(VisibleRange range) async {
+    final groupId = _groupIdOfRangeId(range.id);
+    if (groupId == null) throw ArgumentError.value(range.id, 'range.id', 'not a wallpaper group range');
+    final poolId = wallpaperGroupRangeId(groupId);
+    await saveGroupPool(
+      VisibleRange(
+        id: poolId,
+        scope: VisibleRangeScope.wallpaper,
+        ownerId: groupId,
+        baseName: range.baseName,
+        basePresetId: range.basePresetId,
+        baseFilters: range.baseFilters,
+        baseActive: range.baseActive,
+        baseSurfaces: range.baseSurfaces,
+        // Rules must carry the pool's id: the store inserts them under
+        // `rule.rangeId`, so a legacy lock-addressed rule would otherwise be
+        // written where reading the pool never finds it.
+        rules: [
+          for (final rule in range.rules)
+            if (rule.rangeId == poolId)
+              rule
+            else
+              VisibleRangeRule(
+                id: rule.id,
+                rangeId: poolId,
+                kind: rule.kind,
+                position: rule.position,
+                label: rule.label,
+                description: rule.description,
+                filters: rule.filters,
+                active: rule.active,
+                surfaces: rule.surfaces,
+              ),
+        ],
+        order: range.order,
+        locked: range.locked,
+        permissions: range.permissions,
+        createdAt: range.createdAt,
+        updatedAt: range.updatedAt,
+      ),
+    );
+  }
+
+  /// The group that owns [rangeId] under either of its historical range ids.
+  String? _groupIdOfRangeId(String rangeId) {
+    for (final group in _groups) {
+      if (wallpaperGroupRangeId(group.id) == rangeId || wallpaperGroupLockRangeId(group.id) == rangeId) return group.id;
     }
     return null;
   }

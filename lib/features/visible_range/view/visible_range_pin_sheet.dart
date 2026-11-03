@@ -109,6 +109,12 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
       (visibleRangeController.targetSource?.targetsAreDraft ?? false) &&
       _targets.any((target) => !target.isGallery && _selectedTargets.contains(target.rangeId));
 
+  /// Whether a wallpaper group is among the selected targets.
+  ///
+  /// Pinning to a group only stores the condition in its pool; which surface
+  /// uses it is a separate decision made on the group page.
+  bool get _groupTargetSelected => _targets.any((target) => !target.isGallery && _selectedTargets.contains(target.rangeId));
+
   bool get _canConfirm => !_busy && (_pinning || _selectedUsages.isNotEmpty);
 
   Future<void> _confirm() async {
@@ -244,6 +250,7 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
                     ),
                   if (!_loading && _selectedTargets.isEmpty) _hint(context, l10n.visibleRangePinNoTarget),
                   if (!_loading && _draftGroupTargetSelected) _hint(context, l10n.wallpaperGroupDraftHint),
+                  if (!_loading && _groupTargetSelected) _note(context, l10n.visibleRangePinGroupInactiveHint),
                   const SizedBox(height: 20),
                   _sectionLabel(context, l10n.visibleRangeWriteBackSection),
                   Text(l10n.visibleRangeWriteBackHint, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
@@ -317,6 +324,14 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
     return Padding(
       padding: const EdgeInsetsDirectional.only(top: 8),
       child: Text(text, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
+    );
+  }
+
+  Widget _note(BuildContext context, String text) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(top: 8),
+      child: Text(text, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
     );
   }
 

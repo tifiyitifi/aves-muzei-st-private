@@ -527,6 +527,12 @@ class VisibleRangeController extends ChangeNotifier {
   /// conditions refreshes the existing rule rather than adding a twin. A base is
   /// only touched when the request includes it: the gallery copies the shared
   /// preset, a wallpaper group stores the filters itself.
+  ///
+  /// For a wallpaper group the range is the group's shared condition pool, so a
+  /// new rule is created without surface marks: it is stored but inert until the
+  /// user marks Home, Lock or both on the group page. A base keeps the marks it
+  /// already had, because silently activating or deactivating a surface's base
+  /// would change a privacy range the user did not touch.
   VisibleRange _pinToRange(VisibleRange range, VisibleRangePinRequest request, VisibleRangePreset? preset, String fingerprint, String name) {
     var rules = [...range.rules];
     for (final kind in request.kinds) {
@@ -600,7 +606,10 @@ class VisibleRangeController extends ChangeNotifier {
       if (range == null) continue;
       final rule = usage.isBase ? null : range.ruleById(usage.targetId);
       if (!usage.isBase && rule == null) continue;
-      final owner = owners[usage.rangeId];
+      // A wallpaper usage may address a historical per-surface id while the
+      // loaded value is the group's shared pool, so the owner is resolved from
+      // the loaded range rather than the stored id.
+      final owner = owners[range.id] ?? owners[usage.rangeId];
       result.add(
         VisibleRangeWriteBackTarget(
           usageId: usage.id,

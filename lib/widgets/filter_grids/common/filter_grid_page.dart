@@ -80,6 +80,13 @@ class FilterGridPage<T extends CollectionFilter> extends StatelessWidget {
   /// scrolls with the grid instead of shrinking the grid's viewport.
   final WidgetBuilder? headerBuilder;
   final bool Function(FilterGridItem<T> item)? selectableItem;
+
+  /// Keeps a selection inside one of several grids shown in the same scroll view.
+  ///
+  /// The wallpaper page shows group cards and condition tiles in one grid; the
+  /// selector asks this at press time so a range never mixes the two.
+  final bool Function(FilterGridItem<T> item, Set<FilterGridItem<T>> selected)? sameSelectionScope;
+
   final StreamController<DraggableScrollbarEvent> _draggableScrollBarEventStreamController = StreamController.broadcast();
 
   new({
@@ -101,6 +108,7 @@ class FilterGridPage<T extends CollectionFilter> extends StatelessWidget {
     this.footerBuilder,
     this.headerBuilder,
     this.selectableItem,
+    this.sameSelectionScope,
   });
 
   @override
@@ -133,6 +141,7 @@ class FilterGridPage<T extends CollectionFilter> extends StatelessWidget {
               footerBuilder: footerBuilder,
               headerBuilder: headerBuilder,
               selectableItem: selectableItem,
+              sameSelectionScope: sameSelectionScope,
             );
           },
         ),
@@ -211,6 +220,7 @@ class _FilterGrid<T extends CollectionFilter> extends StatefulWidget {
   final WidgetBuilder? footerBuilder;
   final WidgetBuilder? headerBuilder;
   final bool Function(FilterGridItem<T> item)? selectableItem;
+  final bool Function(FilterGridItem<T> item, Set<FilterGridItem<T>> selected)? sameSelectionScope;
 
   const new({
     super.key,
@@ -230,6 +240,7 @@ class _FilterGrid<T extends CollectionFilter> extends StatefulWidget {
     this.footerBuilder,
     this.headerBuilder,
     this.selectableItem,
+    this.sameSelectionScope,
   });
 
   @override
@@ -289,6 +300,7 @@ class _FilterGridState<T extends CollectionFilter> extends State<_FilterGrid<T>>
           footerBuilder: widget.footerBuilder,
           headerBuilder: widget.headerBuilder,
           selectableItem: widget.selectableItem,
+          sameSelectionScope: widget.sameSelectionScope,
         ),
       ),
     );
@@ -310,6 +322,7 @@ class _FilterGridContent<T extends CollectionFilter> extends StatefulWidget {
   final WidgetBuilder? footerBuilder;
   final WidgetBuilder? headerBuilder;
   final bool Function(FilterGridItem<T> item)? selectableItem;
+  final bool Function(FilterGridItem<T> item, Set<FilterGridItem<T>> selected)? sameSelectionScope;
 
   const new({
     super.key,
@@ -328,6 +341,7 @@ class _FilterGridContent<T extends CollectionFilter> extends StatefulWidget {
     this.footerBuilder,
     this.headerBuilder,
     this.selectableItem,
+    this.sameSelectionScope,
   });
 
   @override
@@ -484,6 +498,7 @@ class _FilterGridContentState<T extends CollectionFilter> extends State<_FilterG
                 footerBuilder: widget.footerBuilder,
                 headerBuilder: widget.headerBuilder,
                 selectableItem: widget.selectableItem,
+                sameSelectionScope: widget.sameSelectionScope,
               ),
             );
             return sectionedListLayoutProvider;
@@ -530,6 +545,7 @@ class _FilterSectionedContent<T extends CollectionFilter> extends StatefulWidget
   final WidgetBuilder? footerBuilder;
   final WidgetBuilder? headerBuilder;
   final bool Function(FilterGridItem<T> item)? selectableItem;
+  final bool Function(FilterGridItem<T> item, Set<FilterGridItem<T>> selected)? sameSelectionScope;
 
   const new({
     required this.appBar,
@@ -545,6 +561,7 @@ class _FilterSectionedContent<T extends CollectionFilter> extends StatefulWidget
     this.footerBuilder,
     this.headerBuilder,
     this.selectableItem,
+    this.sameSelectionScope,
   });
 
   @override
@@ -565,6 +582,15 @@ class _FilterSectionedContentState<T extends CollectionFilter> extends State<_Fi
   ScrollController get scrollController => widget.scrollController;
 
   final GlobalKey scrollableKey = GlobalKey(debugLabel: 'filter-grid-page-scrollable');
+
+  /// The pinned header above the sections, measured for the selection hit test.
+  ///
+  /// A `headerBuilder` widget sits between the app bar and the first section, so
+  /// the layout space the selection gesture resolves against starts below it. The
+  /// grid cannot know its height from the layout it builds, so the header is
+  /// measured once per frame and the selector subtracts it.
+  final GlobalKey _headerKey = GlobalKey(debugLabel: 'filter-grid-page-header');
+  final ValueNotifier<double> _headerHeightNotifier = ValueNotifier(0);
 
   FilterGroupNotifier? _groupNotifier;
 
@@ -594,6 +620,7 @@ class _FilterSectionedContentState<T extends CollectionFilter> extends State<_Fi
   void dispose() {
     _unregisterDependencies();
     _unregisterWidget(widget);
+    _headerHeightNotifier.dispose();
     super.dispose();
   }
 
@@ -624,6 +651,7 @@ class _FilterSectionedContentState<T extends CollectionFilter> extends State<_Fi
       scrollController: scrollController,
       footerBuilder: widget.footerBuilder,
       headerBuilder: widget.headerBuilder,
+      headerKey: _headerKey,
     );
 
     final scaler = _FilterScaler<T>(
@@ -645,8 +673,12 @@ class _FilterSectionedContentState<T extends CollectionFilter> extends State<_Fi
       items: visibleSections.values.expand((v) => v).where((item) => widget.selectableItem?.call(item) ?? true).toList(),
       scrollController: scrollController,
       appBarHeightNotifier: appBarHeightNotifier,
+      headerHeight: _headerHeightNotifier,
+      sameSelectionScope: widget.sameSelectionScope,
       child: scaler,
     );
+
+    _scheduleHeaderMeasurement();
 
     return GridItemTracker<FilterGridItem<T>>(
       scrollableKey: scrollableKey,
@@ -658,6 +690,21 @@ class _FilterSectionedContentState<T extends CollectionFilter> extends State<_Fi
   }
 
   void _onAppBarHeightChanged() => setState(() {});
+
+  /// Reads the pinned header's extent after layout, for the selection hit test.
+  ///
+  /// Measuring is deliberately frame-deferred: the header is not laid out until
+  /// the sliver builds, and the selection must resolve against the extent of the
+  /// header the user is actually looking at.
+  void _scheduleHeaderMeasurement() {
+    if (widget.headerBuilder == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final height = _headerKey.currentContext?.size?.height ?? 0;
+      if (_headerHeightNotifier.value == height) return;
+      _headerHeightNotifier.value = height;
+    });
+  }
 
   Future<void> _checkInitHighlight() async {
     final highlightInfo = context.read<HighlightInfo>();
@@ -752,6 +799,7 @@ class _FilterScrollView<T extends CollectionFilter> extends StatelessWidget {
   final ScrollController scrollController;
   final WidgetBuilder? footerBuilder;
   final WidgetBuilder? headerBuilder;
+  final Key? headerKey;
 
   const new({
     required this.scrollableKey,
@@ -762,6 +810,7 @@ class _FilterScrollView<T extends CollectionFilter> extends StatelessWidget {
     required this.scrollController,
     this.footerBuilder,
     this.headerBuilder,
+    this.headerKey,
   });
 
   @override
@@ -827,7 +876,7 @@ class _FilterScrollView<T extends CollectionFilter> extends StatelessWidget {
                 ),
           slivers: [
             appBar,
-            if (headerBuilder != null) SliverToBoxAdapter(child: headerBuilder!(context)),
+            if (headerBuilder != null) SliverToBoxAdapter(child: KeyedSubtree(key: headerKey, child: headerBuilder!(context))),
             AnimationLimiter(
               key: ValueKey(context.select<FilterGroupNotifier?, Uri?>((v) => v?.value)),
               child: isEmpty

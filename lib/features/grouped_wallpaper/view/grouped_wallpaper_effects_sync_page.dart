@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
-import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
+import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_filter.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/wallpaper_group_tile.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
@@ -24,7 +24,7 @@ class GroupedWallpaperEffectsSyncPage extends StatefulWidget {
   /// The group the effects come from; it is never a copy target.
   final String sourceGroupId;
   final WallpaperEffectsConfig effects;
-  final WallpaperGroupRangeController controller;
+  final WallpaperGroupController controller;
 
   const new({
     super.key,

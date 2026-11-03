@@ -38,11 +38,10 @@ import deckers.thibault.aves.R
 /**
  * The grouped wallpaper's notification, styled after Aves-ST's `fgw` bar.
  *
- * The layout family follows the keyguard: unlocked shows photo actions
- * (previous/next photo, plus the two copy/record placeholders), locked shows
- * group actions (previous/next group, lock, next photo). The expanded bar's
- * first button switches between the two sets, like the reference bar, so group
- * actions are reachable while unlocked too. The badge carries the group number,
+ * The layout family follows the keyguard and the user's default set: unlocked
+ * shows the wallpaper actions unless Settings picks the group actions, and the
+ * lock screen always shows the group actions. The expanded bar's first button
+ * switches between the two sets, so both are reachable without the setting. The badge carries the group number,
  * the title the group name and the subtitle the photo on screen, so the
  * notification is useful without opening the app.
  *
@@ -239,9 +238,14 @@ object GroupedWallpaperNotification {
     @Volatile
     private var groupActionsOverride: Boolean? = null
 
-    /** Switches between the photo actions and the group actions. */
-    fun toggleGroupActions(context: Context) {
-        groupActionsOverride = !usesGroupActions(context)
+    /**
+     * Switches between the wallpaper actions and the group actions.
+     *
+     * The toggle is relative to what the bar is showing now, which already
+     * accounts for the user's default set and the keyguard.
+     */
+    fun toggleGroupActions(context: Context, state: GroupedWallpaperFileState?) {
+        groupActionsOverride = !usesGroupActions(context, state)
     }
 
     /** Returns to the keyguard's default set, after locking or unlocking. */
@@ -401,8 +405,17 @@ object GroupedWallpaperNotification {
 
     private fun isKeyguardLocked(context: Context): Boolean = (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
 
-    /** The button set on screen: the user's switch, or the keyguard's default. */
-    private fun usesGroupActions(context: Context): Boolean = groupActionsOverride ?: isKeyguardLocked(context)
+    /**
+     * The button set on screen: the user's switch, else the keyguard, else the
+     * default the user picked in Settings.
+     *
+     * The lock screen comes before the setting on purpose: it always offers the
+     * group actions, so a screen lock can never leave the group the lock is
+     * protecting. Without a state (nothing baked yet) the wallpaper actions are
+     * assumed, which is what the bar shows before the app runs.
+     */
+    private fun usesGroupActions(context: Context, state: GroupedWallpaperFileState?): Boolean =
+        groupActionsOverride ?: (isKeyguardLocked(context) || state?.prefersGroupActions == true)
 
     /**
      * Everything the bar shows, as one string.
@@ -433,7 +446,7 @@ object GroupedWallpaperNotification {
         // direction: "previous" and "next" read differently.
         val pendingPhoto = pendingPhotoSwitchFor(slot)
         append(pendingPhoto?.forward).append('|')
-        append(usesGroupActions(context)).append('|')
+        append(usesGroupActions(context, state)).append('|')
         append(slot?.id ?: -1).append('|')
         append(slot?.entryId ?: -1).append('|')
         append(slot?.title ?: "")
@@ -474,7 +487,7 @@ object GroupedWallpaperNotification {
         ensureChannel(context)
         appContext = context.applicationContext
 
-        val groupActions = usesGroupActions(context)
+        val groupActions = usesGroupActions(context, state)
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(contentIntent(context))

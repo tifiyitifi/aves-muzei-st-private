@@ -6,7 +6,7 @@ import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.d
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
-import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
+import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_effects_sync_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
@@ -31,7 +31,13 @@ class GroupedWallpaperEffectsPage extends StatefulWidget {
   static const routeName = '/wallpaper_groups/effects';
 
   final String groupId;
-  final WallpaperGroupRangeController controller;
+
+  /// The group aggregate the editor reads and writes.
+  ///
+  /// It never needed the page's range draft: effects are preferences that are
+  /// written straight through (`setEffects`), so binding to the aggregate lets
+  /// the immersive view open the same editor without owning a draft.
+  final WallpaperGroupController controller;
 
   const new({
     super.key,
@@ -58,7 +64,7 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
   /// Whether this device can pan the wallpaper at all, for the switch's note.
   WallpaperCapability _capability = WallpaperCapability.unknown;
 
-  WallpaperGroupRangeController get _controller => widget.controller;
+  WallpaperGroupController get _controller => widget.controller;
 
   bool get _editingLock => _tabs.index == 1;
 
@@ -165,7 +171,7 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
         settings: const RouteSettings(name: GroupedWallpaperAutoAdvancePage.routeName),
         builder: (_) => GroupedWallpaperAutoAdvancePage(
           groupId: group.id,
-          controller: _controller.groupController,
+          controller: _controller,
         ),
       ),
     );

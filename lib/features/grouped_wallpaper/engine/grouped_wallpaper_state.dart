@@ -1,6 +1,7 @@
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
@@ -403,10 +404,11 @@ class GroupedWallpaperState extends Equatable {
   /// through the records without baking; v7 added the single decoy frame the lock
   /// screen draws ([lock], [lockRangeId]). Older files are read with those at
   /// their defaults, so an upgrade never loses the frame on screen.
-  /// [notification], the [surfaceWidth] / [surfaceHeight] layout,
-  /// [scrollEffect], [historyLimit], [switchLocked], [switchLockedGroupId] and
-  /// [groups] were added afterwards without a version bump: a file without them
-  /// means "on" for the bar and "unknown" for the layout, which re-bakes once.
+  /// [notification], [notificationActions], the [surfaceWidth] /
+  /// [surfaceHeight] layout, [scrollEffect], [historyLimit], [switchLocked],
+  /// [switchLockedGroupId] and [groups] were added afterwards without a version
+  /// bump: a file without them means "on" for the bar, "wallpaper actions" for its
+  /// default set and "unknown" for the layout, which re-bakes once.
   /// A v4 file seeds [rewind] from [recent], so "previous" works right after the
   /// update.
   static const int currentVersion = 7;
@@ -498,6 +500,13 @@ class GroupedWallpaperState extends Equatable {
   /// It travels with the state because the service owns the bar: with this off it
   /// posts nothing and never promotes itself to a foreground service.
   final bool notification;
+
+  /// Which button set the bar shows while the phone is unlocked.
+  ///
+  /// It travels with the state because the bars are built natively from
+  /// `state.json`; the lock screen always shows the group actions whatever this
+  /// says, so the decoy can never be left for another group by a stray tap.
+  final GroupedWallpaperNotificationActions notificationActions;
 
   /// The wallpaper surface this frame was baked for.
   ///
@@ -595,6 +604,7 @@ class GroupedWallpaperState extends Equatable {
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
     this.gestures = const GroupedWallpaperGestures(),
     this.notification = true,
+    this.notificationActions = GroupedWallpaperNotificationActions.defaultActions,
     this.surfaceWidth = 0,
     this.surfaceHeight = 0,
     this.scrollEffect = false,
@@ -694,6 +704,7 @@ class GroupedWallpaperState extends Equatable {
     GroupedWallpaperOrdering? ordering,
     GroupedWallpaperGestures? gestures,
     bool? notification,
+    GroupedWallpaperNotificationActions? notificationActions,
     int? surfaceWidth,
     int? surfaceHeight,
     bool? scrollEffect,
@@ -729,6 +740,7 @@ class GroupedWallpaperState extends Equatable {
         ordering: ordering ?? this.ordering,
         gestures: gestures ?? this.gestures,
         notification: notification ?? this.notification,
+        notificationActions: notificationActions ?? this.notificationActions,
         surfaceWidth: surfaceWidth ?? this.surfaceWidth,
         surfaceHeight: surfaceHeight ?? this.surfaceHeight,
         scrollEffect: scrollEffect ?? this.scrollEffect,
@@ -783,6 +795,7 @@ class GroupedWallpaperState extends Equatable {
         'ordering': ordering.name,
         'gestures': gestures.toJsonMap(),
         'notification': notification,
+        'notificationActions': notificationActions.name,
         'surfaceWidth': surfaceWidth,
         'surfaceHeight': surfaceHeight,
         'scrollEffect': scrollEffect,
@@ -931,6 +944,9 @@ class GroupedWallpaperState extends Equatable {
       // Files written before the setting existed kept the bar on, which is what
       // those builds did.
       notification: json['notification'] != false,
+      // Same rule for the default button set: those builds showed the wallpaper
+      // actions while unlocked.
+      notificationActions: GroupedWallpaperNotificationActions.tryParse(json['notificationActions']),
       // Absent means "unknown": the next run bakes once for the real layout.
       surfaceWidth: _int(json['surfaceWidth']) ?? 0,
       surfaceHeight: _int(json['surfaceHeight']) ?? 0,
@@ -968,7 +984,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, previous, next, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, transitionMs, frameRetention, switchLocked, switchLockedGroupId, groups, lock, lockRangeId, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, previous, next, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, notificationActions, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, transitionMs, frameRetention, switchLocked, switchLockedGroupId, groups, lock, lockRangeId, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

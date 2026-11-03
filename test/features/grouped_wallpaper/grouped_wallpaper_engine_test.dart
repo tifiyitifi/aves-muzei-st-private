@@ -18,6 +18,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_entry.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
@@ -1192,6 +1193,62 @@ void main() {
     expect((await store.readState())!.notification, isFalse);
   });
 
+  test('the notification button set reaches the state and refreshes the bar', () async {
+    serve(entries(12));
+    await engine.prepare();
+    final bakes = baker.bakeCount;
+
+    await engine.setNotificationActions(GroupedWallpaperNotificationActions.group);
+
+    expect((await store.readState())!.notificationActions, GroupedWallpaperNotificationActions.group);
+    expect(planStore.notificationActionsWrites, [GroupedWallpaperNotificationActions.group]);
+    expect(platform.notificationRefreshes, 1);
+    // Only the bar changes, so the frame on screen is not re-baked.
+    expect(baker.bakeCount, bakes);
+  });
+
+  test('a bake keeps the notification button set of the plan', () async {
+    serve(entries(12));
+    planStore.plan = const GroupedWallpaperPlan(group: dcimGroup, notificationActions: GroupedWallpaperNotificationActions.group);
+
+    await engine.prepare();
+
+    expect((await store.readState())!.notificationActions, GroupedWallpaperNotificationActions.group);
+  });
+
+  test('a promotion swaps the queued neighbour and refills in the background', () async {
+    serve(entries(12));
+    await engine.prepare();
+    final first = (await store.readState())!;
+    platform.promotable = true;
+    // The renderer records the promotion in runtime.json synchronously.
+    platform.onPromote = () => store.runtimeFile.writeAsString(
+      '{"generation":${first.generation},"current":${first.next},"next":-1,"refillRequested":true}',
+    );
+
+    expect(await engine.promotePhoto(previous: false), isTrue);
+    // Drains the refill the promotion schedules, then reads what it settled.
+    await engine.prepare();
+
+    final state = (await store.readState())!;
+    expect(platform.promotions, [false]);
+    expect(state.currentSlot?.entryId, first.nextSlot?.entryId);
+    // An explicit step restarts the countdown, exactly like the baked path.
+    expect(platform.restartedSeconds, isNotEmpty);
+  });
+
+  test('a promotion the renderer refuses leaves the frame alone', () async {
+    serve(entries(12));
+    await engine.prepare();
+    platform.promotable = false;
+    final restarts = platform.restartedSeconds.length;
+
+    expect(await engine.promotePhoto(previous: true), isFalse);
+
+    expect(platform.promotions, [true]);
+    expect(platform.restartedSeconds.length, restarts);
+  });
+
   test('switching group makes the new group current and re-bakes', () async {
     serve(entries(12));
     await engine.prepare();
@@ -1779,6 +1836,23 @@ class _FakePlatform implements GroupedWallpaperPlatform {
     onReload?.call();
   }
 
+  /// Whether the renderer would accept a promotion; false mirrors "no live
+  /// engine, or the neighbour is not uploaded yet".
+  bool promotable = false;
+
+  /// Simulates the renderer writing `runtime.json` for the promotion.
+  Future<void> Function()? onPromote;
+
+  final List<bool> promotions = [];
+
+  @override
+  Future<bool> promotePhoto({required bool previous}) async {
+    promotions.add(previous);
+    if (!promotable) return false;
+    await onPromote?.call();
+    return true;
+  }
+
   @override
   Future<void> scheduleAutoAdvance(int seconds) async {
     scheduledSeconds.add(seconds);
@@ -1899,21 +1973,65 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
   @override
   Future<void> setDisabled(bool disabled) async {
     disabledWrites.add(disabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification);
+    plan = GroupedWallpaperPlan(
+      group: plan.group,
+      range: plan.range,
+      disabled: disabled,
+      gestures: plan.gestures,
+      ordering: plan.ordering,
+      interval: plan.interval,
+      notification: plan.notification,
+      notificationActions: plan.notificationActions,
+    );
   }
 
   @override
   Future<void> setGestures(GroupedWallpaperGestures gestures) async {
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: gestures, ordering: plan.ordering, interval: plan.interval, notification: plan.notification);
+    plan = GroupedWallpaperPlan(
+      group: plan.group,
+      range: plan.range,
+      disabled: plan.disabled,
+      gestures: gestures,
+      ordering: plan.ordering,
+      interval: plan.interval,
+      notification: plan.notification,
+      notificationActions: plan.notificationActions,
+    );
   }
 
   @override
   Future<void> setNotification(bool enabled) async {
     notificationWrites.add(enabled);
-    plan = GroupedWallpaperPlan(group: plan.group, range: plan.range, disabled: plan.disabled, gestures: plan.gestures, ordering: plan.ordering, interval: plan.interval, notification: enabled);
+    plan = GroupedWallpaperPlan(
+      group: plan.group,
+      range: plan.range,
+      disabled: plan.disabled,
+      gestures: plan.gestures,
+      ordering: plan.ordering,
+      interval: plan.interval,
+      notification: enabled,
+      notificationActions: plan.notificationActions,
+    );
   }
 
   final List<bool> notificationWrites = [];
+
+  @override
+  Future<void> setNotificationActions(GroupedWallpaperNotificationActions actions) async {
+    notificationActionsWrites.add(actions);
+    plan = GroupedWallpaperPlan(
+      group: plan.group,
+      range: plan.range,
+      disabled: plan.disabled,
+      gestures: plan.gestures,
+      ordering: plan.ordering,
+      interval: plan.interval,
+      notification: plan.notification,
+      notificationActions: actions,
+    );
+  }
+
+  final List<GroupedWallpaperNotificationActions> notificationActionsWrites = [];
 
   final List<bool> scrollEffectWrites = [];
 
@@ -1928,6 +2046,7 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
       ordering: plan.ordering,
       interval: plan.interval,
       notification: plan.notification,
+      notificationActions: plan.notificationActions,
       historyLimit: limit,
       transition: plan.transition,
       frameRetention: plan.frameRetention,
@@ -1947,6 +2066,7 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
       ordering: plan.ordering,
       interval: plan.interval,
       notification: plan.notification,
+      notificationActions: plan.notificationActions,
       historyLimit: plan.historyLimit,
       transition: transition,
       frameRetention: plan.frameRetention,
@@ -1966,6 +2086,7 @@ class _FakePlanStore implements GroupedWallpaperPlanStore {
       ordering: plan.ordering,
       interval: plan.interval,
       notification: plan.notification,
+      notificationActions: plan.notificationActions,
       historyLimit: plan.historyLimit,
       transition: plan.transition,
       frameRetention: retention,

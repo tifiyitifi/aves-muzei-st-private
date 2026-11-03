@@ -488,13 +488,20 @@ to every selected group in one transaction.
 `GroupedWallpaperNotification` (Kotlin) posts an ongoing notification while the
 grouped service is the system wallpaper, styled after Aves-ST's foreground
 wallpaper bar: a coloured group-number badge, the group name and the photo title,
-plus borderless actions. The button set follows the keyguard, and the expanded
-layout's first button switches between the two sets:
+plus borderless actions. The button set follows the keyguard and the user's
+default, and the expanded layout's first button switches between the two sets:
 
 | | Collapsed (4) | Expanded (5) |
 |---|---|---|
-| Photo actions (unlocked default) | previous / next photo / copy\* / history | switch / previous / next / copy\* / history |
-| Group actions (locked default) | previous / next group / lock / next photo | switch / previous / next group / lock / next photo |
+| Wallpaper actions (unlocked default) | previous / next photo / copy\* / history | switch / previous / next / copy\* / history |
+| Group actions (lock screen, or selected default) | previous / next group / lock / next photo | switch / previous / next group / lock / next photo |
+
+**Notification buttons** (Settings › Visible & wallpaper) picks the unlocked
+default: `wallpaper` (the row above) or `group`. The lock screen ignores it and
+always shows the group actions — leaving the group the lock protects is exactly
+what a stray lock-screen tap must not do. The value travels in `state.json` as
+`notificationActions`, so the bar picks its set without asking the app, and a
+changed setting re-posts it at once.
 
 `*` copy keeps Aves-ST's icon but stays disabled (dimmed, no action) until that
 feature exists. **history** opens the usage-history page through the app's
@@ -663,8 +670,8 @@ wallpaper never stops rotating on its own, and there is no freeze to resume.
 - A lock the app never confirmed only shows for 30 seconds: the bar must not
   claim a protection the guard would not enforce.
 
-Locking is the same state the group page's 「Lock the current group」 writes, and
-the page still owns the menu entry for it.
+Locking is the same state the group page's 「Lock the current group」 and the view
+page's lock entry write, and the group page still owns the menu entry for it.
 
 ### Group switch feedback
 
@@ -695,13 +702,29 @@ bar re-posts once when the wait starts and once when it ends.
 
 A three-finger tap opens an immersive view of the current photo, modelled on
 Muzei's artwork screen: pan and zoom, chrome visible on open and toggled by a
-tap, the group · count · title at the bottom left and the menu at the bottom
-right. The menu has 「Open wallpaper groups」, 「Open in gallery」, share,
-「Usage history」, the home/lock switch and the notification switch. A
-wallpaper gesture has no Activity, so the view is pushed over the playing
-group's page, itself over the app's home page: back walks view → group page →
-home instead of closing the app, and the group page starts on the group being
-played. Opened from the group page, 「Open wallpaper groups」 pops back to it.
+tap, the group · count · title at the bottom left and the controls at the bottom
+right. A wallpaper gesture has no Activity, so the view is pushed over the
+playing group's page, itself over the app's home page: back walks view → group
+page → home instead of closing the app, and the group page starts on the group
+being played. Opened from the group page, 「Open wallpaper groups」 pops back to
+it.
+
+The bottom panel carries two rows of controls: the group steps above the photo
+steps, then the menu. A home photo step first asks the renderer to **promote the
+queued neighbour**, which is the texture swap a wallpaper double tap makes, so
+the frame and the page change at once; only a step it cannot promote (no live
+engine, the neighbour still baking, or `frameRetention` keeping the frame on
+screen only) bakes, and only then does the title say what it is doing and every
+step control grey out. Promoting restarts the auto-advance countdown and refills
+the freed slot in the background, exactly like the bar's photo buttons. The lock
+decoy has no queue by design, so its steps always bake.
+
+The group steps raise and lower the group number over the **enabled** rotation
+(1 ↔ n, wrapping) and never enter group 0: with no group playing they are greyed
+instead of starting the rotation from "nothing is playing". They are also greyed
+while the group switch is locked, when only one group is enabled, and while a
+step is in flight. A group change always bakes, so it is the one case that
+always shows 「Switching groups」 with the target's number and name.
 
 The page below the view is the `/wallpaper_groups` route itself — the page is a
 navigation destination of its own, so it needs no shared shell. The
@@ -712,6 +735,25 @@ surface the page describes, and for a group without a split it is greyed with
 「This group has no lock screen setup」 instead of disappearing. Its previous/next
 controls act on the decoy and are enabled as soon as the group has a lock range,
 so the first step bakes the frame the page was never able to show before.
+
+The menu is the group page's menu without the draft: open the groups, the
+gallery, the whole group, the range switch, share, usage history, auto-advance,
+effects, gestures, the home/lock switch, the notification switch, **turn off
+grouped wallpaper**, **delete the photo** and the **group lock**, plus About.
+Effects bind to the group aggregate rather than the page's range controller,
+because effects are written straight through and never wait for "save changes".
+
+**Delete** is the viewer's own delete action (recycling bin, confirmations,
+progress report, source refresh), with a policy that only tells the page when it
+succeeded: the wallpaper then shows the next photo, which is a promotion on the
+home surface. A cancelled confirmation or a failed delete leaves the frame
+alone. When the photo was the group's last, the engine keeps it (the empty-group
+rule) and the page explains why nothing moved. Stacks are left to the gallery
+viewer, which hosts the multi-page conductor the delete needs.
+
+The lock entry is the same group switch lock as the group page's and the bar's:
+locking is direct and asks for nothing, unlocking asks for the group password,
+and the group steps grey out as soon as the lock is set.
 
 ### Ordering
 

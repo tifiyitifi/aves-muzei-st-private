@@ -4,6 +4,7 @@ import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_condition_pool.dart';
@@ -64,6 +65,12 @@ class GroupedWallpaperPlan extends Equatable {
   /// Whether the wallpaper may show its notification bar.
   final bool notification;
 
+  /// Which button set the bar shows while the phone is unlocked.
+  ///
+  /// It travels with the plan like [notification]: the bar is built natively
+  /// from `state.json`, so its default set has to be there.
+  final GroupedWallpaperNotificationActions notificationActions;
+
   /// How many photos the usage history keeps; `0` turns recording off.
   ///
   /// It travels with the plan because the engine is what records a shown photo,
@@ -92,6 +99,7 @@ class GroupedWallpaperPlan extends Equatable {
     this.interval = WallpaperAdvanceInterval.off,
     this.groups = const [],
     this.notification = true,
+    this.notificationActions = GroupedWallpaperNotificationActions.defaultActions,
     this.historyLimit = GroupedWallpaperHistoryLimit.defaultLimit,
     this.transition = GroupedWallpaperTransition.defaultTransition,
     this.frameRetention = GroupedWallpaperFrameRetention.defaultRetention,
@@ -111,7 +119,7 @@ class GroupedWallpaperPlan extends Equatable {
   bool get enabled => !disabled && !group.isNone;
 
   @override
-  List<Object?> get props => [group, range, lockRange, disabled, gestures, ordering, interval, groups, notification, historyLimit, transition, frameRetention];
+  List<Object?> get props => [group, range, lockRange, disabled, gestures, ordering, interval, groups, notification, notificationActions, historyLimit, transition, frameRetention];
 }
 
 /// Reads and updates [GroupedWallpaperPlan].
@@ -133,6 +141,9 @@ abstract interface class GroupedWallpaperPlanStore {
 
   /// Records whether the wallpaper may show its notification bar.
   Future<void> setNotification(bool enabled);
+
+  /// Records which button set the unlocked bar shows.
+  Future<void> setNotificationActions(GroupedWallpaperNotificationActions actions);
 
   /// Records how many photos the usage history keeps.
   ///
@@ -187,6 +198,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final disabled = await store.readDisabled();
     final gestures = await store.readGestures();
     final notification = await store.readNotification();
+    final notificationActions = await store.readNotificationActions();
     final historyLimit = await store.readHistoryLimit();
     final transition = await store.readTransition();
     final frameRetention = await store.readFrameRetention();
@@ -200,6 +212,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
         interval: group.interval,
         groups: enabledWallpaperGroups(groups),
         notification: notification,
+        notificationActions: notificationActions,
         historyLimit: historyLimit,
         transition: transition,
         frameRetention: frameRetention,
@@ -216,6 +229,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       interval: group.interval,
       groups: enabledWallpaperGroups(groups),
       notification: notification,
+      notificationActions: notificationActions,
       historyLimit: historyLimit,
       transition: transition,
       frameRetention: frameRetention,
@@ -229,6 +243,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
     final groups = normalizeWallpaperGroups(await store.loadGroups());
     final gestures = await store.readGestures();
     final notification = await store.readNotification();
+    final notificationActions = await store.readNotificationActions();
     final historyLimit = await store.readHistoryLimit();
     final transition = await store.readTransition();
     final frameRetention = await store.readFrameRetention();
@@ -243,6 +258,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
         gestures: gestures,
         groups: enabledWallpaperGroups(groups),
         notification: notification,
+        notificationActions: notificationActions,
         historyLimit: historyLimit,
         transition: transition,
         frameRetention: frameRetention,
@@ -266,6 +282,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       interval: group.interval,
       groups: enabledWallpaperGroups(groups),
       notification: notification,
+      notificationActions: notificationActions,
       historyLimit: historyLimit,
       transition: transition,
       frameRetention: frameRetention,
@@ -280,6 +297,9 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
 
   @override
   Future<void> setNotification(bool enabled) async => WallpaperGroupStore(await _open()).writeNotification(enabled);
+
+  @override
+  Future<void> setNotificationActions(GroupedWallpaperNotificationActions actions) async => WallpaperGroupStore(await _open()).writeNotificationActions(actions);
 
   @override
   Future<void> setHistoryLimit(int limit) async => WallpaperGroupStore(await _open()).writeHistoryLimit(limit);
@@ -312,6 +332,7 @@ class SavedGroupedWallpaperPlanStore implements GroupedWallpaperPlanStore {
       interval: target.interval,
       groups: enabled,
       notification: await store.readNotification(),
+      notificationActions: await store.readNotificationActions(),
       historyLimit: await store.readHistoryLimit(),
       transition: await store.readTransition(),
       frameRetention: await store.readFrameRetention(),

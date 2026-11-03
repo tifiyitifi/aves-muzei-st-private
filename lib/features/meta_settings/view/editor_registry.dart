@@ -42,6 +42,7 @@ final Map<String, MetaEditorBuilder> metaEditorRegistry = {
   MetaEditorKeys.collectionBackgroundWork: (context, def) => CollectionBackgroundWorkEditor(def: def),
   MetaEditorKeys.wallpaperNavMode: (context, def) => WallpaperNavModeEditor(def: def),
   MetaEditorKeys.wallpaperNotification: (context, def) => WallpaperNotificationEditor(def: def),
+  MetaEditorKeys.wallpaperNotificationActions: (context, def) => WallpaperNotificationActionsEditor(def: def),
   MetaEditorKeys.wallpaperTransition: (context, def) => WallpaperTransitionEditor(def: def),
   MetaEditorKeys.wallpaperFrameRetention: (context, def) => WallpaperFrameRetentionEditor(def: def),
   MetaEditorKeys.wallpaperHistoryLimit: (context, def) => WallpaperHistoryLimitEditor(def: def),

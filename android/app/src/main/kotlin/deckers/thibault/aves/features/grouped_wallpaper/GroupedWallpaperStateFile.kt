@@ -78,6 +78,14 @@ data class GroupedWallpaperFileState(
      */
     val notification: Boolean = true,
     /**
+     * Which button set the bar shows while the phone is unlocked.
+     *
+     * `"group"` offers the group actions, anything else the wallpaper actions.
+     * The lock screen ignores it and always offers the group actions, because
+     * leaving the group on screen is what the lock protects.
+     */
+    val notificationActions: String = NOTIFICATION_ACTIONS_WALLPAPER,
+    /**
      * How many photos the usage history keeps; `0` means recording is off.
      *
      * The bar greys its "previous" button through [canPrevious]; with recording
@@ -187,6 +195,10 @@ data class GroupedWallpaperFileState(
     val canRegress: Boolean
         get() = (status == STATUS_READY || status == STATUS_LOCKED) && count > 1 && previous >= 0 && canPrevious
 
+    /** Whether the unlocked bar offers the group actions by default. */
+    val prefersGroupActions: Boolean
+        get() = notificationActions == NOTIFICATION_ACTIONS_GROUP
+
     companion object {
         const val STATUS_READY = "ready"
         const val STATUS_LOCKED = "locked"
@@ -197,6 +209,10 @@ data class GroupedWallpaperFileState(
         const val ACTION_NONE = "none"
         const val ACTION_NEXT_ARTWORK = "nextArtwork"
         const val ACTION_VIEW_ARTWORK = "viewArtwork"
+
+        /** The bar's default button sets, as `state.json` spells them. */
+        const val NOTIFICATION_ACTIONS_WALLPAPER = "wallpaper"
+        const val NOTIFICATION_ACTIONS_GROUP = "group"
 
         /** The Dart default, for a file written before the setting existed. */
         const val DEFAULT_TRANSITION_MS = 300
@@ -367,6 +383,8 @@ object GroupedWallpaperStateFile {
             // A file written before the setting existed means "on", which is
             // what those builds did.
             notification = json.optBoolean("notification", true),
+            // Same rule for the button set: absent means the wallpaper actions.
+            notificationActions = json.optString("notificationActions", GroupedWallpaperFileState.NOTIFICATION_ACTIONS_WALLPAPER),
             historyLimit = json.optInt("historyLimit", 200),
             switchLocked = json.optBoolean("switchLocked", false),
             switchLockedGroupId = json.optString("switchLockedGroupId", ""),

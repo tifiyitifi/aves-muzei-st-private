@@ -1,6 +1,7 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
@@ -233,6 +234,11 @@ class _FakeConnection implements WallpaperEngineConnection {
   bool notification = true;
 
   @override
+  Future<void> setNotificationActions(GroupedWallpaperNotificationActions actions) async => notificationActions = actions;
+
+  GroupedWallpaperNotificationActions notificationActions = GroupedWallpaperNotificationActions.defaultActions;
+
+  @override
   Future<void> setHistoryLimit(int limit) async => historyLimit = limit;
 
   int historyLimit = 200;
@@ -260,6 +266,12 @@ class _FakeConnection implements WallpaperEngineConnection {
 
   @override
   Future<GroupedWallpaperSyncResult> nextArtwork() async => GroupedWallpaperSyncResult.unchanged;
+
+  @override
+  Future<bool> promotePhoto({required bool previous}) async => false;
+
+  @override
+  Future<GroupedWallpaperSyncResult> switchGroup(int delta) async => GroupedWallpaperSyncResult.unchanged;
 
   @override
   Future<GroupedWallpaperSyncResult> nextLockArtwork() async => GroupedWallpaperSyncResult.unchanged;

@@ -71,4 +71,49 @@ void main() {
       expect(groupedWallpaperCanGoNext(state(count: 2)), isTrue);
     });
   });
+
+  group('group steps', () {
+    const rotation = [
+      GroupedWallpaperGroup(id: 'wallpaper.group.dcim', number: 1, name: 'DCIM'),
+      GroupedWallpaperGroup(id: 'wallpaper.group.camera', number: 2, name: 'Camera'),
+    ];
+
+    GroupedWallpaperState groupState({
+      List<GroupedWallpaperGroup> groups = rotation,
+      String groupId = 'wallpaper.group.dcim',
+    }) => GroupedWallpaperState(
+      status: GroupedWallpaperStatus.ready,
+      groupId: groupId,
+      groups: groups,
+    );
+
+    test('need a group playing', () {
+      expect(groupedWallpaperCanStepGroup(groupState(groupId: 'none'), locked: false), isFalse);
+    });
+
+    test('need another enabled group', () {
+      expect(
+        groupedWallpaperCanStepGroup(groupState(groups: const [GroupedWallpaperGroup(id: 'wallpaper.group.dcim')]), locked: false),
+        isFalse,
+      );
+    });
+
+    test('are on when the rotation has a neighbour and switching is unlocked', () {
+      expect(groupedWallpaperCanStepGroup(groupState(), locked: false), isTrue);
+    });
+
+    test('are off while the group switch is locked', () {
+      expect(groupedWallpaperCanStepGroup(groupState(), locked: true), isFalse);
+    });
+
+    test('are off while the grouped wallpaper is turned off', () {
+      expect(
+        groupedWallpaperCanStepGroup(
+          const GroupedWallpaperState(status: GroupedWallpaperStatus.disabled, groupId: 'wallpaper.group.dcim', groups: rotation),
+          locked: false,
+        ),
+        isFalse,
+      );
+    });
+  });
 }

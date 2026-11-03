@@ -1,5 +1,6 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
@@ -37,6 +38,18 @@ void main() {
 
   WallpaperGroup group(String id, {bool enabled = true, bool current = false, String name = ''}) =>
       WallpaperGroup(id: id, name: name, enabled: enabled, current: current, createdAt: 1, updatedAt: 2);
+
+  test('the notification button set defaults to the wallpaper actions', () async {
+    // A fresh install, and every build before the switch existed, showed the
+    // wallpaper actions while unlocked.
+    expect(await store.readNotificationActions(), GroupedWallpaperNotificationActions.wallpaper);
+
+    await store.writeNotificationActions(GroupedWallpaperNotificationActions.group);
+    expect(await store.readNotificationActions(), GroupedWallpaperNotificationActions.group);
+
+    await store.writeNotificationActions(GroupedWallpaperNotificationActions.wallpaper);
+    expect(await store.readNotificationActions(), GroupedWallpaperNotificationActions.wallpaper);
+  });
 
   test('round-trips the list in display order with derived numbers', () async {
     await store.saveGroups([

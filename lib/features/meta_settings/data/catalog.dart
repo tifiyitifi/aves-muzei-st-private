@@ -512,6 +512,14 @@ final List<SettingDef> _wallpaperDefs = [
     sortOrder: 20,
   ),
   SettingDef(
+    key: WallpaperGroupStore.keyNotificationActions,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsWallpaperNotificationActions,
+    editorKey: MetaEditorKeys.wallpaperNotificationActions,
+    sortOrder: 21,
+  ),
+  SettingDef(
     key: WallpaperGroupStore.keyTransition,
     category: SettingsCategory.wallpaper,
     widgetKind: SettingWidgetKind.custom,

@@ -5,6 +5,7 @@ import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
@@ -149,6 +150,79 @@ class WallpaperNotificationEditor extends StatelessWidget {
         },
       );
 }
+
+/// Picks which button set the unlocked notification bar shows.
+///
+/// The lock screen is deliberately not affected: it always offers the group
+/// actions, so a screen lock can never leave the group the lock protects. The
+/// explanation lives in the About page, so the tile only names the current
+/// choice.
+class WallpaperNotificationActionsEditor extends StatefulWidget {
+  final SettingDef def;
+
+  const new({super.key, required this.def});
+
+  @override
+  State<WallpaperNotificationActionsEditor> createState() => _WallpaperNotificationActionsEditorState();
+}
+
+class _WallpaperNotificationActionsEditorState extends State<WallpaperNotificationActionsEditor> {
+  GroupedWallpaperNotificationActions? _value;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    try {
+      final value = await (await _store()).readNotificationActions();
+      if (!mounted) return;
+      setState(() => _value = value);
+    } catch (error, stack) {
+      groupedWallpaperLog.e('failed to read the wallpaper notification actions', error, stack);
+    }
+  }
+
+  Future<void> _set(GroupedWallpaperNotificationActions value) async {
+    setState(() => _value = value);
+    try {
+      // The store is the source of truth; the engine call carries the value into
+      // `state.json` so the native bar re-posts with the new set at once.
+      await (await _store()).writeNotificationActions(value);
+      await wallpaperEngineLink.setNotificationActions(value);
+    } catch (error, stack) {
+      groupedWallpaperLog.e('failed to write the wallpaper notification actions', error, stack);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = _value;
+    return ListTile(
+      title: Text(widget.def.title(context)),
+      subtitle: value == null ? null : AvesListSubtitle(_notificationActionsName(context, value)),
+      enabled: value != null,
+      onTap: value == null
+          ? null
+          : () => showSelectionDialog<GroupedWallpaperNotificationActions>(
+                context: context,
+                builder: (context) => AvesSingleSelectionDialog<GroupedWallpaperNotificationActions>(
+                  initialValue: value,
+                  options: {for (final option in GroupedWallpaperNotificationActions.values) option: _notificationActionsName(context, option)},
+                  title: context.l10n.settingsWallpaperNotificationActions,
+                ),
+                onSelection: (selected) => unawaited(_set(selected)),
+              ),
+    );
+  }
+}
+
+String _notificationActionsName(BuildContext context, GroupedWallpaperNotificationActions actions) => switch (actions) {
+      GroupedWallpaperNotificationActions.wallpaper => context.l10n.settingsWallpaperNotificationActionsWallpaper,
+      GroupedWallpaperNotificationActions.group => context.l10n.settingsWallpaperNotificationActionsGroup,
+    };
 
 /// Picks how a photo change animates.
 ///

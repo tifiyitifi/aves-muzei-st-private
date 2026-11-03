@@ -2029,7 +2029,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         settings: const RouteSettings(name: GroupedWallpaperEffectsPage.routeName),
         builder: (_) => GroupedWallpaperEffectsPage(
           groupId: group.id,
-          controller: _controller,
+          controller: _controller.groupController,
         ),
       ),
     );

@@ -73,6 +73,14 @@ abstract interface class GroupedWallpaperPlatform {
   /// Asks the renderer to re-read `state.json`.
   Future<void> reload();
 
+  /// Promotes the queued neighbour without a bake, like a wallpaper double tap.
+  ///
+  /// The renderer writes the promotion to `runtime.json` synchronously, so the
+  /// caller can describe the frame on screen as soon as this answers true. False
+  /// means there was nothing to promote (no engine, a frozen wallpaper, or the
+  /// neighbour's texture is not uploaded yet): the caller then bakes instead.
+  Future<bool> promotePhoto({required bool previous});
+
   /// Applies the current group's auto-advance interval; `0` turns it off.
   Future<void> scheduleAutoAdvance(int seconds);
 
@@ -187,6 +195,12 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
 
   @override
   Future<void> reload() => _invoke<void>('reload');
+
+  @override
+  Future<bool> promotePhoto({required bool previous}) async {
+    final promoted = await _invoke<bool>('promotePhoto', {'previous': previous});
+    return promoted ?? false;
+  }
 
   @override
   Future<void> scheduleAutoAdvance(int seconds) => _invoke<void>('scheduleAutoAdvance', {'seconds': seconds});

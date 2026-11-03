@@ -1,6 +1,7 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
@@ -64,6 +65,9 @@ abstract interface class WallpaperEngineConnection {
   /// Records the notification bar switch and applies it now.
   Future<void> setNotification(bool enabled);
 
+  /// Records which button set the unlocked bar shows and re-posts it.
+  Future<void> setNotificationActions(GroupedWallpaperNotificationActions actions);
+
   /// Records how many photos the usage history keeps.
   Future<void> setHistoryLimit(int limit);
 
@@ -84,6 +88,15 @@ abstract interface class WallpaperEngineConnection {
 
   /// Shows the next photo of the group, resuming a frozen wallpaper first.
   Future<GroupedWallpaperSyncResult> nextArtwork();
+
+  /// Shows the queued neighbour in one texture swap, like a wallpaper tap.
+  ///
+  /// False means there is nothing to promote, so the caller has to use
+  /// [previousArtwork] or [nextArtwork] instead.
+  Future<bool> promotePhoto({required bool previous});
+
+  /// Makes the next (`delta > 0`) or previous enabled group current.
+  Future<GroupedWallpaperSyncResult> switchGroup(int delta);
 
   /// Steps the decoy lock surface to a new photo (the view page's action).
   Future<GroupedWallpaperSyncResult> nextLockArtwork();
@@ -250,6 +263,8 @@ class WallpaperEngineLink {
     _notification = enabled;
   }
 
+  Future<void> setNotificationActions(GroupedWallpaperNotificationActions actions) async => await _connection?.setNotificationActions(actions);
+
   Future<void> setHistoryLimit(int limit) async => await _connection?.setHistoryLimit(limit);
 
   Future<void> setTransition(GroupedWallpaperTransition transition) async => await _connection?.setTransition(transition);
@@ -263,6 +278,10 @@ class WallpaperEngineLink {
   Future<GroupedWallpaperSyncResult> previousArtwork() async => await _connection?.previousArtwork() ?? GroupedWallpaperSyncResult.notActive;
 
   Future<GroupedWallpaperSyncResult> nextArtwork() async => await _connection?.nextArtwork() ?? GroupedWallpaperSyncResult.notActive;
+
+  Future<bool> promotePhoto({required bool previous}) async => await _connection?.promotePhoto(previous: previous) ?? false;
+
+  Future<GroupedWallpaperSyncResult> switchGroup(int delta) async => await _connection?.switchGroup(delta) ?? GroupedWallpaperSyncResult.notActive;
 
   Future<GroupedWallpaperSyncResult> nextLockArtwork() async => await _connection?.nextLockArtwork() ?? GroupedWallpaperSyncResult.notActive;
 

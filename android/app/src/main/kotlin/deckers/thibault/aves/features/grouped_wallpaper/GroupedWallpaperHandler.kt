@@ -68,6 +68,7 @@ class GroupedWallpaperHandler(
             "capability" -> safe(call, result, ::capability)
             "restoreOffer" -> safe(call, result, ::restoreOffer)
             "reload" -> safe(call, result, ::reload)
+            "promotePhoto" -> safe(call, result, ::promotePhoto)
             "openChooser" -> safe(call, result, ::openChooser)
             "wallpaperSize" -> safe(call, result, ::wallpaperSize)
             "scrollStep" -> safe(call, result, ::scrollStep)
@@ -189,6 +190,22 @@ class GroupedWallpaperHandler(
     private fun reload(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
         GroupedWallpaperRenderBus.reload()
         result.success(null)
+    }
+
+    /**
+     * Promotes the queued neighbour for the in-app view, like a wallpaper tap.
+     *
+     * The app asks this before falling back to one of its own commands: the
+     * renderer already holds the neighbour's texture, so the frame changes in one
+     * swap instead of a bake. The promotion writes `runtime.json` synchronously,
+     * and the bar is re-posted at once from the slot the renderer now draws; the
+     * app refills the freed slot in the background.
+     */
+    private fun promotePhoto(call: MethodCall, result: MethodChannel.Result) {
+        val previous = call.argument<Boolean>("previous") ?: false
+        val promoted = if (previous) GroupedWallpaperRenderBus.previous() else GroupedWallpaperRenderBus.advance()
+        if (promoted) GroupedLiveWallpaperService.refreshNotification()
+        result.success(promoted)
     }
 
     private fun openChooser(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {

@@ -19,6 +19,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_re
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
@@ -280,6 +281,54 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     await platform.refreshNotification();
   }
 
+  /// Records which button set the unlocked bar shows and re-posts it.
+  ///
+  /// Like the notification switch, the value has to reach `state.json` even when
+  /// no frame is baked, and the rewrite keeps the generation so the frame on
+  /// screen does not move. The lock screen ignores the value: it always offers
+  /// the group actions, which is what stops a stray tap from leaving the group
+  /// the lock is protecting.
+  @override
+  Future<void> setNotificationActions(GroupedWallpaperNotificationActions actions) async {
+    await planStore.setNotificationActions(actions);
+    final store = _store;
+    if (store != null) {
+      final state = await store.readState();
+      if (state != null && state.notificationActions != actions) {
+        await store.writeState(state.copyWith(notificationActions: actions));
+      }
+    }
+    await platform.refreshNotification();
+  }
+
+  /// Shows the queued neighbour without waiting for a bake.
+  ///
+  /// This is the same move a wallpaper double tap makes: the live renderer
+  /// promotes the slot it already uploaded, so the frame changes in one texture
+  /// swap. It only works on the home queue with that neighbour baked; the caller
+  /// falls back to [nextArtwork] or [previousArtwork] when this answers false.
+  /// The freed slot is refilled in the background, and the step restarts the
+  /// auto-advance countdown exactly like an explicit step does.
+  @override
+  Future<bool> promotePhoto({required bool previous}) {
+    return _serialize(() async {
+      final promoted = await platform.promotePhoto(previous: previous);
+      if (!promoted) return false;
+      try {
+        await _restartAutoAdvance(await planStore.load());
+      } catch (error, stack) {
+        // The frame has already changed: a failed countdown restart must not
+        // surface as a step that did nothing.
+        groupedWallpaperLog.w('failed to restart the auto-advance after a promotion', error, stack);
+      }
+      // Not awaited: the frame on screen has already changed, and the refill only
+      // decides whether the next step is instant too.
+      unawaited(prepare());
+      groupedWallpaperLog.d('promote from app previous=$previous');
+      return true;
+    });
+  }
+
   /// Records how many photos the usage history keeps and tells the bar about it.
   ///
   /// The value travels with the state so the notification can grey its "previous"
@@ -449,8 +498,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   ///
   /// A locked target range still displays: baking only reads the range, so the
   /// lock protects editing and browsing, not which group the wallpaper shows.
+  /// The group-switch lock is the one guard: a stale bar or the view page could
+  /// still send the step, so it is refused here rather than only in the menu.
+  @override
   Future<GroupedWallpaperSyncResult> switchGroup(int delta) {
     return _serialize(() async {
+      if (_refuseLockedGroupSwitch()) return GroupedWallpaperSyncResult.unchanged;
       final plan = await planStore.switchGroup(delta);
       if (plan.isNone) return GroupedWallpaperSyncResult.unchanged;
       return _run(advance: false, requireActive: false, activation: false);
@@ -1269,6 +1322,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         ordering: plan.ordering,
         gestures: plan.gestures,
         notification: plan.notification,
+        notificationActions: plan.notificationActions,
         surfaceWidth: surface.width.round(),
         surfaceHeight: surface.height.round(),
         scrollEffect: scrollEffect,
@@ -1429,6 +1483,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       ordering: plan.ordering,
       gestures: plan.gestures,
       notification: plan.notification,
+      notificationActions: plan.notificationActions,
       surfaceWidth: surface.width.round(),
       surfaceHeight: surface.height.round(),
       scrollEffect: scrollEffect,
@@ -1849,6 +1904,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             ordering: plan.ordering,
             gestures: plan.gestures,
             notification: plan.notification,
+            notificationActions: plan.notificationActions,
             historyLimit: plan.historyLimit,
             transitionMs: plan.transition.durationMs,
             frameRetention: plan.frameRetention,
@@ -1865,6 +1921,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             groupName: _resolveName(plan.group),
             gestures: plan.gestures,
             notification: plan.notification,
+            notificationActions: plan.notificationActions,
             historyLimit: plan.historyLimit,
             transitionMs: plan.transition.durationMs,
             frameRetention: plan.frameRetention,
@@ -1896,6 +1953,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
               groupName: _resolveName(plan.group),
               gestures: plan.gestures,
               notification: plan.notification,
+              notificationActions: plan.notificationActions,
               historyLimit: plan.historyLimit,
               transitionMs: plan.transition.durationMs,
               frameRetention: plan.frameRetention,

@@ -1,4 +1,5 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
@@ -61,6 +62,7 @@ void main() {
     historyLimit: 500,
     switchLocked: true,
     switchLockedGroupId: 'wallpaper.group.dcim',
+    notificationActions: GroupedWallpaperNotificationActions.group,
     groups: [
       GroupedWallpaperGroup(id: 'wallpaper.group.dcim', number: 1, name: 'DCIM'),
       GroupedWallpaperGroup(id: 'wallpaper.group.camera', number: 2, name: 'Camera'),
@@ -91,6 +93,7 @@ void main() {
     expect(parsed.historyLimit, 500);
     expect(parsed.switchLocked, isTrue);
     expect(parsed.switchLockedGroupId, 'wallpaper.group.dcim');
+    expect(parsed.notificationActions, GroupedWallpaperNotificationActions.group);
     expect(parsed.groups.map((group) => group.id), ['wallpaper.group.dcim', 'wallpaper.group.camera']);
     expect(parsed.groups.map((group) => group.name), ['DCIM', 'Camera']);
   });
@@ -184,6 +187,18 @@ void main() {
 
     final unknown = state.toJsonMap()..['frameRetention'] = 'nonsense';
     expect(GroupedWallpaperState.tryFromJsonMap(unknown)!.frameRetention, GroupedWallpaperFrameRetention.defaultRetention);
+  });
+
+  test('the notification button set travels with the state', () {
+    final json = state.toJsonMap()..['notificationActions'] = 'wallpaper';
+    expect(GroupedWallpaperState.tryFromJsonMap(json)!.notificationActions, GroupedWallpaperNotificationActions.wallpaper);
+
+    // A file written before the switch existed showed the wallpaper actions.
+    final missing = state.toJsonMap()..remove('notificationActions');
+    expect(GroupedWallpaperState.tryFromJsonMap(missing)!.notificationActions, GroupedWallpaperNotificationActions.defaultActions);
+
+    final unknown = state.toJsonMap()..['notificationActions'] = 'nonsense';
+    expect(GroupedWallpaperState.tryFromJsonMap(unknown)!.notificationActions, GroupedWallpaperNotificationActions.defaultActions);
   });
 
   test('a v3 file reads as playing, with no group on its history', () {

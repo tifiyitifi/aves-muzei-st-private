@@ -6,6 +6,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_re
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
@@ -48,6 +49,13 @@ class WallpaperGroupStore {
   /// off means the service posts nothing and never promotes itself to a
   /// foreground service, not a hidden bar.
   static const keyNotification = 'wallpaper.groupedNotification';
+
+  /// AppMeta key of the notification bar's default button set.
+  ///
+  /// Global like the switches below: the bar belongs to the wallpaper, not to a
+  /// group, and the value travels to the service in `state.json` so the bar can
+  /// pick its set without asking the app.
+  static const keyNotificationActions = 'wallpaper.groupedNotificationActions';
 
   /// AppMeta key of the home-screen scroll effect switch.
   ///
@@ -218,6 +226,17 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeNotification(bool enabled) => AppMetaStore(db).write({keyNotification: enabled ? 'true' : 'false'});
+
+  /// The button set the unlocked bar offers.
+  ///
+  /// A missing value is a fresh install (or a build before the switch existed),
+  /// which shows the wallpaper actions, exactly like those builds did.
+  Future<GroupedWallpaperNotificationActions> readNotificationActions() async {
+    final values = await AppMetaStore(db).read({keyNotificationActions});
+    return GroupedWallpaperNotificationActions.tryParse(values[keyNotificationActions]);
+  }
+
+  Future<void> writeNotificationActions(GroupedWallpaperNotificationActions actions) => AppMetaStore(db).write({keyNotificationActions: actions.name});
 
   /// Whether frames keep the photo's whole width for the launcher to pan.
   ///

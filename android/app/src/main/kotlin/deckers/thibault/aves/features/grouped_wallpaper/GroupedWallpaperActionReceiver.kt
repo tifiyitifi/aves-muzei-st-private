@@ -67,7 +67,7 @@ class GroupedWallpaperActionReceiver : BroadcastReceiver() {
             GroupedWallpaperAppBridge.requestGroupPage(context)
             return
         }
-        GroupedWallpaperNotification.toggleGroupActions(context)
+        GroupedWallpaperNotification.toggleGroupActions(context, GroupedWallpaperStateFile.read(context))
         GroupedLiveWallpaperService.refreshNotification()
     }
 

@@ -26,6 +26,7 @@ abstract final class MetaEditorKeys {
   static const String collectionBackgroundWork = 'collection_background_work';
   static const String wallpaperNavMode = 'wallpaper_nav_mode';
   static const String wallpaperNotification = 'wallpaper_notification';
+  static const String wallpaperNotificationActions = 'wallpaper_notification_actions';
   static const String wallpaperTransition = 'wallpaper_transition';
   static const String wallpaperFrameRetention = 'wallpaper_frame_retention';
   static const String wallpaperHistoryLimit = 'wallpaper_history_limit';

@@ -676,6 +676,44 @@ void main() {
       expect(baker.lastHomeGeometry.fit, WallpaperImageFit.fill);
       expect(baker.lastLockGeometry.quarterTurns, 0, reason: 'the lock framing is still off');
       expect(baker.lastLockSharesHomeBase, isFalse, reason: 'the lock needs an upright base');
+      // The view page reads the resolved value from the state, not from the
+      // group config: the frame is surface-sized either way.
+      expect((await store.readState())!.currentSlot?.quarterTurns, 1);
+    });
+
+    test('a slot written before the rotation marker is re-resolved from the cache', () async {
+      planStore.plan = GroupedWallpaperPlan(
+        group: noScrollGroup.copyWith(
+          effects: const WallpaperEffectsConfig(
+            homeScrollEffect: false,
+            framingHome: WallpaperFraming(rotation: WallpaperRotation.clockwise),
+          ),
+        ),
+      );
+      serve([entry(50, width: 300, height: 100)]);
+      await engine.prepare();
+      final baked = (await store.readState())!;
+      expect(baked.currentSlot?.quarterTurns, 1);
+      final bakes = baker.bakeCount;
+
+      GroupedWallpaperSlot legacy(GroupedWallpaperSlot slot) => GroupedWallpaperSlot(
+        id: slot.id,
+        entryId: slot.entryId,
+        uri: slot.uri,
+        title: slot.title,
+        photo: slot.photo,
+        effectHome: slot.effectHome,
+        effectLock: slot.effectLock,
+        width: slot.width,
+        height: slot.height,
+        darkness: slot.darkness,
+        rotationSeed: slot.rotationSeed,
+      );
+      await store.writeState(baked.copyWith(slots: [for (final slot in baked.slots) legacy(slot)]));
+
+      expect(await engine.prepare(), GroupedWallpaperSyncResult.baked);
+      expect((await store.readState())!.currentSlot?.quarterTurns, 1);
+      expect(baker.bakeCount, bakes, reason: 'the cache hit only re-resolves the marker');
     });
 
     test('a threshold raises the bar for a quarter turn', () async {

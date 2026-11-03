@@ -1,11 +1,14 @@
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_control_pad_layout.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_pad_config.dart';
+import 'package:aves/theme/icons.dart';
 import 'package:material_ui/material_ui.dart';
 
-/// The view page's floating control pad: a draggable, left-aligned 3/2/1 stack.
+/// The view page's floating control pad: a draggable grid with a visible grip.
 ///
-/// The rows are handed in by the page, so the pad only owns what is the same for
-/// every control: the bracket silhouette, the drag and the remembered place. It
-/// positions itself, so it must be a direct child of the page's `Stack`.
+/// The page hands in the shape and one widget per cell, so the pad only owns
+/// what is the same for every control: the handle, the panel background, the
+/// drag and the remembered place. It positions itself, so it must be a direct
+/// child of the page's `Stack`.
 ///
 /// Dragging writes the page's [position] notifier and nothing else: the builder
 /// below rebuilds this subtree alone, which is why moving the pad never rebuilds
@@ -27,14 +30,11 @@ class GroupedWallpaperControlPad extends StatefulWidget {
   /// Whether the chrome is on. The pad fades with it, like the info panel.
   final bool visible;
 
-  /// The three top cells, left-aligned: previous photo, next photo, menu.
-  final Widget topRow;
+  /// The grid the cells are laid out in.
+  final GroupedWallpaperPadShape shape;
 
-  /// The two middle cells, left-aligned: group up, group down.
-  final Widget middleRow;
-
-  /// The single bottom cell: delete.
-  final Widget bottomRow;
+  /// One widget per cell, row-major, empty cells as null.
+  final List<Widget?> cells;
 
   const new({
     super.key,
@@ -43,9 +43,8 @@ class GroupedWallpaperControlPad extends StatefulWidget {
     required this.safeInsets,
     required this.onMoved,
     required this.visible,
-    required this.topRow,
-    required this.middleRow,
-    required this.bottomRow,
+    required this.shape,
+    required this.cells,
   });
 
   @override
@@ -64,8 +63,10 @@ class _GroupedWallpaperControlPadState extends State<GroupedWallpaperControlPad>
   /// an unchanged value.
   bool _moved = false;
 
+  Size get _extent => groupedWallpaperControlPadExtentFor(columns: widget.shape.columns, rows: widget.shape.rows);
+
   void _onPanStart(DragStartDetails _) {
-    _dragTopLeft = groupedWallpaperControlPadTopLeft(position: widget.position.value, viewportSize: widget.viewportSize, safeInsets: widget.safeInsets);
+    _dragTopLeft = groupedWallpaperControlPadTopLeft(position: widget.position.value, viewportSize: widget.viewportSize, safeInsets: widget.safeInsets, extent: _extent);
     _moved = false;
   }
 
@@ -74,7 +75,7 @@ class _GroupedWallpaperControlPadState extends State<GroupedWallpaperControlPad>
     if (start == null) return;
     final next = start + details.delta;
     _dragTopLeft = next;
-    final clamped = groupedWallpaperControlPadPositionFrom(topLeft: next, viewportSize: widget.viewportSize, safeInsets: widget.safeInsets);
+    final clamped = groupedWallpaperControlPadPositionFrom(topLeft: next, viewportSize: widget.viewportSize, safeInsets: widget.safeInsets, extent: _extent);
     if (clamped == widget.position.value) return;
     widget.position.value = clamped;
     _moved = true;
@@ -96,12 +97,13 @@ class _GroupedWallpaperControlPadState extends State<GroupedWallpaperControlPad>
     return ValueListenableBuilder<GroupedWallpaperControlPadPosition>(
       valueListenable: widget.position,
       builder: (context, position, _) {
-        final topLeft = groupedWallpaperControlPadTopLeft(position: position, viewportSize: widget.viewportSize, safeInsets: widget.safeInsets);
+        final extent = _extent;
+        final topLeft = groupedWallpaperControlPadTopLeft(position: position, viewportSize: widget.viewportSize, safeInsets: widget.safeInsets, extent: extent);
         return Positioned(
           left: topLeft.dx,
           top: topLeft.dy,
-          width: groupedWallpaperControlPadExtent,
-          height: groupedWallpaperControlPadExtent,
+          width: extent.width,
+          height: extent.height,
           child: IgnorePointer(
             ignoring: !widget.visible,
             child: AnimatedOpacity(
@@ -114,29 +116,25 @@ class _GroupedWallpaperControlPadState extends State<GroupedWallpaperControlPad>
                 child: Material(
                   type: MaterialType.transparency,
                   child: GestureDetector(
-                    // Deferring to the children keeps the empty part of the
-                    // 3x3 box transparent to the photo's own tap.
-                    behavior: HitTestBehavior.deferToChild,
+                    // The whole panel is the drag surface: the handle is the
+                    // obvious place to grab, not the only one that works.
+                    behavior: HitTestBehavior.opaque,
                     onPanStart: _onPanStart,
                     onPanUpdate: _onPanUpdate,
                     onPanCancel: _onPanCancel,
                     onPanEnd: _onPanEnd,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _row(
-                          widget.topRow,
-                          cells: 3,
-                          radius: const BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
-                        ),
-                        _row(widget.middleRow, cells: 2, radius: BorderRadius.zero),
-                        _row(
-                          widget.bottomRow,
-                          cells: 1,
-                          radius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
-                        ),
-                      ],
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        color: Color(0x73000000),
+                        borderRadius: BorderRadius.all(Radius.circular(20)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const _DragHandle(),
+                          Expanded(child: _grid()),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -148,16 +146,46 @@ class _GroupedWallpaperControlPadState extends State<GroupedWallpaperControlPad>
     );
   }
 
-  /// One step of the bracket: a tinted band exactly as wide as its cells.
-  ///
-  /// The bands are stacked without gaps, so the free corner stays transparent and
-  /// the silhouette follows the 3/2/1 rows instead of reading as a square.
-  Widget _row(Widget child, {required int cells, required BorderRadius radius}) => SizedBox(
-    width: cells * groupedWallpaperControlPadCell,
-    height: groupedWallpaperControlPadCell,
-    child: DecoratedBox(
-      decoration: BoxDecoration(color: Colors.black.withValues(alpha: .45), borderRadius: radius),
-      child: child,
+  Widget _grid() {
+    final cells = widget.cells;
+    final columns = widget.shape.columns;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var row = 0; row < widget.shape.rows; row++)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var column = 0; column < columns; column++)
+                SizedBox(
+                  width: groupedWallpaperControlPadCell,
+                  height: groupedWallpaperControlPadCell,
+                  child: row * columns + column < cells.length ? cells[row * columns + column] : null,
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+/// The visible grip on the pad's left edge.
+class _DragHandle extends StatelessWidget {
+  const new();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: groupedWallpaperControlPadHandleWidth,
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .08),
+      borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
+    ),
+    child: const Center(
+      // The symbol is horizontal; a quarter turn makes a vertical grip.
+      child: RotatedBox(
+        quarterTurns: 1,
+        child: Icon(AIcons.dragHandle, size: 18, color: Colors.white54),
+      ),
     ),
   );
 }

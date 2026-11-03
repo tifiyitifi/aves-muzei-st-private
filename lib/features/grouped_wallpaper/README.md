@@ -810,24 +810,49 @@ back walks view → group page → home instead of closing the app, and the grou
 page starts on the group being played. Opened from the group page, 「Open
 wallpaper groups」 pops back to it.
 
-The pad is a 3×3 box whose rows carry 3, 2 and 1 controls, left-aligned so the
-silhouette reads as a top-left bracket:
+The pad is a full 3×3 box with a visible grip on its left edge. Its nine slots
+are fixed positions, so the historical staircase stays put:
 
-| Row | Controls |
+| Slot | Default action |
 |---|---|
-| Top (3) | previous photo, next photo, menu |
-| Middle (2) | group **+1** (up), group **−1** (down) |
-| Bottom (1) | delete the photo on screen |
+| 0 / 1 / 2 | previous photo, next photo, menu |
+| 3 / 4 / 5 | group **+1** (up), group **−1** (down), empty |
+| 6 / 7 / 8 | delete the photo on screen, empty, empty |
 
-It **floats and is draggable**: the whole staircase is the drag handle, the place
-is clamped inside the safe area, stored as a fraction of the free space (so a
-rotation keeps it within thumb reach) and written to AppMeta only when a drag
-ends. The default anchor is the left edge a little below the middle, reachable on
-a phone held in one hand. Dragging updates a `ValueNotifier` that only the pad
-listens to, so it never rebuilds the photo or re-reads the wallpaper state; the
-photo and the pad each sit behind a `RepaintBoundary`. The pad fades out with
-the rest of the chrome, and its empty top-right corner stays transparent to the
-photo's own tap.
+The slots are **user-configurable** in Settings → Visible & wallpaper → 「Wallpaper
+view buttons」: tap a cell to assign any action from the pad pool, or clear it.
+The menu action is mandatory and locked in its cell; the other eight accept any
+action. The configuration is one AppMeta JSON row
+(`wallpaper.groupedViewPadConfig`), not a per-group value: the pad belongs to the
+view page, not to the group on screen.
+
+Two switches live in the same page:
+
+- **Shrink the panel to its buttons** (off by default). The live pad compacts the
+  assigned actions and picks a shape from the count and the screen orientation:
+  `1×1` for one, `1×2`/`2×1` for two, `2×2` for three or four, `2×3`/`3×2` for
+  five or six, and the full `3×3` for seven to nine. The editor always shows the
+  fixed nine slots, because that is where an action is placed.
+- **Use a single bottom row** (off by default). It is offered only with at most
+  three assigned actions; assigning a fourth turns it off. When on, the floating
+  pad and its handle are hidden and the same buttons become one row in the
+  artwork panel. The model enforces both rules, so a hand-edited value cannot
+  leave a bar that silently drops a button.
+
+The pad **floats and is draggable**: the grip is the obvious place to grab, and
+the whole panel works too. The place is clamped inside the safe area, stored as a
+fraction of the free space (so a rotation keeps it within thumb reach) and
+written to AppMeta only when a drag ends. Until the first drag its top-left
+corner sits at the screen center, i.e. the top-left of the bottom-right quadrant.
+Dragging updates a `ValueNotifier` that only the pad listens to, so it never
+rebuilds the photo or re-reads the wallpaper state; the photo and the pad each
+sit behind a `RepaintBoundary`. The pad fades out with the rest of the chrome.
+
+The subtitle also says 「（已旋转）」 when the baked frame was turned. A frame is
+always baked at the surface size, so its width/height cannot reveal a quarter
+turn; `GroupedWallpaperSlot.quarterTurns` / `GroupedWallpaperLockFrame.quarterTurns`
+carry the resolved value in `state.json` instead. An older state without the
+field reads 0, i.e. upright.
 
 A home photo step first asks the renderer to **promote the queued neighbour**,
 which is the texture swap a wallpaper double tap makes, so the frame and the page

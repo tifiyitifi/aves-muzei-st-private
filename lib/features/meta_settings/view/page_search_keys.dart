@@ -40,4 +40,5 @@ const Map<String, List<String>> metaPageSearchKeys = {
   // there is no setting key to highlight in the recent-settings list.
   MetaPageKeys.wallpaperHistory: <String>[],
   MetaPageKeys.wallpaperGestures: <String>[],
+  MetaPageKeys.wallpaperViewPad: <String>[],
 };

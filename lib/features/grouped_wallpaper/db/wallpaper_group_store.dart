@@ -9,6 +9,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_pad_config.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
@@ -113,6 +114,12 @@ class WallpaperGroupStore {
   /// "do not ask" flag for the same reason, and the stored value is normalized so
   /// a rotation keeps the pad within thumb reach.
   static const keyViewPadPosition = 'wallpaper.groupedViewPad';
+
+  /// AppMeta key of the view page pad's slots and presentation switches.
+  ///
+  /// Global like the pad's place: the pad belongs to the immersive page, not to a
+  /// group, so switching groups must not rearrange its buttons.
+  static const keyViewPadConfig = 'wallpaper.groupedViewPadConfig';
 
   /// AppMeta key of "the grouped wallpaper has been the system wallpaper".
   ///
@@ -328,17 +335,28 @@ class WallpaperGroupStore {
 
   Future<void> writeFrameRetention(GroupedWallpaperFrameRetention retention) => AppMetaStore(db).write({keyFrameRetention: retention.name});
 
-  /// Where the view page's floating control pad rests.
+  /// Where the view page's floating control pad rests, or null before a drag.
   ///
-  /// A missing or unreadable value is a fresh install (or a build before the pad
-  /// existed), which opens the pad at the thumb-friendly anchor rather than in a
-  /// corner.
-  Future<GroupedWallpaperControlPadPosition> readViewPadPosition() async {
+  /// Null is deliberately distinct from the old default: the page resolves a
+  /// missing value against the current viewport, so a fresh install opens the pad
+  /// at the screen center instead of a hard-coded fraction of some other screen.
+  Future<GroupedWallpaperControlPadPosition?> readViewPadPosition() async {
     final values = await AppMetaStore(db).read({keyViewPadPosition});
-    return GroupedWallpaperControlPadPosition.tryParse(values[keyViewPadPosition]) ?? GroupedWallpaperControlPadPosition.defaultPosition;
+    return GroupedWallpaperControlPadPosition.tryParse(values[keyViewPadPosition]);
   }
 
   Future<void> writeViewPadPosition(GroupedWallpaperControlPadPosition position) => AppMetaStore(db).write({keyViewPadPosition: position.encode()});
+
+  /// The view page pad's slots and switches.
+  ///
+  /// A missing or unreadable value is the historical layout: the pad is drawn as
+  /// the full 3x3 staircase and the bottom-bar mode is off.
+  Future<GroupedWallpaperPadConfig> readViewPadConfig() async {
+    final values = await AppMetaStore(db).read({keyViewPadConfig});
+    return GroupedWallpaperPadConfig.tryParse(values[keyViewPadConfig]) ?? GroupedWallpaperPadConfig.defaultConfig;
+  }
+
+  Future<void> writeViewPadConfig(GroupedWallpaperPadConfig config) => AppMetaStore(db).write({keyViewPadConfig: config.encode()});
 
   /// Whether the grouped wallpaper has already been the system wallpaper.
   Future<bool> readWasActive() async {

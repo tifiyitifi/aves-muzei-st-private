@@ -3,19 +3,33 @@ import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Where the view page's floating control pad may rest: the normalized place,
-/// the clamp that keeps it on screen and the tolerance of a stored value.
+/// the clamp that keeps it on screen and the centered default anchor.
 void main() {
   const viewport = Size(400, 800);
+  const extent = Size(160, 144);
   const free = Size(
-    400 - 2 * groupedWallpaperControlPadMargin - groupedWallpaperControlPadExtent,
-    800 - 2 * groupedWallpaperControlPadMargin - groupedWallpaperControlPadExtent,
+    400 - 2 * groupedWallpaperControlPadMargin - 160,
+    800 - 2 * groupedWallpaperControlPadMargin - 144,
   );
 
-  test('the default anchor sits on the left, a little below the middle', () {
-    const position = GroupedWallpaperControlPadPosition.defaultPosition;
-    expect(position.x, 0);
-    expect(position.y, greaterThan(.5));
-    expect(position.y, lessThan(1));
+  test('the extent is the grid plus the handle', () {
+    expect(groupedWallpaperControlPadExtentFor(columns: 3, rows: 3), const Size(16 + 3 * 48, 3 * 48));
+    expect(groupedWallpaperControlPadExtentFor(columns: 2, rows: 1), const Size(16 + 2 * 48, 48));
+  });
+
+  test('the default anchor puts the pad top-left at the screen center', () {
+    final position = groupedWallpaperControlPadCenteredDefault(viewportSize: viewport, safeInsets: EdgeInsets.zero, extent: extent);
+    final topLeft = groupedWallpaperControlPadTopLeft(position: position, viewportSize: viewport, safeInsets: EdgeInsets.zero, extent: extent);
+    expect(topLeft.dx, closeTo(viewport.width / 2, .001));
+    expect(topLeft.dy, closeTo(viewport.height / 2, .001));
+  });
+
+  test('the centered anchor is clamped inside a small safe area', () {
+    const insets = EdgeInsets.fromLTRB(10, 20, 10, 20);
+    final position = groupedWallpaperControlPadCenteredDefault(viewportSize: viewport, safeInsets: insets, extent: extent);
+    final topLeft = groupedWallpaperControlPadTopLeft(position: position, viewportSize: viewport, safeInsets: insets, extent: extent);
+    expect(topLeft.dx, greaterThanOrEqualTo(insets.left + groupedWallpaperControlPadMargin));
+    expect(topLeft.dy, greaterThanOrEqualTo(insets.top + groupedWallpaperControlPadMargin));
   });
 
   test('the place is a fraction of the free space, not of the viewport', () {
@@ -23,6 +37,7 @@ void main() {
       position: const GroupedWallpaperControlPadPosition(.5, .5),
       viewportSize: viewport,
       safeInsets: EdgeInsets.zero,
+      extent: extent,
     );
     expect(topLeft.dx, closeTo(groupedWallpaperControlPadMargin + free.width / 2, .001));
     expect(topLeft.dy, closeTo(groupedWallpaperControlPadMargin + free.height / 2, .001));
@@ -31,12 +46,13 @@ void main() {
   test('safe-area insets move both the usable rect and the pad', () {
     const insets = EdgeInsets.fromLTRB(10, 40, 10, 30);
     final topLeft = groupedWallpaperControlPadTopLeft(
-      position: GroupedWallpaperControlPadPosition.defaultPosition,
+      position: const GroupedWallpaperControlPadPosition(0, 0),
       viewportSize: viewport,
       safeInsets: insets,
+      extent: extent,
     );
     expect(topLeft.dx, 10 + groupedWallpaperControlPadMargin);
-    expect(topLeft.dy, greaterThan(40 + groupedWallpaperControlPadMargin));
+    expect(topLeft.dy, 40 + groupedWallpaperControlPadMargin);
   });
 
   test('a rotation keeps the fractional place inside the new screen', () {
@@ -45,9 +61,10 @@ void main() {
       position: const GroupedWallpaperControlPadPosition(1, 1),
       viewportSize: landscape,
       safeInsets: EdgeInsets.zero,
+      extent: extent,
     );
-    expect(topLeft.dx, 800 - groupedWallpaperControlPadMargin - groupedWallpaperControlPadExtent);
-    expect(topLeft.dy, 400 - groupedWallpaperControlPadMargin - groupedWallpaperControlPadExtent);
+    expect(topLeft.dx, 800 - groupedWallpaperControlPadMargin - extent.width);
+    expect(topLeft.dy, 400 - groupedWallpaperControlPadMargin - extent.height);
   });
 
   test('a drag past the edge is clamped back', () {
@@ -56,6 +73,7 @@ void main() {
         position: const GroupedWallpaperControlPadPosition(4, -2),
         viewportSize: viewport,
         safeInsets: EdgeInsets.zero,
+        extent: extent,
       ),
       const GroupedWallpaperControlPadPosition(1, 0),
     );
@@ -67,10 +85,11 @@ void main() {
       topLeft: const Offset(300, 300),
       viewportSize: tiny,
       safeInsets: EdgeInsets.zero,
+      extent: extent,
     );
     expect(position, const GroupedWallpaperControlPadPosition(0, 0));
     expect(
-      groupedWallpaperControlPadTopLeft(position: position, viewportSize: tiny, safeInsets: EdgeInsets.zero),
+      groupedWallpaperControlPadTopLeft(position: position, viewportSize: tiny, safeInsets: EdgeInsets.zero, extent: extent),
       const Offset(groupedWallpaperControlPadMargin, groupedWallpaperControlPadMargin),
     );
   });

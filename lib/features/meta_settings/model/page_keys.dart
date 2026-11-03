@@ -20,4 +20,5 @@ abstract final class MetaPageKeys {
   static const String confirmationDialog = '/settings/navigation_confirmation';
   static const String wallpaperHistory = '/grouped_wallpaper/history';
   static const String wallpaperGestures = '/wallpaper_groups/gestures';
+  static const String wallpaperViewPad = '/settings/wallpaper/view_pad';
 }

@@ -850,7 +850,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final effectsChanged = current != null && current.bakedAt < plan.group.updatedAt;
       final rangeEdited = current != null && current.bakedAt < lockRange.updatedAt;
       final missing = current == null || store.lockPhotoOf(current) == null;
-      final stale = current == null || rangeChanged || layoutChanged || effectsChanged || rangeEdited || missing;
+      // Same one-time upgrade as the home slot: a missing marker is resolved from
+      // the cached frame instead of leaving the subtitle without its note.
+      final markerStale = current != null && current.quarterTurns == null;
+      final stale = current == null || rangeChanged || layoutChanged || effectsChanged || rangeEdited || missing || markerStale;
       if (!advance && !stale) return GroupedWallpaperSyncResult.unchanged;
 
       // Time did not pass and the range did not move: only the pixels are stale
@@ -1015,6 +1018,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       newestEntryId: newestEntryId,
       recent: recent,
       rotationSeed: seed,
+      quarterTurns: geometry.quarterTurns,
     );
   }
 
@@ -1370,7 +1374,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       final result = await _startOver(store, plan, state, total: total, surface: surface, scrollEffect: scrollEffect, exclude: {currentSlot.entryId});
       return (result: result, promoted: null);
     }
-    if (layoutStale || !_slotUsable(store, currentSlot)) {
+    // A state written before the rotation marker existed still has its frame in
+    // the cache: re-resolving it costs a cache hit, not a decode, and gives the
+    // view page the value it needs to say the photo was turned.
+    final markerStale = currentSlot.quarterTurns == null;
+    if (layoutStale || markerStale || !_slotUsable(store, currentSlot)) {
       currentSlot = await _slotForEntry(store, plan, currentEntry, currentSlot.id, surface, scrollEffect, rotationSeed: currentSlot.rotationSeed);
     }
     slots[currentSlot.id] = currentSlot;
@@ -1694,6 +1702,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         height: cached.height,
         darkness: cached.darkness,
         rotationSeed: seed,
+        quarterTurns: homeGeometry.quarterTurns,
       );
     }
     final bake = await frameBaker.bakeTo(
@@ -1733,6 +1742,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       height: bake.height,
       darkness: bake.darkness,
       rotationSeed: seed,
+      quarterTurns: homeGeometry.quarterTurns,
     );
   }
 

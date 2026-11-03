@@ -4,18 +4,26 @@ import 'package:equatable/equatable.dart';
 
 /// One cell of the view page's floating control pad, in logical pixels.
 ///
-/// The pad is a 3x3 box whose three rows carry 3, 2 and 1 controls and are
-/// left-aligned, which is what makes the silhouette read as a top-left bracket.
+/// The pad is a grid of fixed cells with a slim drag handle on its left edge.
 /// The size is a rule rather than a measured value, so clamping a drag needs no
 /// layout pass and moving the pad never lays the photo out again.
 const groupedWallpaperControlPadCell = 48.0;
 
-/// The pad's box: three cells either way.
-const groupedWallpaperControlPadExtent = 3 * groupedWallpaperControlPadCell;
+/// Width of the visible grip on the pad's left edge.
+///
+/// It is part of the pad's extent, not an overlay: the grid starts after it, so
+/// the handle never covers a button.
+const groupedWallpaperControlPadHandleWidth = 16.0;
 
 /// Space the pad keeps from the safe area's edges, clear of the gesture bar and
 /// the screen border.
 const groupedWallpaperControlPadMargin = 12.0;
+
+/// The pixel size of a pad with [columns] x [rows] cells plus its handle.
+Size groupedWallpaperControlPadExtentFor({required int columns, required int rows}) => Size(
+  groupedWallpaperControlPadHandleWidth + columns * groupedWallpaperControlPadCell,
+  rows * groupedWallpaperControlPadCell,
+);
 
 /// Where the pad rests, as a fraction of the free space inside the safe area.
 ///
@@ -28,13 +36,9 @@ class GroupedWallpaperControlPadPosition extends Equatable {
 
   const new(this.x, this.y);
 
-  /// Left edge, a little below the middle: reachable by a thumb and clear of
-  /// the info panel on a phone held in one hand.
-  static const defaultPosition = GroupedWallpaperControlPadPosition(0, .55);
-
   /// Reads a value written by [encode], clamped to the valid range.
   ///
-  /// Anything else is null, and the caller falls back to the default anchor.
+  /// Anything else is null, and the caller falls back to the centered anchor.
   static GroupedWallpaperControlPadPosition? tryParse(String? raw) {
     if (raw == null) return null;
     final parts = raw.split(',');
@@ -65,9 +69,9 @@ Rect groupedWallpaperControlPadUsableRect({required Size viewportSize, required 
 }
 
 /// The space a top-left corner may move in, i.e. the usable rect minus the pad.
-Size groupedWallpaperControlPadFreeSpace(Rect usableRect) => Size(
-  (usableRect.width - groupedWallpaperControlPadExtent).clamp(0, double.infinity).toDouble(),
-  (usableRect.height - groupedWallpaperControlPadExtent).clamp(0, double.infinity).toDouble(),
+Size groupedWallpaperControlPadFreeSpace(Rect usableRect, Size extent) => Size(
+  (usableRect.width - extent.width).clamp(0, double.infinity).toDouble(),
+  (usableRect.height - extent.height).clamp(0, double.infinity).toDouble(),
 );
 
 /// The pad's top-left corner for [position].
@@ -75,9 +79,10 @@ Offset groupedWallpaperControlPadTopLeft({
   required GroupedWallpaperControlPadPosition position,
   required Size viewportSize,
   required EdgeInsets safeInsets,
+  required Size extent,
 }) {
   final usable = groupedWallpaperControlPadUsableRect(viewportSize: viewportSize, safeInsets: safeInsets);
-  final free = groupedWallpaperControlPadFreeSpace(usable);
+  final free = groupedWallpaperControlPadFreeSpace(usable, extent);
   return Offset(usable.left + position.x * free.width, usable.top + position.y * free.height);
 }
 
@@ -86,22 +91,42 @@ GroupedWallpaperControlPadPosition groupedWallpaperControlPadPositionFrom({
   required Offset topLeft,
   required Size viewportSize,
   required EdgeInsets safeInsets,
+  required Size extent,
 }) {
   final usable = groupedWallpaperControlPadUsableRect(viewportSize: viewportSize, safeInsets: safeInsets);
-  final free = groupedWallpaperControlPadFreeSpace(usable);
+  final free = groupedWallpaperControlPadFreeSpace(usable, extent);
   return GroupedWallpaperControlPadPosition(
     free.width <= 0 ? 0 : ((topLeft.dx - usable.left) / free.width).clamp(0, 1).toDouble(),
     free.height <= 0 ? 0 : ((topLeft.dy - usable.top) / free.height).clamp(0, 1).toDouble(),
   );
 }
 
+/// The anchor used until the user drags the pad: its top-left corner at the
+/// screen's center.
+///
+/// That is the top-left of the bottom-right quadrant, which leaves the whole
+/// top-left of the screen free for the photo while keeping every button within
+/// one thumb's reach on a phone held in either hand.
+GroupedWallpaperControlPadPosition groupedWallpaperControlPadCenteredDefault({
+  required Size viewportSize,
+  required EdgeInsets safeInsets,
+  required Size extent,
+}) => groupedWallpaperControlPadPositionFrom(
+  topLeft: Offset(viewportSize.width / 2, viewportSize.height / 2),
+  viewportSize: viewportSize,
+  safeInsets: safeInsets,
+  extent: extent,
+);
+
 /// [position] moved back inside the screen, for a drag that left it.
 GroupedWallpaperControlPadPosition clampGroupedWallpaperControlPadPosition({
   required GroupedWallpaperControlPadPosition position,
   required Size viewportSize,
   required EdgeInsets safeInsets,
+  required Size extent,
 }) => groupedWallpaperControlPadPositionFrom(
-  topLeft: groupedWallpaperControlPadTopLeft(position: position, viewportSize: viewportSize, safeInsets: safeInsets),
+  topLeft: groupedWallpaperControlPadTopLeft(position: position, viewportSize: viewportSize, safeInsets: safeInsets, extent: extent),
   viewportSize: viewportSize,
   safeInsets: safeInsets,
+  extent: extent,
 );

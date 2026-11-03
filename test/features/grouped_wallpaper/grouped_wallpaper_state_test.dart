@@ -12,14 +12,14 @@ import 'package:flutter_test/flutter_test.dart';
 /// truncated by a crash.
 void main() {
   GroupedWallpaperSlot slot(int id, int entryId) => GroupedWallpaperSlot(
-        id: id,
-        entryId: entryId,
-        uri: 'content://media/$entryId',
-        title: 'IMG_$entryId',
-        photo: 'slots/$id/photo.png',
-        width: 1080,
-        height: 2400,
-      );
+    id: id,
+    entryId: entryId,
+    uri: 'content://media/$entryId',
+    title: 'IMG_$entryId',
+    photo: 'slots/$id/photo.png',
+    width: 1080,
+    height: 2400,
+  );
 
   const state = GroupedWallpaperState(
     generation: 3,
@@ -42,6 +42,7 @@ void main() {
         effectLock: 'slots/0/lock.png',
         width: 1080,
         height: 2400,
+        quarterTurns: 1,
       ),
       GroupedWallpaperSlot(id: 1, entryId: 8, uri: 'content://media/8', title: 'IMG_8', photo: 'slots/1/photo.png', width: 1080, height: 2400),
       GroupedWallpaperSlot(id: 2, entryId: 9, uri: 'content://media/9', title: 'IMG_9', photo: 'slots/2/photo.png', width: 1080, height: 2400),
@@ -82,6 +83,8 @@ void main() {
     expect(parsed.entryTitle, 'IMG_7');
     expect(parsed.currentSlot?.effectHome, 'slots/0/home.png');
     expect(parsed.currentSlot?.effectLock, 'slots/0/lock.png');
+    expect(parsed.currentSlot?.quarterTurns, 1);
+    expect(parsed.currentSlot?.isRotated, isTrue);
     expect(parsed.recent.map((entry) => entry.entryId), [7, 6]);
     expect(parsed.recent.first.groupId, 'wallpaper.group.dcim');
     expect(parsed.cursor, 5);
@@ -372,17 +375,32 @@ void main() {
       cursor: 3,
       newestEntryId: 12,
       recent: [GroupedWallpaperRecentEntry(entryId: 12), GroupedWallpaperRecentEntry(entryId: 11)],
+      quarterTurns: 3,
     );
     final current = state.copyWith(lock: lock, lockRangeId: 'group.1.lock.range');
     final parsed = GroupedWallpaperState.tryFromJsonMap(current.toJsonMap())!;
     expect(parsed.lock, lock);
     expect(parsed.hasLock, isTrue);
+    expect(parsed.lock?.quarterTurns, 3);
+    expect(parsed.lock?.isRotated, isTrue);
     expect(parsed.lockRangeId, 'group.1.lock.range');
 
-    final v6 = state.copyWith(version: 6).toJsonMap()..remove('lock')..remove('lockRangeId');
+    final v6 = state.copyWith(version: 6).toJsonMap()
+      ..remove('lock')
+      ..remove('lockRangeId');
     final upgraded = GroupedWallpaperState.tryFromJsonMap(v6)!;
     expect(upgraded.lock, isNull);
     expect(upgraded.lockRangeId, isEmpty);
+  });
+
+  test('a slot written before the rotation marker reads upright', () {
+    final json = state.toJsonMap();
+    for (final rawSlot in json['slots']! as List) {
+      (rawSlot as Map).remove('quarterTurns');
+    }
+    final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
+    expect(parsed.currentSlot?.quarterTurns, isNull);
+    expect(parsed.currentSlot?.isRotated, isFalse);
   });
 
   test('the runtime round-trips through JSON', () {

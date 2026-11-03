@@ -110,6 +110,15 @@ class GroupedWallpaperSlot extends Equatable {
   /// then draws one and writes it back.
   final int? rotationSeed;
 
+  /// Quarter turns the engine actually applied to the baked frame, `0..3`, or
+  /// null when the state was written before the marker existed.
+  ///
+  /// The frame is always surface-sized, so its width/height cannot tell a turned
+  /// photo from an upright one. Null is deliberately distinct from 0: the engine
+  /// re-resolves the value from its cache on the first sync after an upgrade, and
+  /// only a known 0 means the frame is upright.
+  final int? quarterTurns;
+
   const new({
     required this.id,
     required this.entryId,
@@ -122,9 +131,14 @@ class GroupedWallpaperSlot extends Equatable {
     this.height = 0,
     this.darkness = .5,
     this.rotationSeed,
+    this.quarterTurns,
   });
 
   double? get aspectRatio => width > 0 && height > 0 ? width / height : null;
+
+  /// Whether the baked frame is a quarter turn away from the photo's own
+  /// orientation. An unknown marker reads as upright.
+  bool get isRotated => (quarterTurns ?? 0) % 4 != 0;
 
   Map<String, Object?> toJsonMap() => {
         'id': id,
@@ -138,6 +152,7 @@ class GroupedWallpaperSlot extends Equatable {
         'height': height,
         'darkness': darkness,
         if (rotationSeed != null) 'rotationSeed': rotationSeed,
+        if (quarterTurns != null) 'quarterTurns': quarterTurns! % 4,
       };
 
   static GroupedWallpaperSlot? tryFromJsonMap(Map<String, Object?> json) {
@@ -157,7 +172,13 @@ class GroupedWallpaperSlot extends Equatable {
       height: _slotInt(json['height']) ?? 0,
       darkness: _slotDouble(json['darkness']) ?? .5,
       rotationSeed: _slotInt(json['rotationSeed']),
+      quarterTurns: _slotTurns(json['quarterTurns']),
     );
+  }
+
+  static int? _slotTurns(Object? value) {
+    final turns = _slotInt(value);
+    return turns == null ? null : turns % 4;
   }
 
   static int? _slotInt(Object? value) => value is int ? value : (value is num ? value.toInt() : null);
@@ -167,7 +188,7 @@ class GroupedWallpaperSlot extends Equatable {
   static String _slotString(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [id, entryId, uri, title, photo, effectHome, effectLock, width, height, darkness, rotationSeed];
+  List<Object?> get props => [id, entryId, uri, title, photo, effectHome, effectLock, width, height, darkness, rotationSeed, quarterTurns];
 }
 
 /// One photo the wallpaper has shown, for the "recently shown" exclusion and for
@@ -315,6 +336,14 @@ class GroupedWallpaperLockFrame extends Equatable {
   /// Kept so re-baking the same photo for an effect change cannot flip it.
   final int? rotationSeed;
 
+  /// Quarter turns applied to the baked lock frame, `0..3`, or null when the
+  /// state was written before the marker existed.
+  ///
+  /// Like the home slot, the frame is surface-sized, so the view page needs the
+  /// resolved value to describe the picture it is showing. Null triggers one
+  /// re-resolution from the cache, exactly like the home slot.
+  final int? quarterTurns;
+
   const new({
     required this.entryId,
     this.uri = '',
@@ -328,7 +357,10 @@ class GroupedWallpaperLockFrame extends Equatable {
     this.newestEntryId = 0,
     this.recent = const [],
     this.rotationSeed,
+    this.quarterTurns,
   });
+
+  bool get isRotated => (quarterTurns ?? 0) % 4 != 0;
 
   Map<String, Object?> toJsonMap() => {
         'entryId': entryId,
@@ -343,6 +375,7 @@ class GroupedWallpaperLockFrame extends Equatable {
         'newestEntryId': newestEntryId,
         'recent': recent.map((entry) => entry.toJsonMap()).toList(),
         if (rotationSeed != null) 'rotationSeed': rotationSeed,
+        if (quarterTurns != null) 'quarterTurns': quarterTurns! % 4,
       };
 
   static GroupedWallpaperLockFrame? tryFromJsonMap(Map<String, Object?> json) {
@@ -372,6 +405,7 @@ class GroupedWallpaperLockFrame extends Equatable {
       newestEntryId: GroupedWallpaperSlot._slotInt(json['newestEntryId']) ?? 0,
       recent: List.unmodifiable(recent),
       rotationSeed: GroupedWallpaperSlot._slotInt(json['rotationSeed']),
+      quarterTurns: GroupedWallpaperSlot._slotTurns(json['quarterTurns']),
     );
   }
 
@@ -392,10 +426,11 @@ class GroupedWallpaperLockFrame extends Equatable {
         newestEntryId: newestEntryId,
         recent: recent,
         rotationSeed: rotationSeed,
+        quarterTurns: quarterTurns,
       );
 
   @override
-  List<Object?> get props => [entryId, uri, title, photo, width, height, darkness, bakedAt, cursor, newestEntryId, recent, rotationSeed];
+  List<Object?> get props => [entryId, uri, title, photo, width, height, darkness, bakedAt, cursor, newestEntryId, recent, rotationSeed, quarterTurns];
 }
 
 /// Dart-owned `state.json` of the grouped wallpaper.
@@ -425,9 +460,11 @@ class GroupedWallpaperState extends Equatable {
   /// their defaults, so an upgrade never loses the frame on screen.
   /// [notification], [notificationActions], the [surfaceWidth] /
   /// [surfaceHeight] layout, [scrollEffect], [historyLimit], [switchLocked],
-  /// [switchLockedGroupId] and [groups] were added afterwards without a version
-  /// bump: a file without them means "on" for the bar, "wallpaper actions" for its
-  /// default set and "unknown" for the layout, which re-bakes once.
+  /// [switchLockedGroupId], [groups] and the slots' [GroupedWallpaperSlot.quarterTurns]
+  /// were added afterwards without a version bump: a file without them means "on"
+  /// for the bar, "wallpaper actions" for its default set, "unknown" for the
+  /// layout (which re-bakes once) and "not resolved yet" for the rotation marker
+  /// (which the engine re-resolves from its cache once).
   /// A v4 file seeds [rewind] from [recent], so "previous" works right after the
   /// update.
   static const int currentVersion = 7;

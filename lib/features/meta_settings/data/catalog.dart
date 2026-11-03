@@ -552,6 +552,15 @@ final List<SettingDef> _wallpaperDefs = [
     sortOrder: 40,
   ),
   SettingDef(
+    key: MetaPageKeys.wallpaperViewPad,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.subPage,
+    title: (context) => context.l10n.settingsWallpaperViewPad,
+    subtitle: (context) => context.l10n.settingsWallpaperViewPadSubtitle,
+    routeName: MetaPageKeys.wallpaperViewPad,
+    sortOrder: 55,
+  ),
+  SettingDef(
     key: MetaPageKeys.wallpaperGestures,
     category: SettingsCategory.wallpaper,
     widgetKind: SettingWidgetKind.subPage,

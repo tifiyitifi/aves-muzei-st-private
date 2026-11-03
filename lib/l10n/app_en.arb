@@ -2087,6 +2087,83 @@
       }
     }
   },
+  "groupedWallpaperViewInfoRotated": "{info} (rotated)",
+  "@groupedWallpaperViewInfoRotated": {
+    "description": "Bottom info bar of the grouped wallpaper view page, with the marker appended when the baked frame was turned a quarter turn",
+    "placeholders": {
+      "info": {
+        "type": "String"
+      }
+    }
+  },
+  "groupedWallpaperPadEditorTitle": "View page buttons",
+  "@groupedWallpaperPadEditorTitle": {
+    "description": "Title of the editor for the three-finger view page's 3x3 control pad"
+  },
+  "groupedWallpaperPadEditorBanner": "Tap a cell to assign an action. The menu button is required and cannot be removed. These buttons appear on the three-finger view page, not on the wallpaper itself.",
+  "@groupedWallpaperPadEditorBanner": {
+    "description": "Explains the 3x3 pad editor and that the menu action is mandatory"
+  },
+  "groupedWallpaperPadEditorSlots": "Panel layout",
+  "@groupedWallpaperPadEditorSlots": {
+    "description": "Section title above the fixed 9 cells of the pad editor"
+  },
+  "groupedWallpaperPadEditorAvailable": "Available actions",
+  "@groupedWallpaperPadEditorAvailable": {
+    "description": "Section title above the actions that are not assigned to a cell yet"
+  },
+  "groupedWallpaperPadEditorEmpty": "Empty",
+  "@groupedWallpaperPadEditorEmpty": {
+    "description": "Label of an unassigned pad cell"
+  },
+  "groupedWallpaperPadEditorClear": "Clear this cell",
+  "@groupedWallpaperPadEditorClear": {
+    "description": "Action in the slot picker that empties the cell"
+  },
+  "groupedWallpaperPadEditorPickTitle": "Choose an action",
+  "@groupedWallpaperPadEditorPickTitle": {
+    "description": "Title of the sheet that assigns an action to a pad cell"
+  },
+  "groupedWallpaperPadEditorMoreRequired": "The menu button is required",
+  "@groupedWallpaperPadEditorMoreRequired": {
+    "description": "Snackbar shown when the user tries to remove the mandatory menu button"
+  },
+  "groupedWallpaperPadEditorFit": "Shrink the panel to its buttons",
+  "@groupedWallpaperPadEditorFit": {
+    "description": "Switch that lets the live pad use a smaller grid than 3x3"
+  },
+  "groupedWallpaperPadEditorFitSubtitle": "The live pad uses a smaller grid when fewer actions are assigned. The editor always shows all nine slots.",
+  "@groupedWallpaperPadEditorFitSubtitle": {
+    "description": "Explains the adaptive shape switch"
+  },
+  "groupedWallpaperPadEditorBottomBar": "Use a single bottom row",
+  "@groupedWallpaperPadEditorBottomBar": {
+    "description": "Switch that replaces the floating pad with one row in the bottom info panel"
+  },
+  "groupedWallpaperPadEditorBottomBarSubtitle": "Available with up to three actions. The floating pad is hidden and the buttons join the bottom info panel.",
+  "@groupedWallpaperPadEditorBottomBarSubtitle": {
+    "description": "Explains the bottom-bar switch while it is available"
+  },
+  "groupedWallpaperPadEditorBottomBarUnavailable": "Only with three actions or fewer.",
+  "@groupedWallpaperPadEditorBottomBarUnavailable": {
+    "description": "Explains why the bottom-bar switch is disabled"
+  },
+  "groupedWallpaperPadEditorFull": "All nine slots are full",
+  "@groupedWallpaperPadEditorFull": {
+    "description": "Shown instead of the available-actions list when every pad cell is assigned"
+  },
+  "groupedWallpaperPadActionMore": "Menu",
+  "@groupedWallpaperPadActionMore": {
+    "description": "Pad action that opens the view page's overflow menu"
+  },
+  "groupedWallpaperPadActionSwitchSurface": "Switch home / lock",
+  "@groupedWallpaperPadActionSwitchSurface": {
+    "description": "Pad action that switches the view page between the home and lock surfaces"
+  },
+  "groupedWallpaperPadActionToggleLock": "Lock / unlock group",
+  "@groupedWallpaperPadActionToggleLock": {
+    "description": "Pad action that locks or unlocks the playing group"
+  },
   "wallpaperGroupViewCurrent": "View current wallpaper",
   "wallpaperGroupGestures": "Gestures",
   "wallpaperGroupNotification": "Show notification",
@@ -2300,6 +2377,14 @@
 
   "explorerUseCurrentPath": "Use current folder",
   "settingsWallpaperSectionTitle": "Visible & wallpaper",
+  "settingsWallpaperViewPad": "Wallpaper view buttons",
+  "settingsWallpaperViewPadSubtitle": "Choose the 3×3 control pad on the three-finger view page.",
+  "@settingsWallpaperViewPad": {
+    "description": "Settings tile that opens the view page pad editor"
+  },
+  "@settingsWallpaperViewPadSubtitle": {
+    "description": "Subtitle of the view page pad settings tile"
+  },
   "settingsWallpaperNavMode": "Wallpaper page",
   "settingsWallpaperNavModeSubtitle": "Shown in the bottom bar only while the wallpaper page is open.",
   "settingsWallpaperNavModeShared": "Share the visible-range entry",

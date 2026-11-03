@@ -3,6 +3,7 @@ import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_control_pad_layout.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_pad_config.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
@@ -39,8 +40,7 @@ void main() {
 
   tearDown(() => db.close());
 
-  WallpaperGroup group(String id, {bool enabled = true, bool current = false, String name = ''}) =>
-      WallpaperGroup(id: id, name: name, enabled: enabled, current: current, createdAt: 1, updatedAt: 2);
+  WallpaperGroup group(String id, {bool enabled = true, bool current = false, String name = ''}) => WallpaperGroup(id: id, name: name, enabled: enabled, current: current, createdAt: 1, updatedAt: 2);
 
   test('the notification button set defaults to the wallpaper actions', () async {
     // A fresh install, and every build before the switch existed, showed the
@@ -54,10 +54,10 @@ void main() {
     expect(await store.readNotificationActions(), GroupedWallpaperNotificationActions.wallpaper);
   });
 
-  test('the view pad place defaults to the thumb anchor and round-trips', () async {
-    // A fresh install, and every build before the pad existed, starts at the
-    // default anchor instead of a corner.
-    expect(await store.readViewPadPosition(), GroupedWallpaperControlPadPosition.defaultPosition);
+  test('the view pad place is absent until a drag and round-trips', () async {
+    // Null lets the page resolve the centered anchor against the real viewport;
+    // a stored fraction would be wrong on a different screen.
+    expect(await store.readViewPadPosition(), isNull);
 
     const moved = GroupedWallpaperControlPadPosition(.25, .8);
     await store.writeViewPadPosition(moved);
@@ -67,6 +67,22 @@ void main() {
     // rather than trusted, so the pad can never open off screen.
     await store.writeViewPadPosition(const GroupedWallpaperControlPadPosition(3, -1));
     expect(await store.readViewPadPosition(), const GroupedWallpaperControlPadPosition(1, 0));
+  });
+
+  test('the view pad config defaults to the historical layout and round-trips', () async {
+    expect(await store.readViewPadConfig(), GroupedWallpaperPadConfig.defaultConfig);
+
+    final custom = GroupedWallpaperPadConfig.safe(
+      slots: const [
+        GroupedWallpaperPadAction.delete,
+        null,
+        GroupedWallpaperPadAction.more,
+        GroupedWallpaperPadAction.share,
+      ],
+      fitToActions: true,
+    );
+    await store.writeViewPadConfig(custom);
+    expect(await store.readViewPadConfig(), custom);
   });
 
   test('round-trips the list in display order with derived numbers', () async {

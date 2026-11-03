@@ -148,12 +148,17 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
   /// sharp base, so its effects are still applied on the GPU; the lock file is
   /// final and shown as-is.
   Future<void> _loadPreview() async {
+    // The probe takes several awaits, so the tab can change under it: the result
+    // describes the surface that asked, and writing it while another tab is
+    // shown would put the home frame on the lock preview.
+    final surface = _editingLock ? WallpaperSurface.lock : WallpaperSurface.home;
     final state = await wallpaperEngineLink.readState();
     final capability = await wallpaperEngineLink.capability();
     // Only the group currently on the wallpaper has a baked preview; another
     // group's effects still save and apply when it plays next.
-    final preview = state?.groupId == widget.groupId ? await _previewOfSurface() : (path: null, appliesEffects: true);
+    final preview = state?.groupId == widget.groupId ? await _previewOfSurface(surface) : (path: null, appliesEffects: true);
     if (!mounted) return;
+    if (surface.isLock != _editingLock) return;
     setState(() {
       _state = state;
       _capability = capability;
@@ -163,8 +168,11 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
   }
 
   /// The preview source and whether its effects are still to be applied.
-  Future<({String? path, bool appliesEffects})> _previewOfSurface() async {
-    final surface = _editingLock ? WallpaperSurface.lock : WallpaperSurface.home;
+  ///
+  /// [surface] is passed in instead of read from the tabs, so a probe that
+  /// finishes after the user switched tabs still describes the surface it
+  /// started on.
+  Future<({String? path, bool appliesEffects})> _previewOfSurface(WallpaperSurface surface) async {
     final path = await wallpaperEngineLink.currentPhotoPath(surface: surface);
     // The lock surface's file is already the final lock image (decoy or the home
     // queue's lock image), framing and effects included. Only the home surface
@@ -175,8 +183,10 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
   /// Re-reads the preview path after a framing edit re-baked the pixels.
   Future<void> _refreshPreviewPath() async {
     if (_state?.groupId != widget.groupId) return;
-    final preview = await _previewOfSurface();
-    if (!mounted || preview.path == _previewPath) return;
+    final surface = _editingLock ? WallpaperSurface.lock : WallpaperSurface.home;
+    final preview = await _previewOfSurface(surface);
+    if (!mounted || surface.isLock != _editingLock) return;
+    if (preview.path == _previewPath) return;
     setState(() {
       _previewPath = preview.path;
       _previewAppliesEffects = preview.appliesEffects;

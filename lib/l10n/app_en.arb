@@ -2026,15 +2026,30 @@
   "groupedWallpaperViewWholeGroup": "View whole group",
   "groupedWallpaperViewShare": "Share",
   "groupedWallpaperViewDelete": "Delete photo",
-  "groupedWallpaperViewInfo": "{group} · {count, plural, =0{no photos} =1{1 photo} other{{count} photos}}",
+  "groupedWallpaperViewInfo": "{number} · {group} · {count, plural, =0{no photos} =1{1 photo} other{{count} photos}}",
   "@groupedWallpaperViewInfo": {
-    "description": "Bottom info bar of the grouped wallpaper view page",
+    "description": "Bottom info bar of the grouped wallpaper view page: group number, group name and photo count",
     "placeholders": {
+      "number": {
+        "type": "int"
+      },
       "group": {
         "type": "String"
       },
       "count": {
         "type": "int"
+      }
+    }
+  },
+  "groupedWallpaperViewInfoLock": "{number} · {group}",
+  "@groupedWallpaperViewInfoLock": {
+    "description": "Bottom info bar while the lock screen decoy is shown; the decoy has no count of its own",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "group": {
+        "type": "String"
       }
     }
   },

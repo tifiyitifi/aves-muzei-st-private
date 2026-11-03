@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_control_pad_layout.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
@@ -95,6 +96,13 @@ class WallpaperGroupStore {
   /// checked "confirm before clearing" entry to turn it back on: the dialog
   /// cannot offer that once it is skipped.
   static const keyHistoryClearSkipConfirm = 'wallpaper.groupedHistoryClearSkipConfirm';
+
+  /// AppMeta key of the immersive view's floating control pad resting place.
+  ///
+  /// A per-device UI answer, not a wallpaper switch: it sits beside the history
+  /// "do not ask" flag for the same reason, and the stored value is normalized so
+  /// a rotation keeps the pad within thumb reach.
+  static const keyViewPadPosition = 'wallpaper.groupedViewPad';
 
   /// AppMeta key of "the grouped wallpaper has been the system wallpaper".
   ///
@@ -305,6 +313,18 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeFrameRetention(GroupedWallpaperFrameRetention retention) => AppMetaStore(db).write({keyFrameRetention: retention.name});
+
+  /// Where the view page's floating control pad rests.
+  ///
+  /// A missing or unreadable value is a fresh install (or a build before the pad
+  /// existed), which opens the pad at the thumb-friendly anchor rather than in a
+  /// corner.
+  Future<GroupedWallpaperControlPadPosition> readViewPadPosition() async {
+    final values = await AppMetaStore(db).read({keyViewPadPosition});
+    return GroupedWallpaperControlPadPosition.tryParse(values[keyViewPadPosition]) ?? GroupedWallpaperControlPadPosition.defaultPosition;
+  }
+
+  Future<void> writeViewPadPosition(GroupedWallpaperControlPadPosition position) => AppMetaStore(db).write({keyViewPadPosition: position.encode()});
 
   /// Whether the grouped wallpaper has already been the system wallpaper.
   Future<bool> readWasActive() async {

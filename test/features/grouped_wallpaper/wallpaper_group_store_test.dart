@@ -1,5 +1,6 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_control_pad_layout.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
@@ -49,6 +50,21 @@ void main() {
 
     await store.writeNotificationActions(GroupedWallpaperNotificationActions.wallpaper);
     expect(await store.readNotificationActions(), GroupedWallpaperNotificationActions.wallpaper);
+  });
+
+  test('the view pad place defaults to the thumb anchor and round-trips', () async {
+    // A fresh install, and every build before the pad existed, starts at the
+    // default anchor instead of a corner.
+    expect(await store.readViewPadPosition(), GroupedWallpaperControlPadPosition.defaultPosition);
+
+    const moved = GroupedWallpaperControlPadPosition(.25, .8);
+    await store.writeViewPadPosition(moved);
+    expect(await store.readViewPadPosition(), moved);
+
+    // A value another build (or a hand edit) wrote out of range is clamped
+    // rather than trusted, so the pad can never open off screen.
+    await store.writeViewPadPosition(const GroupedWallpaperControlPadPosition(3, -1));
+    expect(await store.readViewPadPosition(), const GroupedWallpaperControlPadPosition(1, 0));
   });
 
   test('round-trips the list in display order with derived numbers', () async {

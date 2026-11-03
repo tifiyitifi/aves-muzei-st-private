@@ -3,7 +3,11 @@ import 'dart:io';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/view/viewer_delete_policy.dart';
+import 'package:aves/features/drift_db/app_database_provider.dart';
+import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
+import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_control_pad_layout.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_view_group_target.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
@@ -19,8 +23,7 @@ import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_actions.dart';
-import 'package:aves/features/visible_range/services/visible_range_controller.dart';
-import 'package:aves/features/visible_range/services/visible_range_gate.dart';
+import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_control_pad.dart';
 import 'package:aves/features/visible_range/view/visible_range_about_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
@@ -54,10 +57,10 @@ import 'package:provider/provider.dart';
 /// group *is* the source, but its gestures are Muzei's: a tap opens the photo in
 /// the viewer, a long press hands it to another app.
 ///
-/// The page is also the app's own control of the live wallpaper: the bottom panel
-/// steps the photos and the groups, and the menu can manage everything the group
-/// page's menu can do without a draft (effects, gestures, the lock, deleting the
-/// photo on screen, turning the wallpaper off).
+/// The page is also the app's own control of the live wallpaper: a floating pad
+/// steps the photos and the groups and deletes what is on screen, and the menu
+/// can manage everything the group page's menu can do without a draft (effects,
+/// gestures, the lock, turning the wallpaper off).
 class GroupedWallpaperViewPage extends StatefulWidget {
   static const routeName = '/grouped_wallpaper/view';
 
@@ -78,7 +81,6 @@ enum _ViewAction {
   openGroups,
   openInGallery,
   viewWholeGroup,
-  toggleGalleryRange,
   share,
   history,
   autoAdvance,
@@ -87,7 +89,6 @@ enum _ViewAction {
   switchSurface,
   toggleNotification,
   disableWallpaper,
-  deletePhoto,
   lockGroup,
   unlockGroup,
   about,
@@ -107,6 +108,17 @@ enum _PendingStep {
 
 class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> with WidgetsBindingObserver {
   final TransformationController _viewport = TransformationController();
+
+  /// Where the floating control pad rests, as a fraction of the free space.
+  ///
+  /// A notifier rather than state: a drag rewrites it every frame, and only the
+  /// pad listens, so dragging never rebuilds the photo or reads the wallpaper
+  /// state again. The place is loaded once and saved once per drag.
+  final ValueNotifier<GroupedWallpaperControlPadPosition> _padPosition = ValueNotifier(GroupedWallpaperControlPadPosition.defaultPosition);
+
+  /// Whether a drag already settled a place, so a slow initial read cannot
+  /// overwrite where the user just put the pad.
+  bool _padPlaceSettled = false;
 
   GroupedWallpaperState? _state;
   AvesEntry? _entry;
@@ -148,6 +160,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     unawaited(wallpaperLockService.init());
     _setSystemUiVisible(false);
     unawaited(_load());
+    unawaited(_loadPadPosition());
   }
 
   @override
@@ -156,6 +169,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     wallpaperLockService.removeListener(_onLockChanged);
     _setSystemUiVisible(true);
     _viewport.dispose();
+    _padPosition.dispose();
     super.dispose();
   }
 
@@ -207,6 +221,36 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
       _aspect = aspect;
       _loading = false;
     });
+  }
+
+  Future<WallpaperGroupStore> _wallpaperStore() async => WallpaperGroupStore(await getIt<AppDatabaseProvider>().open());
+
+  /// Restores the pad's place, once when the page opens.
+  Future<void> _loadPadPosition() async {
+    try {
+      final position = await (await _wallpaperStore()).readViewPadPosition();
+      if (!mounted || _padPlaceSettled) return;
+      _padPosition.value = position;
+    } catch (error, stack) {
+      groupedWallpaperLog.e('failed to read the view pad position', error, stack);
+    }
+  }
+
+  /// Remembers where a drag left the pad.
+  ///
+  /// Only the settled place is written: the frame-by-frame moves stay in the
+  /// notifier, so a drag costs one database write instead of one per frame.
+  void _onPadMoved(GroupedWallpaperControlPadPosition position) {
+    _padPlaceSettled = true;
+    unawaited(_savePadPosition(position));
+  }
+
+  Future<void> _savePadPosition(GroupedWallpaperControlPadPosition position) async {
+    try {
+      await (await _wallpaperStore()).writeViewPadPosition(position);
+    } catch (error, stack) {
+      groupedWallpaperLog.e('failed to write the view pad position', error, stack);
+    }
   }
 
   /// Steps the wallpaper to the previous or next photo and re-reads what it now
@@ -403,12 +447,6 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
         await _openInGallery();
       case _ViewAction.viewWholeGroup:
         await _openWholeGroup();
-      case _ViewAction.toggleGalleryRange:
-        // Restoring is always allowed; ignoring a locked range needs its PIN.
-        final suspended = VisibleRangeGate.overlay?.gallerySuspended ?? false;
-        if (!suspended && visibleRangeController.gallery.locked && !await ensureVisibleRangeUnlocked(context)) return;
-        if (!mounted) return;
-        VisibleRangeGate.setGallerySuspended(!suspended);
       case _ViewAction.share:
         await _share();
       case _ViewAction.history:
@@ -430,8 +468,6 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
         await _switchSurface();
       case _ViewAction.disableWallpaper:
         await _disableWallpaper();
-      case _ViewAction.deletePhoto:
-        _deletePhoto();
       case _ViewAction.lockGroup:
         await _lockGroup();
       case _ViewAction.unlockGroup:
@@ -643,9 +679,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
       null => photoTitle,
     };
     final pendingGroup = _pendingGroup;
-    final status = state != null && pendingGroup != null
-        ? l10n.wallpaperGroupSwitchingInfo(state.groupNumber, state.groupName, pendingGroup.number, pendingGroup.name)
-        : null;
+    final status = state != null && pendingGroup != null ? l10n.wallpaperGroupSwitchingInfo(state.groupNumber, state.groupName, pendingGroup.number, pendingGroup.name) : null;
     final canOpenGroup = state != null && state.groupId.isNotEmpty && state.groupId != wallpaperGroupNoneId;
     final hasLockSurface = _hasLockSurface;
     final disabled = state?.status == GroupedWallpaperStatus.disabled;
@@ -661,8 +695,8 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     final subtitle = state == null
         ? null
         : _surface.isLock
-        ? state.groupName
-        : l10n.groupedWallpaperViewInfo(state.groupName, state.count);
+        ? l10n.groupedWallpaperViewInfoLock(state.groupNumber, state.groupName)
+        : l10n.groupedWallpaperViewInfo(state.groupNumber, state.groupName, state.count);
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -758,173 +792,160 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
                   subtitle: subtitle,
                   onViewArtwork: () => unawaited(_openInGallery()),
                   onOpenWith: () => unawaited(_openWith()),
-                  actions: [
-                    // The group steps sit above the photo steps: they act on the
-                    // rotation, which is the coarser move, and keeping them on
-                    // their own row leaves both pairs at a comfortable size.
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: l10n.wallpaperGroupPreviousGroup,
-                              color: Colors.white,
-                              disabledColor: Colors.white38,
-                              onPressed: canStepGroup && !_stepping ? () => unawaited(_stepGroup(next: false)) : null,
-                              icon: _pending == _PendingStep.previousGroup ? _spinner : const Icon(AIcons.down),
-                            ),
-                            IconButton(
-                              tooltip: l10n.wallpaperGroupNextGroup,
-                              color: Colors.white,
-                              disabledColor: Colors.white38,
-                              onPressed: canStepGroup && !_stepping ? () => unawaited(_stepGroup(next: true)) : null,
-                              icon: _pending == _PendingStep.nextGroup ? _spinner : const Icon(AIcons.up),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: _surface.isLock ? l10n.wallpaperGroupLockPrevious : l10n.wallpaperGroupPreviousPhoto,
-                              color: Colors.white,
-                              disabledColor: Colors.white38,
-                              onPressed: canPrevious && !_stepping ? () => unawaited(_step(previous: true)) : null,
-                              icon: _pending == _PendingStep.previousPhoto ? _spinner : const Icon(AIcons.previousArtwork),
-                            ),
-                            IconButton(
-                              tooltip: _surface.isLock ? l10n.wallpaperGroupLockNext : l10n.wallpaperGroupNextPhoto,
-                              color: Colors.white,
-                              disabledColor: Colors.white38,
-                              onPressed: canNext && !_stepping ? () => unawaited(_step(previous: false)) : null,
-                              icon: _pending == _PendingStep.nextPhoto ? _spinner : const Icon(AIcons.nextArtwork),
-                            ),
-                            PopupMenuButton<_ViewAction>(
-                              icon: const Icon(AIcons.more, color: Colors.white),
-                              tooltip: MaterialLocalizations.of(context).showMenuTooltip,
-                              onSelected: (action) => unawaited(_onAction(action)),
-                              itemBuilder: (context) {
-                                final suspended = VisibleRangeGate.overlay?.gallerySuspended ?? false;
-                                return [
-                                  PopupMenuItem(
-                                    value: _ViewAction.openGroups,
-                                    child: _menuRow(AIcons.wallpaper, l10n.groupedWallpaperViewOpenGroups),
-                                  ),
-                                  PopupMenuItem(
-                                    value: _ViewAction.openInGallery,
-                                    enabled: entry != null,
-                                    child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
-                                  ),
-                                  if (canOpenGroup)
-                                    PopupMenuItem(
-                                      value: _ViewAction.viewWholeGroup,
-                                      child: _menuRow(AIcons.allCollection, l10n.groupedWallpaperViewWholeGroup),
-                                    ),
-                                  // The same switch the wallpaper page's overflow menu
-                                  // and the media set's strip offer: this page is often
-                                  // where the user notices the range hides the photos.
-                                  // Restoring is always allowed; ignoring the range is
-                                  // what the range lock forbids.
-                                  if (VisibleRangeGate.galleryRestricted)
-                                    PopupMenuItem(
-                                      value: _ViewAction.toggleGalleryRange,
-                                      enabled: suspended || !VisibleRangeGate.galleryLocked,
-                                      child: _menuRow(
-                                        suspended ? AIcons.visibleRangeActive : AIcons.visibleRangeInactive,
-                                        suspended ? l10n.wallpaperGroupRestoreGalleryRange : l10n.wallpaperGroupCancelGalleryRange,
-                                      ),
-                                    ),
-                                  PopupMenuItem(
-                                    value: _ViewAction.share,
-                                    enabled: entry != null,
-                                    child: _menuRow(AIcons.share, l10n.groupedWallpaperViewShare),
-                                  ),
-                                  PopupMenuItem(
-                                    value: _ViewAction.history,
-                                    child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
-                                  ),
-                                  if (canOpenGroup)
-                                    PopupMenuItem(
-                                      value: _ViewAction.autoAdvance,
-                                      child: _menuRow(AIcons.autoAdvance, l10n.muzeiWallpaperAutoAdvance),
-                                    ),
-                                  if (canOpenGroup)
-                                    PopupMenuItem(
-                                      value: _ViewAction.effects,
-                                      child: _menuRow(AIcons.palette, l10n.muzeiWallpaperEffects),
-                                    ),
-                                  PopupMenuItem(
-                                    value: _ViewAction.gestures,
-                                    child: _menuRow(AIcons.gestures, l10n.wallpaperGroupGestures),
-                                  ),
-                                  const PopupMenuDivider(),
-                                  // The decoy is managed here, not on the lock screen:
-                                  // its gestures are deliberately inert. The entry stays
-                                  // visible for a group without a split so the menu says
-                                  // why there is nothing to switch to, instead of hiding
-                                  // the control the user is looking for.
-                                  PopupMenuItem(
-                                    value: _ViewAction.switchSurface,
-                                    enabled: hasLockSurface,
-                                    child: _menuRow(
-                                      AIcons.visibleRangeActive,
-                                      !hasLockSurface
-                                          ? l10n.wallpaperGroupNoLockSurface
-                                          : _surface.isLock
-                                          ? l10n.wallpaperGroupViewHomeWallpaper
-                                          : l10n.wallpaperGroupViewLockWallpaper,
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: _ViewAction.toggleNotification,
-                                    child: _menuRow(
-                                      (state?.notification ?? true) ? AIcons.checked : AIcons.unselected,
-                                      l10n.wallpaperGroupNotification,
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: _ViewAction.disableWallpaper,
-                                    enabled: !disabled && wallpaperEngineLink.isAttached,
-                                    child: _menuRow(AIcons.wallpaperStopped, l10n.wallpaperGroupDisableWallpaper),
-                                  ),
-                                  const PopupMenuDivider(),
-                                  PopupMenuItem(
-                                    value: _ViewAction.deletePhoto,
-                                    enabled: canDelete,
-                                    child: _menuRow(AIcons.delete, l10n.groupedWallpaperViewDelete),
-                                  ),
-                                  // The group lock is the same state as the group
-                                  // page's and the bar's: locking never asks, and
-                                  // unlocking asks for the group password.
-                                  if (locked)
-                                    PopupMenuItem(
-                                      value: _ViewAction.unlockGroup,
-                                      child: _menuRow(AIcons.unlocked, l10n.wallpaperGroupUnlockCurrent),
-                                    )
-                                  else
-                                    PopupMenuItem(
-                                      value: _ViewAction.lockGroup,
-                                      enabled: canLock && !_stepping,
-                                      child: _menuRow(AIcons.locked, l10n.wallpaperGroupLockCurrent),
-                                    ),
-                                  const PopupMenuDivider(),
-                                  PopupMenuItem(
-                                    value: _ViewAction.about,
-                                    child: _menuRow(AIcons.info, l10n.aboutWallpaperTitle),
-                                  ),
-                                ];
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
                 ),
               ),
+            ),
+          ),
+          // The controls float instead of sitting in the info bar: a phone is
+          // held in one hand, so their place is draggable and remembered.
+          GroupedWallpaperControlPad(
+            position: _padPosition,
+            viewportSize: MediaQuery.sizeOf(context),
+            safeInsets: MediaQuery.viewPaddingOf(context),
+            onMoved: _onPadMoved,
+            visible: _chromeVisible,
+            topRow: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _padButton(
+                  tooltip: _surface.isLock ? l10n.wallpaperGroupLockPrevious : l10n.wallpaperGroupPreviousPhoto,
+                  icon: AIcons.previousArtwork,
+                  onPressed: canPrevious && !_stepping ? () => unawaited(_step(previous: true)) : null,
+                  pending: _pending == _PendingStep.previousPhoto,
+                ),
+                _padButton(
+                  tooltip: _surface.isLock ? l10n.wallpaperGroupLockNext : l10n.wallpaperGroupNextPhoto,
+                  icon: AIcons.nextArtwork,
+                  onPressed: canNext && !_stepping ? () => unawaited(_step(previous: false)) : null,
+                  pending: _pending == _PendingStep.nextPhoto,
+                ),
+                SizedBox(
+                  width: groupedWallpaperControlPadCell,
+                  height: groupedWallpaperControlPadCell,
+                  child: PopupMenuButton<_ViewAction>(
+                    icon: const Icon(AIcons.more, color: Colors.white),
+                    tooltip: MaterialLocalizations.of(context).showMenuTooltip,
+                    onSelected: (action) => unawaited(_onAction(action)),
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: _ViewAction.openGroups,
+                        child: _menuRow(AIcons.wallpaper, l10n.groupedWallpaperViewOpenGroups),
+                      ),
+                      PopupMenuItem(
+                        value: _ViewAction.openInGallery,
+                        enabled: entry != null,
+                        child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
+                      ),
+                      if (canOpenGroup)
+                        PopupMenuItem(
+                          value: _ViewAction.viewWholeGroup,
+                          child: _menuRow(AIcons.allCollection, l10n.groupedWallpaperViewWholeGroup),
+                        ),
+                      PopupMenuItem(
+                        value: _ViewAction.share,
+                        enabled: entry != null,
+                        child: _menuRow(AIcons.share, l10n.groupedWallpaperViewShare),
+                      ),
+                      PopupMenuItem(
+                        value: _ViewAction.history,
+                        child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
+                      ),
+                      if (canOpenGroup)
+                        PopupMenuItem(
+                          value: _ViewAction.autoAdvance,
+                          child: _menuRow(AIcons.autoAdvance, l10n.muzeiWallpaperAutoAdvance),
+                        ),
+                      if (canOpenGroup)
+                        PopupMenuItem(
+                          value: _ViewAction.effects,
+                          child: _menuRow(AIcons.palette, l10n.muzeiWallpaperEffects),
+                        ),
+                      PopupMenuItem(
+                        value: _ViewAction.gestures,
+                        child: _menuRow(AIcons.gestures, l10n.wallpaperGroupGestures),
+                      ),
+                      const PopupMenuDivider(),
+                      // The decoy is managed here, not on the lock screen:
+                      // its gestures are deliberately inert. The entry stays
+                      // visible for a group without a split so the menu says
+                      // why there is nothing to switch to, instead of hiding
+                      // the control the user is looking for.
+                      PopupMenuItem(
+                        value: _ViewAction.switchSurface,
+                        enabled: hasLockSurface,
+                        child: _menuRow(
+                          AIcons.visibleRangeActive,
+                          !hasLockSurface
+                              ? l10n.wallpaperGroupNoLockSurface
+                              : _surface.isLock
+                              ? l10n.wallpaperGroupViewHomeWallpaper
+                              : l10n.wallpaperGroupViewLockWallpaper,
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: _ViewAction.toggleNotification,
+                        child: _menuRow(
+                          (state?.notification ?? true) ? AIcons.checked : AIcons.unselected,
+                          l10n.wallpaperGroupNotification,
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: _ViewAction.disableWallpaper,
+                        enabled: !disabled && wallpaperEngineLink.isAttached,
+                        child: _menuRow(AIcons.wallpaperStopped, l10n.wallpaperGroupDisableWallpaper),
+                      ),
+                      const PopupMenuDivider(),
+                      // The group lock is the same state as the group
+                      // page's and the bar's: locking never asks, and
+                      // unlocking asks for the group password.
+                      if (locked)
+                        PopupMenuItem(
+                          value: _ViewAction.unlockGroup,
+                          child: _menuRow(AIcons.unlocked, l10n.wallpaperGroupUnlockCurrent),
+                        )
+                      else
+                        PopupMenuItem(
+                          value: _ViewAction.lockGroup,
+                          enabled: canLock && !_stepping,
+                          child: _menuRow(AIcons.locked, l10n.wallpaperGroupLockCurrent),
+                        ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: _ViewAction.about,
+                        child: _menuRow(AIcons.info, l10n.aboutWallpaperTitle),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            middleRow: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _padButton(
+                  tooltip: l10n.wallpaperGroupNextGroup,
+                  icon: AIcons.up,
+                  onPressed: canStepGroup && !_stepping ? () => unawaited(_stepGroup(next: true)) : null,
+                  pending: _pending == _PendingStep.nextGroup,
+                ),
+                _padButton(
+                  tooltip: l10n.wallpaperGroupPreviousGroup,
+                  icon: AIcons.down,
+                  onPressed: canStepGroup && !_stepping ? () => unawaited(_stepGroup(next: false)) : null,
+                  pending: _pending == _PendingStep.previousGroup,
+                ),
+              ],
+            ),
+            bottomRow: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _padButton(
+                  tooltip: l10n.groupedWallpaperViewDelete,
+                  icon: AIcons.delete,
+                  onPressed: canDelete ? _deletePhoto : null,
+                  pending: false,
+                ),
+              ],
             ),
           ),
         ],
@@ -940,6 +961,21 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
       const SizedBox(width: 12),
       Text(text),
     ],
+  );
+
+  /// One pad cell: a fixed square, so the 3/2/1 bands line up without measuring.
+  Widget _padButton({required String tooltip, required IconData icon, required VoidCallback? onPressed, required bool pending}) => SizedBox(
+    width: groupedWallpaperControlPadCell,
+    height: groupedWallpaperControlPadCell,
+    child: IconButton(
+      tooltip: tooltip,
+      padding: EdgeInsets.zero,
+      iconSize: 24,
+      color: Colors.white,
+      disabledColor: Colors.white38,
+      onPressed: onPressed,
+      icon: pending ? _spinner : Icon(icon),
+    ),
   );
 }
 

@@ -750,22 +750,40 @@ bar re-posts once when the wait starts and once when it ends.
 
 A three-finger tap opens an immersive view of the current photo, modelled on
 Muzei's artwork screen: pan and zoom, chrome visible on open and toggled by a
-tap, the group · count · title at the bottom left and the controls at the bottom
-right. A wallpaper gesture has no Activity, so the view is pushed over the
-playing group's page, itself over the app's home page: back walks view → group
-page → home instead of closing the app, and the group page starts on the group
-being played. Opened from the group page, 「Open wallpaper groups」 pops back to
-it.
+tap, the group number · name · count at the bottom left, and a floating control
+pad instead of buttons in the bar. A wallpaper gesture has no Activity, so the
+view is pushed over the playing group's page, itself over the app's home page:
+back walks view → group page → home instead of closing the app, and the group
+page starts on the group being played. Opened from the group page, 「Open
+wallpaper groups」 pops back to it.
 
-The bottom panel carries two rows of controls: the group steps above the photo
-steps, then the menu. A home photo step first asks the renderer to **promote the
-queued neighbour**, which is the texture swap a wallpaper double tap makes, so
-the frame and the page change at once; only a step it cannot promote (no live
-engine, the neighbour still baking, or `frameRetention` keeping the frame on
-screen only) bakes, and only then does the title say what it is doing and every
-step control grey out. Promoting restarts the auto-advance countdown and refills
-the freed slot in the background, exactly like the bar's photo buttons. The lock
-decoy has no queue by design, so its steps always bake.
+The pad is a 3×3 box whose rows carry 3, 2 and 1 controls, left-aligned so the
+silhouette reads as a top-left bracket:
+
+| Row | Controls |
+|---|---|
+| Top (3) | previous photo, next photo, menu |
+| Middle (2) | group **+1** (up), group **−1** (down) |
+| Bottom (1) | delete the photo on screen |
+
+It **floats and is draggable**: the whole staircase is the drag handle, the place
+is clamped inside the safe area, stored as a fraction of the free space (so a
+rotation keeps it within thumb reach) and written to AppMeta only when a drag
+ends. The default anchor is the left edge a little below the middle, reachable on
+a phone held in one hand. Dragging updates a `ValueNotifier` that only the pad
+listens to, so it never rebuilds the photo or re-reads the wallpaper state; the
+photo and the pad each sit behind a `RepaintBoundary`. The pad fades out with
+the rest of the chrome, and its empty top-right corner stays transparent to the
+photo's own tap.
+
+A home photo step first asks the renderer to **promote the queued neighbour**,
+which is the texture swap a wallpaper double tap makes, so the frame and the page
+change at once; only a step it cannot promote (no live engine, the neighbour
+still baking, or `frameRetention` keeping the frame on screen only) bakes, and
+only then does the title say what it is doing and every step control grey out.
+Promoting restarts the auto-advance countdown and refills the freed slot in the
+background, exactly like the bar's photo buttons. The lock decoy has no queue by
+design, so its steps always bake.
 
 The group steps raise and lower the group number over the **enabled** rotation
 (1 ↔ n, wrapping) and never enter group 0: with no group playing they are greyed
@@ -785,19 +803,22 @@ controls act on the decoy and are enabled as soon as the group has a lock range,
 so the first step bakes the frame the page was never able to show before.
 
 The menu is the group page's menu without the draft: open the groups, the
-gallery, the whole group, the range switch, share, usage history, auto-advance,
-effects, gestures, the home/lock switch, the notification switch, **turn off
-grouped wallpaper**, **delete the photo** and the **group lock**, plus About.
-Effects bind to the group aggregate rather than the page's range controller,
-because effects are written straight through and never wait for "save changes".
+gallery, the whole group, share, usage history, auto-advance, effects, gestures,
+the home/lock switch, the notification switch, **turn off grouped wallpaper** and
+the **group lock**, plus About. Effects bind to the group aggregate rather than
+the page's range controller, because effects are written straight through and
+never wait for "save changes". The gallery range switch is deliberately absent:
+this page is about the wallpaper, and the range switch lives where the range is
+managed.
 
-**Delete** is the viewer's own delete action (recycling bin, confirmations,
-progress report, source refresh), with a policy that only tells the page when it
-succeeded: the wallpaper then shows the next photo, which is a promotion on the
-home surface. A cancelled confirmation or a failed delete leaves the frame
-alone. When the photo was the group's last, the engine keeps it (the empty-group
-rule) and the page explains why nothing moved. Stacks are left to the gallery
-viewer, which hosts the multi-page conductor the delete needs.
+**Delete** is the pad's bottom button and the viewer's own delete action
+(recycling bin, confirmations, progress report, source refresh), with a policy
+that only tells the page when it succeeded: the wallpaper then shows the next
+photo, which is a promotion on the home surface. A cancelled confirmation or a
+failed delete leaves the frame alone. When the photo was the group's last, the
+engine keeps it (the empty-group rule) and the page explains why nothing moved.
+Stacks are left to the gallery viewer, which hosts the multi-page conductor the
+delete needs.
 
 The lock entry is the same group switch lock as the group page's and the bar's:
 locking is direct and asks for nothing, unlocking asks for the group password,

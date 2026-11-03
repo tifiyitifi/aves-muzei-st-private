@@ -1,17 +1,34 @@
 name: Build custom APK
 
 # Fork-only pipeline.
-# - Any push/PR to the dev branches builds a signed `custom` APK artifact.
-# - A push to the `release` branch additionally auto-tags `v<X.Y.Z>`, extracts
-#   that section from CHANGELOG.md, and publishes a GitHub Release with the APK
-#   and a SHA256 checksum file (idempotent: skipped when the tag already exists).
+# - Only a push to the `release` branch builds the APK: it auto-tags `v<X.Y.Z>`,
+#   extracts that section from CHANGELOG.md, and publishes a GitHub Release with
+#   the APK and a SHA256 checksum file (idempotent: skipped when the tag exists).
+# - Local development builds on the developer machine; CI is not a build farm.
 # Other flavors stay in the upstream `release.yml`.
 on:
   push:
-    branches: [ "muzei-dev", "release" ]
-  pull_request:
-    branches: [ "muzei-dev", "release" ]
+    branches: [ "release" ]
+    # Storage guard: the APK artifact has exactly one consumer, the `release` job
+    # below. Every extra trigger built an APK nobody downloaded while
+    # `upload-artifact` kept it for the repo default of 90 days -- a handful of
+    # dev runs was enough to exhaust the account's 0.5 GB Actions storage quota.
+    # Do not re-add dev branches; verify builds locally instead.
+    #   branches: [ "muzei-dev", "release" ]
+  # PR runs are not releases either and leak the same way, so keep this off.
+  # pull_request:
+  #   branches: [ "muzei-dev", "release" ]
+  # Manual trigger is kept for re-running a failed build or a pre-release smoke
+  # test. It costs nothing unless clicked, and by design it neither publishes a
+  # release (the `release` job matches `push` only) nor uploads an artifact
+  # (the upload matches `push` on `release` only).
   workflow_dispatch:
+
+# A newer run on the same ref supersedes the older one: keeping both burns
+# minutes on a full APK build whose result can no longer be published.
+concurrency:
+  group: build-custom-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions: read-all
 
@@ -79,18 +96,43 @@ jobs:
       - name: Build signed custom APK
         run: ./flutterw build apk --release -t lib/main_custom.dart --flavor custom
 
+      # Release-only artifact. The guard mirrors the `release` job's `if:` verbatim,
+      # so upload and download can never diverge; an unguarded upload would also
+      # orphan a huge APK on every dev run. Rejected runs (cancelled, failed) store
+      # nothing.
+      # The previous unconditional steps are kept commented as a warning: with the
+      # 90-day default retention they accumulated ~0.5 GB of dead APKs. If they are
+      # ever revived, set an explicit short `retention-days` and re-check the
+      # pinned action SHA, which goes stale while the lines stay commented.
+      # - name: Collect artifact
+      #   run: |
+      #     mkdir -p outputs
+      #     cp build/app/outputs/apk/custom/release/*.apk "outputs/aves-custom-${{ steps.ver.outputs.value }}.apk"
+      #     ls -l outputs
+      # - name: Upload APK
+      #   uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      #   with:
+      #     name: aves-custom-apk
+      #     path: outputs/*.apk
+      #     if-no-files-found: error
+
       - name: Collect artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/release'
         run: |
           mkdir -p outputs
           cp build/app/outputs/apk/custom/release/*.apk "outputs/aves-custom-${{ steps.ver.outputs.value }}.apk"
           ls -l outputs
 
       - name: Upload APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/release'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: aves-custom-apk
           path: outputs/*.apk
           if-no-files-found: error
+          # The `release` job consumes it in the same run, so one day is plenty;
+          # the 90-day default is what accumulated the dead APKs.
+          retention-days: 1
 
   release:
     name: GitHub release

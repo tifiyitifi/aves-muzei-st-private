@@ -73,9 +73,17 @@ Order matters: `pub get` → codegen (if needed) → `gen-l10n` → `analyze`/`t
 - Profile build (what CI uses to type-check Android): `./flutterw build apk --profile -t lib/main_custom.dart --flavor custom`
 - Screenshots: `./flutterw drive --flavor play -t test_driver/driver_screenshots.dart --profile` (needs a connected device/emulator), then `scripts/screenshot_post_process.sh` (needs ImageMagick 6).
 
-CI (`quality-check.yml`) has two jobs: `analyze_flutter` runs exactly `apply_flavor_custom.sh`, `gen-l10n`, `analyze`, host `sqlite3` install, `test` (the flavor step also fetches packages); `analyze_codeql` profile-builds the `custom` APK to scan Android code. Generated code is committed, so CI does not run codegen.
+CI (`quality-check.yml`) has two jobs: `analyze_flutter` runs exactly `apply_flavor_custom.sh`, `gen-l10n`, `analyze`, host `sqlite3` install, `test` (the flavor step also fetches packages); `analyze_codeql` profile-builds the `custom` APK to scan Android code. Generated code is committed, so CI does not run codegen. There is no scheduled run: everything happens on push/PR.
 
-CI (`build-custom-apk.yml`) builds a signed `custom`-flavor release APK on pushes/PRs to `muzei-dev`/`release` (and manual dispatch) and uploads it as an artifact. Signing secrets: `KEYSTORE`, `STORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` (optional `GOOGLE_API_KEY`). A push to the **`release`** branch additionally auto-tags `v<X.Y.Z>` (skipped when the tag already exists), extracts that section from `CHANGELOG.md` via `scripts/extract_log.py`, and publishes a GitHub Release with the APK and `SHA256SUMS.txt`. So a release is created only when `X.Y.Z` is bumped.
+CI (`build-custom-apk.yml`) builds a signed `custom`-flavor release APK **only on a push to the `release` branch** (manual dispatch builds too, but neither publishes nor uploads). Signing secrets: `KEYSTORE`, `STORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` (optional `GOOGLE_API_KEY`). A push to **`release`** auto-tags `v<X.Y.Z>` (skipped when the tag already exists), extracts that section from `CHANGELOG.md` via `scripts/extract_log.py`, and publishes a GitHub Release with the APK and `SHA256SUMS.txt`. So a release is created only when `X.Y.Z` is bumped.
+
+### CI is not a build farm
+
+Local development owns the build loop: run `./flutterw analyze`, `./flutterw test` and `./flutterw build apk ...` on your machine and make them pass. Do not push to a dev branch expecting CI to compile for you, and never add a trigger that builds the APK outside the release path — the private account's Actions storage is only 0.5 GB.
+
+- An uploaded artifact is the expensive part, not the run: a universal `custom` APK is ~100-300 MB (three ABIs plus the mpv native libs) and the repo default keeps it for **90 days**. A few dev pushes once filled the entire quota.
+- The APK artifact therefore exists only for the `release` job that consumes it in the same run, with `retention-days: 1`; dev-branch and PR triggers are commented out **on purpose** (see the workflow comments) and manual dispatch is deliberately artifact-free.
+- Do not re-add a `schedule:` cron for "periodic verification" of unchanged code.
 
 ## Architecture & layering
 

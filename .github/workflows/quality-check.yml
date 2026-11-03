@@ -6,8 +6,13 @@ on:
   pull_request:
     branches: [ "develop", "main", "muzei-dev", "release" ]
     types: [ opened, synchronize, reopened ]
-  schedule:
-    - cron: '17 8 * * 3'
+  # Commented out on purpose: the weekly run re-verified code that had not changed,
+  # and its `analyze_codeql` job performs a full `flutter build apk --profile`
+  # (20-30 min) with nobody pushing. Push/PR runs already cover every change, so
+  # this only consumed Actions minutes. Re-enable only if a periodic drift check
+  # is actually wanted.
+  # schedule:
+  #   - cron: '17 8 * * 3'
 
 # Declare default permissions as read only.
 permissions: read-all

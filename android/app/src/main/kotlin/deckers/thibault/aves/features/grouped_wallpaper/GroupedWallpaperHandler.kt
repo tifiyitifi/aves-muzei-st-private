@@ -71,7 +71,6 @@ class GroupedWallpaperHandler(
             "promotePhoto" -> safe(call, result, ::promotePhoto)
             "openChooser" -> safe(call, result, ::openChooser)
             "wallpaperSize" -> safe(call, result, ::wallpaperSize)
-            "scrollStep" -> safe(call, result, ::scrollStep)
             "displayedSlot" -> safe(call, result, ::displayedSlot)
             "lockSurfaceStatus" -> safe(call, result, ::lockSurfaceStatus)
             "stateRoot" -> safe(call, result, ::stateRoot)
@@ -283,16 +282,6 @@ class GroupedWallpaperHandler(
             height = metrics.heightPixels
         }
         result.success(mapOf("width" to width, "height" to height))
-    }
-
-    /**
-     * Reports the launcher's scroll step, so the engine can tell whether a wide
-     * frame would pan or only crop.
-     *
-     * `0` is a single-page home screen; `-1` means no offset callback arrived yet.
-     */
-    private fun scrollStep(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
-        result.success(GroupedLiveWallpaperService.scrollStep)
     }
 
     /**

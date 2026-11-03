@@ -556,13 +556,13 @@ void main() {
       expect(state.width, 600);
     });
 
-    test('the switch is followed without asking for the launcher step', () async {
+    test('the switch is followed through the capability probe', () async {
       planStore.plan = const GroupedWallpaperPlan(group: dcimGroup);
       serve(entries(12));
 
       await engine.prepare();
 
-      expect(platform.scrollStepReads, 0);
+      expect(platform.capabilityReads, greaterThan(0));
       expect((await store.readState())!.scrollEffect, isTrue);
     });
 
@@ -1864,7 +1864,6 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   bool active = true;
   Size size = const Size(100, 200);
   double? scrollStepValue;
-  int scrollStepReads = 0;
   int reloadCount = 0;
   bool chooserOpened = false;
   final List<int> scheduledSeconds = [];
@@ -1907,12 +1906,6 @@ class _FakePlatform implements GroupedWallpaperPlatform {
 
   @override
   Future<Size?> wallpaperSize() async => size;
-
-  @override
-  Future<double?> scrollStep() async {
-    scrollStepReads++;
-    return scrollStepValue;
-  }
 
   /// The slot the "engine" is drawing; null mirrors "no engine".
   int? displayedSlotValue;

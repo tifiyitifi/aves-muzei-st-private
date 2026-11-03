@@ -124,6 +124,16 @@ class GroupedWallpaperRenderer(
 
     private class UploadedSlot(val entryId: Int, val photo: String, val texture: Int, val aspect: Float)
 
+    /**
+     * The texture's real width/height ratio.
+     *
+     * A frame is baked for the surface, so on a portrait phone it is portrait
+     * too. Treating anything narrower than the view as square would sample a
+     * horizontal window out of a frame that already matches the view, cropping the
+     * sides of every non-panning wallpaper.
+     */
+    private fun aspectOf(bitmap: Bitmap): Float = bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)
+
     /** A frame fading out under the one that replaced it. */
     private class Fading(val id: Int, val slot: UploadedSlot, val startedAt: Long, val durationMs: Int)
 
@@ -827,7 +837,7 @@ class GroupedWallpaperRenderer(
             val bitmap = loaded.lockBitmap
             if (bitmap != null) {
                 try {
-                    val aspect = bitmap.width.toFloat() / bitmap.height.toFloat().coerceAtLeast(1f)
+                    val aspect = aspectOf(bitmap)
                     val existing = lockUploaded
                     lockUploaded = if (existing == null) {
                         UploadedSlot(loaded.lockEntryId, loaded.lockPhoto, createTexture(bitmap), aspect)
@@ -854,7 +864,7 @@ class GroupedWallpaperRenderer(
                 continue
             }
             try {
-                val aspect = bitmap.width.toFloat() / bitmap.height.toFloat().coerceAtLeast(1f)
+                val aspect = aspectOf(bitmap)
                 if (existing == null) {
                     textures[id] = UploadedSlot(slot?.entryId ?: -1, photo, createTexture(bitmap), aspect)
                 } else {

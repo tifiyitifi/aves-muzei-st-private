@@ -964,7 +964,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     int? rotationSeed,
   }) async {
     final seed = rotationSeed ?? _newRotationSeed();
-    final geometry = _geometryFor(framing: plan.effects.framingLock, entry: entry, surface: surface, seed: seed, lock: true);
+    final geometry = _geometryFor(framing: plan.effects.framingLock, entry: entry, surface: surface, seed: seed, lock: true, threshold: plan.effects.rotationThreshold);
     final key = _lockFrameKey(plan, surface, geometry);
     final title = entry.bestTitle ?? '';
     final cached = store.cachedFrame(entry.id, key);
@@ -1674,8 +1674,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     // A wide frame already has the photo's own aspect, so rotation and fit would
     // only letterbox or crop a frame the launcher is about to pan. The lock
     // screen never pans, so its framing always applies.
-    final homeGeometry = scrollEffect ? const GroupedFrameGeometry() : _geometryFor(framing: plan.effects.framingHome, entry: entry, surface: surface, seed: seed, lock: false);
-    final lockGeometry = _geometryFor(framing: plan.effects.framingLock, entry: entry, surface: surface, seed: seed, lock: true);
+    final homeGeometry = scrollEffect ? const GroupedFrameGeometry() : _geometryFor(framing: plan.effects.framingHome, entry: entry, surface: surface, seed: seed, lock: false, threshold: plan.effects.rotationThreshold);
+    final lockGeometry = _geometryFor(framing: plan.effects.framingLock, entry: entry, surface: surface, seed: seed, lock: true, threshold: plan.effects.rotationThreshold);
     final homeOnSurface = scrollEffect ? const GroupedFrameGeometry() : homeGeometry;
     final lockSharesHomeBase = lockGeometry == homeOnSurface;
     final key = _frameKey(plan, target, scrollEffect, homeGeometry, lockGeometry, lockSharesHomeBase);
@@ -1769,19 +1769,22 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// The geometry of one surface for [entry].
   ///
   /// The rotation setting only picks the *direction*: whether to rotate at all is
-  /// decided by the photo and the surface aspect (see `wallpaperNeedsRotation`).
+  /// decided by the photo, the surface aspect and the group's threshold (see
+  /// `wallpaperNeedsRotation`).
   GroupedFrameGeometry _geometryFor({
     required WallpaperFraming framing,
     required AvesEntry entry,
     required Size surface,
     required int seed,
     required bool lock,
+    required double threshold,
   }) => GroupedFrameGeometry(
     quarterTurns: wallpaperRotationQuarterTurns(
       photoSize: entry.displaySize,
       surfaceSize: surface,
       rotation: framing.rotation,
       randomClockwise: wallpaperRandomClockwise(seed, lock: lock),
+      threshold: threshold,
     ),
     fit: framing.fit,
   );
@@ -1870,8 +1873,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// bake and the texture. [WallpaperCapability.bakesWide] is deliberately
   /// conservative — an unmeasured device keeps the wide frame — so a phone that
   /// does pan is never narrowed by a missing answer.
+  /// An automatic switch (`null`) and an explicit "on" behave the same here: both
+  /// defer to the device, because a wide frame nothing pans only costs memory.
+  /// Only an explicit "off" is a decision the capability must not override.
   Future<bool> _effectiveScrollEffect(GroupedWallpaperPlan plan) async {
-    if (!plan.effects.homeScrollEffect) return false;
+    if (plan.effects.homeScrollEffect == false) return false;
     final capability = await platform.capability();
     final wide = capability.bakesWide;
     // Logged on change only: the launcher reports its step on every frame, and

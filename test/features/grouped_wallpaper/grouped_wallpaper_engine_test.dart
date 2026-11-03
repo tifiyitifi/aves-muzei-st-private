@@ -678,6 +678,32 @@ void main() {
       expect(baker.lastLockSharesHomeBase, isFalse, reason: 'the lock needs an upright base');
     });
 
+    test('a threshold raises the bar for a quarter turn', () async {
+      GroupedWallpaperPlan planAt(double threshold, int updatedAt) => GroupedWallpaperPlan(
+        group: noScrollGroup.copyWith(
+          updatedAt: updatedAt,
+          effects: WallpaperEffectsConfig(
+            homeScrollEffect: false,
+            rotationThreshold: threshold,
+            framingHome: const WallpaperFraming(rotation: WallpaperRotation.clockwise),
+          ),
+        ),
+      );
+      // A 1.3:1 photo on a very tall surface is worth a turn by default, but no
+      // longer once the user asks for a 1.5:1 mismatch.
+      serve([entry(50, width: 130, height: 100)]);
+
+      planStore.plan = planAt(WallpaperEffectsConfig.defaultRotationThreshold, 10);
+      await engine.prepare();
+      expect(baker.lastHomeGeometry.quarterTurns, 1);
+
+      // The edit bumps `updatedAt`, so the engine re-bakes the same photo at the
+      // new rule instead of leaving the old pixels on screen.
+      planStore.plan = planAt(1.5, 2000);
+      await engine.prepare();
+      expect(baker.lastHomeGeometry.quarterTurns, 0);
+    });
+
     test('the wide home frame ignores framing while the lock keeps its own', () async {
       const framing = WallpaperFraming(rotation: WallpaperRotation.clockwise);
       planStore.plan = GroupedWallpaperPlan(

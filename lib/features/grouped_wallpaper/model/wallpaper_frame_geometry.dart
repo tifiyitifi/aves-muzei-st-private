@@ -10,13 +10,24 @@ import 'package:flutter/foundation.dart';
 ///
 /// A landscape photo on a portrait phone always shows more of itself when it is
 /// rotated, but the gain is `aspect²`, so a nearly square photo gains almost
-/// nothing. The rotation margin below is `2·ln(1.2)`, which asks the rotated
-/// orientation to be at least 44% closer to the surface aspect; on a typical
-/// phone that is exactly a 1.2:1 photo.
+/// nothing. The rotation margin is `2·ln(threshold)`, which asks the rotated
+/// orientation to be at least 44% closer to the surface aspect at the default
+/// 1.2; on a typical phone that is exactly a 1.2:1 photo. The grouped wallpaper
+/// exposes the threshold as a slider, so this is only its default (kept equal to
+/// `WallpaperEffectsConfig.defaultRotationThreshold`).
 const double wallpaperRotationAspectThreshold = 1.2;
 
-/// The minimum improvement, in log-aspect units, that justifies a quarter turn.
-final double wallpaperRotationMargin = 2 * math.log(wallpaperRotationAspectThreshold);
+/// The log-aspect improvement a turn must beat for [threshold].
+///
+/// The thresholds below 1.0 are clamped away: at or below 1 there is no margin
+/// left, and the comparison would turn nearly square photos for no visible gain.
+double wallpaperRotationMarginFor(double threshold) {
+  final clamped = threshold > 1 ? threshold : wallpaperRotationAspectThreshold;
+  return 2 * math.log(clamped);
+}
+
+/// The improvement at the default threshold.
+final double wallpaperRotationMargin = wallpaperRotationMarginFor(wallpaperRotationAspectThreshold);
 
 /// How one surface's frame is rendered: a quarter turn plus an image fit.
 ///
@@ -60,7 +71,7 @@ class GroupedFrameGeometry with Equatable {
 /// be worth rotating.
 ///
 /// Both sizes are in display orientation (EXIF applied). The surface decides
-/// which way the mismatch points; the margin decides whether it is worth it.
+/// which way the mismatch points; [threshold] decides whether it is worth it.
 /// Under both cover/contain (maximize the shared area) and stretch (minimize
 /// distortion), the best orientation is the one whose aspect is closest to the
 /// surface's in log space, so the comparison is:
@@ -68,7 +79,7 @@ class GroupedFrameGeometry with Equatable {
 ///     |ln(1 / (photo · surface))| + margin < |ln(photo / surface)|
 ///
 /// A square surface is neutral and never rotates anything.
-bool wallpaperNeedsRotation(Size photoSize, Size surfaceSize) {
+bool wallpaperNeedsRotation(Size photoSize, Size surfaceSize, {double threshold = wallpaperRotationAspectThreshold}) {
   if (photoSize.width <= 0 || photoSize.height <= 0 || surfaceSize.width <= 0 || surfaceSize.height <= 0) return false;
   final photoAspect = photoSize.width / photoSize.height;
   final surfaceAspect = surfaceSize.width / surfaceSize.height;
@@ -78,8 +89,8 @@ bool wallpaperNeedsRotation(Size photoSize, Size surfaceSize) {
   final surfaceLog = math.log(surfaceAspect);
   final cost = (photoLog - surfaceLog).abs();
   final rotatedCost = (photoLog + surfaceLog).abs();
-  // The epsilon keeps the declared 1.2 boundary inclusive after rounding.
-  return rotatedCost + wallpaperRotationMargin <= cost + 1e-9;
+  // The epsilon keeps the declared boundary inclusive after rounding.
+  return rotatedCost + wallpaperRotationMarginFor(threshold) <= cost + 1e-9;
 }
 
 /// The quarter turns to apply to [photoSize] on [surfaceSize] for one surface.
@@ -92,8 +103,9 @@ int wallpaperRotationQuarterTurns({
   required Size surfaceSize,
   required WallpaperRotation rotation,
   required bool randomClockwise,
+  double threshold = wallpaperRotationAspectThreshold,
 }) {
-  if (!wallpaperNeedsRotation(photoSize, surfaceSize)) return 0;
+  if (!wallpaperNeedsRotation(photoSize, surfaceSize, threshold: threshold)) return 0;
   return switch (rotation) {
     WallpaperRotation.off => 0,
     WallpaperRotation.clockwise => 1,

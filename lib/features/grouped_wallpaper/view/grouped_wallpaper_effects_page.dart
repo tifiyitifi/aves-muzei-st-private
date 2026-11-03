@@ -58,7 +58,7 @@ class GroupedWallpaperEffectsPage extends StatefulWidget {
 /// "history": a menu gives each one an icon *and* a label.
 enum _EffectsAction { sync, muzeiDefaults, resetZero, about }
 
-class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPage> with SingleTickerProviderStateMixin {
+class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   /// Keeps a slider drag from rebaking the wallpaper on every pixel step.
   static const _applyDelay = Duration(milliseconds: 300);
 
@@ -96,8 +96,9 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
   /// The home frame is baked wide, so its rotation and fit are not applied.
   ///
   /// The engine resolves the *effective* scroll effect the same way: the user's
-  /// switch alone is not enough while the launcher never pans.
-  bool get _homeFrameIsWide => _effects.homeScrollEffect && _capability.bakesWide;
+  /// switch alone is not enough while the launcher never pans. An automatic
+  /// switch still defers to the device, exactly like an explicit "on".
+  bool get _homeFrameIsWide => _effects.homeScrollEffect != false && _capability.bakesWide;
 
   /// Whether the framing controls may be edited on the surface being shown.
   ///
@@ -116,6 +117,7 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _effects = _controller.effectsOf(widget.groupId);
     _tabs = TabController(length: 2, vsync: this)..addListener(_onTabChanged);
     unawaited(_loadPreview());
@@ -123,11 +125,26 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Flush a drag that was still waiting for the debounce.
     _apply();
     _timer?.cancel();
     _tabs.dispose();
     super.dispose();
+  }
+
+  /// The launcher's capability can be measured while the page is open (its first
+  /// offset callback, or a launcher change), so the note and the greyed framing
+  /// must not stay on the answer read when the page opened.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_refreshCapability());
+  }
+
+  Future<void> _refreshCapability() async {
+    final capability = await wallpaperEngineLink.capability();
+    if (!mounted) return;
+    setState(() => _capability = capability);
   }
 
   void _onTabChanged() {
@@ -215,6 +232,10 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
     // The next frame uses the new effects; the engine skips the bake when the
     // group is not the current one, so this is cheap for other groups.
     await wallpaperEngineLink.prepare();
+    // The engine just re-read the device to decide whether the frame is wide, so
+    // the page takes the same answer: the switch note and the greyed framing must
+    // describe what the wallpaper actually draws.
+    await _refreshCapability();
     // A framing edit changes the baked pixels under a new cache key, so the
     // preview has to pick up the new file. The lock preview is the final lock
     // image, so any lock edit needs that too; the home effect sliders keep the
@@ -260,12 +281,30 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
   /// It is a layout change, so the save re-bakes the frame on screen: the very
   /// next look at the home screen shows the wider photo instead of waiting for
   /// another one.
+  ///
+  /// The toggle always stores a definite value: the automatic answer is only the
+  /// starting point, and a launcher change must not silently reverse a choice the
+  /// user made.
   void _setHomeScrollEffect(bool enabled) {
     setState(() {
       _effects = _effects.copyWith(homeScrollEffect: enabled);
       _dirty = true;
     });
     _apply();
+  }
+
+  /// Sets how clearly a photo must be "the wrong way round" to be turned.
+  ///
+  /// It changes the pixels of the photo on screen, so it re-bakes like a framing
+  /// edit; the debounce keeps a drag from queueing a bake per pixel.
+  void _setRotationThreshold(double value) {
+    setState(() {
+      _effects = _effects.copyWith(rotationThreshold: value);
+      _dirty = true;
+      _framingDirty = true;
+    });
+    _timer?.cancel();
+    _timer = Timer(_applyDelay, _apply);
   }
 
   /// Opens the group's auto-advance editor.
@@ -499,9 +538,13 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
                           editable: _framingEditable,
                           onChanged: _setFraming,
                           showScrollEffect: !_editingLock,
-                          scrollEffect: _effects.homeScrollEffect,
+                          scrollEffect: _effects.resolvedHomeScrollEffect(pans: _capability.bakesWide),
+                          scrollEffectAuto: _effects.scrollEffectIsAuto,
                           onScrollEffectChanged: _setHomeScrollEffect,
                           panUnsupported: _panUnsupported,
+                          rotationThreshold: _effects.rotationThreshold,
+                          showRotationThreshold: !_editingLock,
+                          onRotationThresholdChanged: _setRotationThreshold,
                         ),
                       ],
                     ),
@@ -641,15 +684,20 @@ class _AutoAdvancePanel extends StatelessWidget {
 /// The switch lives here because it decides whether the framing applies at all:
 /// a wide home frame already has the photo's own aspect for the launcher to pan,
 /// so the two controls below are greyed out (their values are kept) instead of
-/// pretending to work.
+/// pretending to work. The rotation threshold sits with the rotation it tunes,
+/// but is shared by both surfaces, so it is only offered on the home tab.
 class _FramingPanel extends StatelessWidget {
   final WallpaperFraming framing;
   final bool editable;
   final ValueChanged<WallpaperFraming> onChanged;
   final bool showScrollEffect;
   final bool scrollEffect;
+  final bool scrollEffectAuto;
   final ValueChanged<bool> onScrollEffectChanged;
   final bool panUnsupported;
+  final double rotationThreshold;
+  final bool showRotationThreshold;
+  final ValueChanged<double> onRotationThresholdChanged;
 
   const new({
     required this.framing,
@@ -657,8 +705,12 @@ class _FramingPanel extends StatelessWidget {
     required this.onChanged,
     required this.showScrollEffect,
     required this.scrollEffect,
+    required this.scrollEffectAuto,
     required this.onScrollEffectChanged,
     required this.panUnsupported,
+    required this.rotationThreshold,
+    required this.showRotationThreshold,
+    required this.onRotationThresholdChanged,
   });
 
   @override
@@ -691,11 +743,19 @@ class _FramingPanel extends StatelessWidget {
                       // Keep the switch usable: the group keeps its own
                       // preference, and a launcher that starts panning later
                       // follows it without the user having to come back.
-                      if (panUnsupported && scrollEffect)
+                      if (panUnsupported && scrollEffect && !scrollEffectAuto)
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             l10n.wallpaperScrollEffectUnsupported,
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                        )
+                      else if (scrollEffectAuto)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            l10n.groupedWallpaperScrollEffectAuto,
                             style: const TextStyle(color: Colors.white70, fontSize: 12),
                           ),
                         ),
@@ -780,6 +840,49 @@ class _FramingPanel extends StatelessWidget {
               style: textTheme.bodySmall?.copyWith(color: Colors.white70, fontSize: 12),
             ),
           ),
+          if (showRotationThreshold) ...[
+            const Divider(color: Colors.white24, height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    l10n.groupedWallpaperRotationThreshold,
+                    style: textTheme.bodySmall?.copyWith(color: Colors.white70),
+                  ),
+                ),
+                // A number, not a sentence: the value is formatted, not translated.
+                Text(
+                  rotationThreshold.toStringAsFixed(2),
+                  style: textTheme.bodySmall?.copyWith(color: Colors.white),
+                ),
+              ],
+            ),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: Colors.white70,
+                inactiveTrackColor: Colors.white24,
+                thumbColor: Colors.white,
+                overlayColor: Colors.white24,
+                valueIndicatorColor: Colors.black87,
+                valueIndicatorTextStyle: const TextStyle(color: Colors.white),
+              ),
+              child: Slider(
+                value: rotationThreshold,
+                min: WallpaperEffectsConfig.minRotationThreshold,
+                max: WallpaperEffectsConfig.maxRotationThreshold,
+                divisions: 19,
+                label: rotationThreshold.toStringAsFixed(2),
+                onChanged: onRotationThresholdChanged,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                l10n.groupedWallpaperRotationThresholdHint,
+                style: textTheme.bodySmall?.copyWith(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -112,11 +112,28 @@ class WallpaperEffects with Equatable {
 /// Home and lock effects, plus Muzei's optional link toggle.
 ///
 /// For the grouped wallpaper this is also the group's display configuration: it
-/// carries [homeScrollEffect] and the per-surface framing (rotation and image
-/// fit). The plain Muzei wallpaper shares the type but leaves the framing at its
-/// defaults, so those fields serialize with neutral values there.
+/// carries [homeScrollEffect], the rotation threshold and the per-surface framing
+/// (rotation and image fit). The plain Muzei wallpaper shares the type but leaves
+/// the framing at its defaults, so those fields serialize with neutral values
+/// there.
 @immutable
 class WallpaperEffectsConfig with Equatable {
+  /// The default long/short ratio a mismatched photo needs to be worth a turn.
+  ///
+  /// The grouped wallpaper exposes it as a slider: 1.2 is the tuned value, 2.0
+  /// turns only a very wide photo, and anything at or below 1.0 would turn even
+  /// nearly square ones for no visible gain.
+  static const double defaultRotationThreshold = 1.2;
+  static const double minRotationThreshold = 1.05;
+  static const double maxRotationThreshold = 2.0;
+
+  /// [value] clamped into the range the slider offers, with a bad value (NaN,
+  /// infinity, a stale record) falling back to the default.
+  static double clampRotationThreshold(double value) {
+    if (value.isNaN || value.isInfinite) return defaultRotationThreshold;
+    return value.clamp(minRotationThreshold, maxRotationThreshold).toDouble();
+  }
+
   final WallpaperEffects home;
   final WallpaperEffects lock;
   final bool link;
@@ -126,7 +143,18 @@ class WallpaperEffectsConfig with Equatable {
   /// It belongs to the group like the effect values, so a group can pan while
   /// another stays still. The lock screen never pans, so there is no lock
   /// counterpart: offering one would be a switch with no visible effect.
-  final bool homeScrollEffect;
+  ///
+  /// `null` means "not chosen yet": the first use follows the device (see
+  /// [resolvedHomeScrollEffect]), and a manual toggle stores a definite value so
+  /// later launcher changes never override the user's choice.
+  final bool? homeScrollEffect;
+
+  /// The long/short ratio a mismatched photo must reach to be turned.
+  ///
+  /// Kept on the group rather than per surface: it is one rule ("is the turn
+  /// worth it?"), and two sliders would let the home and lock screens disagree
+  /// about the same photo for no reason.
+  final double rotationThreshold;
 
   /// Rotation and fit of the home surface.
   final WallpaperFraming framingHome;
@@ -141,13 +169,21 @@ class WallpaperEffectsConfig with Equatable {
     this.home = const WallpaperEffects(),
     this.lock = const WallpaperEffects(),
     this.link = false,
-    this.homeScrollEffect = true,
+    this.homeScrollEffect,
+    this.rotationThreshold = defaultRotationThreshold,
     this.framingHome = const WallpaperFraming(),
     this.framingLock = const WallpaperFraming(),
-  });
+  }) : assert(rotationThreshold > 1 && rotationThreshold <= maxRotationThreshold, 'a threshold at or below 1 would turn nearly square photos');
 
   /// The lock-surface values actually rendered.
   WallpaperEffects get effectiveLock => link ? home : lock;
+
+  /// Whether the user has never touched the home scroll switch.
+  bool get scrollEffectIsAuto => homeScrollEffect == null;
+
+  /// The switch as the page shows it: the user's choice, or whether the launcher
+  /// can pan while nothing was chosen.
+  bool resolvedHomeScrollEffect({required bool pans}) => homeScrollEffect ?? pans;
 
   /// [this] with [value] stored on the surface being edited.
   ///
@@ -174,6 +210,7 @@ class WallpaperEffectsConfig with Equatable {
     WallpaperEffects? lock,
     bool? link,
     bool? homeScrollEffect,
+    double? rotationThreshold,
     WallpaperFraming? framingHome,
     WallpaperFraming? framingLock,
   }) => WallpaperEffectsConfig(
@@ -181,6 +218,7 @@ class WallpaperEffectsConfig with Equatable {
     lock: lock ?? this.lock,
     link: link ?? this.link,
     homeScrollEffect: homeScrollEffect ?? this.homeScrollEffect,
+    rotationThreshold: clampRotationThreshold(rotationThreshold ?? this.rotationThreshold),
     framingHome: framingHome ?? this.framingHome,
     framingLock: framingLock ?? this.framingLock,
   );
@@ -196,6 +234,7 @@ class WallpaperEffectsConfig with Equatable {
     'lock': lock.toJsonMap(),
     'link': link,
     'homeScrollEffect': homeScrollEffect,
+    'rotationThreshold': rotationThreshold,
     'framingHome': framingHome.toJsonMap(),
     'framingLock': framingLock.toJsonMap(),
   };
@@ -204,18 +243,35 @@ class WallpaperEffectsConfig with Equatable {
   ///
   /// [legacyScrollEffect] is the app-wide switch groups used before it moved
   /// into the config: a group that never stored its own value keeps the choice
-  /// the user already made instead of silently turning panning on or off.
-  static WallpaperEffectsConfig fromJsonMap(Map<String, Object?> json, {bool legacyScrollEffect = true}) {
-    final scrollEffect = json['homeScrollEffect'];
+  /// the user already made instead of silently turning panning on or off. `null`
+  /// means there was no app-wide value either, i.e. a fresh install, which stays
+  /// automatic.
+  ///
+  /// [defaultFraming] is what a missing framing record reads. The grouped
+  /// wallpaper passes its own default (a mismatched photo is turned by default);
+  /// the plain Muzei wallpaper keeps the identity framing it never draws.
+  static WallpaperEffectsConfig fromJsonMap(
+    Map<String, Object?> json, {
+    bool? legacyScrollEffect,
+    WallpaperFraming defaultFraming = const WallpaperFraming(),
+  }) {
+    // A stored `null` is a deliberate "automatic", not a missing record: only an
+    // absent key falls back to the legacy app-wide switch.
+    final scrollEffect = json.containsKey('homeScrollEffect') ? (json['homeScrollEffect'] is bool ? json['homeScrollEffect'] as bool : null) : legacyScrollEffect;
+    final framingHome = _map(json['framingHome']);
+    final framingLock = _map(json['framingLock']);
     return WallpaperEffectsConfig(
       home: WallpaperEffects.fromJsonMap(_map(json['home']) ?? const {}),
       lock: WallpaperEffects.fromJsonMap(_map(json['lock']) ?? const {}),
       link: json['link'] == true,
-      homeScrollEffect: scrollEffect is bool ? scrollEffect : legacyScrollEffect,
-      framingHome: WallpaperFraming.fromJsonMap(_map(json['framingHome'])),
-      framingLock: WallpaperFraming.fromJsonMap(_map(json['framingLock'])),
+      homeScrollEffect: scrollEffect,
+      rotationThreshold: clampRotationThreshold(_double(json['rotationThreshold']) ?? defaultRotationThreshold),
+      framingHome: framingHome == null ? defaultFraming : WallpaperFraming.fromJsonMap(framingHome),
+      framingLock: framingLock == null ? defaultFraming : WallpaperFraming.fromJsonMap(framingLock),
     );
   }
+
+  static double? _double(Object? value) => value is num ? value.toDouble() : null;
 
   static Map<String, Object?>? _map(Object? value) {
     if (value is! Map) return null;
@@ -223,5 +279,5 @@ class WallpaperEffectsConfig with Equatable {
   }
 
   @override
-  List<Object?> get props => [home, lock, link, homeScrollEffect, framingHome, framingLock];
+  List<Object?> get props => [home, lock, link, homeScrollEffect, rotationThreshold, framingHome, framingLock];
 }

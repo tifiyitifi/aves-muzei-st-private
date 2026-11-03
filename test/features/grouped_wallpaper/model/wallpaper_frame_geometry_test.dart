@@ -47,6 +47,25 @@ void main() {
       expect(wallpaperNeedsRotation(Size.zero, portrait), isFalse);
       expect(wallpaperNeedsRotation(const Size(300, 100), Size.zero), isFalse);
     });
+
+    test('the threshold moves the boundary', () {
+      // The same 1.3:1 photo: worth a turn at the default 1.2, left alone once
+      // the user asks for 1.5. This is the slider's whole effect.
+      const photo = Size(1300, 1000);
+      expect(wallpaperNeedsRotation(photo, portrait), isTrue);
+      expect(wallpaperNeedsRotation(photo, portrait, threshold: 1.5), isFalse);
+      expect(wallpaperNeedsRotation(photo, portrait, threshold: 1.05), isTrue);
+
+      // A very wide photo survives even the strictest threshold.
+      expect(wallpaperNeedsRotation(const Size(4000, 1000), portrait, threshold: 2), isTrue);
+    });
+
+    test('a threshold at or below one falls back to the default margin', () {
+      // The slider cannot reach it, but a corrupt record must not turn every
+      // nearly square photo.
+      expect(wallpaperNeedsRotation(const Size(1100, 1000), portrait, threshold: 1), isFalse);
+      expect(wallpaperNeedsRotation(const Size(1100, 1000), portrait, threshold: .5), isFalse);
+    });
   });
 
   group('wallpaperRotationQuarterTurns', () {

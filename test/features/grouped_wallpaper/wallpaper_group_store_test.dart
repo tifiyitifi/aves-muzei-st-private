@@ -5,6 +5,8 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notifica
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_framing.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_usage.dart';
@@ -150,8 +152,10 @@ void main() {
     expect(await store.readDefaultsVersion(), 3);
   });
 
-  test('the scroll effect switch defaults to on and round-trips', () async {
-    expect(await store.readScrollEffect(), isTrue);
+  test('the scroll effect switch has no value until it is chosen', () async {
+    // A fresh install follows the device instead of recording a choice nobody
+    // made, so the grouped wallpaper starts where the launcher can pan.
+    expect(await store.readScrollEffect(), isNull);
 
     await store.writeScrollEffect(false);
     expect(await store.readScrollEffect(), isFalse);
@@ -173,6 +177,38 @@ void main() {
 
     await store.writeScrollEffect(true);
     expect((await store.loadGroups()).single.effects.homeScrollEffect, isTrue);
+  });
+
+  test('a group without a stored framing reads the grouped default', () async {
+    await store.saveGroups([group('a')]);
+    await (db.update(db.wallpaperGroupRows)..where((t) => t.id.equals('a'))).write(
+      const WallpaperGroupRowsCompanion(effects: Value('{"home":{},"lock":{},"link":false}')),
+    );
+
+    final effects = (await store.loadGroups()).single.effects;
+    expect(effects.framingHome, WallpaperGroupStore.defaultFraming);
+    expect(effects.framingLock, WallpaperGroupStore.defaultFraming);
+    expect(effects.rotationThreshold, WallpaperEffectsConfig.defaultRotationThreshold);
+  });
+
+  test('a stored framing and threshold survive a reload', () async {
+    await store.saveGroups([
+      group('a').copyWith(
+        effects: const WallpaperEffectsConfig(
+          homeScrollEffect: false,
+          rotationThreshold: 1.5,
+          framingHome: WallpaperFraming(rotation: WallpaperRotation.clockwise, fit: WallpaperImageFit.fit),
+          framingLock: WallpaperFraming(rotation: WallpaperRotation.off),
+        ),
+      ),
+    ]);
+
+    final effects = (await store.loadGroups()).single.effects;
+    expect(effects.homeScrollEffect, isFalse);
+    expect(effects.rotationThreshold, 1.5);
+    expect(effects.framingHome.rotation, WallpaperRotation.clockwise);
+    expect(effects.framingHome.fit, WallpaperImageFit.fit);
+    expect(effects.framingLock.rotation, WallpaperRotation.off);
   });
 
   test('the current flag is stored as one flag per group', () async {

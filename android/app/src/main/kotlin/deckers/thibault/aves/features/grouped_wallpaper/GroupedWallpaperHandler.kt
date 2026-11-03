@@ -24,7 +24,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import android.util.DisplayMetrics
 import android.util.Log
+import android.view.WindowManager
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safe
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safeSuspend
 import deckers.thibault.aves.features.live_wallpaper_refill.LiveWallpaperRefillScheduler
@@ -272,16 +274,51 @@ class GroupedWallpaperHandler(
         false
     }
 
+    /**
+     * Reports the pixel size a frame is baked for.
+     *
+     * It is the surface the renderer draws when the wallpaper is attached, the
+     * display size otherwise: the manager's desired size can be the square canvas
+     * a static wallpaper uses, which is not the screen (see [GroupedWallpaperSize]).
+     */
     private fun wallpaperSize(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
         val manager = WallpaperManager.getInstance(context)
-        var width = manager.desiredMinimumWidth
-        var height = manager.desiredMinimumHeight
-        if (width <= 0 || height <= 0) {
-            val metrics = context.resources.displayMetrics
-            width = metrics.widthPixels
-            height = metrics.heightPixels
-        }
+        val (displayWidth, displayHeight) = displaySize()
+        val surface = GroupedLiveWallpaperService.surfaceSize
+        val (width, height) = GroupedWallpaperSize.pick(
+            surfaceWidth = surface?.first ?: 0,
+            surfaceHeight = surface?.second ?: 0,
+            displayWidth = displayWidth,
+            displayHeight = displayHeight,
+            desiredWidth = manager.desiredMinimumWidth,
+            desiredHeight = manager.desiredMinimumHeight,
+        )
         result.success(mapOf("width" to width, "height" to height))
+    }
+
+    /**
+     * The display's pixel size, even when the app itself only owns a smaller window.
+     *
+     * A wallpaper is composited on the display, so a split-screen or freeform app
+     * window is not the right answer here.
+     */
+    private fun displaySize(): Pair<Int, Int> {
+        val manager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return 0 to 0
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val bounds = manager.maximumWindowMetrics.bounds
+                bounds.width() to bounds.height()
+            } else {
+                val metrics = DisplayMetrics()
+                @Suppress("DEPRECATION")
+                manager.defaultDisplay.getRealMetrics(metrics)
+                metrics.widthPixels to metrics.heightPixels
+            }
+        } catch (e: Exception) {
+            // A failed probe is "not measured": the manager's hint still answers.
+            Log.w(TAG, "failed to read the display size", e)
+            0 to 0
+        }
     }
 
     /**

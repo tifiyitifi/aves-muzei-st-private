@@ -1,6 +1,7 @@
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_framing.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
@@ -100,6 +101,17 @@ class WallpaperGroup extends Equatable {
   /// resurrecting conditions they removed from the lock surface.
   final bool lockRangeSeeded;
 
+  /// Effects a brand-new group starts with.
+  ///
+  /// Rotation is on by default on both surfaces (see
+  /// [WallpaperFraming.groupedDefault]) and the scroll switch stays automatic
+  /// (`null`), so the first use follows the device. Storing this in the group row
+  /// keeps a fresh install and an upgraded group on the same defaults.
+  static const defaultEffects = WallpaperEffectsConfig(
+    framingHome: WallpaperFraming.groupedDefault,
+    framingLock: WallpaperFraming.groupedDefault,
+  );
+
   const new({
     required this.id,
     this.number = 0,
@@ -109,7 +121,7 @@ class WallpaperGroup extends Equatable {
     this.current = false,
     this.createdAt = 0,
     this.updatedAt = 0,
-    this.effects = const WallpaperEffectsConfig(),
+    this.effects = defaultEffects,
     this.interval = WallpaperAdvanceInterval.off,
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
     this.separateLockRange = false,

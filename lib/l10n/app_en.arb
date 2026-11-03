@@ -1942,9 +1942,9 @@
   "groupedWallpaperEffectsAboutPreviewTitle": "Preview and bake",
   "groupedWallpaperEffectsAboutPreviewBody": "The preview applies the same blur, dim and grayscale math on the GPU, so it follows the sliders instantly. The wallpaper draws the baked image: the home frame is the sharp photo plus its baked effects, and the lock frame is one final image.",
   "groupedWallpaperEffectsAboutScrollTitle": "Scroll effect",
-  "groupedWallpaperEffectsAboutScrollBody": "On the home screen, the scroll effect keeps the photo's full width so the launcher can pan it. Image fit and rotation are not applied then, because the frame already matches the photo; their controls are greyed out but keep their values. The lock screen never pans, so its adaptation always applies.",
+  "groupedWallpaperEffectsAboutScrollBody": "On the home screen, the scroll effect keeps the photo's full width so the launcher can pan it. Image fit and rotation are not applied then, because the frame already matches the photo; their controls are greyed out but keep their values. The lock screen never pans, so its adaptation always applies. A group that was never set follows the device: the switch starts where the launcher can pan.",
   "groupedWallpaperEffectsAboutRotationTitle": "Rotation",
-  "groupedWallpaperEffectsAboutRotationBody": "Rotation is always 90°. Only photos whose orientation does not match the screen are turned, and only when it is clearly worth it: the photo's long side must be at least 1.2 times its short side. You choose the direction; random draws once per photo, so the picture never flips while it stays on screen.",
+  "groupedWallpaperEffectsAboutRotationBody": "Rotation is always 90°. Only photos whose orientation does not match the screen are turned, and only when it is clearly worth it: the photo's long side must be at least the rotation threshold times its short side (1.2 by default, adjustable from 1.05 to 2.0). You choose the direction; random draws once per photo, so the picture never flips while it stays on screen.",
   "groupedWallpaperEffectsAboutFitTitle": "Image fit",
   "groupedWallpaperEffectsAboutFitBody": "Fill screen crops the photo to cover the screen, Fit image shows all of it with black bars, and Stretch scales the axes independently to fill the screen. Rotation is applied before the fit.",
   "groupedWallpaperImageFraming": "Image adaptation",
@@ -1960,6 +1960,18 @@
   "groupedWallpaperRotationHint": "Only photos whose orientation does not match the screen are turned, always by 90°.",
   "@groupedWallpaperRotationHint": {
     "description": "Hint under the rotation setting: the turn is a quarter turn, and only mismatched photos are turned"
+  },
+  "groupedWallpaperRotationThreshold": "Rotation threshold",
+  "@groupedWallpaperRotationThreshold": {
+    "description": "Slider label: how much longer the photo's long side must be than its short side for a turn to be worth it"
+  },
+  "groupedWallpaperRotationThresholdHint": "Raise it to turn fewer photos. Applies to both screens.",
+  "@groupedWallpaperRotationThresholdHint": {
+    "description": "Hint under the rotation threshold slider; the group shares one threshold between home and lock"
+  },
+  "groupedWallpaperScrollEffectAuto": "Automatic: follows whether this launcher can pan the wallpaper.",
+  "@groupedWallpaperScrollEffectAuto": {
+    "description": "Note under the home scroll switch while its value was never chosen and follows the device"
   },
   "groupedWallpaperFramingWideNote": "The scroll effect keeps the photo's full width for the launcher to pan, so image fit and rotation are not applied. Turn it off to change them.",
   "@groupedWallpaperFramingWideNote": {

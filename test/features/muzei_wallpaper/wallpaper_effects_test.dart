@@ -188,5 +188,48 @@ void main() {
       expect(WallpaperEffectsConfig.fromJsonMap(const {}).framingHome, const WallpaperFraming());
       expect(WallpaperEffectsConfig.fromJsonMap(const {}).framingLock, const WallpaperFraming());
     });
+
+    test('a group without a stored framing reads the given default', () {
+      const defaultFraming = WallpaperFraming(rotation: WallpaperRotation.random);
+      final decoded = WallpaperEffectsConfig.fromJsonMap(const {}, defaultFraming: defaultFraming);
+      expect(decoded.framingHome, defaultFraming);
+      expect(decoded.framingLock, defaultFraming);
+      // A stored framing still wins over the default.
+      const stored = WallpaperFraming(rotation: WallpaperRotation.clockwise, fit: WallpaperImageFit.stretch);
+      final withStored = WallpaperEffectsConfig.fromJsonMap(const WallpaperEffectsConfig(framingHome: stored).toJsonMap(), defaultFraming: defaultFraming);
+      expect(withStored.framingHome, stored);
+    });
+
+    test('an unset scroll effect follows the device, a set one does not', () {
+      const automatic = WallpaperEffectsConfig();
+      expect(automatic.scrollEffectIsAuto, isTrue);
+      expect(automatic.resolvedHomeScrollEffect(pans: true), isTrue);
+      expect(automatic.resolvedHomeScrollEffect(pans: false), isFalse);
+
+      // A manual choice persists, even when the launcher cannot pan any more.
+      const chosen = WallpaperEffectsConfig(homeScrollEffect: true);
+      expect(chosen.scrollEffectIsAuto, isFalse);
+      expect(chosen.resolvedHomeScrollEffect(pans: false), isTrue);
+
+      // A stored `null` is "automatic", not "missing": the legacy switch must not
+      // claim it.
+      final json = automatic.toJsonMap();
+      final decoded = WallpaperEffectsConfig.fromJsonMap(json, legacyScrollEffect: false);
+      expect(decoded.homeScrollEffect, isNull);
+      expect(decoded.scrollEffectIsAuto, isTrue);
+    });
+
+    test('the rotation threshold round-trips and stays in range', () {
+      const config = WallpaperEffectsConfig(rotationThreshold: 1.5);
+      expect(WallpaperEffectsConfig.fromJsonMap(config.toJsonMap()).rotationThreshold, 1.5);
+      // A config written before the slider existed keeps the tuned default.
+      expect(WallpaperEffectsConfig.fromJsonMap(const {}).rotationThreshold, WallpaperEffectsConfig.defaultRotationThreshold);
+
+      expect(WallpaperEffectsConfig.clampRotationThreshold(.5), WallpaperEffectsConfig.minRotationThreshold);
+      expect(WallpaperEffectsConfig.clampRotationThreshold(3), WallpaperEffectsConfig.maxRotationThreshold);
+      expect(WallpaperEffectsConfig.clampRotationThreshold(double.nan), WallpaperEffectsConfig.defaultRotationThreshold);
+      // copyWith sanitizes too, so a slider cannot store an out-of-range value.
+      expect(const WallpaperEffectsConfig().copyWith(rotationThreshold: 9).rotationThreshold, WallpaperEffectsConfig.maxRotationThreshold);
+    });
   });
 }

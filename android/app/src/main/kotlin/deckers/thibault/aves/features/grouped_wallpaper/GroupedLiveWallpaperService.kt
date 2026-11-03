@@ -61,6 +61,26 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             private set
 
         /**
+         * Size of the surface the real engine draws, or null before it attaches.
+         *
+         * The engine bakes for this size, not for the wallpaper manager's desired
+         * size: some launchers report a square canvas there (2340x2340 on MIUI),
+         * which would tell a portrait screen that every photo already matches it,
+         * so no photo is ever turned and the image fit is judged against a square.
+         * The renderer's own surface is the pixels the user actually sees. Kept as
+         * one value so a reader never sees a width from one layout and a height
+         * from another.
+         */
+        @Volatile
+        var surfaceSize: Pair<Int, Int>? = null
+            private set
+
+        /** Records the real surface, so a bake matches what the renderer draws. */
+        fun recordSurface(width: Int, height: Int) {
+            surfaceSize = width to height
+        }
+
+        /**
          * Fraction of the scroll range one home page takes, as last reported by
          * the launcher's `onOffsetsChanged`.
          *
@@ -235,6 +255,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         destroying = true
         isRunning = false
         instance = null
+        // The measured surface dies with the service; a bake without one falls
+        // back to the display size instead of a size from another orientation.
+        recordSurface(0, 0)
         // A foreground notification cannot be cancelled directly: drop the
         // foreground state first.
         clearNotification()
@@ -518,6 +541,9 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
             super.onSurfaceChanged(holder, format, width, height)
+            // Only the real wallpaper measures the screen: a picker preview has its
+            // own, smaller surface and must not narrow every later bake.
+            if (!isPreview) recordSurface(width, height)
             requestRender()
         }
 

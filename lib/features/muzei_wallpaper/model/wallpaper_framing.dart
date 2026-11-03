@@ -57,6 +57,15 @@ enum WallpaperImageFit {
 /// rotated.
 @immutable
 class WallpaperFraming with Equatable {
+  /// What a wallpaper group starts with when it has no stored framing.
+  ///
+  /// The grouped wallpaper turns a mismatched photo from the start, and either
+  /// quarter turn is as "upright" as the other on a screen the photo does not
+  /// match, so the direction is drawn per photo. The lock screen is included: it
+  /// never pans, so its framing always applies and a landscape photo would
+  /// otherwise fill only a slice of it.
+  static const groupedDefault = WallpaperFraming(rotation: WallpaperRotation.random);
+
   final WallpaperRotation rotation;
   final WallpaperImageFit fit;
 

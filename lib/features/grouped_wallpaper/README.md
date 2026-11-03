@@ -370,12 +370,19 @@ in this code, and the notification still opens the view page.
 
 The wallpaper can pan with the home pages, the way the static wallpaper's "use
 scroll effect on home screen" option does. The switch lives with the group's
-effects (`WallpaperEffectsConfig.homeScrollEffect`, on by default), so a group
-can pan while another stays still; it is edited in the effects page's **Home**
-tab and there is deliberately no lock counterpart, because the lock screen never
-pans. Groups written before the switch moved into the group read the old
-app-wide `wallpaper.groupedScrollEffect` value once, so an upgrade keeps the
-user's choice.
+effects (`WallpaperEffectsConfig.homeScrollEffect`), so a group can pan while
+another stays still; it is edited in the effects page's **Home** tab and there is
+deliberately no lock counterpart, because the lock screen never pans. Groups
+written before the switch moved into the group read the old app-wide
+`wallpaper.groupedScrollEffect` value once, so an upgrade keeps the user's choice.
+
+The switch is **automatic until the user touches it**: a group that never stored
+a value has `homeScrollEffect == null`, and the page shows the device's answer
+(`resolvedHomeScrollEffect`). Toggling stores a definite boolean, so a later
+launcher change never reverses a choice the user made. An automatic switch and an
+explicit "on" behave the same in the engine — both defer to the capability, since
+a wide frame nothing pans only costs memory — while an explicit "off" always
+wins.
 
 With it on, a frame is `surface.height × photo aspect` wide (capped by the
 baker's 4096 texture limit) instead of the surface width, so the renderer's
@@ -383,6 +390,17 @@ baker's 4096 texture limit) instead of the surface width, so the renderer's
 surface, which is what the wallpaper always did. The renderer and
 `GroupedWallpaperViewport` need no change: a frame that is not wider than the
 surface simply has no pan range.
+
+**`surface` is the screen, not the wallpaper manager's desired size.**
+`GroupedWallpaperHandler.wallpaperSize` answers, in order: the surface the real
+renderer draws (recorded in `onSurfaceChanged`), the display size, and only then
+`WallpaperManager.desiredMinimum*`. The last one is not the screen on every ROM:
+MIUI reports a square `2340×2340` for a `1080×2340` display, and a square surface
+tells `wallpaperNeedsRotation` that every photo already matches it (so nothing is
+ever turned) while `fit` is judged against a square. `GroupedWallpaperSize` is
+the pure priority rule, and `GroupedWallpaperViewport`/`GroupedWallpaperRenderer`
+use the frame's real aspect (a portrait frame is not clamped to 1:1).
+
 
 Two rules keep the wider frame honest:
 
@@ -499,19 +517,24 @@ to every selected group in one transaction.
 The page is three panels, in a deliberate order: **blur and tone** (the sliders
 plus the link toggle), the small **auto-advance** row (a group-level setting
 shared by both surfaces), and **image adaptation** (the scroll switch together
-with rotation and fit, which it gates). Rare actions — copy to other groups,
-Muzei defaults, reset to zero, and the effects manual — live in one overflow
-menu, so each has both an icon and a label instead of a bare glyph (the reset
-glyph read as "history"). The manual page explains the model a slider cannot:
-per-surface storage, when a change reaches the wallpaper, why a wide home frame
-ignores adaptation, and the 90° rotation rule.
+with rotation, fit and the rotation threshold, which the switch gates). The
+switch shows the value the engine resolves (the stored choice, or the device's
+answer while the group is automatic) and says so underneath. Rare actions — copy
+to other groups, Muzei defaults, reset to zero, and the effects manual — live in
+one overflow menu, so each has both an icon and a label instead of a bare glyph
+(the reset glyph read as "history"). The manual page explains the model a slider
+cannot: per-surface storage, when a change reaches the wallpaper, why a wide home
+frame ignores adaptation, and the 90° rotation rule.
 
 ### Framing (rotation and image fit)
 
 Each surface also owns a framing: a rotation and an image fit, stored in the same
-`effects` JSON as `framingHome`/`framingLock`, so no schema migration was needed
-and an upgraded group reads the identity framing. The link toggle deliberately
-does not cover it: the two surfaces judge their own orientation.
+`effects` JSON as `framingHome`/`framingLock`, so no schema migration was needed.
+The link toggle deliberately does not cover it: the two surfaces judge their own
+orientation. A group that never stored a framing reads
+`WallpaperGroupStore.defaultFraming` — `rotation: random`, `fit: fill` — so the
+lock screen turns a mismatched photo by default too (the lock never pans, so its
+framing always applies).
 
 - **Order is orientation first, then fit.** A frame is rotated and only then
   mapped onto the surface, so choosing "stretch" never changes which photos are
@@ -524,11 +547,16 @@ does not cover it: the two surfaces judge their own orientation.
   `s`, cover/contain prefer the orientation whose aspect is closest to the
   surface (`|ln(a/s)|`), and stretch prefers the one with less distortion — the
   same comparison. The rotated candidate (`|ln(1/(a·s))|`) must be closer by
-  `2·ln(1.2)` (`wallpaperRotationMargin`): on a typical phone that is a
-  landscape photo of at least `1.2:1` (`wallpaperRotationAspectThreshold`, a 44%
-  larger visible area), and a landscape surface rotates portrait photos
-  symmetrically. A square surface is neutral, and nearly square photos are left
-  alone.
+  `2·ln(threshold)`: on a typical phone the default `1.2`
+  (`WallpaperEffectsConfig.defaultRotationThreshold`) is a landscape photo of at
+  least `1.2:1` (a 44% larger visible area), and a landscape surface rotates
+  portrait photos symmetrically. A square surface is neutral, and nearly square
+  photos are left alone.
+- **The threshold is a group setting**, `WallpaperEffectsConfig.rotationThreshold`,
+  edited with a slider (1.05–2.0, step 0.05) in the image adaptation panel's Home
+  tab and shared by both surfaces. A config written before the slider reads 1.2.
+  `_frameKey` does not need it: the key already carries the resolved geometry, so
+  a threshold that does not change this photo's decision reuses its frame.
 - **Random** draws at *selection* time: the slot (and the lock decoy) carries a
   `rotationSeed`, and the direction is derived from it. A re-bake (an effect
   slider, a layout change, a step back through the history) therefore never flips

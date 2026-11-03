@@ -49,8 +49,14 @@ void main() {
     final groups = await WallpaperGroupStore(db).loadGroups();
     expect(groups, hasLength(1));
     expect(groups.single.id, 'wallpaper.group.all');
-    expect(groups.single.effects, const WallpaperEffectsConfig());
-    expect(groups.single.effects.home.isIdentity, isTrue);
+    final effects = groups.single.effects;
+    expect(effects.home.isIdentity, isTrue);
+    // A migrated group gained the effect column, not a choice: the scroll switch
+    // stays automatic and each surface reads the grouped default framing, so a
+    // mismatched photo is turned without the user finding the dropdown first.
+    expect(effects.homeScrollEffect, isNull);
+    expect(effects.framingHome, WallpaperGroupStore.defaultFraming);
+    expect(effects.framingLock, WallpaperGroupStore.defaultFraming);
   });
 
   test('a fresh database stores and reads per-group effects', () async {

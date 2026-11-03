@@ -13,6 +13,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transiti
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_auto_advance.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
+import 'package:aves/features/muzei_wallpaper/model/wallpaper_framing.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:drift/drift.dart';
 
@@ -22,6 +23,15 @@ import 'package:drift/drift.dart';
 /// owned by [VisibleRangeStore], and only the cascade on deletion lives here so
 /// a group can never leave its range behind.
 class WallpaperGroupStore {
+  /// What a group that never stored a framing reads.
+  ///
+  /// Turning a mismatched photo is the point of the feature, so a group starts
+  /// with a direction already chosen: a fresh group rotates a landscape photo on
+  /// a portrait screen without the user having to find the dropdown first. The
+  /// direction is drawn per photo, because either quarter turn is as "upright"
+  /// on a screen the photo does not match.
+  static const defaultFraming = WallpaperFraming.groupedDefault;
+
   /// AppMeta key of the bundled defaults version already applied. `AppMetaStore`
   /// is the fork's generic bookkeeping table, so this feature needs no table of
   /// its own just for one marker.
@@ -248,11 +258,15 @@ class WallpaperGroupStore {
 
   /// Whether frames keep the photo's whole width for the launcher to pan.
   ///
-  /// On by default, like the static wallpaper's scroll effect: a file without the
-  /// value is a fresh install.
-  Future<bool> readScrollEffect() async {
+  /// This is the app-wide switch groups used before the value moved into each
+  /// group's config, so only an upgraded install has one. `null` means there was
+  /// never a choice: the grouped wallpaper then follows the device instead of
+  /// storing a value nobody picked.
+  Future<bool?> readScrollEffect() async {
     final values = await AppMetaStore(db).read({keyScrollEffect});
-    return values[keyScrollEffect] != 'false';
+    final raw = values[keyScrollEffect];
+    if (raw == null) return null;
+    return raw != 'false';
   }
 
   Future<void> writeScrollEffect(bool enabled) => AppMetaStore(db).write({keyScrollEffect: enabled ? 'true' : 'false'});
@@ -374,7 +388,7 @@ class WallpaperGroupStore {
     });
   }
 
-  static WallpaperGroup _toGroup(WallpaperGroupRow row, int number, {required bool legacyScrollEffect}) => WallpaperGroup(
+  static WallpaperGroup _toGroup(WallpaperGroupRow row, int number, {required bool? legacyScrollEffect}) => WallpaperGroup(
     id: row.id,
     number: number,
     name: row.name,
@@ -390,21 +404,23 @@ class WallpaperGroupStore {
     lockRangeSeeded: row.lockRangeSeeded,
   );
 
-  /// Parses the stored effects, falling back to identity when the value is from a
-  /// newer build or was truncated.
-  static WallpaperEffectsConfig _effects(String raw, {required bool legacyScrollEffect}) {
-    if (raw.isEmpty) return WallpaperEffectsConfig(homeScrollEffect: legacyScrollEffect);
+  /// Parses the stored effects, falling back to the grouped defaults when the
+  /// value is from a newer build or was truncated.
+  static WallpaperEffectsConfig _effects(String raw, {required bool? legacyScrollEffect}) {
+    WallpaperEffectsConfig fallback() => WallpaperEffectsConfig(homeScrollEffect: legacyScrollEffect, framingHome: defaultFraming, framingLock: defaultFraming);
+    if (raw.isEmpty) return fallback();
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map) {
         return WallpaperEffectsConfig.fromJsonMap(
           decoded.map((key, value) => MapEntry(key.toString(), value)),
           legacyScrollEffect: legacyScrollEffect,
+          defaultFraming: defaultFraming,
         );
       }
     } catch (_) {
       // A corrupt value must not cost the user their wallpaper.
     }
-    return WallpaperEffectsConfig(homeScrollEffect: legacyScrollEffect);
+    return fallback();
   }
 }

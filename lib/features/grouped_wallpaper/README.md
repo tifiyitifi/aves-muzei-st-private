@@ -443,6 +443,17 @@ added only with evidence.
 
 The last row is the rule that protects a panning phone: unknown never narrows.
 
+The measurements are process-wide, so they follow the launcher they belong to:
+`capability` tells the service which home package it resolved, and a change drops
+the recorded step and offset. Without that, a phone that once used a panning
+launcher would keep its "it pans" answer forever (the launcher change even moves
+`xOffset`, which re-arms `scrollOffsetMoved`) and never narrow again.
+
+Before API 34 the platform cannot report the lock surface separately, so `host` is
+only `home` or `none`. A lock-only OEM on an older release therefore reads as
+unmeasured: it keeps the wide frame and is never warned. That is the conservative
+direction and is deliberate — do not "fix" it by guessing.
+
 Two paths make the decision converge without the user re-applying:
 
 - the launcher's offset callbacks feed `recordOffsets`. It reports a change when

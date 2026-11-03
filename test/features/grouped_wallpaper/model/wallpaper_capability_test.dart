@@ -99,6 +99,16 @@ void main() {
       final c = capability(host: WallpaperHost.lock, launcher: 'com.miui.home');
       expect(c.hostVerdict, CapabilityVerdict.unsupported);
       expect(c.warnsBeforeApply, isTrue);
+      // That host is measured too, so the warning can promise the narrow frame.
+      expect(c.bakesWide, isFalse);
+    });
+
+    test('MIUI with no home host warns without promising a narrow frame', () {
+      final c = capability(host: WallpaperHost.none, launcher: 'com.miui.home');
+      expect(c.warnsBeforeApply, isTrue);
+      // Nothing is measured yet, so the first bake is still wide: the dialog must
+      // not say it will use screen-sized frames.
+      expect(c.bakesWide, isTrue);
     });
 
     test('an unknown launcher with no home host is not warned about', () {

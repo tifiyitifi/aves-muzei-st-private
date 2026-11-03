@@ -385,9 +385,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     if (_alignRequested) return;
     if (!wallpaperEngineLink.isPlaying || state == null || !state.hasPhoto) return;
     if (!state.scrollEffect || _capability.panVerdict != CapabilityVerdict.unsupported) return;
-    _alignRequested = true;
     groupedWallpaperLog.i('capability rebake width=surface host=${_capability.host.name} launcher=${_capability.launcherPackage}');
-    await wallpaperEngineLink.prepare();
+    final result = await wallpaperEngineLink.prepare();
+    // A failed bake keeps the wide frame; the next resume retries instead of
+    // leaving the visit stuck. `_isLayoutStale` is what makes a successful one a
+    // no-op, not this flag.
+    if (result != GroupedWallpaperSyncResult.failed) _alignRequested = true;
   }
 
   /// Warns once when another wallpaper replaced this one.
@@ -1998,7 +2001,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           [
             if (_capability.hostVerdict == CapabilityVerdict.unsupported) l10n.wallpaperGroupCapabilityNoHome,
             if (_capability.panVerdict == CapabilityVerdict.unsupported) l10n.wallpaperGroupCapabilityNoPan,
-            l10n.wallpaperGroupCapabilityNarrow,
+            // The sentence is a promise about this bake. MIUI on a first install
+            // is `host=none` + `panVerdict=unknown`, which still bakes wide until
+            // the page sees the committed host, so it must not promise narrow.
+            if (!_capability.bakesWide) l10n.wallpaperGroupCapabilityNarrow,
           ].join('\n\n'),
         ),
         actions: [

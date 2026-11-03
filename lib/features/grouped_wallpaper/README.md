@@ -485,6 +485,16 @@ wallpaper should follow them without a separate "save". Its copy action opens a
 group grid with the app-wide XOR-range gesture and writes the same configuration
 to every selected group in one transaction.
 
+The page is three panels, in a deliberate order: **blur and tone** (the sliders
+plus the link toggle), the small **auto-advance** row (a group-level setting
+shared by both surfaces), and **image adaptation** (the scroll switch together
+with rotation and fit, which it gates). Rare actions — copy to other groups,
+Muzei defaults, reset to zero, and the effects manual — live in one overflow
+menu, so each has both an icon and a label instead of a bare glyph (the reset
+glyph read as "history"). The manual page explains the model a slider cannot:
+per-surface storage, when a change reaches the wallpaper, why a wide home frame
+ignores adaptation, and the 90° rotation rule.
+
 ### Framing (rotation and image fit)
 
 Each surface also owns a framing: a rotation and an image fit, stored in the same

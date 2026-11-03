@@ -9,6 +9,7 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_auto_advance_page.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_effects_help_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_effects_sync_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_group_labels.dart';
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
@@ -50,6 +51,12 @@ class GroupedWallpaperEffectsPage extends StatefulWidget {
   @override
   State<GroupedWallpaperEffectsPage> createState() => _GroupedWallpaperEffectsPageState();
 }
+
+/// The rare actions, folded into one overflow menu.
+///
+/// They used to be three icons in the top bar, where the reset glyph read as
+/// "history": a menu gives each one an icon *and* a label.
+enum _EffectsAction { sync, muzeiDefaults, resetZero, about }
 
 class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPage> with SingleTickerProviderStateMixin {
   /// Keeps a slider drag from rebaking the wallpaper on every pixel step.
@@ -269,71 +276,45 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
     setState(() {});
   }
 
-  /// The settings that belong to the wallpaper rather than to one surface.
-  ///
-  /// The scroll switch is offered on the home tab only: the lock screen centers
-  /// its frame instead of panning, so a lock switch would record a value nothing
-  /// draws. Auto-advance is shared, so its row is shown on both tabs.
-  Widget _settingsPanel(BuildContext context, WallpaperGroup group) {
-    final l10n = context.l10n;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: .42),
-        borderRadius: const BorderRadius.all(Radius.circular(20)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (!_editingLock)
-            Padding(
-              padding: const EdgeInsets.only(left: 12, right: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          l10n.wallpaperUseScrollEffect,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                        // Keep the switch usable: the group keeps its own
-                        // preference, and a launcher that starts panning later
-                        // follows it without the user having to come back.
-                        if (_panUnsupported && _effects.homeScrollEffect)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              l10n.wallpaperScrollEffectUnsupported,
-                              style: const TextStyle(color: Colors.white70, fontSize: 12),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  Switch(
-                    value: _effects.homeScrollEffect,
-                    onChanged: _setHomeScrollEffect,
-                  ),
-                ],
-              ),
-            ),
-          ListTile(
-            title: Text(l10n.muzeiWallpaperAutoAdvance, style: const TextStyle(color: Colors.white)),
-            subtitle: Text(
-              groupedWallpaperAutoAdvanceSummary(context, group),
-              style: const TextStyle(color: Colors.white70),
-            ),
-            trailing: const Icon(AIcons.next, color: Colors.white70),
-            onTap: () => unawaited(_openAutoAdvance(group)),
-          ),
-        ],
+  /// Runs one overflow-menu entry.
+  Future<void> _onMenuSelected(_EffectsAction action) async {
+    switch (action) {
+      case _EffectsAction.sync:
+        await _openSync();
+      case _EffectsAction.muzeiDefaults:
+        _applyPreset(WallpaperEffects.muzeiDefaults);
+      case _EffectsAction.resetZero:
+        _applyPreset(const WallpaperEffects());
+      case _EffectsAction.about:
+        await _openHelp();
+    }
+  }
+
+  /// Opens the effects manual: the model behind the sliders, and the one rule
+  /// (a wide home frame ignoring image fit and rotation) that reads as a bug.
+  Future<void> _openHelp() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: GroupedWallpaperEffectsHelpPage.routeName),
+        builder: (_) => const GroupedWallpaperEffectsHelpPage(),
       ),
     );
   }
+
+  PopupMenuItem<_EffectsAction> _menuItem(_EffectsAction value, IconData icon, String text, {bool enabled = true}) => PopupMenuItem<_EffectsAction>(
+    value: value,
+    enabled: enabled,
+    child: _menuRow(icon, text),
+  );
+
+  /// An icon and its label: the whole point of folding the actions into a menu.
+  Widget _menuRow(IconData icon, String text) => Row(
+    children: [
+      Icon(icon, size: 20),
+      const SizedBox(width: 12),
+      Flexible(child: Text(text)),
+    ],
+  );
 
   Future<void> _openSync() async {
     _apply();
@@ -460,22 +441,16 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white),
                       ),
                     ),
-                    IconButton(
-                      tooltip: l10n.groupedWallpaperEffectsSync,
-                      icon: const Icon(AIcons.copy, color: Colors.white),
-                      onPressed: canSync ? () => unawaited(_openSync()) : null,
-                    ),
-                    TextButton(
-                      onPressed: () => _applyPreset(WallpaperEffects.muzeiDefaults),
-                      child: Text(
-                        l10n.muzeiWallpaperEffectsMuzeiDefaults,
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: l10n.muzeiWallpaperEffectsResetZero,
-                      icon: const Icon(AIcons.restore, color: Colors.white),
-                      onPressed: () => _applyPreset(const WallpaperEffects()),
+                    PopupMenuButton<_EffectsAction>(
+                      icon: const Icon(AIcons.more, color: Colors.white),
+                      tooltip: l10n.groupedWallpaperEffectsMore,
+                      onSelected: (action) => unawaited(_onMenuSelected(action)),
+                      itemBuilder: (context) => [
+                        _menuItem(_EffectsAction.sync, AIcons.copy, l10n.groupedWallpaperEffectsSync, enabled: canSync),
+                        _menuItem(_EffectsAction.muzeiDefaults, AIcons.palette, l10n.muzeiWallpaperEffectsMuzeiDefaults),
+                        _menuItem(_EffectsAction.resetZero, AIcons.reset, l10n.muzeiWallpaperEffectsResetZero),
+                        _menuItem(_EffectsAction.about, AIcons.info, l10n.groupedWallpaperEffectsAbout),
+                      ],
                     ),
                   ],
                 ),
@@ -491,20 +466,34 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
                   ],
                 ),
                 const SizedBox(height: 2),
-                if (group != null) _settingsPanel(context, group),
                 Expanded(
-                  // The panel must stay reachable on a short screen without
-                  // pushing the tabs off; it only scrolls when it has to.
+                  // The panels must stay reachable on a short screen without
+                  // pushing the tabs off; they only scroll when they have to.
+                  // Order is deliberate: the effect sliders on top, the shared
+                  // auto-advance next, and image adaptation (which owns the
+                  // scroll switch) last, so it reads as a separate concern.
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.only(bottom: 16),
-                    child: _EffectsPanel(
-                      effects: _currentEffects,
-                      framing: _currentFraming,
-                      framingEditable: _framingEditable,
-                      link: _effects.link,
-                      onChanged: _update,
-                      onFramingChanged: _setFraming,
-                      onLinkChanged: _setLink,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _EffectsPanel(
+                          effects: _currentEffects,
+                          link: _effects.link,
+                          onChanged: _update,
+                          onLinkChanged: _setLink,
+                        ),
+                        if (group != null) _AutoAdvancePanel(group: group, onTap: () => unawaited(_openAutoAdvance(group))),
+                        _FramingPanel(
+                          framing: _currentFraming,
+                          editable: _framingEditable,
+                          onChanged: _setFraming,
+                          showScrollEffect: !_editingLock,
+                          scrollEffect: _effects.homeScrollEffect,
+                          onScrollEffectChanged: _setHomeScrollEffect,
+                          panUnsupported: _panUnsupported,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -517,22 +506,21 @@ class _GroupedWallpaperEffectsPageState extends State<GroupedWallpaperEffectsPag
   }
 }
 
+/// The blur, dim and grayscale sliders with their link toggle.
+///
+/// Split from image adaptation on purpose: these change the pixels, while the
+/// adaptation panel owns framing and the home scroll switch, and mixing them
+/// made the scroll switch look like another slider.
 class _EffectsPanel extends StatelessWidget {
   final WallpaperEffects effects;
-  final WallpaperFraming framing;
-  final bool framingEditable;
   final bool link;
   final ValueChanged<WallpaperEffects> onChanged;
-  final ValueChanged<WallpaperFraming> onFramingChanged;
   final ValueChanged<bool> onLinkChanged;
 
   const new({
     required this.effects,
-    required this.framing,
-    required this.framingEditable,
     required this.link,
     required this.onChanged,
-    required this.onFramingChanged,
     required this.onLinkChanged,
   });
 
@@ -548,13 +536,9 @@ class _EffectsPanel extends StatelessWidget {
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _FramingSection(
-            framing: framing,
-            editable: framingEditable,
-            onChanged: onFramingChanged,
-          ),
-          const Divider(color: Colors.white24, height: 24),
+          _PanelHeader(l10n.groupedWallpaperEffectsLook),
           _EffectSlider(
             label: l10n.muzeiWallpaperEffectsBlur,
             value: effects.blur.toDouble(),
@@ -597,83 +581,215 @@ class _EffectsPanel extends StatelessWidget {
   }
 }
 
-class _FramingSection extends StatelessWidget {
+/// The one auto-advance row, kept as its own small panel.
+///
+/// The interval and the ordering are shared by both surfaces, so they belong to
+/// neither effect panel; a row between them reads as the group's clock.
+class _AutoAdvancePanel extends StatelessWidget {
+  final WallpaperGroup group;
+  final VoidCallback onTap;
+
+  const new({
+    required this.group,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .42),
+        borderRadius: const BorderRadius.all(Radius.circular(20)),
+      ),
+      // A `ListTile` paints its ink on the nearest `Material`, and the panel's
+      // `DecoratedBox` would hide it (Flutter asserts about exactly that): give
+      // the row its own transparent one, clipped to the panel's rounded corners.
+      child: ClipRRect(
+        borderRadius: const BorderRadius.all(Radius.circular(20)),
+        child: Material(
+          type: MaterialType.transparency,
+          child: ListTile(
+            leading: const Icon(AIcons.autoAdvance, color: Colors.white70),
+            title: Text(l10n.muzeiWallpaperAutoAdvance, style: const TextStyle(color: Colors.white)),
+            subtitle: Text(
+              groupedWallpaperAutoAdvanceSummary(context, group),
+              style: const TextStyle(color: Colors.white70),
+            ),
+            trailing: const Icon(AIcons.next, color: Colors.white70),
+            onTap: onTap,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Rotation and image fit, together with the home scroll switch they depend on.
+///
+/// The switch lives here because it decides whether the framing applies at all:
+/// a wide home frame already has the photo's own aspect for the launcher to pan,
+/// so the two controls below are greyed out (their values are kept) instead of
+/// pretending to work.
+class _FramingPanel extends StatelessWidget {
   final WallpaperFraming framing;
   final bool editable;
   final ValueChanged<WallpaperFraming> onChanged;
+  final bool showScrollEffect;
+  final bool scrollEffect;
+  final ValueChanged<bool> onScrollEffectChanged;
+  final bool panUnsupported;
 
   const new({
     required this.framing,
     required this.editable,
     required this.onChanged,
+    required this.showScrollEffect,
+    required this.scrollEffect,
+    required this.onScrollEffectChanged,
+    required this.panUnsupported,
   });
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final textTheme = Theme.of(context).textTheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text(
-            l10n.groupedWallpaperImageFraming,
-            style: textTheme.titleSmall?.copyWith(color: Colors.white),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .42),
+        borderRadius: const BorderRadius.all(Radius.circular(20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PanelHeader(l10n.groupedWallpaperImageFraming),
+          if (showScrollEffect)
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.wallpaperUseScrollEffect,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      // Keep the switch usable: the group keeps its own
+                      // preference, and a launcher that starts panning later
+                      // follows it without the user having to come back.
+                      if (panUnsupported && scrollEffect)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            l10n.wallpaperScrollEffectUnsupported,
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: scrollEffect,
+                  onChanged: onScrollEffectChanged,
+                  activeThumbColor: Colors.white,
+                  activeTrackColor: Colors.white38,
+                  inactiveThumbColor: Colors.white54,
+                  inactiveTrackColor: Colors.white12,
+                ),
+              ],
+            ),
+          if (!editable)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 4),
+              child: Text(
+                l10n.groupedWallpaperFramingWideNote,
+                style: textTheme.bodySmall?.copyWith(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+          const SizedBox(height: 8),
+          Text(
+            l10n.groupedWallpaperImageFit,
+            style: textTheme.bodySmall?.copyWith(color: Colors.white70),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          l10n.groupedWallpaperImageFit,
-          style: textTheme.bodySmall?.copyWith(color: Colors.white70),
-        ),
-        const SizedBox(height: 6),
-        SegmentedButton<WallpaperImageFit>(
-          segments: [
-            ButtonSegment(value: WallpaperImageFit.fill, label: Text(l10n.groupedWallpaperImageFitFill)),
-            ButtonSegment(value: WallpaperImageFit.fit, label: Text(l10n.groupedWallpaperImageFitFit)),
-            ButtonSegment(value: WallpaperImageFit.stretch, label: Text(l10n.groupedWallpaperImageFitStretch)),
-          ],
-          selected: {framing.fit},
-          showSelectedIcon: false,
-          style: _framingButtonStyle(),
-          onSelectionChanged: editable ? (selection) => onChanged(framing.copyWith(fit: selection.first)) : null,
-        ),
-        const SizedBox(height: 12),
-        Text(
-          l10n.groupedWallpaperRotation,
-          style: textTheme.bodySmall?.copyWith(color: Colors.white70),
-        ),
-        DropdownButton<WallpaperRotation>(
-          value: framing.rotation,
-          isExpanded: true,
-          dropdownColor: const Color(0xFF2A2A2A),
-          iconEnabledColor: Colors.white,
-          underline: const SizedBox.shrink(),
-          style: textTheme.bodyMedium?.copyWith(color: Colors.white),
-          items: [
-            DropdownMenuItem(value: WallpaperRotation.off, child: Text(l10n.groupedWallpaperRotationOff, style: const TextStyle(color: Colors.white))),
-            DropdownMenuItem(value: WallpaperRotation.clockwise, child: Text(l10n.groupedWallpaperRotationClockwise, style: const TextStyle(color: Colors.white))),
-            DropdownMenuItem(value: WallpaperRotation.counterClockwise, child: Text(l10n.groupedWallpaperRotationCounterClockwise, style: const TextStyle(color: Colors.white))),
-            DropdownMenuItem(value: WallpaperRotation.random, child: Text(l10n.groupedWallpaperRotationRandom, style: const TextStyle(color: Colors.white))),
-          ],
-          onChanged: editable
-              ? (value) {
-                  if (value != null) onChanged(framing.copyWith(rotation: value));
-                }
-              : null,
-        ),
-        if (!editable)
+          const SizedBox(height: 6),
+          SegmentedButton<WallpaperImageFit>(
+            segments: [
+              ButtonSegment(value: WallpaperImageFit.fill, label: Text(l10n.groupedWallpaperImageFitFill)),
+              ButtonSegment(value: WallpaperImageFit.fit, label: Text(l10n.groupedWallpaperImageFitFit)),
+              ButtonSegment(value: WallpaperImageFit.stretch, label: Text(l10n.groupedWallpaperImageFitStretch)),
+            ],
+            selected: {framing.fit},
+            showSelectedIcon: false,
+            style: _framingButtonStyle(),
+            onSelectionChanged: editable ? (selection) => onChanged(framing.copyWith(fit: selection.first)) : null,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            l10n.groupedWallpaperRotation,
+            style: textTheme.bodySmall?.copyWith(color: Colors.white70),
+          ),
+          DropdownButton<WallpaperRotation>(
+            value: framing.rotation,
+            isExpanded: true,
+            dropdownColor: const Color(0xFF2A2A2A),
+            iconEnabledColor: Colors.white,
+            underline: const SizedBox.shrink(),
+            style: textTheme.bodyMedium?.copyWith(color: Colors.white),
+            items: [
+              DropdownMenuItem(
+                value: WallpaperRotation.off,
+                child: Text(l10n.groupedWallpaperRotationOff, style: const TextStyle(color: Colors.white)),
+              ),
+              DropdownMenuItem(
+                value: WallpaperRotation.clockwise,
+                child: Text(l10n.groupedWallpaperRotationClockwise, style: const TextStyle(color: Colors.white)),
+              ),
+              DropdownMenuItem(
+                value: WallpaperRotation.counterClockwise,
+                child: Text(l10n.groupedWallpaperRotationCounterClockwise, style: const TextStyle(color: Colors.white)),
+              ),
+              DropdownMenuItem(
+                value: WallpaperRotation.random,
+                child: Text(l10n.groupedWallpaperRotationRandom, style: const TextStyle(color: Colors.white)),
+              ),
+            ],
+            onChanged: editable
+                ? (value) {
+                    if (value != null) onChanged(framing.copyWith(rotation: value));
+                  }
+                : null,
+          ),
           Padding(
-            padding: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.only(top: 2, bottom: 4),
             child: Text(
-              l10n.groupedWallpaperFramingWideNote,
+              l10n.groupedWallpaperRotationHint,
               style: textTheme.bodySmall?.copyWith(color: Colors.white70, fontSize: 12),
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
+}
+
+/// The panel title, so the three sections read as a group instead of controls.
+class _PanelHeader extends StatelessWidget {
+  final String title;
+
+  const new(this.title);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 8, bottom: 2),
+    child: Text(
+      title,
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.white),
+    ),
+  );
 }
 
 /// The segmented control reads on the dark, blurred preview.

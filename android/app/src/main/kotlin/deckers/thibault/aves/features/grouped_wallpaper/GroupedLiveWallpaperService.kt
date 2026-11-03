@@ -117,6 +117,35 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             return previous != panState(scrollStep, scrollOffsetMoved)
         }
 
+        /**
+         * The home launcher the recorded offsets belong to.
+         *
+         * The offsets live in a companion object, so they outlive a launcher
+         * change: the old launcher's step, or an offset that once moved, would
+         * otherwise be read as the new launcher's answer and keep a wide frame
+         * nobody pans.
+         */
+        @Volatile
+        private var offsetsLauncher = ""
+
+        /**
+         * Records which launcher the offsets describe, dropping them when it
+         * changed.
+         *
+         * @return whether a measurement was dropped, so the caller can log it.
+         */
+        fun adoptLauncher(packageName: String): Boolean {
+            val previous = offsetsLauncher
+            offsetsLauncher = packageName
+            // The first probe only learns the package: offsets recorded before it
+            // are still this launcher's own.
+            if (previous.isEmpty() || previous == packageName) return false
+            scrollStep = -1.0
+            scrollOffset = -1.0
+            scrollOffsetMoved = false
+            return true
+        }
+
         /** The live instance, so the notification's actions can refresh the bar. */
         @Volatile
         private var instance: GroupedLiveWallpaperService? = null

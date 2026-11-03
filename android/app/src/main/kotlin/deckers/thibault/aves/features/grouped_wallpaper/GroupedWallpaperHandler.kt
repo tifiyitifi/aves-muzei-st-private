@@ -115,11 +115,28 @@ class GroupedWallpaperHandler(
         }
         val launcher = try {
             val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-            context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName ?: ""
+            val pm = context.packageManager
+            // `MATCH_DEFAULT_ONLY` is how the chosen home is resolved, but it
+            // requires `CATEGORY_DEFAULT`: a launcher that omits it would answer
+            // nothing, and the fixed-wallpaper warning would silently never fire.
+            (pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+                ?: pm.resolveActivity(intent, 0))
+                ?.activityInfo?.packageName
+                // `android` is the disambiguation dialog, not a launcher: taking
+                // it would poison both the fixed-wallpaper check and the key the
+                // one-time warning is remembered by.
+                ?.takeIf { it != "android" }
+                ?: ""
         } catch (e: Exception) {
             // A launcher the app cannot see is "unknown", never "fixed wallpaper".
             Log.w(TAG, "failed to resolve the home launcher", e)
             ""
+        }
+        // The offsets are process-wide, so they have to follow the launcher they
+        // were measured on; done before reading them, so a changed launcher
+        // answers "not measured" instead of the previous one's verdict.
+        if (launcher.isNotEmpty() && GroupedLiveWallpaperService.adoptLauncher(launcher)) {
+            Log.d(TAG, "capability offsets reset for launcher=$launcher")
         }
         // MIUI keeps its "scroll the wallpaper with the home pages" switch in
         // Settings.Secure. Other ROMs have no such key, which answers null.

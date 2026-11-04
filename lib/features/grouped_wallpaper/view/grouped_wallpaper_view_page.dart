@@ -790,40 +790,16 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
         icon: const Icon(AIcons.more, color: Colors.white),
         tooltip: MaterialLocalizations.of(context).showMenuTooltip,
         onSelected: (action) => unawaited(_onAction(action)),
+        // The order follows the thumb's reach, not importance: the menu opens
+        // beside the pad, which rests in the middle-to-lower part of a
+        // one-handed screen, so the entries nearest the centre are the easiest
+        // to hit and the ends are the hardest. Frequency therefore descends
+        // outwards from the centre: set-up-once actions sit at the far top, the
+        // actions the page exists for straddle the centre, and the rare,
+        // deliberate ones sink to the bottom. Do not sort this alphabetically
+        // or by section name, or the most used entries drift out of reach.
         itemBuilder: (context) => [
-          PopupMenuItem(
-            value: _ViewAction.openGroups,
-            child: _menuRow(AIcons.wallpaper, l10n.groupedWallpaperViewOpenGroups),
-          ),
-          PopupMenuItem(
-            value: _ViewAction.openInGallery,
-            enabled: entry != null,
-            child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
-          ),
-          if (canOpenGroup)
-            PopupMenuItem(
-              value: _ViewAction.viewWholeGroup,
-              child: _menuRow(AIcons.allCollection, l10n.groupedWallpaperViewWholeGroup),
-            ),
-          PopupMenuItem(
-            value: _ViewAction.share,
-            enabled: entry != null,
-            child: _menuRow(AIcons.share, l10n.groupedWallpaperViewShare),
-          ),
-          PopupMenuItem(
-            value: _ViewAction.history,
-            child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
-          ),
-          if (canOpenGroup)
-            PopupMenuItem(
-              value: _ViewAction.autoAdvance,
-              child: _menuRow(AIcons.autoAdvance, l10n.muzeiWallpaperAutoAdvance),
-            ),
-          if (canOpenGroup)
-            PopupMenuItem(
-              value: _ViewAction.effects,
-              child: _menuRow(AIcons.palette, l10n.muzeiWallpaperEffects),
-            ),
+          // Configured once and then never touched, so distance costs nothing.
           PopupMenuItem(
             value: _ViewAction.gestures,
             child: _menuRow(AIcons.gestures, l10n.wallpaperGroupGestures),
@@ -831,6 +807,18 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
           PopupMenuItem(
             value: _ViewAction.configurePad,
             child: _menuRow(AIcons.dragHandle, l10n.settingsWallpaperViewPad),
+          ),
+          if (canOpenGroup)
+            PopupMenuItem(
+              value: _ViewAction.autoAdvance,
+              child: _menuRow(AIcons.autoAdvance, l10n.muzeiWallpaperAutoAdvance),
+            ),
+          PopupMenuItem(
+            value: _ViewAction.toggleNotification,
+            child: _menuRow(
+              (state?.notification ?? true) ? AIcons.checked : AIcons.unselected,
+              l10n.wallpaperGroupNotification,
+            ),
           ),
           const PopupMenuDivider(),
           // The decoy is managed here, not on the lock screen:
@@ -850,19 +838,41 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
                   : l10n.wallpaperGroupViewLockWallpaper,
             ),
           ),
-          PopupMenuItem(
-            value: _ViewAction.toggleNotification,
-            child: _menuRow(
-              (state?.notification ?? true) ? AIcons.checked : AIcons.unselected,
-              l10n.wallpaperGroupNotification,
+          // What the user opened this page to do: see the photo, see what else
+          // the group may draw, go back a few photos, hand the photo on. These
+          // straddle the menu's centre, which is the reachable band.
+          if (canOpenGroup)
+            PopupMenuItem(
+              value: _ViewAction.effects,
+              child: _menuRow(AIcons.palette, l10n.muzeiWallpaperEffects),
             ),
+          PopupMenuItem(
+            value: _ViewAction.history,
+            child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
           ),
           PopupMenuItem(
-            value: _ViewAction.disableWallpaper,
-            enabled: !disabled && wallpaperEngineLink.isAttached,
-            child: _menuRow(AIcons.wallpaperStopped, l10n.wallpaperGroupDisableWallpaper),
+            value: _ViewAction.openInGallery,
+            enabled: entry != null,
+            child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
+          ),
+          if (canOpenGroup)
+            PopupMenuItem(
+              value: _ViewAction.viewWholeGroup,
+              child: _menuRow(AIcons.allCollection, l10n.groupedWallpaperViewWholeGroup),
+            ),
+          PopupMenuItem(
+            value: _ViewAction.share,
+            enabled: entry != null,
+            child: _menuRow(AIcons.share, l10n.groupedWallpaperViewShare),
           ),
           const PopupMenuDivider(),
+          // Rare, but always deliberate. Opening the group page duplicates the
+          // back button and the page below this one, so it no longer earns a
+          // place in the reachable band.
+          PopupMenuItem(
+            value: _ViewAction.openGroups,
+            child: _menuRow(AIcons.wallpaper, l10n.groupedWallpaperViewOpenGroups),
+          ),
           // The group lock is the same state as the group
           // page's and the bar's: locking never asks, and
           // unlocking asks for the group password.
@@ -877,6 +887,13 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
               enabled: canLock && !_stepping,
               child: _menuRow(AIcons.locked, l10n.wallpaperGroupLockCurrent),
             ),
+          // The most disruptive entry sits as far from the thumb as the menu
+          // allows: nothing else here switches the wallpaper away.
+          PopupMenuItem(
+            value: _ViewAction.disableWallpaper,
+            enabled: !disabled && wallpaperEngineLink.isAttached,
+            child: _menuRow(AIcons.wallpaperStopped, l10n.wallpaperGroupDisableWallpaper),
+          ),
           const PopupMenuDivider(),
           PopupMenuItem(
             value: _ViewAction.about,

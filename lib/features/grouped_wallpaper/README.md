@@ -889,6 +889,17 @@ never wait for "save changes". The gallery range switch is deliberately absent:
 this page is about the wallpaper, and the range switch lives where the range is
 managed.
 
+**The menu is ordered by reach, not by section.** The popup opens beside the
+pad, which rests in the middle-to-lower part of a one-handed screen, so its
+entries nearest the centre are the easiest to hit and its ends are the hardest.
+Frequency therefore descends outwards: the set-up-once entries (gestures, pad
+buttons, auto-advance, the notification switch) sit at the far top; the actions
+the page exists for (effects, usage history, open in gallery, the whole group,
+share) straddle the centre; opening the group page drops below them, because the
+back button and the page underneath already do that; and the deliberate entries
+(the group lock, turn off grouped wallpaper) sink to the bottom, with About
+last. Do not re-sort it alphabetically or by section name.
+
 **Delete** is the pad's bottom button and the viewer's own delete action
 (recycling bin, confirmations, progress report, source refresh), with a policy
 that only tells the page when it succeeded: the wallpaper then shows the next

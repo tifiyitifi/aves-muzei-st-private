@@ -431,7 +431,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
   /// this photo", like the viewer's own long press, so it bypasses a menu of
   /// our own. The URI and the wildcard type follow the Muzei page: a file URI is
   /// wrapped in the app's FileProvider natively, and a receiver that only claims
-  /// a narrower type still appears. A failure must be visible �?a silent chooser
+  /// a narrower type still appears. A failure must be visible — a silent chooser
   /// reads as a gesture that does nothing.
   Future<void> _openWith() async {
     final entry = _entry;

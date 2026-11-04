@@ -1,10 +1,14 @@
-import 'package:aves/features/album_contents_move/services/album_contents_scope.dart';
+import 'package:aves/features/album_contents_transfer/services/album_contents_scope.dart';
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
+import 'package:aves/features/visible_range/data/default_presets.dart';
+import 'package:aves/features/visible_range/services/visible_range_controller.dart';
+import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/model/filters/path.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -83,6 +87,10 @@ void main() {
     expect(scope!.countByAlbum, {albumA: 2, albumB: 1});
     expect(scope.entryCount, 3);
     expect(scope.countIn(albumA), 2);
+    // The copy's free-space check needs the bytes of exactly those rows.
+    expect(scope.sizeByAlbum, {albumA: 10, albumB: 5});
+    expect(scope.sizeBytes, 15);
+    expect(scope.sizeIn(albumA), 10);
     // An unselected album is not part of the scope.
     expect(scope.countIn(albumC), 0);
   });
@@ -122,5 +130,24 @@ void main() {
   test('answers null for an empty selection', () async {
     expect(AlbumContentsScope.predicateFor(const {}), isNull);
     expect(await AlbumContentsScope.resolve(const {}, database: service), isNull);
+  });
+
+  test('counts only the rows inside the visible range', () async {
+    await service.insertEntries({entry(1, albumA), entry(2, albumA), entry(3, albumB)});
+
+    final controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const <VisibleRangePresetDefinition>[]);
+    await controller.init();
+    VisibleRangeGate.debugController = controller;
+    addTearDown(() => VisibleRangeGate.debugController = null);
+    await controller.selectBase(presetId: '', name: 'A', filters: {PathFilter(albumA)});
+
+    final scope = await AlbumContentsScope.resolve({filter(albumA), filter(albumB)}, database: service);
+
+    // Whatever the action does with the scope (move, copy or delete), it walks
+    // these rows only: the album outside the range is empty, and the range's
+    // album loses nothing to the narrowing.
+    expect(scope!.countByAlbum, {albumA: 2, albumB: 0});
+    expect(scope.entryCount, 2);
+    expect(scope.sizeBytes, 10);
   });
 }

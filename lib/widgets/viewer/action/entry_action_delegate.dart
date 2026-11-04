@@ -23,6 +23,8 @@ import 'package:aves/widgets/common/action_mixins/entry_storage.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/features/collection_paging/view/viewer_delete_policy.dart';
 import 'package:aves/features/refra_edit/view/refra_edit_flow.dart';
+import 'package:aves/features/visible_range/services/visible_range_gate.dart';
+import 'package:aves/features/visible_range/services/visible_range_locks.dart';
 import 'package:aves/widgets/common/action_mixins/feedback.dart';
 import 'package:aves/widgets/common/action_mixins/permission_aware.dart';
 import 'package:aves/widgets/common/action_mixins/size_aware.dart';
@@ -73,7 +75,7 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
       }
     } else {
       final targetEntry = EntryActions.pageActions.contains(action) ? pageEntry : mainEntry;
-      final canWrite = appMode.canEditEntry && !settings.isReadOnly && !BrowseOnlyMode.isActive;
+      final canWrite = appMode.canEditEntry && !settings.isReadOnly && !BrowseOnlyMode.isActive && !visibleRangeLocksEntryAction(action);
       switch (action) {
         case .toggleFavourite:
           // Favourites are a write too: pause them with the rest while the
@@ -125,13 +127,16 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
         case .edit:
           return canWrite && targetEntry.isImage;
         case .copyToClipboard:
+          // Leaving the device like a share, so a locked range can withhold it.
+          return !settings.useTvLayout && !visibleRangeLocksEntryAction(action);
         case .open:
         case .setAs:
         case .cast:
           return !settings.useTvLayout;
         case .info:
-        case .share:
           return true;
+        case .share:
+          return VisibleRangeGate.allows(VisibleRangeMutation.share);
         case .restore:
           return false;
         case .editDate:
@@ -144,11 +149,12 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
         case .showGeoTiffOnMap:
         case .convertMotionPhotoToStillImage:
         case .viewMotionPhotoVideo:
-          return _metadataActionDelegate.isVisible(
-            appMode: appMode,
-            targetEntry: targetEntry,
-            action: action,
-          );
+          return !visibleRangeLocksEntryAction(action) &&
+              _metadataActionDelegate.isVisible(
+                appMode: appMode,
+                targetEntry: targetEntry,
+                action: action,
+              );
         case .settings:
           return true;
         case .debug:

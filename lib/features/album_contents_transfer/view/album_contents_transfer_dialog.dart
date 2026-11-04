@@ -1,4 +1,4 @@
-import 'package:aves/features/album_contents_move/model/album_contents_move_plan.dart';
+import 'package:aves/features/album_contents_transfer/model/album_contents_transfer_plan.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/theme/icons.dart';
@@ -10,40 +10,45 @@ import 'package:aves/widgets/filter_grids/common/enums.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:material_ui/material_ui.dart';
 
-typedef AlbumContentsMoveAnswer = ({String destination, bool deleteEmptyFolders});
+typedef AlbumContentsTransferAnswer = ({String destination, bool deleteEmptyFolders});
 
-Future<AlbumContentsMoveAnswer?> showAlbumContentsMoveDialog({
+Future<AlbumContentsTransferAnswer?> showAlbumContentsTransferDialog({
   required BuildContext context,
   required CollectionSource source,
   required Set<StoredAlbumFilter> albums,
   required Map<String, int> entryCountByAlbum,
   required Set<String> removableAlbumPaths,
+  required MoveType moveType,
 }) {
-  return showAvesDialog<AlbumContentsMoveAnswer>(
+  return showAvesDialog<AlbumContentsTransferAnswer>(
     context: context,
-    builder: (context) => AlbumContentsMoveDialog(
+    builder: (context) => AlbumContentsTransferDialog(
       source: source,
       albums: albums,
       entryCountByAlbum: entryCountByAlbum,
       removableAlbumPaths: removableAlbumPaths,
+      moveType: moveType,
     ),
-    routeSettings: const RouteSettings(name: AlbumContentsMoveDialog.routeName),
+    routeSettings: const RouteSettings(name: AlbumContentsTransferDialog.routeName),
   );
 }
 
-class AlbumContentsMoveDialog extends StatefulWidget {
-  static const routeName = '/dialog/album_contents_move';
+class AlbumContentsTransferDialog extends StatefulWidget {
+  static const routeName = '/dialog/album_contents_transfer';
 
   final CollectionSource source;
   final Set<StoredAlbumFilter> albums;
 
-  /// Visible entries per selected album, so the preview reports what the move
-  /// travels without the dialog ever holding the entries themselves.
+  /// Visible entries per selected album, so the preview reports what the
+  /// transfer travels without the dialog ever holding the entries themselves.
   final Map<String, int> entryCountByAlbum;
 
-  /// Source albums whose folder may be removed after the move, already limited
+  /// Source albums whose folder may be removed after a move, already limited
   /// to ordinary albums that are neither pinned, vault, nor a volume root.
   final Set<String> removableAlbumPaths;
+
+  /// Whether the contents are moved or copied.
+  final MoveType moveType;
 
   const new({
     super.key,
@@ -51,15 +56,18 @@ class AlbumContentsMoveDialog extends StatefulWidget {
     required this.albums,
     required this.entryCountByAlbum,
     required this.removableAlbumPaths,
+    required this.moveType,
   });
 
   @override
-  State<AlbumContentsMoveDialog> createState() => _AlbumContentsMoveDialogState();
+  State<AlbumContentsTransferDialog> createState() => _AlbumContentsTransferDialogState();
 }
 
-class _AlbumContentsMoveDialogState extends State<AlbumContentsMoveDialog> {
+class _AlbumContentsTransferDialogState extends State<AlbumContentsTransferDialog> {
   String? _destination;
   bool _deleteEmptyFolders = false;
+
+  bool get _copies => widget.moveType == MoveType.copy;
 
   int get _totalEntryCount => widget.entryCountByAlbum.values.fold(0, (sum, count) => sum + count);
 
@@ -69,10 +77,12 @@ class _AlbumContentsMoveDialogState extends State<AlbumContentsMoveDialog> {
 
   /// Whether a folder this move could empty is selected. Defaults to false every
   /// time the dialog opens: removing a folder is an explicit opt-in, never a
-  /// remembered preference.
-  bool get _hasRemovableAlbums => widget.removableAlbumPaths.any((album) => album != _destination && (widget.entryCountByAlbum[album] ?? 0) > 0);
+  /// remembered preference. A copy empties nothing, so it never offers one.
+  bool get _hasRemovableAlbums =>
+      !_copies && widget.removableAlbumPaths.any((album) => album != _destination && (widget.entryCountByAlbum[album] ?? 0) > 0);
 
-  AlbumContentsMovePlan get _plan => AlbumContentsMovePlan.resolve(
+  AlbumContentsTransferPlan get _plan => AlbumContentsTransferPlan.resolve(
+    moveType: widget.moveType,
     sourceAlbums: widget.albums.map((filter) => filter.album).toSet(),
     destination: _destination,
     entryCount: _totalEntryCount - _destinationEntryCount,
@@ -88,14 +98,16 @@ class _AlbumContentsMoveDialogState extends State<AlbumContentsMoveDialog> {
     // visible count is the honest preview; afterwards it reports what travels.
     final summaryCount = plan.isValid ? plan.entryCount : _totalEntryCount;
     final hasRemovableAlbums = _hasRemovableAlbums;
+    final summary = _copies ? l10n.albumContentsCopySummary(summaryCount) : l10n.albumContentsMoveSummary(summaryCount);
+    final buttonLabel = _copies ? l10n.albumContentsCopyButtonLabel : l10n.albumContentsMoveButtonLabel;
 
     return AvesDialog(
-      title: l10n.albumContentsMoveTitle,
+      title: _copies ? l10n.albumContentsCopyTitle : l10n.albumContentsMoveTitle,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(l10n.albumContentsMoveSummary(summaryCount)),
+          Text(summary),
           const SizedBox(height: 4),
           Text(l10n.albumContentsMoveSelectedAlbums(widget.albums.length), style: bodySmall),
           const SizedBox(height: 12),
@@ -118,32 +130,34 @@ class _AlbumContentsMoveDialogState extends State<AlbumContentsMoveDialog> {
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ],
-          const SizedBox(height: 8),
-          CheckboxListTile(
-            value: _deleteEmptyFolders,
-            onChanged: hasRemovableAlbums
-                ? (value) => setState(() {
-                    _deleteEmptyFolders = value ?? false;
-                  })
-                : null,
-            title: Text(l10n.albumContentsMoveDeleteEmptyFolders),
-            subtitle: Text(l10n.albumContentsMoveDeleteEmptyFoldersHint),
-            controlAffinity: ListTileControlAffinity.leading,
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-          ),
-          if (!hasRemovableAlbums)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Text(l10n.albumContentsMoveDeleteEmptyFoldersUnavailable, style: bodySmall),
+          if (!_copies) ...[
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              value: _deleteEmptyFolders,
+              onChanged: hasRemovableAlbums
+                  ? (value) => setState(() {
+                        _deleteEmptyFolders = value ?? false;
+                      })
+                  : null,
+              title: Text(l10n.albumContentsMoveDeleteEmptyFolders),
+              subtitle: Text(l10n.albumContentsMoveDeleteEmptyFoldersHint),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              dense: true,
             ),
+            if (!hasRemovableAlbums)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(l10n.albumContentsMoveDeleteEmptyFoldersUnavailable, style: bodySmall),
+              ),
+          ],
         ],
       ),
       actions: [
         const CancelButton(),
         TextButton(
           onPressed: plan.isValid ? _submit : null,
-          child: Text(Themes.asButtonLabel(l10n.albumContentsMoveButtonLabel)),
+          child: Text(Themes.asButtonLabel(buttonLabel)),
         ),
       ],
     );
@@ -152,7 +166,7 @@ class _AlbumContentsMoveDialogState extends State<AlbumContentsMoveDialog> {
   Future<void> _pickDestination() async {
     final filter = await pickAlbum(
       context: context,
-      moveType: MoveType.move,
+      moveType: widget.moveType,
       chipTypes: {AlbumChipType.stored},
       initialGroup: null,
     );
@@ -173,12 +187,12 @@ class _AlbumContentsMoveDialogState extends State<AlbumContentsMoveDialog> {
     );
   }
 
-  String? _errorText(BuildContext context, AlbumContentsMovePlan plan) {
+  String? _errorText(BuildContext context, AlbumContentsTransferPlan plan) {
     final l10n = context.l10n;
     return switch (plan.error) {
-      AlbumContentsMoveError.destinationInsideSource => l10n.albumContentsMoveDestinationInsideSource,
-      AlbumContentsMoveError.destinationIsOnlySource => l10n.albumContentsMoveDestinationIsSource,
-      AlbumContentsMoveError.noEntries => l10n.albumContentsMoveEmpty,
+      AlbumContentsTransferError.destinationInsideSource => l10n.albumContentsMoveDestinationInsideSource,
+      AlbumContentsTransferError.destinationIsOnlySource => l10n.albumContentsMoveDestinationIsSource,
+      AlbumContentsTransferError.noEntries => _copies ? l10n.albumContentsCopyEmpty : l10n.albumContentsMoveEmpty,
       _ => null,
     };
   }

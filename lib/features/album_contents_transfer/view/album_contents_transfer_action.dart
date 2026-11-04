@@ -1,15 +1,16 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
-import 'package:aves/features/album_contents_move/model/album_contents_move_plan.dart';
-import 'package:aves/features/album_contents_move/services/album_contents_entry_feed.dart';
-import 'package:aves/features/album_contents_move/services/album_contents_scope.dart';
-import 'package:aves/features/album_contents_move/services/empty_album_folder_cleaner.dart';
-import 'package:aves/features/album_contents_move/view/album_contents_move_dialog.dart';
+import 'package:aves/features/album_contents_transfer/model/album_contents_transfer_plan.dart';
+import 'package:aves/features/album_contents_transfer/services/album_contents_entry_feed.dart';
+import 'package:aves/features/album_contents_transfer/services/album_contents_scope.dart';
+import 'package:aves/features/album_contents_transfer/services/empty_album_folder_cleaner.dart';
+import 'package:aves/features/album_contents_transfer/view/album_contents_transfer_dialog.dart';
 import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/view/paged_scope_guard.dart';
+import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/container/album_group.dart';
@@ -27,93 +28,112 @@ import 'package:aves_model/aves_model.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
+/// The two ways the album action can treat the contents: take them away or
+/// duplicate them.
+const _transferModes = [MoveType.move, MoveType.copy];
+
 /// A menu entry carries everything it needs, because the app bar only hands
 /// back its opaque value after the menu closes.
-class _AlbumContentsMoveCommand {
+class _AlbumContentsTransferCommand {
   final Set<StoredAlbumFilter> albums;
   final Selection<FilterGridItem<AlbumBaseFilter>> selection;
   final AlbumChipSetActionDelegate delegate;
+  final MoveType moveType;
 
   const new({
     required this.albums,
     required this.selection,
     required this.delegate,
+    required this.moveType,
   });
 }
 
 /// TV has no overflow menu, so selection actions stay reachable as icons.
-List<Widget> buildAlbumContentsMoveActions(
+List<Widget> buildAlbumContentsTransferActions(
   BuildContext context,
   AppMode appMode,
   Selection<FilterGridItem<AlbumBaseFilter>> selection,
   AlbumChipSetActionDelegate delegate,
 ) {
   if (!settings.useTvLayout) return const [];
-  if (!_canMove(context, appMode, selection)) return const [];
+  if (!_canTransfer(context, appMode, selection)) return const [];
   return [
-    IconButton(
-      icon: const Icon(AIcons.move),
-      tooltip: context.l10n.albumContentsMoveAction,
-      onPressed: () => unawaited(
-        _start(
-          context: context,
-          albums: _selectedAlbums(selection),
-          selection: selection,
-          delegate: delegate,
+    for (final moveType in _transferModes)
+      IconButton(
+        icon: Icon(moveType == MoveType.copy ? AIcons.copy : AIcons.move),
+        tooltip: _actionLabel(context, moveType),
+        onPressed: () => unawaited(
+          _start(
+            context: context,
+            moveType: moveType,
+            albums: _selectedAlbums(selection),
+            selection: selection,
+            delegate: delegate,
+          ),
         ),
       ),
-    ),
   ];
 }
 
-/// The phone app bar has one overflow menu; the album action joins it instead
+/// The phone app bar has one overflow menu; the album actions join it instead
 /// of adding another button to the selection bar.
-List<PopupMenuEntry<Object>> buildAlbumContentsMoveMenuEntries(
+List<PopupMenuEntry<Object>> buildAlbumContentsTransferMenuEntries(
   BuildContext context,
   AppMode appMode,
   Selection<FilterGridItem<AlbumBaseFilter>> selection,
   AlbumChipSetActionDelegate delegate,
 ) {
   if (settings.useTvLayout) return const [];
-  if (!_canMove(context, appMode, selection)) return const [];
+  if (!_canTransfer(context, appMode, selection)) return const [];
   return [
-    PopupMenuItem<Object>(
-      value: _AlbumContentsMoveCommand(
-        albums: _selectedAlbums(selection),
-        selection: selection,
-        delegate: delegate,
+    for (final moveType in _transferModes)
+      PopupMenuItem<Object>(
+        value: _AlbumContentsTransferCommand(
+          albums: _selectedAlbums(selection),
+          selection: selection,
+          delegate: delegate,
+          moveType: moveType,
+        ),
+        child: MenuRow(
+          text: _actionLabel(context, moveType),
+          icon: Icon(moveType == MoveType.copy ? AIcons.copy : AIcons.move),
+        ),
       ),
-      child: MenuRow(
-        text: context.l10n.albumContentsMoveAction,
-        icon: const Icon(AIcons.move),
-      ),
-    ),
   ];
 }
 
-Future<void> handleAlbumContentsMoveMenuSelection(BuildContext context, Object value) async {
-  if (value is! _AlbumContentsMoveCommand) return;
+Future<void> handleAlbumContentsTransferMenuSelection(BuildContext context, Object value) async {
+  if (value is! _AlbumContentsTransferCommand) return;
   await _start(
     context: context,
+    moveType: value.moveType,
     albums: value.albums,
     selection: value.selection,
     delegate: value.delegate,
   );
 }
 
-bool _canMove(
+String _actionLabel(BuildContext context, MoveType moveType) {
+  return moveType == MoveType.copy ? context.l10n.albumContentsCopyAction : context.l10n.albumContentsMoveAction;
+}
+
+bool _canTransfer(
   BuildContext context,
   AppMode appMode,
   Selection<FilterGridItem<AlbumBaseFilter>> selection,
 ) {
   if (appMode != AppMode.main || !selection.isSelecting || settings.isReadOnly) return false;
   if (!(CollectionViewHooksScope.maybeOf(context)?.allowFilterMutation ?? true)) return false;
+  // A locked visible range freezes library edits, and the lock's `move`
+  // permission is the one that covers relocating contents, for a copy as well.
+  if (!VisibleRangeGate.allows(VisibleRangeMutation.move)) return false;
 
   final filters = selection.selectedItems.map((item) => item.filter).toSet();
   final albums = filters.whereType<StoredAlbumFilter>().toSet();
   if (albums.isEmpty || albums.length != filters.length) return false;
-  // Moving out of a vault would expose its content, and a volume root is not
-  // an album that can be emptied or removed.
+  // Taking contents out of a vault would expose it, and a volume root is not
+  // an album that can be emptied or removed. A copy out of a vault would expose
+  // it just the same, so the rule holds for both modes.
   return albums.every((filter) => !filter.isVault && filter.canRename);
 }
 
@@ -121,27 +141,31 @@ Set<StoredAlbumFilter> _selectedAlbums(Selection<FilterGridItem<AlbumBaseFilter>
   return selection.selectedItems.map((item) => item.filter).whereType<StoredAlbumFilter>().toSet();
 }
 
-/// Moves the visible contents of the selected albums into one destination.
+/// Moves or copies the visible contents of the selected albums into one
+/// destination.
 ///
 /// Two paths, because the targets live in one of two very different places. A
 /// library small enough to load keeps the legacy behaviour: the entries come
 /// from the in-memory source. A windowed library cannot be materialized, so the
 /// same scope is resolved as a database predicate, counted per album for the
-/// preview, and walked in bounded batches while the move runs — the album grid
-/// itself never holds the entries.
+/// preview, and walked in bounded batches while the transfer runs — the album
+/// grid itself never holds the entries.
 Future<void> _start({
   required BuildContext context,
+  required MoveType moveType,
   required Set<StoredAlbumFilter> albums,
   required Selection<FilterGridItem<AlbumBaseFilter>> selection,
   required AlbumChipSetActionDelegate delegate,
 }) async {
   if (albums.isEmpty) return;
 
+  final copy = moveType == MoveType.copy;
   final source = context.read<CollectionSource>();
   final albumPaths = albums.map((filter) => filter.album).toSet();
   // Only visible entries travel. Anything outside the visible range stays in
-  // its folder, which then cannot pass the strict emptiness check.
-  final removableAlbumPaths = _removableAlbumPaths(albums);
+  // its folder, which then cannot pass the strict emptiness check. A copy
+  // leaves every source folder in place, so it offers no removal at all.
+  final removableAlbumPaths = copy ? const <String>{} : _removableAlbumPaths(albums);
 
   final fullLoad = await const CollectionEngineRouter().allowFullLoad();
   if (!context.mounted) return;
@@ -172,21 +196,27 @@ Future<void> _start({
   }
 
   if (entryCountByAlbum.values.every((count) => count == 0)) {
-    delegate.showFeedback(context, FeedbackType.info, context.l10n.albumContentsMoveEmpty);
+    delegate.showFeedback(
+      context,
+      FeedbackType.info,
+      copy ? context.l10n.albumContentsCopyEmpty : context.l10n.albumContentsMoveEmpty,
+    );
     return;
   }
 
-  final answer = await showAlbumContentsMoveDialog(
+  final answer = await showAlbumContentsTransferDialog(
     context: context,
     source: source,
     albums: albums,
     entryCountByAlbum: entryCountByAlbum,
     removableAlbumPaths: removableAlbumPaths,
+    moveType: moveType,
   );
   if (answer == null || !context.mounted) return;
 
   final destination = answer.destination;
-  final plan = AlbumContentsMovePlan.resolve(
+  final plan = AlbumContentsTransferPlan.resolve(
+    moveType: moveType,
     sourceAlbums: albumPaths,
     destination: destination,
     // The destination album keeps its own entries: picking a selected album as
@@ -202,27 +232,36 @@ Future<void> _start({
     ..remove(destination)
     ..insert(0, destination);
 
-  final movedAlbums = <String>{};
+  // A copy writes every byte again, while the batched free-space check only
+  // sees the current batch. Ask once, from the scope's totals, so the user
+  // learns before the first file instead of halfway through.
+  if (copy && scope != null) {
+    final needed = scope.sizeBytes - scope.sizeIn(destination);
+    if (!await delegate.checkFreeSpace(context, needed, destination)) return;
+    if (!context.mounted) return;
+  }
+
+  final transferredAlbums = <String>{};
   if (inMemoryEntries != null) {
     final entries = inMemoryEntries.where((entry) => entry.directory != destination).toSet();
-    movedAlbums.addAll(entries.map((entry) => entry.directory).nonNulls);
+    transferredAlbums.addAll(entries.map((entry) => entry.directory).nonNulls);
     final completed = await delegate.doQuickMove(
       context,
-      moveType: MoveType.move,
+      moveType: moveType,
       entriesByDestination: {destination: entries},
       cleanupEmptySourceDirectories: false,
     );
     if (!context.mounted || !completed) return;
     selection.browse();
   } else {
-    final movingAlbums = albums.where((filter) => plan.movingAlbums.contains(filter.album)).toSet();
-    final predicate = AlbumContentsScope.predicateFor(movingAlbums);
+    final transferAlbums = albums.where((filter) => plan.movingAlbums.contains(filter.album)).toSet();
+    final predicate = AlbumContentsScope.predicateFor(transferAlbums);
     if (predicate == null) {
       delegate.showFeedback(context, FeedbackType.warn, context.l10n.albumContentsMoveInvalidDestination);
       return;
     }
     final feed = AlbumContentsEntryFeed(
-      albums: movingAlbums,
+      albums: transferAlbums,
       predicate: predicate,
       count: plan.entryCount,
     );
@@ -234,10 +273,10 @@ Future<void> _start({
         if (run == null) return;
         final batch = {for (final entry in run.batch) if (entry.directory != null && entry.directory != destination) entry};
         if (batch.isEmpty) return;
-        movedAlbums.addAll(batch.map((entry) => entry.directory).nonNulls);
+        transferredAlbums.addAll(batch.map((entry) => entry.directory).nonNulls);
         final completed = await delegate.doQuickMove(
           context,
-          moveType: MoveType.move,
+          moveType: moveType,
           entriesByDestination: {destination: batch},
           cleanupEmptySourceDirectories: false,
         );
@@ -253,9 +292,9 @@ Future<void> _start({
     selection.browse();
   }
 
-  if (answer.deleteEmptyFolders) {
+  if (!copy && answer.deleteEmptyFolders) {
     final candidates = plan.cleanupCandidates(
-      movedSourceAlbums: movedAlbums,
+      movedSourceAlbums: transferredAlbums,
       removableSourceAlbums: removableAlbumPaths,
     );
     if (candidates.isNotEmpty) {

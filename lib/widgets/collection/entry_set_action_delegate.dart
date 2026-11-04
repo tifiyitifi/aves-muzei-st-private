@@ -9,6 +9,7 @@ import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/features/collection_paging/selection/selection_mark.dart';
 import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
 import 'package:aves/features/collection_paging/view/selection_traits_sheet.dart';
+import 'package:aves/features/visible_range/services/visible_range_locks.dart';
 import 'package:aves/locale/intl.dart';
 import 'package:aves/model/device.dart';
 import 'package:aves/model/dynamic_albums.dart';
@@ -23,6 +24,7 @@ import 'package:aves/model/favourites.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/container/set_and.dart';
 import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/filters/trash.dart';
 import 'package:aves/model/grouping/common.dart';
 import 'package:aves/model/highlight.dart';
 import 'package:aves/model/metadata/date_modifier.dart';
@@ -163,6 +165,10 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     // The collection bar already greys these; the delegate enforces it too, so
     // the TV layout and any future caller cannot slip past the reduced mode.
     if (BrowseOnlyMode.locks(action)) return false;
+    // A locked visible range freezes library edits until the user unlocks it.
+    // The recycle bin is a management surface the range does not narrow (see
+    // `VisibleRangeGate.apply`), so its lock cannot withhold its actions.
+    if (!collection.filters.any((filter) => filter is TrashFilter) && visibleRangeLocksEntrySetAction(action)) return false;
 
     final itemCount = collection.entryCount;
     final hasItems = itemCount > 0;
@@ -402,6 +408,9 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     required BuildContext context,
     required Set<AvesEntry> entries,
     required bool enableBin,
+    // A caller that already asked its own question (the album grid asks once
+    // for a whole batched run) opts out of the generic delete-forever dialog.
+    bool confirm = true,
   }) async {
     final pureTrash = entries.every((entry) => entry.trashed);
     if (enableBin && !pureTrash) {
@@ -413,15 +422,16 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     final storageDirs = entries.map((entry) => entry.storageDirectory).nonNulls.toSet();
     final todoCount = EntryFeedRun.displayCount(entries.length);
 
-    if (!await EntryFeedRun.confirm(
-      'delete.forever',
-      () => showSkippableConfirmationDialog(
-        context: context,
-        type: ConfirmationDialog.deleteForever,
-        message: l10n.deleteEntriesConfirmationDialogMessage(todoCount),
-        confirmationButtonLabel: l10n.deleteButtonLabel,
-      ),
-    )) {
+    if (confirm &&
+        !await EntryFeedRun.confirm(
+          'delete.forever',
+          () => showSkippableConfirmationDialog(
+            context: context,
+            type: ConfirmationDialog.deleteForever,
+            message: l10n.deleteEntriesConfirmationDialogMessage(todoCount),
+            confirmationButtonLabel: l10n.deleteButtonLabel,
+          ),
+        )) {
       return false;
     }
 

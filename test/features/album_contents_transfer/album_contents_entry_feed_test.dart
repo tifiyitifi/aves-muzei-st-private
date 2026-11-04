@@ -1,4 +1,4 @@
-import 'package:aves/features/album_contents_move/services/album_contents_entry_feed.dart';
+import 'package:aves/features/album_contents_transfer/services/album_contents_entry_feed.dart';
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed.dart';
 import 'package:aves/features/drift_db/app_database.dart';

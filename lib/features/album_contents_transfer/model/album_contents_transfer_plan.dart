@@ -1,6 +1,7 @@
 import 'package:aves/services/common/services.dart';
+import 'package:aves_model/aves_model.dart';
 
-enum AlbumContentsMoveError {
+enum AlbumContentsTransferError {
   noAlbums,
   noEntries,
   destinationMissing,
@@ -14,9 +15,15 @@ enum AlbumContentsMoveError {
 /// entries travel, from counts rather than from the entries themselves, so a
 /// windowed collection can plan without materializing its rows. It never
 /// promises that a folder is empty: emptiness is checked on the filesystem after
-/// the move, so a folder that still holds an invisible item or a subfolder is
+/// the transfer, so a folder that still holds an invisible item or a subfolder is
 /// kept.
-class AlbumContentsMovePlan {
+///
+/// A copy plans like a move, except that it leaves every source album in place,
+/// so it never offers a folder for removal.
+class AlbumContentsTransferPlan {
+  /// Whether the contents are moved or duplicated.
+  final MoveType moveType;
+
   /// The album the contents travel to.
   final String? destination;
 
@@ -27,46 +34,49 @@ class AlbumContentsMovePlan {
   /// Source albums whose contents travel: the selection minus the destination.
   final Set<String> movingAlbums;
 
-  final AlbumContentsMoveError? error;
+  final AlbumContentsTransferError? error;
 
   const new _({
+    required this.moveType,
     required this.destination,
     required this.entryCount,
     required this.movingAlbums,
     required this.error,
   });
 
-  /// Plans the move of [entryCount] entries, which the caller counted over the
-  /// source albums other than the destination.
+  /// Plans the transfer of [entryCount] entries, which the caller counted over
+  /// the source albums other than the destination.
   factory resolve({
+    required MoveType moveType,
     required Set<String> sourceAlbums,
     required String? destination,
     required int entryCount,
   }) {
     if (sourceAlbums.isEmpty) {
-      return const AlbumContentsMovePlan._invalid(AlbumContentsMoveError.noAlbums);
+      return AlbumContentsTransferPlan._invalid(moveType, AlbumContentsTransferError.noAlbums);
     }
 
     final target = destination;
     if (target == null || target.isEmpty) {
-      return const AlbumContentsMovePlan._invalid(AlbumContentsMoveError.destinationMissing);
+      return AlbumContentsTransferPlan._invalid(moveType, AlbumContentsTransferError.destinationMissing);
     }
 
     if (sourceAlbums.any((album) => pContext.isWithin(album, target))) {
-      return const AlbumContentsMovePlan._invalid(AlbumContentsMoveError.destinationInsideSource);
+      return AlbumContentsTransferPlan._invalid(moveType, AlbumContentsTransferError.destinationInsideSource);
     }
 
     // Picking one of the selected albums merges the others into it.
     final movingAlbums = sourceAlbums.where((album) => album != target).toSet();
     if (movingAlbums.isEmpty) {
-      return const AlbumContentsMovePlan._invalid(AlbumContentsMoveError.destinationIsOnlySource);
+      return AlbumContentsTransferPlan._invalid(moveType, AlbumContentsTransferError.destinationIsOnlySource);
     }
 
     if (entryCount <= 0) {
-      return const AlbumContentsMovePlan._invalid(AlbumContentsMoveError.noEntries);
+      return AlbumContentsTransferPlan._invalid(moveType, AlbumContentsTransferError.noEntries);
     }
 
-    return AlbumContentsMovePlan._(
+    return AlbumContentsTransferPlan._(
+      moveType: moveType,
       destination: target,
       entryCount: entryCount,
       movingAlbums: movingAlbums,
@@ -74,26 +84,27 @@ class AlbumContentsMovePlan {
     );
   }
 
-  const new _invalid(AlbumContentsMoveError error)
-      : this._(
-          destination: null,
-          entryCount: 0,
-          movingAlbums: const {},
-          error: error,
-        );
+  const new _invalid(this.moveType, this.error)
+      : destination = null,
+        entryCount = 0,
+        movingAlbums = const {};
 
   bool get isValid => error == null;
+
+  /// Whether the plan duplicates the contents instead of moving them.
+  bool get copies => moveType == MoveType.copy;
 
   /// The selected albums this move may remove once it emptied them.
   ///
   /// [movedSourceAlbums] is what the move itself touched, so an album the
   /// selection held but this move never took anything from stays: only a folder
-  /// this move emptied is eligible.
+  /// this move emptied is eligible. A copy empties nothing, so it offers no
+  /// candidate at all.
   Set<String> cleanupCandidates({
     required Set<String> movedSourceAlbums,
     required Set<String> removableSourceAlbums,
   }) {
-    if (!isValid) return const {};
+    if (!isValid || copies) return const {};
     return removableSourceAlbums.where((album) => album != destination && movedSourceAlbums.contains(album)).toSet();
   }
 }

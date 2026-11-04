@@ -862,6 +862,20 @@
   "albumContentsMoveInvalidDestination": "This destination cannot be used. Choose another album.",
   "albumContentsMoveButtonLabel": "MOVE",
 
+  "albumContentsCopyAction": "Copy album contents",
+  "albumContentsCopyTitle": "Copy album contents",
+  "albumContentsCopySummary": "{count, plural, =1{Copy 1 item into one destination album.} other{Copy {count} items into one destination album.}}",
+  "@albumContentsCopySummary": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "albumContentsCopyEmpty": "No visible items to copy in the selected albums.",
+  "albumContentsCopyButtonLabel": "COPY",
+
   "albumCamera": "Camera",
   "albumDownload": "Download",
   "albumScreenshots": "Screenshots",

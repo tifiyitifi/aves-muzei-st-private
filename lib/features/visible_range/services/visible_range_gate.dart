@@ -220,4 +220,41 @@ abstract final class VisibleRangeGate {
     final range = filter;
     return range == null || range.test(entry);
   }
+
+  /// Whether the current lock allows [mutation] on the library.
+  ///
+  /// The lock freezes what a browsing session may do, not only what it may see:
+  /// while it holds, an operation the frozen permissions do not list must not
+  /// run, even though its entries are visible. An unlocked range allows
+  /// everything, so callers need no separate lock check.
+  static bool allows(VisibleRangeMutation mutation) {
+    final range = _controller.gallery;
+    if (!range.locked) return true;
+    final permissions = range.permissions;
+    return switch (mutation) {
+      .delete => permissions.delete,
+      .move => permissions.move,
+      .rename => permissions.rename,
+      .edit => permissions.edit,
+      .share => permissions.share,
+      .trash => permissions.trash,
+      .hide => permissions.hide,
+      .vault => permissions.vault,
+    };
+  }
+}
+
+/// A library mutation a locked range can withhold.
+///
+/// These are the permissions the lock dialog offers, plus the closest match for
+/// actions it does not name: a copy relocates content like a move does.
+enum VisibleRangeMutation {
+  delete,
+  move,
+  rename,
+  edit,
+  share,
+  trash,
+  hide,
+  vault,
 }

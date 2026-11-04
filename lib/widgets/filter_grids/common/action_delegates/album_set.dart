@@ -2,8 +2,10 @@ import 'dart:collection';
 import 'dart:io';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/album_contents_transfer/view/album_contents_delete_action.dart';
 import 'package:aves/features/collection_paging/view/paged_scope_guard.dart';
 import 'package:aves/features/media_ops/media_op_outcome.dart';
+import 'package:aves/features/visible_range/services/visible_range_locks.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/dynamic_albums.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -140,6 +142,8 @@ class AlbumChipSetActionDelegate extends ChipSetActionDelegate<AlbumBaseFilter> 
     required int itemCount,
     required Set<AlbumBaseFilter> selectedFilters,
   }) {
+    // A locked visible range freezes library edits until the user unlocks it.
+    if (visibleRangeLocksChipSetAction(action)) return false;
     switch (action) {
       case .delete:
         return selectedFilters.isNotEmpty && selectedFilters.every((v) => v is StoredAlbumFilter);
@@ -301,9 +305,9 @@ class AlbumChipSetActionDelegate extends ChipSetActionDelegate<AlbumBaseFilter> 
     required bool enableBin,
   }) async {
     if (!await unlockFilters(context, filters)) return;
-    // The targets come from the in-memory source: a library too large to load
-    // has none, so the action would delete nothing.
-    if (await pagedScopeUnsupported(context)) return;
+    // A library too large to load keeps no entries to collect: walk the album
+    // scope from the database instead, limited to the same visible range.
+    if (await deleteAlbumContentsFromDatabase(context, filters: filters, enableBin: enableBin)) return;
 
     final source = context.read<CollectionSource>();
     final todoEntries = source.visibleEntries.where((entry) => filters.any((f) => f.test(entry))).toSet();

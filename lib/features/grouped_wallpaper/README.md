@@ -124,25 +124,32 @@ page that is rarely opened.
   visible-range entry (the entry keeps one slot, its icon and label follow the
   page it renders), `separateLeft`/`separateRight` give the wallpaper page its
   own entry beside the range entry. The default is `separateRight`.
-- **Temporary, not persistent.** The separate entry is derived only while the
-  wallpaper page is on screen (`GroupedWallpaperNavController.pageVisible`): with
-  a four-entry bar, opening the page shows five and leaving restores four. The
-  depth counter survives a page replaced by another one, where the new page
-  starts before the old disposes. The shared mode never changes the count.
+- **A session, not a page.** The separate entry is derived while the page's
+  session is open (`GroupedWallpaperNavController.sessionActive`): with a
+  four-entry bar, opening the page shows five, and **leaving for another
+  destination keeps five** — the page's widget is not the session. Only closing
+  the page ends it. The flag is in-memory, so a restart starts closed. The shared
+  mode never derives an entry.
 - The visible range page's More opens the page with `AvesNavItem(route).goTo(
   topLevel: true)`, the same navigation a bar destination performs, so the stack
-  is replaced and the temporary entry is highlighted. In the shared mode it flips
+  is replaced and the entry is highlighted. In the shared mode it flips
   `visibleRangeDestination` instead, keeping the single entry selected.
 - A user who pinned `/wallpaper_groups` in their own list owns the entry: it is
   permanent, and no second one is derived.
-- **Closing is the counterpart of opening.** The wallpaper page's More ends with
-  "Close wallpaper page" in every mode. An unsaved draft is never dropped
-  silently: the dialog offers Save (applies the draft and re-bakes), Discard and
-  Cancel. Closing clears the group's browsing scope, so the gallery returns to
-  its own visible range. In the shared mode it flips the one entry back to the
-  range page, icon and label included; with a temporary entry it navigates to the
-  range page and the page's `dispose` takes the entry away. A pinned entry stays,
-  because it is the user's own navigation item.
+- **Closing is explicit, with exactly two entry points.** The page's More ends
+  with "Close wallpaper page" in every mode, and the navigation settings list the
+  derived entry with a delete action while the session is open, so removing it
+  there closes the page from anywhere. Both run `closeGroupedWallpaperSession`,
+  which ends the session and clears the group's browsing scope, so the gallery
+  returns to its own visible range. An unsaved draft is never dropped silently:
+  the dialog offers Save (applies the draft and re-bakes), Discard and Cancel.
+- **Leaving is not closing.** The back gesture, another bottom-bar destination and
+  the shared entry's flip all keep the session and its scope; the page's `dispose`
+  deliberately touches neither. Where closing lands follows the presentation: the
+  shared entry flips in place, a page the bar pushed pops back to the page
+  underneath (the media set, the albums page, the range page), and a page that
+  replaced the stack lands on the range page. A pinned entry stays, because it is
+  the user's own navigation item.
 - Notifications, the three-finger gesture and session restore deep-link the route.
   In the shared mode the deep link is routed through the shell
   (`VisibleRangeShellPage`, which passes `promptUnlock` on) so the bar still has

@@ -16,43 +16,49 @@ import 'package:flutter/foundation.dart';
 class GroupedWallpaperNavController extends ChangeNotifier {
   GroupedWallpaperNavMode _mode = defaultGroupedWallpaperNavMode;
 
-  /// How many wallpaper pages are on screen right now.
+  /// Whether the wallpaper page's session is open.
   ///
-  /// The wallpaper page is a settings surface the user rarely opens, so the bar
-  /// keeps it off by default and shows its entry only while the page is open.
-  /// A depth counter (not a flag) keeps the entry alive across a page that is
-  /// replaced by another one, where the new page starts before the old disposes.
-  int _pageDepth = 0;
+  /// The session is the page's lifetime as the user experiences it, not the
+  /// widget's: leaving the page for another bottom-bar destination keeps the
+  /// entry and the group's browsing scope, because those are browsing state the
+  /// user closes on purpose. Only the page's own "Close wallpaper page" action
+  /// (or removing its entry in the navigation settings) ends it. The flag is
+  /// deliberately in-memory, so a process restart starts closed.
+  bool _sessionActive = false;
 
   GroupedWallpaperNavMode get mode => _mode;
 
-  /// Whether the wallpaper page is on screen.
+  /// Whether the session is open, i.e. the page owns a bar entry and a scope.
   ///
   /// The bar derives the wallpaper entry only in this state (and never in the
   /// shared mode): opening the page from the visible range, a notification or a
-  /// gesture adds the entry next to the visible range, and closing the page
+  /// gesture adds the entry next to the visible range, and closing the session
   /// takes it away again.
-  bool get pageVisible => _pageDepth > 0;
+  bool get sessionActive => _sessionActive;
 
   /// Whether the bar should derive its own wallpaper entry.
-  bool get derivesEntry => _mode != GroupedWallpaperNavMode.shared && pageVisible;
+  bool get derivesEntry => _mode != GroupedWallpaperNavMode.shared && _sessionActive;
 
-  /// Marks a wallpaper page as opened; the first one makes the entry appear.
-  void enterPage() {
-    _pageDepth++;
-    if (_pageDepth == 1) _notifyDeferred();
+  /// Opens the session; the first open makes the entry appear.
+  ///
+  /// Idempotent: a page replaced by another one starts before the old disposes,
+  /// and two opens must not need two closes.
+  void openSession() {
+    if (_sessionActive) return;
+    _sessionActive = true;
+    _notifyDeferred();
   }
 
-  /// Marks a wallpaper page as closed; the entry goes away with the last one.
-  void exitPage() {
-    if (_pageDepth == 0) return;
-    _pageDepth--;
-    if (_pageDepth == 0) _notifyDeferred();
+  /// Closes the session; the entry goes away with it.
+  void closeSession() {
+    if (!_sessionActive) return;
+    _sessionActive = false;
+    _notifyDeferred();
   }
 
   /// Notifies after the current build instead of inside it.
   ///
-  /// A page enters and leaves while the Navigator builds its routes, when the
+  /// A session opens and closes while the Navigator builds its routes, when the
   /// bottom bar may already have been built this frame; marking it dirty there
   /// would throw "setState() or markNeedsBuild() called during build". A
   /// microtask runs as soon as the synchronous frame work returns.

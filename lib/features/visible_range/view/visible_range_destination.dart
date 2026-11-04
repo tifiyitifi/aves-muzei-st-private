@@ -23,7 +23,7 @@ final ValueNotifier<VisibleRangeDestination> visibleRangeDestination = ValueNoti
 /// The page the shared entry actually renders.
 ///
 /// In the shared mode the entry hosts both pages and renders the stored choice.
-/// With a temporary entry the wallpaper page has its own bar entry and the range
+/// With a separate entry the wallpaper page has its own bar entry and the range
 /// entry always renders the range page, so a stale `wallpaper` value (a gesture
 /// cold start, a value stored by an older build) can never take over the range
 /// entry.

@@ -1107,7 +1107,7 @@
   "settingsNavigationBottomActionEditorPageTitle": "Bottom Navigation",
   "settingsNavigationBottomActionEditorBanner": "Touch and hold to move buttons and select which actions are displayed in the bottom navigation bar.",
   "settingsNavigationBottomActionDerivedTitle": "Added automatically",
-  "settingsNavigationBottomActionDerivedHint": "The bar also shows these destinations on its own, so they cannot be edited here.",
+  "settingsNavigationBottomActionDerivedHint": "The bar also shows these destinations on its own. Removing the wallpaper page entry closes that page.",
 
   "settingsThumbnailSectionTitle": "Thumbnails",
   "settingsThumbnailOverlayTile": "Overlay",
@@ -2426,10 +2426,10 @@
     "description": "Subtitle of the view page pad settings tile"
   },
   "settingsWallpaperNavMode": "Wallpaper page",
-  "settingsWallpaperNavModeSubtitle": "Shown in the bottom bar only while the wallpaper page is open.",
+  "settingsWallpaperNavModeSubtitle": "Shown in the bottom bar while the page is open, and kept there until you close the page.",
   "settingsWallpaperNavModeShared": "Share the visible-range entry",
-  "settingsWallpaperNavModeLeft": "Temporary, left of the visible range",
-  "settingsWallpaperNavModeRight": "Temporary, right of the visible range",
+  "settingsWallpaperNavModeLeft": "Separate, left of the visible range",
+  "settingsWallpaperNavModeRight": "Separate, right of the visible range",
   "settingsWallpaperNotificationActions": "Notification buttons",
   "settingsWallpaperNotificationActionsWallpaper": "Wallpaper actions",
   "settingsWallpaperNotificationActionsGroup": "Group actions",

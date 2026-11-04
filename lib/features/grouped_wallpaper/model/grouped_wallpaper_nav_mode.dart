@@ -27,15 +27,25 @@ GroupedWallpaperNavMode groupedWallpaperNavModeFrom(String? value) => GroupedWal
       orElse: () => defaultGroupedWallpaperNavMode,
     );
 
-/// How closing the wallpaper page returns to the visible range.
+/// How closing the wallpaper page returns to the page the user came from.
 ///
-/// In the shared mode one bottom-bar entry renders both pages, so closing only
-/// flips that entry back in place. With a temporary entry the page is its own
-/// route, so closing navigates to the range page and lets the page's `dispose`
-/// take the entry away.
+/// The presentation decides it, not the navigation mode alone: a page the bar
+/// pushed over another one goes back to it, while the pages that replace the
+/// range page in place stay on the range page.
 enum WallpaperPageCloseTarget {
+  /// One entry hosts both pages, so closing only flips that entry back in place.
   rangeInPlace,
+
+  /// The page was pushed over another one (the bar's own entry), so closing pops
+  /// back to it like any other destination.
+  pop,
+
+  /// The page replaced the stack (the visible range's "Open wallpaper groups"),
+  /// so there is nothing to pop and the range page is its counterpart.
   rangePage,
 }
 
-WallpaperPageCloseTarget wallpaperPageCloseTarget(GroupedWallpaperNavMode mode) => mode == GroupedWallpaperNavMode.shared ? WallpaperPageCloseTarget.rangeInPlace : WallpaperPageCloseTarget.rangePage;
+WallpaperPageCloseTarget wallpaperPageCloseTarget(GroupedWallpaperNavMode mode, {required bool canPop}) {
+  if (mode == GroupedWallpaperNavMode.shared) return WallpaperPageCloseTarget.rangeInPlace;
+  return canPop ? WallpaperPageCloseTarget.pop : WallpaperPageCloseTarget.rangePage;
+}

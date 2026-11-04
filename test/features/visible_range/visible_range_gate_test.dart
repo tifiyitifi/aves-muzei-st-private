@@ -249,8 +249,8 @@ void main() {
     expect(combined, isA<SetAndFilter>());
     expect((combined as SetAndFilter).innerFilters, {PathFilter('/a'), group});
 
-    // The scope lives exactly as long as the page: closing it returns the whole
-    // app to the gallery range, so the restriction is not left behind.
+    // The scope lives exactly as long as the session: closing it returns the
+    // whole app to the gallery range, so the restriction is not left behind.
     VisibleRangeGate.setWallpaperScope(null);
     expect(VisibleRangeGate.overlay, isNull);
     expect(VisibleRangeGate.filter, PathFilter('/a'));

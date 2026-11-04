@@ -27,25 +27,25 @@ void main() {
     await db.close();
   });
 
-  test('the default is a temporary entry right of the visible range', () async {
+  test('the default is a session entry right of the visible range', () async {
     final controller = GroupedWallpaperNavController();
     expect(controller.mode, GroupedWallpaperNavMode.separateRight);
-    // The entry only shows while the wallpaper page is open.
+    // The entry only shows while the session is open.
     expect(controller.derivesEntry, isFalse);
-    controller.enterPage();
+    controller.openSession();
     expect(controller.derivesEntry, isTrue);
 
     await controller.load();
     expect(controller.mode, GroupedWallpaperNavMode.separateRight);
     expect(controller.derivesEntry, isTrue);
-    controller.exitPage();
+    controller.closeSession();
     expect(controller.derivesEntry, isFalse);
   });
 
   test('a mode change is stored and notifies the bars', () async {
     final controller = GroupedWallpaperNavController();
-    controller.enterPage();
-    // The page marker notifies after the current build; let it run before
+    controller.openSession();
+    // The session marker notifies after the current build; let it run before
     // counting the mode change's own notification.
     await Future<void>.delayed(Duration.zero);
     var notifications = 0;

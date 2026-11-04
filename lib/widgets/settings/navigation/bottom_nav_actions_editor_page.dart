@@ -1,7 +1,11 @@
 import 'dart:async';
 
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_session.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_nav.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
+import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/settings/enums/accessibility_animations.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -37,6 +41,13 @@ class BottomNavigationActionEditorPage extends StatefulWidget {
 
 class _BottomNavigationActionEditorPageState extends State<BottomNavigationActionEditorPage> {
   late final QuickActionEditorController<AvesNavItem> _controller;
+
+  /// Whether the user's own list had the wallpaper entry before the last edit.
+  ///
+  /// Removing a *pinned* entry is closing the page: the bar would otherwise
+  /// derive it right back from the still-open session, and the user's delete
+  /// would look ignored.
+  bool _hadWallpaperEntry = false;
 
   static final allAvailableActions = [
     _collectionActions(),
@@ -84,12 +95,27 @@ class _BottomNavigationActionEditorPageState extends State<BottomNavigationActio
       load: () => settings.bottomNavigationActions,
       save: (actions) => settings.bottomNavigationActions = actions,
     );
+    _hadWallpaperEntry = settings.bottomNavigationActions.any(_isWallpaperEntry);
+    _controller.addListener(_onItemsChanged);
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onItemsChanged);
     _controller.dispose();
     super.dispose();
+  }
+
+  static bool _isWallpaperEntry(AvesNavItem item) => item.route == GroupedWallpaperPage.routeName;
+
+  /// Closes the page when its pinned entry is deleted from the list above.
+  ///
+  /// The working list is what the user is editing, so the close happens at the
+  /// moment of the delete instead of waiting for the editor to save on leaving.
+  void _onItemsChanged() {
+    final has = _controller.items.any(_isWallpaperEntry);
+    if (_hadWallpaperEntry && !has) _closeWallpaperPage();
+    _hadWallpaperEntry = has;
   }
 
   @override
@@ -159,12 +185,28 @@ enum _EditorAction {
   addTag,
 }
 
+/// Ends the wallpaper page from the navigation settings, like its own action.
+///
+/// In the shared mode one entry hosts both pages, so closing flips it back to the
+/// range page; a separate entry simply disappears with the session.
+void _closeWallpaperPage() {
+  closeGroupedWallpaperSession();
+  if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared) {
+    visibleRangeDestination.value = VisibleRangeDestination.range;
+  }
+}
+
 /// Destinations the bar adds on its own, shown read-only.
 ///
 /// The displayed-buttons list is the user's own `bottomNavigationActions`, but
-/// the bar also appends the visible range. This section is what makes the editor
-/// describe the bar the user actually sees; adding a destination to the list
-/// above turns it into an editable button here as well.
+/// the bar also appends the visible range and, while its session is open, the
+/// wallpaper page. This section is what makes the editor describe the bar the
+/// user actually sees; adding a destination to the list above turns it into an
+/// editable button here as well.
+///
+/// The wallpaper entry is the exception: it exists because its session is open,
+/// so removing it here is the same close as the page's own action. That is the
+/// only way to end the session without opening the page.
 class _DerivedDestinations extends StatelessWidget {
   final QuickActionEditorController<AvesNavItem> controller;
 
@@ -174,9 +216,10 @@ class _DerivedDestinations extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ListenableBuilder(
-      listenable: controller,
+      listenable: Listenable.merge([controller, groupedWallpaperNavController]),
       builder: (context, _) {
-        final derived = derivedNavDestinations(controller.items);
+        final nav = groupedWallpaperNavController;
+        final derived = derivedNavDestinations(controller.items, mode: nav.mode, sessionActive: nav.sessionActive);
         if (derived.isEmpty) return const SizedBox();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,6 +241,10 @@ class _DerivedDestinations extends StatelessWidget {
                     Chip(
                       avatar: item.getIcon(context),
                       label: Text(item.getText(context)),
+                      // Only the wallpaper entry is a session: deleting it closes
+                      // the page (entry and browsing scope) from here.
+                      onDeleted: item.route == GroupedWallpaperPage.routeName ? _closeWallpaperPage : null,
+                      deleteButtonTooltipMessage: item.route == GroupedWallpaperPage.routeName ? context.l10n.wallpaperGroupClosePage : null,
                     ),
                 ],
               ),

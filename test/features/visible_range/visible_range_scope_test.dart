@@ -6,8 +6,9 @@ import 'package:path/path.dart' as p;
 
 /// The wallpaper group's browsing scope is app-wide but process-local.
 ///
-/// These tests cover its lifecycle: a destination switch keeps it, a close
-/// clears it, and group 0 falls back to the gallery range alone.
+/// These tests cover its own lifecycle: group 0 falls back to the gallery range,
+/// and a close drops it. The session that owns it — and therefore what counts as
+/// a close — is covered by `grouped_wallpaper_session_test.dart`.
 void main() {
   setUpAll(() {
     getIt.registerLazySingleton<p.Context>(() => p.Context(style: p.Style.posix));
@@ -22,35 +23,10 @@ void main() {
     dcim = PathFilter('/storage/emulated/0/DCIM/');
     groupScope = VisibleRangeBrowsingOverlay(groupFilter: dcim);
     VisibleRangeGate.overlay = null;
-    VisibleRangeGate.clearWallpaperScope();
   });
 
   tearDown(() {
     VisibleRangeGate.overlay = null;
-    VisibleRangeGate.clearWallpaperScope();
-  });
-
-  group('navigation mark', () {
-    test('a marked dispose keeps the scope', () {
-      final owner = VisibleRangeGate.claimWallpaperScope(groupScope);
-
-      VisibleRangeGate.preserveWallpaperScopeOnNextDispose();
-      expect(VisibleRangeGate.takeWallpaperScopePreserve(), isTrue);
-      // The page is disposed but does not clear: the media set must keep the
-      // group range it was switched to.
-      expect(VisibleRangeGate.overlay?.groupFilter, dcim);
-      expect(VisibleRangeGate.publishWallpaperScope(owner, null), isTrue);
-    });
-
-    test('an unmarked dispose is a close and does not consume anything', () {
-      expect(VisibleRangeGate.takeWallpaperScopePreserve(), isFalse);
-    });
-
-    test('the mark is consumed once', () {
-      VisibleRangeGate.preserveWallpaperScopeOnNextDispose();
-      expect(VisibleRangeGate.takeWallpaperScopePreserve(), isTrue);
-      expect(VisibleRangeGate.takeWallpaperScopePreserve(), isFalse);
-    });
   });
 
   group('clear', () {

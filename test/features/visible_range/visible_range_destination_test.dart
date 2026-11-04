@@ -18,7 +18,7 @@ void main() {
     }
   });
 
-  test('a temporary entry always shows the range page', () {
+  test('a separate entry always shows the range page', () {
     for (final mode in [GroupedWallpaperNavMode.separateLeft, GroupedWallpaperNavMode.separateRight]) {
       for (final destination in VisibleRangeDestination.values) {
         expect(

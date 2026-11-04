@@ -781,10 +781,11 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   ///
   /// In the shared mode the two pages are peers behind one entry, so the menu
   /// flips that entry instead of navigating: the bar keeps a single highlighted
-  /// destination. With a temporary entry it uses [AvesNavItem.goTo] with
+  /// destination. With a separate entry it uses [AvesNavItem.goTo] with
   /// `topLevel`, like a bar tap does: the wallpaper page is a destination of its
   /// own, not a sub-page of the range editor, so it replaces the stack and the
-  /// bar highlights its entry while the page is open.
+  /// bar highlights its entry. The page's session then keeps that entry until the
+  /// user closes the page.
   Future<void> _openWallpaperGroups() async {
     if (!mounted) return;
     if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared) {

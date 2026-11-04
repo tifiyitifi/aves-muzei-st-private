@@ -47,11 +47,12 @@ abstract final class VisibleRangeGate {
   /// The wallpaper page's browsing overlay.
   ///
   /// It follows the group the page shows and lives until the user closes the
-  /// page or its entry, selects group 0, or the process dies. Switching to
-  /// another destination keeps it (a navigation mark tells the page's `dispose`
-  /// apart from a real close), because the group range constrains browsing the
-  /// same way the gallery range does. It is in-memory only, so a process restart
-  /// returns to the gallery range alone.
+  /// wallpaper page session (the page's own action, or removing its entry in the
+  /// navigation settings), selects group 0, or the process dies. Leaving the page
+  /// for another destination keeps it: the page's widget is not the session, and
+  /// its `dispose` must never drop the scope, because the group range constrains
+  /// browsing the same way the gallery range does. It is in-memory only, so a
+  /// process restart returns to the gallery range alone.
   ///
   /// The live wallpaper never reads this gate: it uses the saved group range
   /// through `wallpaperMediaSetFilter`, so gallery browsing can never narrow the
@@ -106,10 +107,9 @@ abstract final class VisibleRangeGate {
 
   /// Releases the overlay a page owned, without touching a newer page's scope.
   ///
-  /// `State.dispose` runs while the framework finalizes the tree: notifying
-  /// listeners there throws "setState() called when widget tree was locked" and
-  /// breaks every `ListenableBuilder` in the chain, so the clear is deferred to
-  /// a microtask. The future completes with whether this release applied.
+  /// The clear is deferred so a caller running while the framework finalizes a
+  /// route transition never notifies listeners from inside the tree. The future
+  /// completes with whether this release applied.
   static Future<bool> releaseWallpaperScope(Object? owner) {
     if (owner == null) return Future.value(false);
     final completer = Completer<bool>();
@@ -135,37 +135,13 @@ abstract final class VisibleRangeGate {
     overlay = groupFilter == null ? null : VisibleRangeBrowsingOverlay(groupFilter: groupFilter);
   }
 
-  /// When the next wallpaper page `dispose` must keep the scope, in epoch ms.
-  ///
-  /// The page's scope is a browsing constraint, not a property of the screen:
-  /// switching to the media set (or any other bottom-bar destination) removes
-  /// the page but must keep the group range, or the media set would resolve
-  /// against the gallery range alone. The navigation layer therefore marks the
-  /// dispose that its own switch causes. The mark is short-lived so a page
-  /// popped for another reason — or a switch that never disposes the page —
-  /// cannot silently keep a scope the user asked to clear.
-  static int _preserveUntilMs = 0;
-
-  /// How long a navigation mark stays valid, in milliseconds.
-  static const int _preserveWindowMs = 2500;
-
-  /// Marks the next wallpaper page `dispose` as a destination switch.
-  static void preserveWallpaperScopeOnNextDispose() {
-    _preserveUntilMs = DateTime.now().millisecondsSinceEpoch + _preserveWindowMs;
-  }
-
-  /// Consumes the navigation mark, if it is still valid.
-  static bool takeWallpaperScopePreserve() {
-    if (DateTime.now().millisecondsSinceEpoch > _preserveUntilMs) return false;
-    _preserveUntilMs = 0;
-    return true;
-  }
-
   /// Drops the wallpaper scope and releases its owner.
   ///
-  /// Called when the user closes the page or its entry, or selects group 0.
-  /// The clear is deferred because `dispose` can call it while the widget tree
-  /// is locked, where notifying listeners would throw.
+  /// The fallback for closing the session with no page mounted to release it
+  /// (the navigation settings); a mounted page releases through
+  /// [releaseWallpaperScope] instead. The clear is deferred because closing can
+  /// run while the framework is still finishing a route transition, where
+  /// notifying listeners would throw.
   static void clearWallpaperScope() {
     scheduleMicrotask(() {
       _overlayOwner = _unowned;

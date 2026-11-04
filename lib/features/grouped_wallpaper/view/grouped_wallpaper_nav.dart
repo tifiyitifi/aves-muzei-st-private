@@ -11,11 +11,11 @@ import 'package:aves/widgets/navigation/nav_item.dart';
 /// matter where the user put the range entry. Nothing is written into the user's
 /// `bottomNavigationActions`: the entry is derived at build time.
 ///
-/// - The wallpaper entry is **temporary**: it appears only while the wallpaper
-///   page is open ([pageVisible]), so the bar grows by one when the user opens
-///   the page from the visible range, a notification or a gesture, and shrinks
-///   back when they leave. The page is a rarely used settings surface, not a
-///   permanent destination.
+/// - The wallpaper entry follows its **session** ([sessionActive]): it appears
+///   when the page is opened from the visible range, a notification or a
+///   gesture, and stays after the user leaves for another destination. Only
+///   closing the page (its own action, or removing the entry in the navigation
+///   settings) ends the session and takes the entry away.
 /// - A user who added `/wallpaper_groups` themselves owns the entry, so no second
 ///   one is derived ("pinned").
 /// - [GroupedWallpaperNavMode.shared] keeps the single shell entry, which flips
@@ -25,12 +25,12 @@ import 'package:aves/widgets/navigation/nav_item.dart';
 List<AvesNavItem> withWallpaperNavDestinations(
   List<AvesNavItem> configured, {
   required GroupedWallpaperNavMode mode,
-  required bool pageVisible,
+  required bool sessionActive,
   bool include = true,
 }) {
   if (!include) return configured;
   final items = withVisibleRangeDestination(configured);
-  if (mode == GroupedWallpaperNavMode.shared || !pageVisible) return items;
+  if (mode == GroupedWallpaperNavMode.shared || !sessionActive) return items;
   if (items.any((item) => item.route == GroupedWallpaperPage.routeName)) return items;
 
   final rangeIndex = items.indexWhere((item) => item.route == VisibleRangePage.routeName);
@@ -53,11 +53,15 @@ List<AvesNavItem> withWallpaperNavDestinations(
 /// read-only instead of silently missing. Order is kept: it is where the bar
 /// puts them.
 ///
-/// The visible-range entry is always derived. The wallpaper entry is temporary
-/// (it appears only while the wallpaper page is open), so it is not listed here:
-/// the editor cannot be on screen at the same time. A user who pinned the page
-/// sees it in their own list instead.
-List<AvesNavItem> derivedNavDestinations(List<AvesNavItem> configured) {
-  final effective = withVisibleRangeDestination(configured);
+/// The range entry is always derived and permanent. The wallpaper entry is
+/// listed while its session is open (and never in the shared mode, which derives
+/// none): removing it there is the same close as the page's own action, so the
+/// editor can offer it.
+List<AvesNavItem> derivedNavDestinations(
+  List<AvesNavItem> configured, {
+  required GroupedWallpaperNavMode mode,
+  required bool sessionActive,
+}) {
+  final effective = withWallpaperNavDestinations(configured, mode: mode, sessionActive: sessionActive);
   return effective.where((item) => !configured.contains(item)).toList();
 }

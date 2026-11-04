@@ -15,6 +15,7 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_empty_notice.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
+import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_session.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_engine_link.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_session.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_range_controller.dart';
@@ -241,8 +242,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // The bar shows the wallpaper entry only while this page is open.
-    groupedWallpaperNavController.enterPage();
+    // The bar shows the wallpaper entry for as long as this session lasts.
+    groupedWallpaperNavController.openSession();
     _controller = WallpaperGroupRangeController();
     _controller.addListener(_onControllerChanged);
     // Publishing notifies every browsing surface, so it must wait for the first
@@ -314,26 +315,16 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // The page leaves, so does its temporary bar entry.
-    groupedWallpaperNavController.exitPage();
-    // The group's scope constrains browsing exactly like the gallery range, so
-    // switching to another destination keeps it: the navigation layer marks that
-    // case, and the mark is what separates it from a real close. A close (back to
-    // home, "Close wallpaper page", group 0) clears it so the rest of the app
-    // returns to the gallery range. The listeners go first: clearing the scope
-    // notifies, and a disposed page must not react. The clear is deferred,
-    // because `dispose` runs with the widget tree locked.
+    // Leaving the page is not closing it: the session, its bar entry and the
+    // group's browsing scope outlive this widget, because the user closes them
+    // on purpose from the page's own action. Nothing here may end them — `dispose`
+    // also runs when the bar replaces the page for another destination. The
+    // listeners go first, so a scope change notified during disposal cannot reach
+    // a widget that is going away.
     VisibleRangeGate.overlayListenable.removeListener(_onBrowseScopeChanged);
     visibleRangeController.removeListener(_onBrowseScopeChanged);
     wallpaperLockService.removeListener(_onLockChanged);
     groupedWallpaperEmptyNotice.removeListener(_onEmptyNotice);
-    final groupId = _controller.selectedGroupId;
-    if (VisibleRangeGate.takeWallpaperScopePreserve()) {
-      groupedWallpaperLog.i('scope.keep group=$groupId reason=destination');
-    } else {
-      VisibleRangeGate.clearWallpaperScope();
-      groupedWallpaperLog.i('scope.clear group=$groupId reason=page-dispose');
-    }
     _scopeOwner = null;
     _controller.removeListener(_onControllerChanged);
     _controller.dispose();
@@ -421,30 +412,35 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     }
   }
 
-  /// Closes the page and returns to the visible range editor.
+  /// Closes the session and leaves the page.
   ///
-  /// The visible-range page opens this one, so closing is its counterpart. An
-  /// unsaved draft would be silently lost by navigating away, so it asks first:
-  /// saving applies the draft (and re-bakes), discarding drops it, cancelling
-  /// stays on the page.
+  /// This is the only close. Leaving for another destination or pressing back
+  /// keeps the session — its bar entry and the group's browsing scope — alive, so
+  /// the entry is always there to come back to. An unsaved draft would be
+  /// silently lost by leaving, so it asks first: saving applies the draft (and
+  /// re-bakes), discarding drops it, cancelling stays on the page.
   ///
-  /// The group's browsing scope is cleared on the way out. It may constrain the
-  /// gallery while the page is open, but closing must leave the album on the
-  /// gallery's own visible range again.
+  /// Where leaving lands depends on how the page was presented: a page the bar
+  /// pushed goes back to the page underneath, while a page that replaced the
+  /// range page stays on the range page.
   Future<void> _closePage() async {
     if (!await _confirmClose()) return;
     if (!mounted) return;
-    VisibleRangeGate.clearWallpaperScope();
-    groupedWallpaperLog.i('scope.clear reason=wallpaper-page-closed');
-    switch (wallpaperPageCloseTarget(groupedWallpaperNavController.mode)) {
+    closeGroupedWallpaperSession(owner: _scopeOwner);
+    groupedWallpaperLog.i('scope.clear group=${_controller.selectedGroupId} reason=wallpaper-page-closed');
+    final navigator = Navigator.maybeOf(context);
+    switch (wallpaperPageCloseTarget(groupedWallpaperNavController.mode, canPop: navigator?.canPop() == true)) {
       case WallpaperPageCloseTarget.rangeInPlace:
         // One entry hosts both pages: flipping it back keeps the bar's highlight
         // on the destination the user is looking at.
         visibleRangeDestination.value = VisibleRangeDestination.range;
+      case WallpaperPageCloseTarget.pop:
+        // The bar pushed this page over another one, so closing returns there
+        // instead of stacking the range page on top of it.
+        navigator?.pop();
       case WallpaperPageCloseTarget.rangePage:
-        // The page is its own route. Replacing it with the range page lets the
-        // temporary bar entry go away with the page, exactly as it appeared when
-        // the page opened. A pinned entry stays because it is the user's own.
+        // The page replaced the stack, so the range page is its counterpart and
+        // the entry goes away with the session.
         await const AvesNavItem(route: VisibleRangePage.routeName).goTo(context, topLevel: true);
     }
   }
@@ -526,6 +522,17 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   /// The suspension flag is read back from the overlay so a strip on a page
   /// pushed over this one keeps its choice when the group changes here.
   void _syncBrowsingOverlay() {
+    // The session owns the scope. Closing it from the navigation settings can run
+    // while this page is still in the stack (the drawer opens settings over it),
+    // and a later controller change must not publish the scope again.
+    if (!groupedWallpaperNavController.sessionActive) {
+      if (_scopeOwner != null) {
+        _scopeOwner = null;
+        VisibleRangeGate.clearWallpaperScope();
+        groupedWallpaperLog.i('scope.clear group=${_controller.selectedGroupId} reason=session-closed');
+      }
+      return;
+    }
     final groupFilter = _controller.range?.resolve();
     // Group 0 means "no group restriction": the overlay is dropped rather than
     // kept empty, so browsing falls back to the gallery range alone.
@@ -1700,9 +1707,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       ],
       const PopupMenuDivider(),
       // The counterpart of the visible range page's "Open wallpaper groups":
-      // closing keeps the unsaved draft from being lost, then returns to the
-      // range editor. The temporary bar entry goes away with the page; in the
-      // shared mode the one entry flips back instead.
+      // closing keeps the unsaved draft from being lost, then returns to the page
+      // the user came from. This is the only way to end the session, so the bar
+      // entry and the group's browsing scope go away together.
       _menuItem(_PageAction.closePage, AIcons.cancel, l10n.wallpaperGroupClosePage),
       if (gallery.isRestricted)
         _menuItem(

@@ -25,7 +25,7 @@ import 'package:material_ui/material_ui.dart';
 class NavigationDisplay {
   /// Whether the shared visible-range entry is currently showing the wallpaper.
   ///
-  /// Only the shared mode has one entry for both pages; with a temporary entry
+  /// Only the shared mode has one entry for both pages; with a separate entry
   /// the wallpaper page has its own, and the range entry keeps its own icon.
   static bool get _sharedEntryShowsWallpaper =>
       groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared && visibleRangeDestination.value == VisibleRangeDestination.wallpaper;

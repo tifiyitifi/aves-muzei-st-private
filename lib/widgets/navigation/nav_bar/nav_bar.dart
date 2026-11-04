@@ -78,13 +78,14 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
     final configured = context.select<Settings, List<AvesNavItem>>((v) => v.bottomNavigationActions);
     if (configured.length < 2) return const SizedBox();
     final picking = CollectionViewHooksScope.maybeOf(context)?.isPicking ?? false;
-    // The wallpaper entry is temporary: it is derived only while the wallpaper
-    // page is open, and its side comes from the configured mode.
+    // The wallpaper entry belongs to its session: it is derived while the page's
+    // session is open — not only while the page is on screen — and its side comes
+    // from the configured mode.
     final navMode = context.select<GroupedWallpaperNavController, GroupedWallpaperNavMode>((v) => v.mode);
-    final pageVisible = context.select<GroupedWallpaperNavController, bool>((v) => v.pageVisible);
+    final sessionActive = context.select<GroupedWallpaperNavController, bool>((v) => v.sessionActive);
     final items = _visibleItems(
       context,
-      withWallpaperNavDestinations(configured, mode: navMode, pageVisible: pageVisible, include: !picking),
+      withWallpaperNavDestinations(configured, mode: navMode, sessionActive: sessionActive, include: !picking),
     );
     if (items.length < 2) return const SizedBox();
 

@@ -24,6 +24,7 @@ object MediaOpPlan {
      *
      * @param sourceApi most preferred API granted on the source directory
      * @param targetApi most preferred API granted for insertion in the target directory
+     * @param sourceInMediaStore whether the entry's row lives in the Media Store
      * @param sameVolume whether both paths are on the same storage volume
      * @param canMoveToPath whether the Media Store accepts the target primary directory for the MIME type
      * @param copy whether the operation copies instead of moving
@@ -32,16 +33,21 @@ object MediaOpPlan {
     fun selectMoveApi(
         sourceApi: StorageApi?,
         targetApi: StorageApi?,
+        sourceInMediaStore: Boolean,
         sameVolume: Boolean,
         canMoveToPath: Boolean,
         copy: Boolean,
         sdkInt: Int,
     ): StorageApi? {
+        // A same-volume move of a Media Store row is one row update that also moves
+        // the file. It beats direct file access on purpose: renaming a file behind
+        // its row leaves the index pointing at a missing file, so the entry cannot
+        // be used again until the Media Scanner rebuilt it seconds later.
+        if (!copy && sourceInMediaStore && sameVolume && canMoveToPath && sdkInt >= Build.VERSION_CODES.Q) {
+            return StorageApi.MEDIA_STORE
+        }
+
         if (sourceApi != null && sourceApi == targetApi) {
-            // Media Store tables are segregated by storage volume, so a move between volumes is not possible
-            if (sourceApi == StorageApi.MEDIA_STORE && !copy && sameVolume && canMoveToPath) {
-                return StorageApi.MEDIA_STORE
-            }
             if (sourceApi == StorageApi.FILE) {
                 return StorageApi.FILE
             }

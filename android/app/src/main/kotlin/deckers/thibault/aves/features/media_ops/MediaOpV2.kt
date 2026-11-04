@@ -37,8 +37,10 @@ import java.io.File
  * storage API the legacy pipeline would. What changes is the cost around it:
  *
  * - storage APIs are resolved once per directory instead of twice per entry;
- * - a move on the same volume updates the Media Store row in place, so no scan
- *   is needed at all;
+ * - a move on the same volume updates the Media Store row in place, which also
+ *   moves the file, so the row stays valid and no scan is needed at all. This is
+ *   preferred even when direct file access is granted: renaming the file behind
+ *   the row would only replace the move with a scan;
  * - work that does need the scanner is batched, one `scanFile` for a whole
  *   chunk instead of one awaited scan (with retries and sleeps) per file;
  * - a refused Media Store write escalates to a single system request for the
@@ -60,9 +62,6 @@ class MediaOpV2(
 
     /** Entries whose new Media Store URI is only known after a batched scan. */
     private val pending = ArrayList<PendingEmit>()
-
-    /** Old paths whose Media Store row must be cleared in the same scan batch. */
-    private val obsolete = ArrayList<Pair<String, String>>()
 
     private var mediastoreCount = 0
 
@@ -235,6 +234,7 @@ class MediaOpV2(
         val moveApi = MediaOpPlan.selectMoveApi(
             sourceApi = sourceApi,
             targetApi = targetApi,
+            sourceInMediaStore = StorageUtils.isMediaStoreContentUri(sourceUri),
             sameVolume = getVolumePath(context, sourceFile.path) == getVolumePath(context, targetFile.path),
             canMoveToPath = MediaStorePermissions.canMoveToPath(context, mimeType, effectiveTargetDir),
             copy = copy,
@@ -264,7 +264,7 @@ class MediaOpV2(
             fileCount += 1
             result["strategy"] = STRATEGY_FILE
             if (!copy && !sourceFile.exists()) {
-                obsolete.add(sourceFile.path to mimeType)
+                releaseSourceRow(sourceUri, mimeType)
             }
             return if (toBin) binFields(targetFile.path) else queueScan(targetFile.path, mimeType, result)
         }
@@ -342,7 +342,7 @@ class MediaOpV2(
             }
             fileCount += 1
             result["strategy"] = STRATEGY_FILE
-            obsolete.add(oldFile.path to mimeType)
+            releaseSourceRow(sourceUri, mimeType)
             return queueScan(newFile.path, mimeType, result)
         }
 
@@ -353,7 +353,7 @@ class MediaOpV2(
         }
         safCount += 1
         result["strategy"] = STRATEGY_SAF
-        obsolete.add(oldFile.path to mimeType)
+        releaseSourceRow(sourceUri, mimeType)
         return queueScan(File(dir, document.name).path, mimeType, result)
     }
 
@@ -367,15 +367,13 @@ class MediaOpV2(
     }
 
     private suspend fun flushPending(callback: ImageOpCallback) {
-        if (pending.isEmpty() && obsolete.isEmpty()) return
+        if (pending.isEmpty()) return
 
         val items = pending.toList()
-        val stale = obsolete.toList()
         pending.clear()
-        obsolete.clear()
 
-        val scanPaths = items.map { it.path } + stale.map { it.first }
-        val scanMimeTypes = items.map { it.mimeType } + stale.map { it.second }
+        val scanPaths = items.map { it.path }
+        val scanMimeTypes = items.map { it.mimeType }
 
         val scanStarted = System.nanoTime()
         val uris = if (scanPaths.isEmpty()) emptyArray() else MediaOpScan.scan(context, scanPaths, scanMimeTypes)
@@ -405,6 +403,23 @@ class MediaOpV2(
     private fun emit(result: FieldMap, callback: ImageOpCallback) {
         permissions.consumeReport()?.let { result["permission"] = it }
         callback.onSuccess(result)
+    }
+
+    /**
+     * Drops the row left behind when the file was moved without it.
+     *
+     * A Media Store move updates the row in place, so the fast path has nothing
+     * to clean; only the file and SAF fallbacks reach here, after their file is
+     * gone. Failing to clear the row is not fatal: the next media scan prunes it,
+     * so this never raises.
+     */
+    private fun releaseSourceRow(sourceUri: Uri, mimeType: String) {
+        if (!StorageUtils.isMediaStoreContentUri(sourceUri)) return
+        try {
+            context.contentResolver.delete(StorageUtils.getMediaStoreScopedStorageSafeUri(sourceUri, mimeType), null, null)
+        } catch (ex: Exception) {
+            Log.w(LOG_TAG, "failed to clear the stale row for uri=$sourceUri", ex)
+        }
     }
 
     private fun binFields(trashPath: String): FieldMap = hashMapOf(

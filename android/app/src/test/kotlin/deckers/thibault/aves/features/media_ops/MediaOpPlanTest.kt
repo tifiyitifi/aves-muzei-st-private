@@ -13,35 +13,48 @@ class MediaOpPlanTest {
 
     @Test
     fun mediaStoreMoveNeedsSameVolumeAndAllowedDirectory() {
-        assertEquals(StorageApi.MEDIA_STORE, MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.MEDIA_STORE, sameVolume = true, canMoveToPath = true, copy = false, sdkInt = api29))
+        assertEquals(StorageApi.MEDIA_STORE, MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.MEDIA_STORE, sourceInMediaStore = true, sameVolume = true, canMoveToPath = true, copy = false, sdkInt = api29))
         // cross-volume moves cannot go through the Media Store
-        assertNull(MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.MEDIA_STORE, sameVolume = false, canMoveToPath = true, copy = false, sdkInt = api29))
+        assertNull(MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.MEDIA_STORE, sourceInMediaStore = true, sameVolume = false, canMoveToPath = true, copy = false, sdkInt = api29))
         // the target primary directory must be allowed for the MIME type
-        assertNull(MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.MEDIA_STORE, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api29))
+        assertNull(MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.MEDIA_STORE, sourceInMediaStore = true, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api29))
         // copies keep the legacy SAF path rather than re-inserting a row
-        assertNull(MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.MEDIA_STORE, sameVolume = true, canMoveToPath = true, copy = true, sdkInt = api29))
+        assertNull(MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.MEDIA_STORE, sourceInMediaStore = true, sameVolume = true, canMoveToPath = true, copy = true, sdkInt = api29))
+        // `RELATIVE_PATH` moves need Android 10
+        assertNull(MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.MEDIA_STORE, sourceInMediaStore = true, sameVolume = true, canMoveToPath = true, copy = false, sdkInt = 28))
+    }
+
+    @Test
+    fun sameVolumeRowMoveBeatsDirectFileAccess() {
+        // an entry indexed by the Media Store keeps using its row even when both
+        // directories grant file access, as renaming the file would need a scan
+        assertEquals(StorageApi.MEDIA_STORE, MediaOpPlan.selectMoveApi(StorageApi.FILE, StorageApi.FILE, sourceInMediaStore = true, sameVolume = true, canMoveToPath = true, copy = false, sdkInt = api29))
+        assertEquals(StorageApi.MEDIA_STORE, MediaOpPlan.selectMoveApi(StorageApi.FILE, StorageApi.MEDIA_STORE, sourceInMediaStore = true, sameVolume = true, canMoveToPath = true, copy = false, sdkInt = api30))
+        // without a Media Store row there is nothing to update
+        assertEquals(StorageApi.FILE, MediaOpPlan.selectMoveApi(StorageApi.FILE, StorageApi.FILE, sourceInMediaStore = false, sameVolume = true, canMoveToPath = true, copy = false, sdkInt = api29))
     }
 
     @Test
     fun fileMoveWhenBothSidesAllowFileAccess() {
-        assertEquals(StorageApi.FILE, MediaOpPlan.selectMoveApi(StorageApi.FILE, StorageApi.FILE, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api29))
-        assertEquals(StorageApi.FILE, MediaOpPlan.selectMoveApi(StorageApi.FILE, StorageApi.FILE, sameVolume = true, canMoveToPath = false, copy = true, sdkInt = api29))
+        assertEquals(StorageApi.FILE, MediaOpPlan.selectMoveApi(StorageApi.FILE, StorageApi.FILE, sourceInMediaStore = false, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api29))
+        assertEquals(StorageApi.FILE, MediaOpPlan.selectMoveApi(StorageApi.FILE, StorageApi.FILE, sourceInMediaStore = false, sameVolume = true, canMoveToPath = false, copy = true, sdkInt = api29))
     }
 
     @Test
     fun directFileCopyIsAllowedOnApi30WithMixedAccess() {
-        assertEquals(StorageApi.FILE, MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.FILE, sameVolume = true, canMoveToPath = false, copy = true, sdkInt = api30))
-        // moving with mixed access still relies on the SAF copy-then-delete fallback
-        assertNull(MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.FILE, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api30))
+        assertEquals(StorageApi.FILE, MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.FILE, sourceInMediaStore = true, sameVolume = true, canMoveToPath = false, copy = true, sdkInt = api30))
+        // moving a row that cannot be updated still relies on the SAF copy-then-delete fallback
+        assertNull(MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.FILE, sourceInMediaStore = true, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api30))
         // direct file copy is only trusted from Android 11
-        assertNull(MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.FILE, sameVolume = true, canMoveToPath = false, copy = true, sdkInt = api29))
+        assertNull(MediaOpPlan.selectMoveApi(StorageApi.MEDIA_STORE, StorageApi.FILE, sourceInMediaStore = true, sameVolume = true, canMoveToPath = false, copy = true, sdkInt = api29))
     }
 
     @Test
     fun missingOrSafAccessFallsBackToSaf() {
-        assertNull(MediaOpPlan.selectMoveApi(null, null, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api30))
-        assertNull(MediaOpPlan.selectMoveApi(StorageApi.SAF, StorageApi.SAF, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api30))
-        assertNull(MediaOpPlan.selectMoveApi(StorageApi.FILE, null, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api30))
+        assertNull(MediaOpPlan.selectMoveApi(null, null, sourceInMediaStore = false, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api30))
+        assertNull(MediaOpPlan.selectMoveApi(StorageApi.SAF, StorageApi.SAF, sourceInMediaStore = false, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api30))
+        assertNull(MediaOpPlan.selectMoveApi(StorageApi.FILE, null, sourceInMediaStore = false, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api30))
+        assertNull(MediaOpPlan.selectMoveApi(StorageApi.SAF, StorageApi.SAF, sourceInMediaStore = true, sameVolume = true, canMoveToPath = false, copy = false, sdkInt = api30))
     }
 
     @Test

@@ -4,7 +4,6 @@ import android.content.ContentUris
 import android.content.ContentResolver
 import android.content.Context
 import android.database.Cursor
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -114,20 +113,9 @@ abstract class Media {
                 }
             }
 
-            if (context != null) {
-                try {
-                    MediaMetadataRetriever().use { retriever ->
-                        retriever.setDataSource(context, uri)
-                        if (mimeType == null) {
-                            mimeType = retriever.extractMetadata(
-                                MediaMetadataRetriever.METADATA_KEY_MIMETYPE
-                            )
-                        }
-                    }
-                } catch (e: Exception) {
-                    printError(TAG, "Failed to extract media metadata for $uri", e)
-                }
-            }
+            // MIME type and dates already come from the Media Store row above (the staged copy is
+            // always this app's own row), so no media retriever pass is needed: on some devices it
+            // fails outright for a freshly written pending row.
 
             val formattedDate = if (timestamp != 0L) timestamp.getDate(Constants.EXTENDED_DATE_FORMAT) else ""
             val resolvedId: Long = if (isContent) {

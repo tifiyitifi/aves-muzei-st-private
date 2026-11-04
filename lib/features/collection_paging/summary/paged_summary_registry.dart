@@ -1,7 +1,11 @@
+import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/collection_paging/summary/paged_filter_summaries.dart';
+import 'package:aves/features/logging/log.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/model/vaults/vaults.dart';
+
+const _log = AreaKeyLog(collectionPagingLogKey);
 
 /// One [PagedFilterSummaries] per source, owned by the library rather than by a
 /// page.
@@ -31,6 +35,22 @@ PagedFilterSummaries pagedSummariesFor(CollectionSource source) => _summaries.pu
 /// Makes [source] answer filter questions from the database.
 void attachPagedSummaries(CollectionSource source) {
   source.summaries = pagedSummariesFor(source);
+}
+
+/// Reloads every live provider.
+///
+/// For writes that bypass the collection lens (the copy-first editor imports the files it staged),
+/// so the album list and counts reflect them without waiting for the next resolve. Failures are
+/// logged rather than thrown: the next resolve rebuilds the summaries anyway.
+Future<void> reloadPagedSummaries() async {
+  if (_summaries.isEmpty) return;
+  await Future.wait(
+    _summaries.values.map(
+      (summaries) => summaries.reload().catchError((Object error, StackTrace stack) {
+        _log.w('paged summary reload failed', error, stack);
+      }),
+    ),
+  );
 }
 
 /// Drops the provider from [source] for a legacy view.

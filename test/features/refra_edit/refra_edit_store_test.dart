@@ -1,7 +1,7 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/refra_edit/db/refra_edit_store.dart';
+import 'package:aves/features/refra_edit/model/refra_edit_paths.dart';
 import 'package:aves/features/refra_edit/model/refra_edit_session.dart';
-import 'package:aves/features/refra_edit/services/refra_edit_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -86,7 +86,16 @@ void main() {
     expect(await store.getActiveSessions(), isEmpty);
   });
 
-  test('the staging folder is scoped to the session id', () {
-    expect(RefraEditService.outputRelativePath('abc'), 'Pictures/aves_refra_edit/abc');
+  test('every session stages into the same album folder', () {
+    expect(refraEditStagingRelativeRoot, 'Pictures/aves_refra_edit');
+  });
+
+  test('the staging tree is recognised however its path is written', () {
+    expect(isRefraEditStagingPath('/storage/emulated/0/Pictures/aves_refra_edit'), isTrue);
+    expect(isRefraEditStagingPath('/storage/emulated/0/Pictures/aves_refra_edit/1793818801'), isTrue);
+    expect(isRefraEditStagingPath(r'D:\phone\Pictures\Aves_Refra_Edit\1793818801'), isTrue);
+    // A user album that merely shares the prefix is not the staging tree.
+    expect(isRefraEditStagingPath('/storage/emulated/0/Pictures/aves_refra_edit_2'), isFalse);
+    expect(isRefraEditStagingPath('/storage/emulated/0/Pictures'), isFalse);
   });
 }

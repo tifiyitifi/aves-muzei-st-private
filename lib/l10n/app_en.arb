@@ -2651,6 +2651,7 @@
   "refraEditChooseOtherApp": "Another app",
   "refraEditChooseOtherAppSubtitle": "Open the copy in an installed editor",
   "refraEditCopyFailed": "Could not copy the photo for editing",
+  "refraEditSaved": "Edited copy saved",
   "refraEditShowIntro": "About copy editing",
   "refraEditShowIntroSubtitle": "Show the explanation again"
 }

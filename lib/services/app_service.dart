@@ -142,7 +142,7 @@ class PlatformAppService implements AppService {
 
   /// Opens the fork's built-in editor on a staged copy.
   ///
-  /// [outputRelativePath] is the session folder (`Pictures/aves_refra_edit/<id>`); the editor
+  /// [outputRelativePath] is the shared staging folder (`Pictures/aves_refra_edit`); the editor
   /// writes every result there, never to the directory the source came from.
   @override
   Future<Map<String, Object?>> refraEdit(String uri, String outputRelativePath) async {

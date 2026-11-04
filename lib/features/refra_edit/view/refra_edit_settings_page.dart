@@ -32,6 +32,9 @@ class _RefraEditSettingsPageState extends State<RefraEditSettingsPage> {
   }
 
   Future<void> _load() async {
+    // A copy deleted outside the app must not stay listed as a session that can no longer be
+    // opened or moved back.
+    await refraEditService.pruneMissingSessions();
     final store = await refraEditService.store();
     final sessions = await store.getSessions();
     if (!mounted) return;

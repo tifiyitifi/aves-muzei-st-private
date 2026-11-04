@@ -32,6 +32,8 @@ jspecify = "1.0.1"
 junit = "6.1.3"
 kotlin = "2.4.20"
 kotlinxCoroutines = "1.11.0"
+# Compose Navigation serializes its type-safe routes; the editor's destinations are @Serializable.
+kotlinxSerialization = "1.11.0"
 ksp = "2.3.8"
 material = "1.14.0"
 metadataExtractor = "2.21.0"
@@ -88,6 +90,7 @@ junit = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "juni
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit" }
 kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 metadata-extractor = { module = "com.drewnoakes:metadata-extractor", version.ref = "metadataExtractor" }
 slf4j = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
 zoomimage-compose-glide = { module = "io.github.panpf.zoomimage:zoomimage-compose-glide", version.ref = "zoomimage" }
@@ -96,5 +99,6 @@ zoomimage-compose-glide = { module = "io.github.panpf.zoomimage:zoomimage-compos
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 reproducible-builds = { id = "org.gradlex.reproducible-builds", version.ref = "reproducibleBuilds" }

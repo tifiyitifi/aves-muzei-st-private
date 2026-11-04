@@ -51,21 +51,18 @@ class MediaEditHandler(private val context: Context) : MethodCallHandler {
     }
 
     /**
-     * Absolute directory of a staged edit session.
+     * Absolute directory every edit session stages into.
      *
      * The Dart shell copies the source here before any editor runs, so every write of a built-in
-     * or third-party editor stays inside `Pictures/aves_refra_edit/<sessionId>` and the user's
-     * original is never touched.
+     * or third-party editor stays inside `Pictures/aves_refra_edit` and the user's original is
+     * never touched. Sessions share the folder so the album list holds one edit album, not one per
+     * edit; the session records which files it produced.
      */
     private fun refraStagingDir(call: MethodCall, result: MethodChannel.Result) {
-        val sessionId = call.argument<String>("sessionId")
-        if (sessionId.isNullOrBlank()) {
-            result.error("refraStagingDir-args", "missing arguments", null)
-            return
-        }
         val pictures = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-        result.success(File(pictures, "$REFRA_STAGING_ROOT/$sessionId").absolutePath)
+        result.success(File(pictures, REFRA_STAGING_ROOT).absolutePath)
     }
+
     /**
      * Lists the files a session currently holds in its staging directory.
      *
@@ -93,12 +90,20 @@ class MediaEditHandler(private val context: Context) : MethodCallHandler {
             context.contentResolver.query(collection, projection, selection, selectionArgs, null)?.use { cursor ->
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(0)
+                    val mimeType = cursor.getString(3)
+                    // The rest of the app resolves entries through the image/video collections; a
+                    // `file/` URI is not a media entry and would never be catalogued.
+                    val mediaCollection = if (mimeType?.startsWith("video/") == true) {
+                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                    } else {
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                    }
                     outputs.add(
                         mapOf(
-                            "uri" to ContentUris.withAppendedId(collection, id).toString(),
+                            "uri" to ContentUris.withAppendedId(mediaCollection, id).toString(),
                             "name" to cursor.getString(1),
                             "size" to cursor.getLong(2),
-                            "mimeType" to cursor.getString(3),
+                            "mimeType" to mimeType,
                         )
                     )
                 }

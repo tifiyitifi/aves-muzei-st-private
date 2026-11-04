@@ -74,6 +74,26 @@ class EngineDecision {
 class CollectionEngineRouter {
   const new();
 
+  /// The database predicate of an entry scope, or null when it needs the
+  /// in-memory path.
+  ///
+  /// An entry-set action that has already decided the library cannot be loaded
+  /// only needs the rows it will walk: no view is being routed, so the engine
+  /// preference and the section-factor rule do not apply. Routing the scope
+  /// through this one method keeps the range, the hidden filters and the locked
+  /// vaults composed exactly as a windowed view composes them.
+  CollectionWindowPredicate? predicateForScope(Set<CollectionFilter> filters) {
+    return predicateForFilters(
+      VisibleRangeGate.apply(filters),
+      hidden: settings.hiddenFilters,
+      // A locked vault hides its directory, and everything under it, through the
+      // same predicate as any other scope: the vault's rows stay in the database
+      // while it is locked (they are inserted when it is unlocked), so they need
+      // the exclusion rather than the in-memory path.
+      lockedVaultDirs: vaults.vaultDirectories.where(vaults.isLocked).toSet(),
+    );
+  }
+
   /// Picks the load path for one collection view.
   ///
   /// [database] is the seam under test; production callers omit it and use
@@ -86,15 +106,7 @@ class CollectionEngineRouter {
       return const EngineDecision.legacy(reason: 'engine preference is legacy');
     }
 
-    final predicate = predicateForFilters(
-      VisibleRangeGate.apply(filters),
-      hidden: settings.hiddenFilters,
-      // A locked vault hides its directory, and everything under it, through the
-      // same predicate as any other scope: the vault's rows stay in the database
-      // while it is locked (they are inserted when it is unlocked), so they need
-      // the exclusion rather than the in-memory path.
-      lockedVaultDirs: vaults.vaultDirectories.where(vaults.isLocked).toSet(),
-    );
+    final predicate = predicateForScope(filters);
     if (predicate == null) {
       return const EngineDecision.legacy(reason: 'filters need the in-memory path');
     }

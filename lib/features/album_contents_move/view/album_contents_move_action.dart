@@ -2,11 +2,16 @@ import 'dart:async';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/album_contents_move/model/album_contents_move_plan.dart';
+import 'package:aves/features/album_contents_move/services/album_contents_entry_feed.dart';
+import 'package:aves/features/album_contents_move/services/album_contents_scope.dart';
 import 'package:aves/features/album_contents_move/services/empty_album_folder_cleaner.dart';
 import 'package:aves/features/album_contents_move/view/album_contents_move_dialog.dart';
+import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
+import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/view/paged_scope_guard.dart';
 import 'package:aves/model/covers.dart';
+import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -116,6 +121,14 @@ Set<StoredAlbumFilter> _selectedAlbums(Selection<FilterGridItem<AlbumBaseFilter>
   return selection.selectedItems.map((item) => item.filter).whereType<StoredAlbumFilter>().toSet();
 }
 
+/// Moves the visible contents of the selected albums into one destination.
+///
+/// Two paths, because the targets live in one of two very different places. A
+/// library small enough to load keeps the legacy behaviour: the entries come
+/// from the in-memory source. A windowed library cannot be materialized, so the
+/// same scope is resolved as a database predicate, counted per album for the
+/// preview, and walked in bounded batches while the move runs — the album grid
+/// itself never holds the entries.
 Future<void> _start({
   required BuildContext context,
   required Set<StoredAlbumFilter> albums,
@@ -123,34 +136,62 @@ Future<void> _start({
   required AlbumChipSetActionDelegate delegate,
 }) async {
   if (albums.isEmpty) return;
-  if (await pagedScopeUnsupported(context)) return;
-  if (!context.mounted) return;
 
   final source = context.read<CollectionSource>();
   final albumPaths = albums.map((filter) => filter.album).toSet();
   // Only visible entries travel. Anything outside the visible range stays in
   // its folder, which then cannot pass the strict emptiness check.
-  final entries = source.visibleEntries.where((entry) => albumPaths.contains(entry.directory)).toSet();
-  if (entries.isEmpty) {
+  final removableAlbumPaths = _removableAlbumPaths(albums);
+
+  final fullLoad = await const CollectionEngineRouter().allowFullLoad();
+  if (!context.mounted) return;
+
+  final Set<AvesEntry>? inMemoryEntries;
+  final AlbumContentsScope? scope;
+  final Map<String, int> entryCountByAlbum;
+  if (fullLoad) {
+    inMemoryEntries = source.visibleEntries.where((entry) => albumPaths.contains(entry.directory)).toSet();
+    scope = null;
+    entryCountByAlbum = {for (final album in albumPaths) album: 0};
+    for (final entry in inMemoryEntries) {
+      final directory = entry.directory;
+      if (directory == null) continue;
+      entryCountByAlbum[directory] = (entryCountByAlbum[directory] ?? 0) + 1;
+    }
+  } else {
+    inMemoryEntries = null;
+    scope = await AlbumContentsScope.resolve(albums);
+    if (!context.mounted) return;
+    if (scope == null) {
+      // The scope itself needs the in-memory path, and the library holds too
+      // many entries to load: say so instead of moving nothing.
+      await pagedScopeUnsupported(context);
+      return;
+    }
+    entryCountByAlbum = scope.countByAlbum;
+  }
+
+  if (entryCountByAlbum.values.every((count) => count == 0)) {
     delegate.showFeedback(context, FeedbackType.info, context.l10n.albumContentsMoveEmpty);
     return;
   }
 
-  final removableAlbumPaths = _removableAlbumPaths(albums);
   final answer = await showAlbumContentsMoveDialog(
     context: context,
     source: source,
     albums: albums,
-    entries: entries,
+    entryCountByAlbum: entryCountByAlbum,
     removableAlbumPaths: removableAlbumPaths,
   );
   if (answer == null || !context.mounted) return;
 
+  final destination = answer.destination;
   final plan = AlbumContentsMovePlan.resolve(
     sourceAlbums: albumPaths,
-    removableSourceAlbums: removableAlbumPaths,
-    destination: answer.destination,
-    entries: entries,
+    destination: destination,
+    // The destination album keeps its own entries: picking a selected album as
+    // the destination merges the others into it.
+    entryCount: entryCountByAlbum.values.fold(0, (sum, count) => sum + count) - (entryCountByAlbum[destination] ?? 0),
   );
   if (!plan.isValid) {
     delegate.showFeedback(context, FeedbackType.warn, context.l10n.albumContentsMoveInvalidDestination);
@@ -158,20 +199,68 @@ Future<void> _start({
   }
 
   settings.recentDestinationAlbums = settings.recentDestinationAlbums
-    ..remove(answer.destination)
-    ..insert(0, answer.destination);
+    ..remove(destination)
+    ..insert(0, destination);
 
-  final completed = await delegate.doQuickMove(
-    context,
-    moveType: MoveType.move,
-    entriesByDestination: plan.entriesByDestination,
-    cleanupEmptySourceDirectories: false,
-  );
-  if (!context.mounted || !completed) return;
+  final movedAlbums = <String>{};
+  if (inMemoryEntries != null) {
+    final entries = inMemoryEntries.where((entry) => entry.directory != destination).toSet();
+    movedAlbums.addAll(entries.map((entry) => entry.directory).nonNulls);
+    final completed = await delegate.doQuickMove(
+      context,
+      moveType: MoveType.move,
+      entriesByDestination: {destination: entries},
+      cleanupEmptySourceDirectories: false,
+    );
+    if (!context.mounted || !completed) return;
+    selection.browse();
+  } else {
+    final movingAlbums = albums.where((filter) => plan.movingAlbums.contains(filter.album)).toSet();
+    final predicate = AlbumContentsScope.predicateFor(movingAlbums);
+    if (predicate == null) {
+      delegate.showFeedback(context, FeedbackType.warn, context.l10n.albumContentsMoveInvalidDestination);
+      return;
+    }
+    final feed = AlbumContentsEntryFeed(
+      albums: movingAlbums,
+      predicate: predicate,
+      count: plan.entryCount,
+    );
+    final summary = await runOverEntryFeed(
+      context,
+      feed,
+      () async {
+        final run = EntryFeedRun.current;
+        if (run == null) return;
+        final batch = {for (final entry in run.batch) if (entry.directory != null && entry.directory != destination) entry};
+        if (batch.isEmpty) return;
+        movedAlbums.addAll(batch.map((entry) => entry.directory).nonNulls);
+        final completed = await delegate.doQuickMove(
+          context,
+          moveType: MoveType.move,
+          entriesByDestination: {destination: batch},
+          cleanupEmptySourceDirectories: false,
+        );
+        // A refused batch would fail identically on the next one: stop the run
+        // instead of asking for the same permission once per batch.
+        if (!completed) run.cancel();
+      },
+    );
+    if (!context.mounted) return;
+    if (summary != null) {
+      delegate.showFeedback(context, summary.type, summary.message, summary.action);
+    }
+    selection.browse();
+  }
 
-  selection.browse();
-  if (answer.deleteEmptyFolders && plan.sourceAlbumsToClean.isNotEmpty) {
-    await const EmptyAlbumFolderCleaner().clean(plan.sourceAlbumsToClean);
+  if (answer.deleteEmptyFolders) {
+    final candidates = plan.cleanupCandidates(
+      movedSourceAlbums: movedAlbums,
+      removableSourceAlbums: removableAlbumPaths,
+    );
+    if (candidates.isNotEmpty) {
+      await const EmptyAlbumFolderCleaner().clean(candidates);
+    }
   }
 }
 

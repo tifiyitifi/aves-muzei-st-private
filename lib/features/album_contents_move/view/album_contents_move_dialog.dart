@@ -1,5 +1,4 @@
 import 'package:aves/features/album_contents_move/model/album_contents_move_plan.dart';
-import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/theme/icons.dart';
@@ -17,7 +16,7 @@ Future<AlbumContentsMoveAnswer?> showAlbumContentsMoveDialog({
   required BuildContext context,
   required CollectionSource source,
   required Set<StoredAlbumFilter> albums,
-  required Set<AvesEntry> entries,
+  required Map<String, int> entryCountByAlbum,
   required Set<String> removableAlbumPaths,
 }) {
   return showAvesDialog<AlbumContentsMoveAnswer>(
@@ -25,7 +24,7 @@ Future<AlbumContentsMoveAnswer?> showAlbumContentsMoveDialog({
     builder: (context) => AlbumContentsMoveDialog(
       source: source,
       albums: albums,
-      entries: entries,
+      entryCountByAlbum: entryCountByAlbum,
       removableAlbumPaths: removableAlbumPaths,
     ),
     routeSettings: const RouteSettings(name: AlbumContentsMoveDialog.routeName),
@@ -38,9 +37,9 @@ class AlbumContentsMoveDialog extends StatefulWidget {
   final CollectionSource source;
   final Set<StoredAlbumFilter> albums;
 
-  /// Visible entries of the selected albums. Invisible entries stay where they
-  /// are, so a source folder with any of them is never considered empty.
-  final Set<AvesEntry> entries;
+  /// Visible entries per selected album, so the preview reports what the move
+  /// travels without the dialog ever holding the entries themselves.
+  final Map<String, int> entryCountByAlbum;
 
   /// Source albums whose folder may be removed after the move, already limited
   /// to ordinary albums that are neither pinned, vault, nor a volume root.
@@ -50,7 +49,7 @@ class AlbumContentsMoveDialog extends StatefulWidget {
     super.key,
     required this.source,
     required this.albums,
-    required this.entries,
+    required this.entryCountByAlbum,
     required this.removableAlbumPaths,
   });
 
@@ -61,23 +60,22 @@ class AlbumContentsMoveDialog extends StatefulWidget {
 class _AlbumContentsMoveDialogState extends State<AlbumContentsMoveDialog> {
   String? _destination;
   bool _deleteEmptyFolders = false;
-  late final bool _hasRemovableAlbums;
 
-  @override
-  void initState() {
-    super.initState();
-    // Defaults to false every time the dialog opens: removing a folder is an
-    // explicit opt-in, never a remembered preference.
-    _hasRemovableAlbums = widget.removableAlbumPaths.any(
-      (album) => widget.entries.any((entry) => entry.directory == album),
-    );
-  }
+  int get _totalEntryCount => widget.entryCountByAlbum.values.fold(0, (sum, count) => sum + count);
+
+  /// Entries already in the destination: picking a selected album as the
+  /// destination merges the others into it, so its own contents stay put.
+  int get _destinationEntryCount => widget.entryCountByAlbum[_destination] ?? 0;
+
+  /// Whether a folder this move could empty is selected. Defaults to false every
+  /// time the dialog opens: removing a folder is an explicit opt-in, never a
+  /// remembered preference.
+  bool get _hasRemovableAlbums => widget.removableAlbumPaths.any((album) => album != _destination && (widget.entryCountByAlbum[album] ?? 0) > 0);
 
   AlbumContentsMovePlan get _plan => AlbumContentsMovePlan.resolve(
     sourceAlbums: widget.albums.map((filter) => filter.album).toSet(),
-    removableSourceAlbums: widget.removableAlbumPaths,
     destination: _destination,
-    entries: widget.entries,
+    entryCount: _totalEntryCount - _destinationEntryCount,
   );
 
   @override
@@ -88,7 +86,8 @@ class _AlbumContentsMoveDialogState extends State<AlbumContentsMoveDialog> {
     final bodySmall = Theme.of(context).textTheme.bodySmall;
     // Until a destination is picked the plan has no moving set, so the full
     // visible count is the honest preview; afterwards it reports what travels.
-    final summaryCount = plan.isValid ? plan.entryCount : widget.entries.length;
+    final summaryCount = plan.isValid ? plan.entryCount : _totalEntryCount;
+    final hasRemovableAlbums = _hasRemovableAlbums;
 
     return AvesDialog(
       title: l10n.albumContentsMoveTitle,
@@ -122,7 +121,7 @@ class _AlbumContentsMoveDialogState extends State<AlbumContentsMoveDialog> {
           const SizedBox(height: 8),
           CheckboxListTile(
             value: _deleteEmptyFolders,
-            onChanged: _hasRemovableAlbums
+            onChanged: hasRemovableAlbums
                 ? (value) => setState(() {
                     _deleteEmptyFolders = value ?? false;
                   })
@@ -133,7 +132,7 @@ class _AlbumContentsMoveDialogState extends State<AlbumContentsMoveDialog> {
             contentPadding: EdgeInsets.zero,
             dense: true,
           ),
-          if (!_hasRemovableAlbums)
+          if (!hasRemovableAlbums)
             Padding(
               padding: const EdgeInsets.only(left: 8),
               child: Text(l10n.albumContentsMoveDeleteEmptyFoldersUnavailable, style: bodySmall),
@@ -169,7 +168,7 @@ class _AlbumContentsMoveDialogState extends State<AlbumContentsMoveDialog> {
     Navigator.maybeOf(context)?.pop(
       (
         destination: destination,
-        deleteEmptyFolders: _deleteEmptyFolders,
+        deleteEmptyFolders: _deleteEmptyFolders && _hasRemovableAlbums,
       ),
     );
   }

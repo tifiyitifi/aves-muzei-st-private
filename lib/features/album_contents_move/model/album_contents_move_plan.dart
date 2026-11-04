@@ -1,4 +1,3 @@
-import 'package:aves/model/entry/entry.dart';
 import 'package:aves/services/common/services.dart';
 
 enum AlbumContentsMoveError {
@@ -11,101 +10,90 @@ enum AlbumContentsMoveError {
 
 /// The outcome of pointing the selected albums at a destination.
 ///
-/// Resolution is pure: it decides which visible entries travel, whether the
-/// destination is usable, and which source albums are eligible for the
-/// post-move empty-folder check. It never promises that a folder is empty:
-/// emptiness is checked on the filesystem after the move, so a folder that
-/// still holds an invisible item or a subfolder is kept.
+/// Resolution is pure: it validates the destination and reports how many visible
+/// entries travel, from counts rather than from the entries themselves, so a
+/// windowed collection can plan without materializing its rows. It never
+/// promises that a folder is empty: emptiness is checked on the filesystem after
+/// the move, so a folder that still holds an invisible item or a subfolder is
+/// kept.
 class AlbumContentsMovePlan {
-  final Map<String, Set<AvesEntry>> entriesByDestination;
+  /// The album the contents travel to.
+  final String? destination;
 
-  /// Selected source albums that had visible entries moved and may be removed
-  /// if they are completely empty after the move.
-  final Set<String> sourceAlbumsToClean;
+  /// Visible entries that travel: those of the source albums other than the
+  /// destination.
+  final int entryCount;
 
-  /// Source albums that actually lost at least one visible entry.
-  final Set<String> movedSourceAlbums;
+  /// Source albums whose contents travel: the selection minus the destination.
+  final Set<String> movingAlbums;
 
   final AlbumContentsMoveError? error;
 
   const new _({
-    required this.entriesByDestination,
-    required this.sourceAlbumsToClean,
-    required this.movedSourceAlbums,
+    required this.destination,
+    required this.entryCount,
+    required this.movingAlbums,
     required this.error,
   });
 
+  /// Plans the move of [entryCount] entries, which the caller counted over the
+  /// source albums other than the destination.
   factory resolve({
     required Set<String> sourceAlbums,
-    required Set<String> removableSourceAlbums,
     required String? destination,
-    required Iterable<AvesEntry> entries,
+    required int entryCount,
   }) {
     if (sourceAlbums.isEmpty) {
-      return const AlbumContentsMovePlan._(
-        entriesByDestination: {},
-        sourceAlbumsToClean: {},
-        movedSourceAlbums: {},
-        error: AlbumContentsMoveError.noAlbums,
-      );
+      return const AlbumContentsMovePlan._invalid(AlbumContentsMoveError.noAlbums);
     }
 
     final target = destination;
     if (target == null || target.isEmpty) {
-      return const AlbumContentsMovePlan._(
-        entriesByDestination: {},
-        sourceAlbumsToClean: {},
-        movedSourceAlbums: {},
-        error: AlbumContentsMoveError.destinationMissing,
-      );
+      return const AlbumContentsMovePlan._invalid(AlbumContentsMoveError.destinationMissing);
     }
 
     if (sourceAlbums.any((album) => pContext.isWithin(album, target))) {
-      return const AlbumContentsMovePlan._(
-        entriesByDestination: {},
-        sourceAlbumsToClean: {},
-        movedSourceAlbums: {},
-        error: AlbumContentsMoveError.destinationInsideSource,
-      );
+      return const AlbumContentsMovePlan._invalid(AlbumContentsMoveError.destinationInsideSource);
     }
 
     // Picking one of the selected albums merges the others into it.
     final movingAlbums = sourceAlbums.where((album) => album != target).toSet();
     if (movingAlbums.isEmpty) {
-      return const AlbumContentsMovePlan._(
-        entriesByDestination: {},
-        sourceAlbumsToClean: {},
-        movedSourceAlbums: {},
-        error: AlbumContentsMoveError.destinationIsOnlySource,
-      );
+      return const AlbumContentsMovePlan._invalid(AlbumContentsMoveError.destinationIsOnlySource);
     }
 
-    final moved = entries.where((entry) {
-      final directory = entry.directory;
-      return directory != null && movingAlbums.contains(directory);
-    }).toSet();
-
-    if (moved.isEmpty) {
-      return const AlbumContentsMovePlan._(
-        entriesByDestination: {},
-        sourceAlbumsToClean: {},
-        movedSourceAlbums: {},
-        error: AlbumContentsMoveError.noEntries,
-      );
+    if (entryCount <= 0) {
+      return const AlbumContentsMovePlan._invalid(AlbumContentsMoveError.noEntries);
     }
-
-    final movedSourceAlbums = moved.map((entry) => entry.directory).whereType<String>().toSet();
-    final cleanup = removableSourceAlbums.where((album) => album != target && movedSourceAlbums.contains(album)).toSet();
 
     return AlbumContentsMovePlan._(
-      entriesByDestination: {target: moved},
-      sourceAlbumsToClean: cleanup,
-      movedSourceAlbums: movedSourceAlbums,
+      destination: target,
+      entryCount: entryCount,
+      movingAlbums: movingAlbums,
       error: null,
     );
   }
 
+  const new _invalid(AlbumContentsMoveError error)
+      : this._(
+          destination: null,
+          entryCount: 0,
+          movingAlbums: const {},
+          error: error,
+        );
+
   bool get isValid => error == null;
 
-  int get entryCount => entriesByDestination.values.fold(0, (sum, entries) => sum + entries.length);
+  /// The selected albums this move may remove once it emptied them.
+  ///
+  /// [movedSourceAlbums] is what the move itself touched, so an album the
+  /// selection held but this move never took anything from stays: only a folder
+  /// this move emptied is eligible.
+  Set<String> cleanupCandidates({
+    required Set<String> movedSourceAlbums,
+    required Set<String> removableSourceAlbums,
+  }) {
+    if (!isValid) return const {};
+    return removableSourceAlbums.where((album) => album != destination && movedSourceAlbums.contains(album)).toSet();
+  }
 }

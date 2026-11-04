@@ -47,22 +47,7 @@ class DeclaredEntryFeed implements EntryFeed {
   bool contains(AvesEntry entry) => mark.isMarked(entry);
 
   @override
-  Stream<List<AvesEntry>> batches() async* {
-    var walked = 0;
-    var afterId = 0;
-    while (walked < tileCount) {
-      final rows = await localMediaDb.loadWalkWindow(
-        predicate: tilePredicate,
-        afterId: afterId,
-        limit: min(entryFeedBatchSize, tileCount - walked),
-      );
-      if (rows.isEmpty) break;
-      afterId = rows.last.id;
-      walked += rows.length;
-      final batch = await materializeFeedBatch(rows, stackEntries: stackEntries);
-      if (batch.isNotEmpty) yield batch;
-    }
-  }
+  Stream<List<AvesEntry>> batches() => walkEntryBatches(predicate: tilePredicate, count: tileCount, stackEntries: stackEntries);
 
   @override
   Future<AvesEntry?> first() async {
@@ -81,6 +66,32 @@ class DeclaredEntryFeed implements EntryFeed {
       if (result.length > limit) throw EntryFeedTooLargeException(result.length, limit);
     }
     return result;
+  }
+}
+
+/// Walks [count] rows of [predicate] in bounded, id-ordered batches.
+///
+/// The count freezes the scope when the feed is created, so a file added while
+/// the action runs is not swept in. Keyset paging keeps a whole library at one
+/// indexed query per batch instead of an offset scan.
+Stream<List<AvesEntry>> walkEntryBatches({
+  required CollectionWindowPredicate predicate,
+  required int count,
+  required bool stackEntries,
+}) async* {
+  var walked = 0;
+  var afterId = 0;
+  while (walked < count) {
+    final rows = await localMediaDb.loadWalkWindow(
+      predicate: predicate,
+      afterId: afterId,
+      limit: min(entryFeedBatchSize, count - walked),
+    );
+    if (rows.isEmpty) break;
+    afterId = rows.last.id;
+    walked += rows.length;
+    final batch = await materializeFeedBatch(rows, stackEntries: stackEntries);
+    if (batch.isNotEmpty) yield batch;
   }
 }
 

@@ -168,6 +168,9 @@ class EntryFeedRun {
   }
 }
 
+/// The one summary a batched run shows when it ends.
+typedef FeedRunSummary = ({FeedbackType type, String message, SnackBarAction? action});
+
 /// Runs an entry-set action over the feed the current selection resolves to.
 ///
 /// A materialized feed (the legacy selection, a small view) runs [body] once, so
@@ -177,7 +180,7 @@ class EntryFeedRun {
 ///
 /// Set [wholeView] for an action that covers the view itself rather than a
 /// selection (emptying the bin).
-Future<({FeedbackType type, String message, SnackBarAction? action})?> runOverFeed(
+Future<FeedRunSummary?> runOverFeed(
   BuildContext context,
   Future<void> Function() body, {
   bool wholeView = false,
@@ -190,9 +193,45 @@ Future<({FeedbackType type, String message, SnackBarAction? action})?> runOverFe
     return null;
   }
 
+  final (summary, needsViewRefresh) = await _driveFeedRun(context, feed, body);
+  // Outside the run: the view reload must not be suppressed by it, and a mark
+  // must follow the rows the action removed.
+  if (needsViewRefresh) collection.refresh();
+  final mark = selection.mark;
+  if (mark is CollectionSelectionMark) await mark.recount();
+  return summary;
+}
+
+/// Runs [body] over [feed], for an action that has no collection view to read a
+/// selection from.
+///
+/// A filter grid collects its targets from the albums, tags or places it shows,
+/// not from a view of entries: on a windowed library it owns no entry lens, so
+/// the caller resolves the scope itself and hands the feed over here. The run
+/// behaves exactly like [runOverFeed]: one overlay, one answer per dialog, one
+/// summary. It answers null for a materialized feed, whose single run needs no
+/// hoisting.
+Future<FeedRunSummary?> runOverEntryFeed(
+  BuildContext context,
+  EntryFeed feed,
+  Future<void> Function() body,
+) async {
+  if (!feed.declared) {
+    await body();
+    return null;
+  }
+  final (summary, _) = await _driveFeedRun(context, feed, body);
+  return summary;
+}
+
+Future<(FeedRunSummary?, bool)> _driveFeedRun(
+  BuildContext context,
+  EntryFeed feed,
+  Future<void> Function() body,
+) async {
   final run = EntryFeedRun(feed);
   final source = context.read<CollectionSource>();
-  ({FeedbackType type, String message, SnackBarAction? action})? summary;
+  FeedRunSummary? summary;
 
   await EntryFeedRun.install(
     run,
@@ -238,10 +277,5 @@ Future<({FeedbackType type, String message, SnackBarAction? action})?> runOverFe
       await reportDone.future.timeout(const Duration(seconds: 30), onTimeout: () {});
     },
   );
-  // Outside the run: the view reload must not be suppressed by it, and a mark
-  // must follow the rows the action removed.
-  if (run.needsViewRefresh) collection.refresh();
-  final mark = selection.mark;
-  if (mark is CollectionSelectionMark) await mark.recount();
-  return summary;
+  return (summary, run.needsViewRefresh);
 }

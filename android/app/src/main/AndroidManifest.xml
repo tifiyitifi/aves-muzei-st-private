@@ -238,6 +238,14 @@
         </activity>
 
         <activity
+            android:name="com.dot.gallery.feature_node.presentation.edit.EditActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode"
+            android:exported="false"
+            android:label="@string/refra_editor_title"
+            android:theme="@style/NormalTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ScreenSaverSettingsActivity"
             android:exported="true"
             android:theme="@style/NormalTheme" />

@@ -1,6 +1,11 @@
 package deckers.thibault.aves.channel.calls
 
+import android.content.ContentUris
 import android.content.Context
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import android.os.Environment
 import android.util.Log
 import androidx.core.net.toUri
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safe
@@ -14,6 +19,7 @@ import deckers.thibault.aves.utils.LogUtils
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,12 +32,13 @@ class MediaEditHandler(private val context: Context) : MethodCallHandler {
         when (call.method) {
             "cancelFileOp" -> safe(call, result, ::cancelFileOp)
             "captureFrame" -> ioScope.launch { safeSuspend(call, result, ::captureFrame) }
+            "refraStagingDir" -> safe(call, result, ::refraStagingDir)
+            "refraListOutputs" -> ioScope.launch { safe(call, result, ::refraListOutputs) }
             else -> result.notImplemented()
         }
     }
 
-    private fun cancelFileOp(call: MethodCall, result: MethodChannel.Result) {
-        val opId = call.argument<String>("opId")
+    private fun cancelFileOp(call: MethodCall, result: MethodChannel.Result) {        val opId = call.argument<String>("opId")
         if (opId == null) {
             result.error("cancelFileOp-args", "missing arguments", null)
             return
@@ -43,6 +50,75 @@ class MediaEditHandler(private val context: Context) : MethodCallHandler {
         result.success(null)
     }
 
+    /**
+     * Absolute directory of a staged edit session.
+     *
+     * The Dart shell copies the source here before any editor runs, so every write of a built-in
+     * or third-party editor stays inside `Pictures/aves_refra_edit/<sessionId>` and the user's
+     * original is never touched.
+     */
+    private fun refraStagingDir(call: MethodCall, result: MethodChannel.Result) {
+        val sessionId = call.argument<String>("sessionId")
+        if (sessionId.isNullOrBlank()) {
+            result.error("refraStagingDir-args", "missing arguments", null)
+            return
+        }
+        val pictures = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+        result.success(File(pictures, "$REFRA_STAGING_ROOT/$sessionId").absolutePath)
+    }
+    /**
+     * Lists the files a session currently holds in its staging directory.
+     *
+     * The editor writes through MediaStore, so the folder (not a cached entry list) is the source
+     * of truth for "how many results did this edit produce".
+     */
+    private fun refraListOutputs(call: MethodCall, result: MethodChannel.Result) {
+        val relativePath = call.argument<String>("relativePath")
+        val directoryPath = call.argument<String>("directory")
+        if (relativePath == null || directoryPath == null) {
+            result.error("refraListOutputs-args", "missing arguments", null)
+            return
+        }
+        val outputs = ArrayList<Map<String, Any?>>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            val projection = arrayOf(
+                MediaStore.MediaColumns._ID,
+                MediaStore.MediaColumns.DISPLAY_NAME,
+                MediaStore.MediaColumns.SIZE,
+                MediaStore.MediaColumns.MIME_TYPE,
+            )
+            val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
+            val selectionArgs = arrayOf(ensureTrailingSeparator(relativePath))
+            context.contentResolver.query(collection, projection, selection, selectionArgs, null)?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    outputs.add(
+                        mapOf(
+                            "uri" to ContentUris.withAppendedId(collection, id).toString(),
+                            "name" to cursor.getString(1),
+                            "size" to cursor.getLong(2),
+                            "mimeType" to cursor.getString(3),
+                        )
+                    )
+                }
+            }
+        } else {
+            File(directoryPath).listFiles()?.forEach { file ->
+                if (file.isFile) {
+                    outputs.add(
+                        mapOf(
+                            "uri" to Uri.fromFile(file).toString(),
+                            "name" to file.name,
+                            "size" to file.length(),
+                            "mimeType" to null,
+                        )
+                    )
+                }
+            }
+        }
+        result.success(outputs)
+    }
     private suspend fun captureFrame(call: MethodCall, result: MethodChannel.Result) {
         val uri = call.argument<String>("uri")?.toUri()
         val desiredName = call.argument<String>("desiredName")
@@ -73,5 +149,6 @@ class MediaEditHandler(private val context: Context) : MethodCallHandler {
         const val CHANNEL = "deckers.thibault/aves/media_edit"
 
         val cancelledOps = HashSet<String>()
+        const val REFRA_STAGING_ROOT = "aves_refra_edit"
     }
 }

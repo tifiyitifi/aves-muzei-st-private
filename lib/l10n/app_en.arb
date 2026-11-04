@@ -2587,6 +2587,71 @@
         "format": "decimalPattern"
       }
     }
-  }
+  },
+  "refraEditSettingsTitle": "Copy editing",
+  "refraEditSettingsSubtitle": "Staged copies, results and move back",
+  "refraEditSettingsExplanation": "Editing always works on a copy. The photo you pick is copied to Pictures/aves_refra_edit first, and the built-in editor and any other app only ever open that copy. Origins are kept in this copy on purpose: devices and editors disagree on whether saving overwrites the file or writes a new one, so this is what guarantees your original can never be lost. A copy can be moved back to the folder it came from when you are done.",
+  "refraEditStagingSummary": "{count, plural, =0{No edit sessions} =1{1 edit session} other{{count} edit sessions}}",
+  "@refraEditStagingSummary": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "refraEditSessionsTitle": "Edit sessions",
+  "refraEditSessionsSubtitle": "Copies waiting in Pictures/aves_refra_edit",
+  "refraEditSessionSource": "From {directory}",
+  "@refraEditSessionSource": {
+    "placeholders": {
+      "directory": {
+        "type": "String"
+      }
+    }
+  },
+  "refraEditSessionResults": "{count, plural, =0{No results yet} =1{1 result} other{{count} results}}",
+  "@refraEditSessionResults": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "refraEditMoveBack": "Move back",
+  "refraEditDiscard": "Delete copies",
+  "refraEditDiscardConfirmTitle": "Delete the edited copies?",
+  "refraEditDiscardConfirmBody": "The staged copies and their results will be deleted. Your original photos are not affected.",
+  "refraEditDiscardFailed": "Could not delete the copies",
+  "refraEditMoveBackFailed": "Could not move the copies back",
+  "refraEditConflictTitle": "Name already exists",
+  "refraEditConflictBody": "{count, plural, =1{1 file} other{{count} files}} already exist in {directory}. Choose how to write the copies back.",
+  "@refraEditConflictBody": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "directory": {
+        "type": "String"
+      }
+    }
+  },
+  "refraEditStatusMoved": "Moved back to the source folder",
+  "refraEditStatusDiscarded": "Copies deleted",
+  "refraEditNoSessions": "No edit sessions. Pick a photo and choose Edit to start one.",
+  "refraEditIntroTitle": "Editing works on a copy",
+  "refraEditIntroBody": "Before editing, the photo is copied to Pictures/aves_refra_edit and only that copy is opened — by the built-in editor and by any other app you pick.",
+  "refraEditIntroSafety": "Why: phones and editors differ in whether saving overwrites the photo or writes a new file. Editing a copy keeps your original untouched either way. Edited copies can be moved back to the folder they came from.",
+  "refraEditIntroUnderstood": "Got it",
+  "refraEditChooseEditorTitle": "Edit the copy with",
+  "refraEditChooseBuiltIn": "Built-in editor",
+  "refraEditChooseBuiltInSubtitle": "Crop, colour, filters, markup and more",
+  "refraEditChooseOtherApp": "Another app",
+  "refraEditChooseOtherAppSubtitle": "Open the copy in an installed editor",
+  "refraEditCopyFailed": "Could not copy the photo for editing",
+  "refraEditShowIntro": "About copy editing",
+  "refraEditShowIntroSubtitle": "Show the explanation again"
 }
 

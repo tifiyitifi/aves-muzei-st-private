@@ -4,6 +4,8 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.kotlin.parcelize)
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -143,6 +145,8 @@ android {
     buildFeatures {
         buildConfig = true
         resValues = true
+        // The fork-only ReFra editor is a native Compose UI hosted by this module.
+        compose = true
     }
 
     buildTypes {
@@ -229,6 +233,8 @@ repositories {
         content {
             includeGroup("com.github.deckerst")
             includeGroup("com.github.deckerst.mp4parser")
+            // ReFra editor adjustments: stack blur and sharpness primitives.
+            includeGroup("com.github.awxkee")
         }
     }
     maven {
@@ -245,6 +251,24 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
 
+    implementation(libs.compose.activity)
+    implementation(libs.compose.adaptive)
+    implementation(libs.compose.adaptive.layout)
+    implementation(libs.compose.adaptive.navigation)
+    implementation(libs.compose.animation)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.lifecycle.runtime)
+    implementation(libs.compose.lifecycle.viewmodel)
+    implementation(libs.compose.material.icons.extended)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.navigation)
+    implementation(libs.compose.runtime)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.graphics)
+    implementation(libs.compose.ui.tooling.preview)
+    // ONNX Runtime (CPU + NNAPI) powers the editor's Smart tools.
+    implementation(libs.onnxruntime.android)
+
     implementation(libs.androidx.annotation)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.ktx)
@@ -259,9 +283,17 @@ dependencies {
     implementation(libs.commonsware.cwac)
     implementation(libs.metadata.extractor)
     implementation(libs.glide)
+    implementation(libs.glide.compose)
     implementation(libs.google.material)
     // SLF4J implementation for `mp4parser`
     implementation(libs.slf4j)
+    // Photo Lab / imaging helpers used by the ported ReFra adjustments (stack blur, sharpness).
+    implementation(libs.aire)
+    // Encoders for the source formats the editor writes back (JXL, AVIF/HEIC).
+    implementation(libs.avif.coder)
+    implementation(libs.jxl.coder)
+    // Zoomable image surface used by the editor preview.
+    implementation(libs.zoomimage.compose.glide)
 
     // forked, built by JitPack:
     // - https://jitpack.io/p/deckerst/Android-TiffBitmapFactory

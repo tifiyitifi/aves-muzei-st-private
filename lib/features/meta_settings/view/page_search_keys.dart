@@ -41,4 +41,6 @@ const Map<String, List<String>> metaPageSearchKeys = {
   MetaPageKeys.wallpaperHistory: <String>[],
   MetaPageKeys.wallpaperGestures: <String>[],
   MetaPageKeys.wallpaperViewPad: <String>[],
+  // The fork's edit page owns its state in the Drift session tables, not in v1 settings.
+  MetaPageKeys.refraEdit: <String>[],
 };

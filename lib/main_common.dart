@@ -11,6 +11,7 @@ import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/features/media_ops/engine/media_op_prefs.dart';
 import 'package:aves/features/muzei_wallpaper/log.dart';
+import 'package:aves/features/refra_edit/log.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/wallpaper_auto_advance/log.dart';
 import 'package:aves/features/wallpaper_lock/log.dart';
@@ -34,6 +35,7 @@ void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
       ...wallpaperAutoAdvanceDebugLogKeys,
       ...liveWallpaperRefillDebugLogKeys,
       ...wallpaperLockDebugLogKeys,
+      ...refraEditDebugLogKeys,
     ],
   );
   const appLog = AreaKeyLog(LogKeys.app);

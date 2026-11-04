@@ -359,6 +359,7 @@ open class MainActivity : FlutterFragmentActivity() {
 
             PICK_COLLECTION_FILTERS_REQUEST -> onCollectionFiltersPickResult(resultCode, data)
             EDIT_REQUEST -> onEditResult(resultCode, data)
+            REFRA_EDIT_REQUEST -> onRefraEditResult(resultCode, data)
         }
     }
 
@@ -373,6 +374,17 @@ open class MainActivity : FlutterFragmentActivity() {
             "mimeType" to intent?.type,
         ) else null
         pendingEditIntentHandler?.let { it(fields) }
+    }
+
+    /**
+     * The fork editor works on a staged copy in `Pictures/aves_refra_edit`; the Dart side rescans
+     * that session folder for outputs, so the result only reports completion.
+     */
+    private fun onRefraEditResult(resultCode: Int, intent: Intent?) {
+        val fields: FieldMap? = if (resultCode == RESULT_OK) hashMapOf(
+            "uri" to intent?.data?.toString(),
+        ) else null
+        pendingRefraEditHandler?.let { it(fields) }
     }
 
     private fun onDocumentTreeAccessResult(requestCode: Int, resultCode: Int, intent: Intent?) {
@@ -694,6 +706,7 @@ open class MainActivity : FlutterFragmentActivity() {
         const val SCOPED_STORAGE_PERMISSION_REQUEST = 5
         const val PICK_COLLECTION_FILTERS_REQUEST = 6
         const val EDIT_REQUEST = 7
+        const val REFRA_EDIT_REQUEST = 8
 
         const val INTENT_ACTION_APP_SETTINGS = "app_settings"
         const val INTENT_ACTION_EDIT = "edit"
@@ -739,6 +752,8 @@ open class MainActivity : FlutterFragmentActivity() {
         var pendingCollectionFilterPickHandler: ((filters: List<String>?) -> Unit)? = null
 
         var pendingEditIntentHandler: ((fields: FieldMap?) -> Unit)? = null
+
+        var pendingRefraEditHandler: ((fields: FieldMap?) -> Unit)? = null
 
         private fun onStorageAccessResult(requestCode: Int, uri: Uri?) {
             Log.i(LOG_TAG, "onStorageAccessResult with requestCode=$requestCode, uri=$uri")

@@ -18,6 +18,7 @@ import 'package:aves/features/drift_db/migration/migration_v11.dart';
 import 'package:aves/features/drift_db/migration/migration_v12.dart';
 import 'package:aves/features/drift_db/migration/migration_v13.dart';
 import 'package:aves/features/drift_db/migration/migration_v14.dart';
+import 'package:aves/features/drift_db/migration/migration_v15.dart';
 import 'package:aves/features/drift_db/migration/migration_v9.dart';
 import 'package:aves/features/drift_db/trash/trash_table.dart';
 import 'package:aves/features/drift_db/vaults/vault_table.dart';
@@ -25,6 +26,7 @@ import 'package:aves/features/drift_db/video_playback/video_playback_table.dart'
 import 'package:aves/features/grouped_wallpaper/db/grouped_wallpaper_history_table.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_table.dart';
 import 'package:aves/features/meta_settings/db/settings_values_table.dart';
+import 'package:aves/features/refra_edit/db/refra_edit_tables.dart';
 import 'package:aves/features/visible_range/db/visible_range_tables.dart';
 import 'package:drift/drift.dart';
 
@@ -63,6 +65,8 @@ part 'app_database.g.dart';
     VisibleRangeKeyValues,
     WallpaperGroupRows,
     GroupedWallpaperHistoryRows,
+    RefraEditSessionRows,
+    RefraEditOutputRows,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -73,7 +77,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -96,6 +100,7 @@ class AppDatabase extends _$AppDatabase {
           if (from < 12) await MigrationV12(this).run(m);
           if (from < 13) await MigrationV13(this).run(m);
           if (from < 14) await MigrationV14(this).run(m);
+          if (from < 15) await MigrationV15(this).run(m);
         },
         beforeOpen: (details) async {
           // The main isolate and the analysis background isolate each open
@@ -119,5 +124,6 @@ class AppDatabase extends _$AppDatabase {
     await MigrationV8.createNewIndexes(this);
     await MigrationV12.createNewIndexes(this);
     await MigrationV13.createNewIndexes(this);
+    await MigrationV15.createNewIndexes(this);
   }
 }

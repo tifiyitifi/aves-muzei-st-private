@@ -11,7 +11,20 @@ androidxLifecycle = "2.11.0"
 androidxMedia = "1.8.0"
 androidxSecurity = "1.1.0"
 androidxWork = "2.12.0"
+aire = "0.18.1"
 commonswareCwac = "0.5.0"
+glideCompose = "1.0.0-beta10"
+zoomimage = "1.6.0"
+# Compose drives the fork-only ReFra editor (native Compose UI inside the Android app).
+compose = "1.12.0"
+composeActivity = "1.13.0"
+composeAdaptive = "1.3.0"
+composeIcons = "1.7.8"
+composeMaterial3 = "1.5.0-alpha26"
+composeNavigation = "2.9.8"
+avifCoder = "2.2.1"
+jxlCoder = "2.6.1"
+onnxruntime = "1.29.0"
 firebase = "3.0.8"
 glide = "5.0.9"
 gms = "4.5.0"
@@ -29,6 +42,9 @@ tiffBitmapFactory = "424b18a4ae"
 reproducibleBuilds = "1.1"
 
 [libraries]
+aire = { module = "com.github.awxkee:aire", version.ref = "aire" }
+avif-coder = { module = "io.github.awxkee:avif-coder", version.ref = "avifCoder" }
+jxl-coder = { module = "io.github.awxkee:jxl-coder", version.ref = "jxlCoder" }
 android-desugarJdkLibs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "androidDesugarJdkLibs" }
 androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "androidxAnnotation" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidxAppcompat" }
@@ -39,12 +55,29 @@ androidx-media = { module = "androidx.media:media", version.ref = "androidxMedia
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "androidxSecurity" }
 androidx-work-runtime = { module = "androidx.work:work-runtime", version.ref = "androidxWork" }
 commonsware-cwac = { module = "com.commonsware.cwac:document", version.ref = "commonswareCwac" }
+compose-activity = { module = "androidx.activity:activity-compose", version.ref = "composeActivity" }
+compose-adaptive = { module = "androidx.compose.material3.adaptive:adaptive", version.ref = "composeAdaptive" }
+compose-adaptive-layout = { module = "androidx.compose.material3.adaptive:adaptive-layout", version.ref = "composeAdaptive" }
+compose-adaptive-navigation = { module = "androidx.compose.material3.adaptive:adaptive-navigation", version.ref = "composeAdaptive" }
+compose-animation = { group = "androidx.compose.animation", name = "animation", version.ref = "compose" }
+compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "compose" }
+compose-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidxLifecycle" }
+compose-lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidxLifecycle" }
+compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "composeIcons" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "composeMaterial3" }
+compose-navigation = { module = "androidx.navigation:navigation-compose", version.ref = "composeNavigation" }
+compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "compose" }
+compose-ui = { group = "androidx.compose.ui", name = "ui", version.ref = "compose" }
+compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "compose" }
+compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview", version.ref = "compose" }
+onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntime" }
 deckerst-androidsvg = { module = "com.github.deckerst:androidsvg", version.ref = "androidSvg" }
 deckerst-mp4parser-isoparser = { module = "com.github.deckerst.mp4parser:isoparser", version.ref = "mp4parser" }
 deckerst-mp4parser-muxer = { module = "com.github.deckerst.mp4parser:muxer", version.ref = "mp4parser" }
 deckerst-pixymeta = { module = "com.github.deckerst:pixymeta-android", version.ref = "pixymeta" }
 deckerst-tiffbitmapfactory = { module = "com.github.deckerst:Android-TiffBitmapFactory", version.ref = "tiffBitmapFactory" }
 glide = { module = "com.github.bumptech.glide:glide", version.ref = "glide" }
+glide-compose = { module = "com.github.bumptech.glide:compose", version.ref = "glideCompose" }
 glideKsp = { module = "com.github.bumptech.glide:ksp", version.ref = "glide" }
 google-firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics-gradle", version.ref = "firebase" }
 google-gms = { module = "com.google.gms:google-services", version.ref = "gms" }
@@ -57,8 +90,11 @@ kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", ve
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
 metadata-extractor = { module = "com.drewnoakes:metadata-extractor", version.ref = "metadataExtractor" }
 slf4j = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+zoomimage-compose-glide = { module = "io.github.panpf.zoomimage:zoomimage-compose-glide", version.ref = "zoomimage" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 reproducible-builds = { id = "org.gradlex.reproducible-builds", version.ref = "reproducibleBuilds" }

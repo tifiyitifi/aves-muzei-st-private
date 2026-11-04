@@ -607,6 +607,16 @@ final List<SettingDef> _wallpaperDefs = [
     reader: WallpaperViewerDeleteSetting.read,
     sortOrder: 100,
   ),
+  // The fork's copy-first editor: staging overview, session list and the move-back entry.
+  SettingDef(
+    key: MetaPageKeys.refraEdit,
+    category: SettingsCategory.wallpaper,
+    widgetKind: SettingWidgetKind.subPage,
+    title: (context) => context.l10n.refraEditSettingsTitle,
+    subtitle: (context) => context.l10n.refraEditSettingsSubtitle,
+    routeName: MetaPageKeys.refraEdit,
+    sortOrder: 110,
+  ),
 ];
 
 // Advanced

@@ -45,7 +45,7 @@ import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/behaviour/routes.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/common/search/page.dart';
-import 'package:aves/widgets/editor/entry_editor_page.dart';
+import 'package:aves/features/refra_edit/view/refra_edit_launcher_page.dart';
 import 'package:aves/widgets/explorer/explorer_page.dart';
 import 'package:aves/widgets/filter_grids/albums_page.dart';
 import 'package:aves/widgets/filter_grids/tags_page.dart';
@@ -612,9 +612,9 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
         );
       case .edit:
         return DirectMaterialPageRoute(
-          settings: const RouteSettings(name: EntryViewerPage.routeName),
+          settings: const RouteSettings(name: RefraEditLauncherPage.routeName),
           builder: (_) {
-            return ImageEditorPage(
+            return RefraEditLauncherPage(
               entry: _viewerEntry!,
             );
           },

@@ -8212,6 +8212,1202 @@ class GroupedWallpaperHistoryRowsCompanion
   }
 }
 
+class $RefraEditSessionRowsTable extends RefraEditSessionRows
+    with TableInfo<$RefraEditSessionRowsTable, RefraEditSessionRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RefraEditSessionRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceEntryIdMeta = const VerificationMeta(
+    'sourceEntryId',
+  );
+  @override
+  late final GeneratedColumn<int> sourceEntryId = GeneratedColumn<int>(
+    'sourceEntryId',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceUriMeta = const VerificationMeta(
+    'sourceUri',
+  );
+  @override
+  late final GeneratedColumn<String> sourceUri = GeneratedColumn<String>(
+    'sourceUri',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourcePathMeta = const VerificationMeta(
+    'sourcePath',
+  );
+  @override
+  late final GeneratedColumn<String> sourcePath = GeneratedColumn<String>(
+    'sourcePath',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _sourceDirectoryMeta = const VerificationMeta(
+    'sourceDirectory',
+  );
+  @override
+  late final GeneratedColumn<String> sourceDirectory = GeneratedColumn<String>(
+    'sourceDirectory',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _sourceNameMeta = const VerificationMeta(
+    'sourceName',
+  );
+  @override
+  late final GeneratedColumn<String> sourceName = GeneratedColumn<String>(
+    'sourceName',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceMimeTypeMeta = const VerificationMeta(
+    'sourceMimeType',
+  );
+  @override
+  late final GeneratedColumn<String> sourceMimeType = GeneratedColumn<String>(
+    'sourceMimeType',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _stagingDirectoryMeta = const VerificationMeta(
+    'stagingDirectory',
+  );
+  @override
+  late final GeneratedColumn<String> stagingDirectory = GeneratedColumn<String>(
+    'stagingDirectory',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _stagedUriMeta = const VerificationMeta(
+    'stagedUri',
+  );
+  @override
+  late final GeneratedColumn<String> stagedUri = GeneratedColumn<String>(
+    'stagedUri',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'createdAt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('active'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sourceEntryId,
+    sourceUri,
+    sourcePath,
+    sourceDirectory,
+    sourceName,
+    sourceMimeType,
+    stagingDirectory,
+    stagedUri,
+    createdAt,
+    status,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'refra_edit_sessions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RefraEditSessionRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('sourceEntryId')) {
+      context.handle(
+        _sourceEntryIdMeta,
+        sourceEntryId.isAcceptableOrUnknown(
+          data['sourceEntryId']!,
+          _sourceEntryIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sourceUri')) {
+      context.handle(
+        _sourceUriMeta,
+        sourceUri.isAcceptableOrUnknown(data['sourceUri']!, _sourceUriMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceUriMeta);
+    }
+    if (data.containsKey('sourcePath')) {
+      context.handle(
+        _sourcePathMeta,
+        sourcePath.isAcceptableOrUnknown(data['sourcePath']!, _sourcePathMeta),
+      );
+    }
+    if (data.containsKey('sourceDirectory')) {
+      context.handle(
+        _sourceDirectoryMeta,
+        sourceDirectory.isAcceptableOrUnknown(
+          data['sourceDirectory']!,
+          _sourceDirectoryMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sourceName')) {
+      context.handle(
+        _sourceNameMeta,
+        sourceName.isAcceptableOrUnknown(data['sourceName']!, _sourceNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceNameMeta);
+    }
+    if (data.containsKey('sourceMimeType')) {
+      context.handle(
+        _sourceMimeTypeMeta,
+        sourceMimeType.isAcceptableOrUnknown(
+          data['sourceMimeType']!,
+          _sourceMimeTypeMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceMimeTypeMeta);
+    }
+    if (data.containsKey('stagingDirectory')) {
+      context.handle(
+        _stagingDirectoryMeta,
+        stagingDirectory.isAcceptableOrUnknown(
+          data['stagingDirectory']!,
+          _stagingDirectoryMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_stagingDirectoryMeta);
+    }
+    if (data.containsKey('stagedUri')) {
+      context.handle(
+        _stagedUriMeta,
+        stagedUri.isAcceptableOrUnknown(data['stagedUri']!, _stagedUriMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_stagedUriMeta);
+    }
+    if (data.containsKey('createdAt')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['createdAt']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RefraEditSessionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RefraEditSessionRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      sourceEntryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sourceEntryId'],
+      ),
+      sourceUri: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sourceUri'],
+      )!,
+      sourcePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sourcePath'],
+      )!,
+      sourceDirectory: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sourceDirectory'],
+      )!,
+      sourceName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sourceName'],
+      )!,
+      sourceMimeType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sourceMimeType'],
+      )!,
+      stagingDirectory: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stagingDirectory'],
+      )!,
+      stagedUri: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stagedUri'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}createdAt'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+    );
+  }
+
+  @override
+  $RefraEditSessionRowsTable createAlias(String alias) {
+    return $RefraEditSessionRowsTable(attachedDatabase, alias);
+  }
+}
+
+class RefraEditSessionRow extends DataClass
+    implements Insertable<RefraEditSessionRow> {
+  /// Session id, also the staging sub-directory name.
+  final String id;
+
+  /// Aves entry id of the source at the time the session started (informational, ids churn).
+  final int? sourceEntryId;
+  final String sourceUri;
+
+  /// Absolute path of the source file, empty when the entry has no storage path.
+  final String sourcePath;
+
+  /// Absolute directory the edited copy is offered to be moved back to.
+  final String sourceDirectory;
+  final String sourceName;
+  final String sourceMimeType;
+
+  /// Absolute staging directory (`Pictures/aves_refra_edit/<id>`).
+  final String stagingDirectory;
+
+  /// Uri of the initial staged copy.
+  final String stagedUri;
+  final int createdAt;
+
+  /// `active` while the copies still live in the staging directory, `moved` once every kept
+  /// output has been moved back, `discarded` when the user deleted the copies.
+  final String status;
+  const RefraEditSessionRow({
+    required this.id,
+    this.sourceEntryId,
+    required this.sourceUri,
+    required this.sourcePath,
+    required this.sourceDirectory,
+    required this.sourceName,
+    required this.sourceMimeType,
+    required this.stagingDirectory,
+    required this.stagedUri,
+    required this.createdAt,
+    required this.status,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    if (!nullToAbsent || sourceEntryId != null) {
+      map['sourceEntryId'] = Variable<int>(sourceEntryId);
+    }
+    map['sourceUri'] = Variable<String>(sourceUri);
+    map['sourcePath'] = Variable<String>(sourcePath);
+    map['sourceDirectory'] = Variable<String>(sourceDirectory);
+    map['sourceName'] = Variable<String>(sourceName);
+    map['sourceMimeType'] = Variable<String>(sourceMimeType);
+    map['stagingDirectory'] = Variable<String>(stagingDirectory);
+    map['stagedUri'] = Variable<String>(stagedUri);
+    map['createdAt'] = Variable<int>(createdAt);
+    map['status'] = Variable<String>(status);
+    return map;
+  }
+
+  RefraEditSessionRowsCompanion toCompanion(bool nullToAbsent) {
+    return RefraEditSessionRowsCompanion(
+      id: Value(id),
+      sourceEntryId: sourceEntryId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceEntryId),
+      sourceUri: Value(sourceUri),
+      sourcePath: Value(sourcePath),
+      sourceDirectory: Value(sourceDirectory),
+      sourceName: Value(sourceName),
+      sourceMimeType: Value(sourceMimeType),
+      stagingDirectory: Value(stagingDirectory),
+      stagedUri: Value(stagedUri),
+      createdAt: Value(createdAt),
+      status: Value(status),
+    );
+  }
+
+  factory RefraEditSessionRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RefraEditSessionRow(
+      id: serializer.fromJson<String>(json['id']),
+      sourceEntryId: serializer.fromJson<int?>(json['sourceEntryId']),
+      sourceUri: serializer.fromJson<String>(json['sourceUri']),
+      sourcePath: serializer.fromJson<String>(json['sourcePath']),
+      sourceDirectory: serializer.fromJson<String>(json['sourceDirectory']),
+      sourceName: serializer.fromJson<String>(json['sourceName']),
+      sourceMimeType: serializer.fromJson<String>(json['sourceMimeType']),
+      stagingDirectory: serializer.fromJson<String>(json['stagingDirectory']),
+      stagedUri: serializer.fromJson<String>(json['stagedUri']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      status: serializer.fromJson<String>(json['status']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'sourceEntryId': serializer.toJson<int?>(sourceEntryId),
+      'sourceUri': serializer.toJson<String>(sourceUri),
+      'sourcePath': serializer.toJson<String>(sourcePath),
+      'sourceDirectory': serializer.toJson<String>(sourceDirectory),
+      'sourceName': serializer.toJson<String>(sourceName),
+      'sourceMimeType': serializer.toJson<String>(sourceMimeType),
+      'stagingDirectory': serializer.toJson<String>(stagingDirectory),
+      'stagedUri': serializer.toJson<String>(stagedUri),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'status': serializer.toJson<String>(status),
+    };
+  }
+
+  RefraEditSessionRow copyWith({
+    String? id,
+    Value<int?> sourceEntryId = const Value.absent(),
+    String? sourceUri,
+    String? sourcePath,
+    String? sourceDirectory,
+    String? sourceName,
+    String? sourceMimeType,
+    String? stagingDirectory,
+    String? stagedUri,
+    int? createdAt,
+    String? status,
+  }) => RefraEditSessionRow(
+    id: id ?? this.id,
+    sourceEntryId: sourceEntryId.present
+        ? sourceEntryId.value
+        : this.sourceEntryId,
+    sourceUri: sourceUri ?? this.sourceUri,
+    sourcePath: sourcePath ?? this.sourcePath,
+    sourceDirectory: sourceDirectory ?? this.sourceDirectory,
+    sourceName: sourceName ?? this.sourceName,
+    sourceMimeType: sourceMimeType ?? this.sourceMimeType,
+    stagingDirectory: stagingDirectory ?? this.stagingDirectory,
+    stagedUri: stagedUri ?? this.stagedUri,
+    createdAt: createdAt ?? this.createdAt,
+    status: status ?? this.status,
+  );
+  RefraEditSessionRow copyWithCompanion(RefraEditSessionRowsCompanion data) {
+    return RefraEditSessionRow(
+      id: data.id.present ? data.id.value : this.id,
+      sourceEntryId: data.sourceEntryId.present
+          ? data.sourceEntryId.value
+          : this.sourceEntryId,
+      sourceUri: data.sourceUri.present ? data.sourceUri.value : this.sourceUri,
+      sourcePath: data.sourcePath.present
+          ? data.sourcePath.value
+          : this.sourcePath,
+      sourceDirectory: data.sourceDirectory.present
+          ? data.sourceDirectory.value
+          : this.sourceDirectory,
+      sourceName: data.sourceName.present
+          ? data.sourceName.value
+          : this.sourceName,
+      sourceMimeType: data.sourceMimeType.present
+          ? data.sourceMimeType.value
+          : this.sourceMimeType,
+      stagingDirectory: data.stagingDirectory.present
+          ? data.stagingDirectory.value
+          : this.stagingDirectory,
+      stagedUri: data.stagedUri.present ? data.stagedUri.value : this.stagedUri,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      status: data.status.present ? data.status.value : this.status,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RefraEditSessionRow(')
+          ..write('id: $id, ')
+          ..write('sourceEntryId: $sourceEntryId, ')
+          ..write('sourceUri: $sourceUri, ')
+          ..write('sourcePath: $sourcePath, ')
+          ..write('sourceDirectory: $sourceDirectory, ')
+          ..write('sourceName: $sourceName, ')
+          ..write('sourceMimeType: $sourceMimeType, ')
+          ..write('stagingDirectory: $stagingDirectory, ')
+          ..write('stagedUri: $stagedUri, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('status: $status')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    sourceEntryId,
+    sourceUri,
+    sourcePath,
+    sourceDirectory,
+    sourceName,
+    sourceMimeType,
+    stagingDirectory,
+    stagedUri,
+    createdAt,
+    status,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RefraEditSessionRow &&
+          other.id == this.id &&
+          other.sourceEntryId == this.sourceEntryId &&
+          other.sourceUri == this.sourceUri &&
+          other.sourcePath == this.sourcePath &&
+          other.sourceDirectory == this.sourceDirectory &&
+          other.sourceName == this.sourceName &&
+          other.sourceMimeType == this.sourceMimeType &&
+          other.stagingDirectory == this.stagingDirectory &&
+          other.stagedUri == this.stagedUri &&
+          other.createdAt == this.createdAt &&
+          other.status == this.status);
+}
+
+class RefraEditSessionRowsCompanion
+    extends UpdateCompanion<RefraEditSessionRow> {
+  final Value<String> id;
+  final Value<int?> sourceEntryId;
+  final Value<String> sourceUri;
+  final Value<String> sourcePath;
+  final Value<String> sourceDirectory;
+  final Value<String> sourceName;
+  final Value<String> sourceMimeType;
+  final Value<String> stagingDirectory;
+  final Value<String> stagedUri;
+  final Value<int> createdAt;
+  final Value<String> status;
+  final Value<int> rowid;
+  const RefraEditSessionRowsCompanion({
+    this.id = const Value.absent(),
+    this.sourceEntryId = const Value.absent(),
+    this.sourceUri = const Value.absent(),
+    this.sourcePath = const Value.absent(),
+    this.sourceDirectory = const Value.absent(),
+    this.sourceName = const Value.absent(),
+    this.sourceMimeType = const Value.absent(),
+    this.stagingDirectory = const Value.absent(),
+    this.stagedUri = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.status = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RefraEditSessionRowsCompanion.insert({
+    required String id,
+    this.sourceEntryId = const Value.absent(),
+    required String sourceUri,
+    this.sourcePath = const Value.absent(),
+    this.sourceDirectory = const Value.absent(),
+    required String sourceName,
+    required String sourceMimeType,
+    required String stagingDirectory,
+    required String stagedUri,
+    required int createdAt,
+    this.status = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       sourceUri = Value(sourceUri),
+       sourceName = Value(sourceName),
+       sourceMimeType = Value(sourceMimeType),
+       stagingDirectory = Value(stagingDirectory),
+       stagedUri = Value(stagedUri),
+       createdAt = Value(createdAt);
+  static Insertable<RefraEditSessionRow> custom({
+    Expression<String>? id,
+    Expression<int>? sourceEntryId,
+    Expression<String>? sourceUri,
+    Expression<String>? sourcePath,
+    Expression<String>? sourceDirectory,
+    Expression<String>? sourceName,
+    Expression<String>? sourceMimeType,
+    Expression<String>? stagingDirectory,
+    Expression<String>? stagedUri,
+    Expression<int>? createdAt,
+    Expression<String>? status,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sourceEntryId != null) 'sourceEntryId': sourceEntryId,
+      if (sourceUri != null) 'sourceUri': sourceUri,
+      if (sourcePath != null) 'sourcePath': sourcePath,
+      if (sourceDirectory != null) 'sourceDirectory': sourceDirectory,
+      if (sourceName != null) 'sourceName': sourceName,
+      if (sourceMimeType != null) 'sourceMimeType': sourceMimeType,
+      if (stagingDirectory != null) 'stagingDirectory': stagingDirectory,
+      if (stagedUri != null) 'stagedUri': stagedUri,
+      if (createdAt != null) 'createdAt': createdAt,
+      if (status != null) 'status': status,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RefraEditSessionRowsCompanion copyWith({
+    Value<String>? id,
+    Value<int?>? sourceEntryId,
+    Value<String>? sourceUri,
+    Value<String>? sourcePath,
+    Value<String>? sourceDirectory,
+    Value<String>? sourceName,
+    Value<String>? sourceMimeType,
+    Value<String>? stagingDirectory,
+    Value<String>? stagedUri,
+    Value<int>? createdAt,
+    Value<String>? status,
+    Value<int>? rowid,
+  }) {
+    return RefraEditSessionRowsCompanion(
+      id: id ?? this.id,
+      sourceEntryId: sourceEntryId ?? this.sourceEntryId,
+      sourceUri: sourceUri ?? this.sourceUri,
+      sourcePath: sourcePath ?? this.sourcePath,
+      sourceDirectory: sourceDirectory ?? this.sourceDirectory,
+      sourceName: sourceName ?? this.sourceName,
+      sourceMimeType: sourceMimeType ?? this.sourceMimeType,
+      stagingDirectory: stagingDirectory ?? this.stagingDirectory,
+      stagedUri: stagedUri ?? this.stagedUri,
+      createdAt: createdAt ?? this.createdAt,
+      status: status ?? this.status,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (sourceEntryId.present) {
+      map['sourceEntryId'] = Variable<int>(sourceEntryId.value);
+    }
+    if (sourceUri.present) {
+      map['sourceUri'] = Variable<String>(sourceUri.value);
+    }
+    if (sourcePath.present) {
+      map['sourcePath'] = Variable<String>(sourcePath.value);
+    }
+    if (sourceDirectory.present) {
+      map['sourceDirectory'] = Variable<String>(sourceDirectory.value);
+    }
+    if (sourceName.present) {
+      map['sourceName'] = Variable<String>(sourceName.value);
+    }
+    if (sourceMimeType.present) {
+      map['sourceMimeType'] = Variable<String>(sourceMimeType.value);
+    }
+    if (stagingDirectory.present) {
+      map['stagingDirectory'] = Variable<String>(stagingDirectory.value);
+    }
+    if (stagedUri.present) {
+      map['stagedUri'] = Variable<String>(stagedUri.value);
+    }
+    if (createdAt.present) {
+      map['createdAt'] = Variable<int>(createdAt.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RefraEditSessionRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('sourceEntryId: $sourceEntryId, ')
+          ..write('sourceUri: $sourceUri, ')
+          ..write('sourcePath: $sourcePath, ')
+          ..write('sourceDirectory: $sourceDirectory, ')
+          ..write('sourceName: $sourceName, ')
+          ..write('sourceMimeType: $sourceMimeType, ')
+          ..write('stagingDirectory: $stagingDirectory, ')
+          ..write('stagedUri: $stagedUri, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('status: $status, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $RefraEditOutputRowsTable extends RefraEditOutputRows
+    with TableInfo<$RefraEditOutputRowsTable, RefraEditOutputRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RefraEditOutputRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sessionIdMeta = const VerificationMeta(
+    'sessionId',
+  );
+  @override
+  late final GeneratedColumn<String> sessionId = GeneratedColumn<String>(
+    'sessionId',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _uriMeta = const VerificationMeta('uri');
+  @override
+  late final GeneratedColumn<String> uri = GeneratedColumn<String>(
+    'uri',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pathMeta = const VerificationMeta('path');
+  @override
+  late final GeneratedColumn<String> path = GeneratedColumn<String>(
+    'path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _fileNameMeta = const VerificationMeta(
+    'fileName',
+  );
+  @override
+  late final GeneratedColumn<String> fileName = GeneratedColumn<String>(
+    'fileName',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sizeBytesMeta = const VerificationMeta(
+    'sizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> sizeBytes = GeneratedColumn<int>(
+    'sizeBytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'createdAt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sessionId,
+    uri,
+    path,
+    fileName,
+    kind,
+    sizeBytes,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'refra_edit_outputs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RefraEditOutputRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('sessionId')) {
+      context.handle(
+        _sessionIdMeta,
+        sessionId.isAcceptableOrUnknown(data['sessionId']!, _sessionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sessionIdMeta);
+    }
+    if (data.containsKey('uri')) {
+      context.handle(
+        _uriMeta,
+        uri.isAcceptableOrUnknown(data['uri']!, _uriMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_uriMeta);
+    }
+    if (data.containsKey('path')) {
+      context.handle(
+        _pathMeta,
+        path.isAcceptableOrUnknown(data['path']!, _pathMeta),
+      );
+    }
+    if (data.containsKey('fileName')) {
+      context.handle(
+        _fileNameMeta,
+        fileName.isAcceptableOrUnknown(data['fileName']!, _fileNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fileNameMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('sizeBytes')) {
+      context.handle(
+        _sizeBytesMeta,
+        sizeBytes.isAcceptableOrUnknown(data['sizeBytes']!, _sizeBytesMeta),
+      );
+    }
+    if (data.containsKey('createdAt')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['createdAt']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RefraEditOutputRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RefraEditOutputRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      sessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sessionId'],
+      )!,
+      uri: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}uri'],
+      )!,
+      path: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}path'],
+      )!,
+      fileName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}fileName'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      sizeBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sizeBytes'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}createdAt'],
+      )!,
+    );
+  }
+
+  @override
+  $RefraEditOutputRowsTable createAlias(String alias) {
+    return $RefraEditOutputRowsTable(attachedDatabase, alias);
+  }
+}
+
+class RefraEditOutputRow extends DataClass
+    implements Insertable<RefraEditOutputRow> {
+  final String id;
+  final String sessionId;
+  final String uri;
+  final String path;
+  final String fileName;
+
+  /// `staged`, `built_in`, `external` or `unknown` for files found by rescanning the folder.
+  final String kind;
+  final int sizeBytes;
+  final int createdAt;
+  const RefraEditOutputRow({
+    required this.id,
+    required this.sessionId,
+    required this.uri,
+    required this.path,
+    required this.fileName,
+    required this.kind,
+    required this.sizeBytes,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['sessionId'] = Variable<String>(sessionId);
+    map['uri'] = Variable<String>(uri);
+    map['path'] = Variable<String>(path);
+    map['fileName'] = Variable<String>(fileName);
+    map['kind'] = Variable<String>(kind);
+    map['sizeBytes'] = Variable<int>(sizeBytes);
+    map['createdAt'] = Variable<int>(createdAt);
+    return map;
+  }
+
+  RefraEditOutputRowsCompanion toCompanion(bool nullToAbsent) {
+    return RefraEditOutputRowsCompanion(
+      id: Value(id),
+      sessionId: Value(sessionId),
+      uri: Value(uri),
+      path: Value(path),
+      fileName: Value(fileName),
+      kind: Value(kind),
+      sizeBytes: Value(sizeBytes),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory RefraEditOutputRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RefraEditOutputRow(
+      id: serializer.fromJson<String>(json['id']),
+      sessionId: serializer.fromJson<String>(json['sessionId']),
+      uri: serializer.fromJson<String>(json['uri']),
+      path: serializer.fromJson<String>(json['path']),
+      fileName: serializer.fromJson<String>(json['fileName']),
+      kind: serializer.fromJson<String>(json['kind']),
+      sizeBytes: serializer.fromJson<int>(json['sizeBytes']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'sessionId': serializer.toJson<String>(sessionId),
+      'uri': serializer.toJson<String>(uri),
+      'path': serializer.toJson<String>(path),
+      'fileName': serializer.toJson<String>(fileName),
+      'kind': serializer.toJson<String>(kind),
+      'sizeBytes': serializer.toJson<int>(sizeBytes),
+      'createdAt': serializer.toJson<int>(createdAt),
+    };
+  }
+
+  RefraEditOutputRow copyWith({
+    String? id,
+    String? sessionId,
+    String? uri,
+    String? path,
+    String? fileName,
+    String? kind,
+    int? sizeBytes,
+    int? createdAt,
+  }) => RefraEditOutputRow(
+    id: id ?? this.id,
+    sessionId: sessionId ?? this.sessionId,
+    uri: uri ?? this.uri,
+    path: path ?? this.path,
+    fileName: fileName ?? this.fileName,
+    kind: kind ?? this.kind,
+    sizeBytes: sizeBytes ?? this.sizeBytes,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  RefraEditOutputRow copyWithCompanion(RefraEditOutputRowsCompanion data) {
+    return RefraEditOutputRow(
+      id: data.id.present ? data.id.value : this.id,
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
+      uri: data.uri.present ? data.uri.value : this.uri,
+      path: data.path.present ? data.path.value : this.path,
+      fileName: data.fileName.present ? data.fileName.value : this.fileName,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      sizeBytes: data.sizeBytes.present ? data.sizeBytes.value : this.sizeBytes,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RefraEditOutputRow(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('uri: $uri, ')
+          ..write('path: $path, ')
+          ..write('fileName: $fileName, ')
+          ..write('kind: $kind, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    sessionId,
+    uri,
+    path,
+    fileName,
+    kind,
+    sizeBytes,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RefraEditOutputRow &&
+          other.id == this.id &&
+          other.sessionId == this.sessionId &&
+          other.uri == this.uri &&
+          other.path == this.path &&
+          other.fileName == this.fileName &&
+          other.kind == this.kind &&
+          other.sizeBytes == this.sizeBytes &&
+          other.createdAt == this.createdAt);
+}
+
+class RefraEditOutputRowsCompanion extends UpdateCompanion<RefraEditOutputRow> {
+  final Value<String> id;
+  final Value<String> sessionId;
+  final Value<String> uri;
+  final Value<String> path;
+  final Value<String> fileName;
+  final Value<String> kind;
+  final Value<int> sizeBytes;
+  final Value<int> createdAt;
+  final Value<int> rowid;
+  const RefraEditOutputRowsCompanion({
+    this.id = const Value.absent(),
+    this.sessionId = const Value.absent(),
+    this.uri = const Value.absent(),
+    this.path = const Value.absent(),
+    this.fileName = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.sizeBytes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RefraEditOutputRowsCompanion.insert({
+    required String id,
+    required String sessionId,
+    required String uri,
+    this.path = const Value.absent(),
+    required String fileName,
+    required String kind,
+    this.sizeBytes = const Value.absent(),
+    required int createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       sessionId = Value(sessionId),
+       uri = Value(uri),
+       fileName = Value(fileName),
+       kind = Value(kind),
+       createdAt = Value(createdAt);
+  static Insertable<RefraEditOutputRow> custom({
+    Expression<String>? id,
+    Expression<String>? sessionId,
+    Expression<String>? uri,
+    Expression<String>? path,
+    Expression<String>? fileName,
+    Expression<String>? kind,
+    Expression<int>? sizeBytes,
+    Expression<int>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sessionId != null) 'sessionId': sessionId,
+      if (uri != null) 'uri': uri,
+      if (path != null) 'path': path,
+      if (fileName != null) 'fileName': fileName,
+      if (kind != null) 'kind': kind,
+      if (sizeBytes != null) 'sizeBytes': sizeBytes,
+      if (createdAt != null) 'createdAt': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RefraEditOutputRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? sessionId,
+    Value<String>? uri,
+    Value<String>? path,
+    Value<String>? fileName,
+    Value<String>? kind,
+    Value<int>? sizeBytes,
+    Value<int>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return RefraEditOutputRowsCompanion(
+      id: id ?? this.id,
+      sessionId: sessionId ?? this.sessionId,
+      uri: uri ?? this.uri,
+      path: path ?? this.path,
+      fileName: fileName ?? this.fileName,
+      kind: kind ?? this.kind,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (sessionId.present) {
+      map['sessionId'] = Variable<String>(sessionId.value);
+    }
+    if (uri.present) {
+      map['uri'] = Variable<String>(uri.value);
+    }
+    if (path.present) {
+      map['path'] = Variable<String>(path.value);
+    }
+    if (fileName.present) {
+      map['fileName'] = Variable<String>(fileName.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (sizeBytes.present) {
+      map['sizeBytes'] = Variable<int>(sizeBytes.value);
+    }
+    if (createdAt.present) {
+      map['createdAt'] = Variable<int>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RefraEditOutputRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('uri: $uri, ')
+          ..write('path: $path, ')
+          ..write('fileName: $fileName, ')
+          ..write('kind: $kind, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -8248,6 +9444,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $WallpaperGroupRowsTable(this);
   late final $GroupedWallpaperHistoryRowsTable groupedWallpaperHistoryRows =
       $GroupedWallpaperHistoryRowsTable(this);
+  late final $RefraEditSessionRowsTable refraEditSessionRows =
+      $RefraEditSessionRowsTable(this);
+  late final $RefraEditOutputRowsTable refraEditOutputRows =
+      $RefraEditOutputRowsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -8273,6 +9473,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     visibleRangeKeyValues,
     wallpaperGroupRows,
     groupedWallpaperHistoryRows,
+    refraEditSessionRows,
+    refraEditOutputRows,
   ];
 }
 
@@ -12743,6 +13945,621 @@ typedef $$GroupedWallpaperHistoryRowsTableProcessedTableManager =
       GroupedWallpaperHistoryRow,
       PrefetchHooks Function()
     >;
+typedef $$RefraEditSessionRowsTableCreateCompanionBuilder =
+    RefraEditSessionRowsCompanion Function({
+      required String id,
+      Value<int?> sourceEntryId,
+      required String sourceUri,
+      Value<String> sourcePath,
+      Value<String> sourceDirectory,
+      required String sourceName,
+      required String sourceMimeType,
+      required String stagingDirectory,
+      required String stagedUri,
+      required int createdAt,
+      Value<String> status,
+      Value<int> rowid,
+    });
+typedef $$RefraEditSessionRowsTableUpdateCompanionBuilder =
+    RefraEditSessionRowsCompanion Function({
+      Value<String> id,
+      Value<int?> sourceEntryId,
+      Value<String> sourceUri,
+      Value<String> sourcePath,
+      Value<String> sourceDirectory,
+      Value<String> sourceName,
+      Value<String> sourceMimeType,
+      Value<String> stagingDirectory,
+      Value<String> stagedUri,
+      Value<int> createdAt,
+      Value<String> status,
+      Value<int> rowid,
+    });
+
+class $$RefraEditSessionRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $RefraEditSessionRowsTable> {
+  $$RefraEditSessionRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sourceEntryId => $composableBuilder(
+    column: $table.sourceEntryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceUri => $composableBuilder(
+    column: $table.sourceUri,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourcePath => $composableBuilder(
+    column: $table.sourcePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceDirectory => $composableBuilder(
+    column: $table.sourceDirectory,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceName => $composableBuilder(
+    column: $table.sourceName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceMimeType => $composableBuilder(
+    column: $table.sourceMimeType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get stagingDirectory => $composableBuilder(
+    column: $table.stagingDirectory,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get stagedUri => $composableBuilder(
+    column: $table.stagedUri,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RefraEditSessionRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $RefraEditSessionRowsTable> {
+  $$RefraEditSessionRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sourceEntryId => $composableBuilder(
+    column: $table.sourceEntryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceUri => $composableBuilder(
+    column: $table.sourceUri,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourcePath => $composableBuilder(
+    column: $table.sourcePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceDirectory => $composableBuilder(
+    column: $table.sourceDirectory,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceName => $composableBuilder(
+    column: $table.sourceName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceMimeType => $composableBuilder(
+    column: $table.sourceMimeType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stagingDirectory => $composableBuilder(
+    column: $table.stagingDirectory,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stagedUri => $composableBuilder(
+    column: $table.stagedUri,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RefraEditSessionRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RefraEditSessionRowsTable> {
+  $$RefraEditSessionRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get sourceEntryId => $composableBuilder(
+    column: $table.sourceEntryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceUri =>
+      $composableBuilder(column: $table.sourceUri, builder: (column) => column);
+
+  GeneratedColumn<String> get sourcePath => $composableBuilder(
+    column: $table.sourcePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceDirectory => $composableBuilder(
+    column: $table.sourceDirectory,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceName => $composableBuilder(
+    column: $table.sourceName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceMimeType => $composableBuilder(
+    column: $table.sourceMimeType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get stagingDirectory => $composableBuilder(
+    column: $table.stagingDirectory,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get stagedUri =>
+      $composableBuilder(column: $table.stagedUri, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+}
+
+class $$RefraEditSessionRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RefraEditSessionRowsTable,
+          RefraEditSessionRow,
+          $$RefraEditSessionRowsTableFilterComposer,
+          $$RefraEditSessionRowsTableOrderingComposer,
+          $$RefraEditSessionRowsTableAnnotationComposer,
+          $$RefraEditSessionRowsTableCreateCompanionBuilder,
+          $$RefraEditSessionRowsTableUpdateCompanionBuilder,
+          (
+            RefraEditSessionRow,
+            BaseReferences<
+              _$AppDatabase,
+              $RefraEditSessionRowsTable,
+              RefraEditSessionRow
+            >,
+          ),
+          RefraEditSessionRow,
+          PrefetchHooks Function()
+        > {
+  $$RefraEditSessionRowsTableTableManager(
+    _$AppDatabase db,
+    $RefraEditSessionRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RefraEditSessionRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RefraEditSessionRowsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$RefraEditSessionRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<int?> sourceEntryId = const Value.absent(),
+                Value<String> sourceUri = const Value.absent(),
+                Value<String> sourcePath = const Value.absent(),
+                Value<String> sourceDirectory = const Value.absent(),
+                Value<String> sourceName = const Value.absent(),
+                Value<String> sourceMimeType = const Value.absent(),
+                Value<String> stagingDirectory = const Value.absent(),
+                Value<String> stagedUri = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RefraEditSessionRowsCompanion(
+                id: id,
+                sourceEntryId: sourceEntryId,
+                sourceUri: sourceUri,
+                sourcePath: sourcePath,
+                sourceDirectory: sourceDirectory,
+                sourceName: sourceName,
+                sourceMimeType: sourceMimeType,
+                stagingDirectory: stagingDirectory,
+                stagedUri: stagedUri,
+                createdAt: createdAt,
+                status: status,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                Value<int?> sourceEntryId = const Value.absent(),
+                required String sourceUri,
+                Value<String> sourcePath = const Value.absent(),
+                Value<String> sourceDirectory = const Value.absent(),
+                required String sourceName,
+                required String sourceMimeType,
+                required String stagingDirectory,
+                required String stagedUri,
+                required int createdAt,
+                Value<String> status = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RefraEditSessionRowsCompanion.insert(
+                id: id,
+                sourceEntryId: sourceEntryId,
+                sourceUri: sourceUri,
+                sourcePath: sourcePath,
+                sourceDirectory: sourceDirectory,
+                sourceName: sourceName,
+                sourceMimeType: sourceMimeType,
+                stagingDirectory: stagingDirectory,
+                stagedUri: stagedUri,
+                createdAt: createdAt,
+                status: status,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RefraEditSessionRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RefraEditSessionRowsTable,
+      RefraEditSessionRow,
+      $$RefraEditSessionRowsTableFilterComposer,
+      $$RefraEditSessionRowsTableOrderingComposer,
+      $$RefraEditSessionRowsTableAnnotationComposer,
+      $$RefraEditSessionRowsTableCreateCompanionBuilder,
+      $$RefraEditSessionRowsTableUpdateCompanionBuilder,
+      (
+        RefraEditSessionRow,
+        BaseReferences<
+          _$AppDatabase,
+          $RefraEditSessionRowsTable,
+          RefraEditSessionRow
+        >,
+      ),
+      RefraEditSessionRow,
+      PrefetchHooks Function()
+    >;
+typedef $$RefraEditOutputRowsTableCreateCompanionBuilder =
+    RefraEditOutputRowsCompanion Function({
+      required String id,
+      required String sessionId,
+      required String uri,
+      Value<String> path,
+      required String fileName,
+      required String kind,
+      Value<int> sizeBytes,
+      required int createdAt,
+      Value<int> rowid,
+    });
+typedef $$RefraEditOutputRowsTableUpdateCompanionBuilder =
+    RefraEditOutputRowsCompanion Function({
+      Value<String> id,
+      Value<String> sessionId,
+      Value<String> uri,
+      Value<String> path,
+      Value<String> fileName,
+      Value<String> kind,
+      Value<int> sizeBytes,
+      Value<int> createdAt,
+      Value<int> rowid,
+    });
+
+class $$RefraEditOutputRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $RefraEditOutputRowsTable> {
+  $$RefraEditOutputRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get uri => $composableBuilder(
+    column: $table.uri,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RefraEditOutputRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $RefraEditOutputRowsTable> {
+  $$RefraEditOutputRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get uri => $composableBuilder(
+    column: $table.uri,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RefraEditOutputRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RefraEditOutputRowsTable> {
+  $$RefraEditOutputRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get sessionId =>
+      $composableBuilder(column: $table.sessionId, builder: (column) => column);
+
+  GeneratedColumn<String> get uri =>
+      $composableBuilder(column: $table.uri, builder: (column) => column);
+
+  GeneratedColumn<String> get path =>
+      $composableBuilder(column: $table.path, builder: (column) => column);
+
+  GeneratedColumn<String> get fileName =>
+      $composableBuilder(column: $table.fileName, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<int> get sizeBytes =>
+      $composableBuilder(column: $table.sizeBytes, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$RefraEditOutputRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RefraEditOutputRowsTable,
+          RefraEditOutputRow,
+          $$RefraEditOutputRowsTableFilterComposer,
+          $$RefraEditOutputRowsTableOrderingComposer,
+          $$RefraEditOutputRowsTableAnnotationComposer,
+          $$RefraEditOutputRowsTableCreateCompanionBuilder,
+          $$RefraEditOutputRowsTableUpdateCompanionBuilder,
+          (
+            RefraEditOutputRow,
+            BaseReferences<
+              _$AppDatabase,
+              $RefraEditOutputRowsTable,
+              RefraEditOutputRow
+            >,
+          ),
+          RefraEditOutputRow,
+          PrefetchHooks Function()
+        > {
+  $$RefraEditOutputRowsTableTableManager(
+    _$AppDatabase db,
+    $RefraEditOutputRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RefraEditOutputRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RefraEditOutputRowsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$RefraEditOutputRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> sessionId = const Value.absent(),
+                Value<String> uri = const Value.absent(),
+                Value<String> path = const Value.absent(),
+                Value<String> fileName = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<int> sizeBytes = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RefraEditOutputRowsCompanion(
+                id: id,
+                sessionId: sessionId,
+                uri: uri,
+                path: path,
+                fileName: fileName,
+                kind: kind,
+                sizeBytes: sizeBytes,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String sessionId,
+                required String uri,
+                Value<String> path = const Value.absent(),
+                required String fileName,
+                required String kind,
+                Value<int> sizeBytes = const Value.absent(),
+                required int createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => RefraEditOutputRowsCompanion.insert(
+                id: id,
+                sessionId: sessionId,
+                uri: uri,
+                path: path,
+                fileName: fileName,
+                kind: kind,
+                sizeBytes: sizeBytes,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RefraEditOutputRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RefraEditOutputRowsTable,
+      RefraEditOutputRow,
+      $$RefraEditOutputRowsTableFilterComposer,
+      $$RefraEditOutputRowsTableOrderingComposer,
+      $$RefraEditOutputRowsTableAnnotationComposer,
+      $$RefraEditOutputRowsTableCreateCompanionBuilder,
+      $$RefraEditOutputRowsTableUpdateCompanionBuilder,
+      (
+        RefraEditOutputRow,
+        BaseReferences<
+          _$AppDatabase,
+          $RefraEditOutputRowsTable,
+          RefraEditOutputRow
+        >,
+      ),
+      RefraEditOutputRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -12797,4 +14614,8 @@ class $AppDatabaseManager {
         _db,
         _db.groupedWallpaperHistoryRows,
       );
+  $$RefraEditSessionRowsTableTableManager get refraEditSessionRows =>
+      $$RefraEditSessionRowsTableTableManager(_db, _db.refraEditSessionRows);
+  $$RefraEditOutputRowsTableTableManager get refraEditOutputRows =>
+      $$RefraEditOutputRowsTableTableManager(_db, _db.refraEditOutputRows);
 }

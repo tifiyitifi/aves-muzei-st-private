@@ -21,4 +21,5 @@ abstract final class MetaPageKeys {
   static const String wallpaperHistory = '/grouped_wallpaper/history';
   static const String wallpaperGestures = '/wallpaper_groups/gestures';
   static const String wallpaperViewPad = '/settings/wallpaper/view_pad';
+  static const String refraEdit = '/settings/refra_edit';
 }

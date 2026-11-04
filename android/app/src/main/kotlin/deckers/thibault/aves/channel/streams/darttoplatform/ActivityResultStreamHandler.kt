@@ -16,6 +16,7 @@ import deckers.thibault.aves.storage.StorageUtils.ensureTrailingSeparator
 import deckers.thibault.aves.storage.apis.MediaStorePermissions
 import deckers.thibault.aves.storage.apis.SafPermissions
 import deckers.thibault.aves.utils.LogUtils
+import com.dot.gallery.feature_node.presentation.edit.EditActivity as RefraEditActivity
 import deckers.thibault.aves.utils.MimeTypes
 import deckers.thibault.aves.utils.anyCauseIs
 import kotlinx.coroutines.launch
@@ -47,6 +48,7 @@ class ActivityResultStreamHandler(private val activity: Activity, arguments: Any
             "openFile" -> ioScope.launch { safe(::openFile, closeStream) }
             "copyFile" -> ioScope.launch { safe(::copyFile, closeStream) }
             "edit" -> safe(::edit, closeStream)
+            "refraEdit" -> safe(::refraEdit, closeStream)
             "pickCollectionFilters" -> safe(::pickCollectionFilters, closeStream)
             else -> endOfStream()
         }
@@ -58,8 +60,7 @@ class ActivityResultStreamHandler(private val activity: Activity, arguments: Any
     }
 
     private fun requestSafAnyDirectoryAccess() {
-        SafPermissions.requestDirectoryAccess(activity, path = null, {
-            val dirPath = StorageUtils.convertTreeDocumentUriToDirPath(activity, it)
+        SafPermissions.requestDirectoryAccess(activity, path = null, {            val dirPath = StorageUtils.convertTreeDocumentUriToDirPath(activity, it)
             success(dirPath)
             endOfStream()
         }, {
@@ -275,8 +276,31 @@ class ActivityResultStreamHandler(private val activity: Activity, arguments: Any
         }
     }
 
-    private fun pickCollectionFilters() {
-        val initialFilters = (args["initialFilters"] as? List<*>)?.filterIsInstance<String>() ?: listOf()
+    /**
+     * Opens the fork's built-in ReFra editor on a staged copy.
+     *
+     * Unlike `edit`, the copy and its session folder are prepared by the Dart shell first, so an
+     * OEM editor that overwrites its input can never touch the user's original.
+     */
+    private fun refraEdit() {
+        val uri = args["uri"] as String?
+        val outputRelativePath = args["outputRelativePath"] as String?
+        if (uri == null || outputRelativePath == null) {
+            error("refraEdit-args", "missing arguments", null)
+            return
+        }
+        MainActivity.pendingRefraEditHandler = { fields ->
+            success(fields)
+            endOfStream()
+        }
+        val intent = Intent(activity, RefraEditActivity::class.java)
+            .setData(uri.toUri())
+            .putExtra(RefraEditActivity.EXTRA_OUTPUT_RELATIVE_PATH, outputRelativePath)
+        if (!safeStartActivityForResult(intent, MainActivity.REFRA_EDIT_REQUEST)) {
+            error("refraEdit-start", "cannot start the editor for uri=$uri", null)
+        }
+    }
+    private fun pickCollectionFilters() {        val initialFilters = (args["initialFilters"] as? List<*>)?.filterIsInstance<String>() ?: listOf()
         val intent = Intent(MainActivity.INTENT_ACTION_PICK_COLLECTION_FILTERS, null, activity, MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_KEY_FILTERS_ARRAY, initialFilters.toTypedArray())
             .putExtra(MainActivity.EXTRA_KEY_FILTERS_STRING, initialFilters.joinToString(MainActivity.EXTRA_STRING_ARRAY_SEPARATOR))

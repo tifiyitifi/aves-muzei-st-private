@@ -28,6 +28,8 @@ abstract class AppService {
 
   Future<Map<String, Object?>> edit(String uri, String mimeType);
 
+  Future<Map<String, Object?>> refraEdit(String uri, String outputRelativePath);
+
   Future<bool> open(String uri, String mimeType, {required bool forceChooser});
 
   Future<bool> openMap(LatLng latLng);
@@ -134,6 +136,37 @@ class PlatformAppService implements AppService {
       if (e.code != 'edit-resolve') {
         await reportService.recordError(e, stack);
       }
+      return {'error': e.code};
+    }
+  }
+
+  /// Opens the fork's built-in editor on a staged copy.
+  ///
+  /// [outputRelativePath] is the session folder (`Pictures/aves_refra_edit/<id>`); the editor
+  /// writes every result there, never to the directory the source came from.
+  @override
+  Future<Map<String, Object?>> refraEdit(String uri, String outputRelativePath) async {
+    try {
+      final opCompleter = Completer<Map?>();
+      _stream
+          .receiveBroadcastStream(<String, Object?>{
+            'op': 'refraEdit',
+            'uri': uri,
+            'outputRelativePath': outputRelativePath,
+          })
+          .listen(
+            (data) => opCompleter.complete(data as Map?),
+            onError: opCompleter.completeError,
+            onDone: () {
+              if (!opCompleter.isCompleted) opCompleter.complete({'error': 'cancelled'});
+            },
+            cancelOnError: true,
+          );
+      final result = await opCompleter.future;
+      if (result == null) return {'error': 'cancelled'};
+      return result.cast<String, Object?>();
+    } on PlatformException catch (e, stack) {
+      await reportService.recordError(e, stack);
       return {'error': e.code};
     }
   }

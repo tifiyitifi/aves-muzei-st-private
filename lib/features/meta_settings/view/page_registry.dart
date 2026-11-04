@@ -2,6 +2,7 @@ import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_pad_editor_page.dart';
 import 'package:aves/features/meta_settings/model/page_keys.dart';
+import 'package:aves/features/refra_edit/view/refra_edit_settings_page.dart';
 import 'package:aves/widgets/settings/navigation/bottom_nav_actions_editor_page.dart';
 import 'package:aves/widgets/settings/navigation/confirmation_dialog_page.dart';
 import 'package:aves/widgets/settings/navigation/drawer_editor_page.dart';
@@ -40,4 +41,5 @@ final Map<String, WidgetBuilder> metaPageRegistry = {
   MetaPageKeys.wallpaperHistory: (context) => const GroupedWallpaperHistoryPage(),
   MetaPageKeys.wallpaperGestures: (context) => const GroupedWallpaperGesturesPage(),
   MetaPageKeys.wallpaperViewPad: (context) => const GroupedWallpaperPadEditorPage(),
+  MetaPageKeys.refraEdit: (context) => const RefraEditSettingsPage(),
 };

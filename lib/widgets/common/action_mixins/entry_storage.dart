@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
+import 'package:aves/features/media_ops/media_op_outcome.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/favourites.dart';
 import 'package:aves/model/entry/extensions/keys.dart';
@@ -308,6 +309,7 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
       itemCount: todoCount,
       onCancel: () => mediaEditService.cancelFileOp(opId),
       onDone: (processed) async {
+        await recordMediaOpOutcome(processed);
         final successOps = processed.where((op) => op.success).toSet();
 
         // move
@@ -474,6 +476,7 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
       itemCount: todoCount,
       onCancel: () => mediaEditService.cancelFileOp(opId),
       onDone: (processed) async {
+        await recordMediaOpOutcome(processed);
         final successOps = processed.where((op) => op.success).toSet();
         final movedOps = successOps.where((op) => !op.skipped).toSet();
         await source.updateAfterRename(

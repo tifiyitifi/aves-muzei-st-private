@@ -1,3 +1,4 @@
+import 'package:aves/features/media_ops/view/media_op_engine_tile.dart';
 import 'package:aves/features/meta_settings/model/enum/settings_engine_version.dart';
 import 'package:aves/features/meta_settings/settings_engine_controller.dart';
 import 'package:aves/features/meta_settings/store/settings_engine_gate.dart';
@@ -29,7 +30,7 @@ class SettingsVersionSection extends SettingsSection {
   String title(BuildContext context) => context.l10n.settingsAdvancedSectionTitle;
 
   @override
-  Future<List<SettingsTile>> tiles(BuildContext context) => Future.value([SettingsVersionTile()]);
+  Future<List<SettingsTile>> tiles(BuildContext context) => Future.value([SettingsVersionTile(), MediaOpEngineTile()]);
 }
 
 class SettingsVersionTile extends SettingsTile {

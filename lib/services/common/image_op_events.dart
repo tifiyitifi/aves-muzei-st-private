@@ -30,8 +30,16 @@ class MoveOpEvent extends ImageOpEvent {
   final Map newFields;
   final bool deleted;
 
+  /// Outcome of the system write request, reported at most once per operation:
+  /// `granted`, `denied`, `unavailable`, or null for the legacy pipeline.
+  final String? permission;
+
+  /// Storage path the entry took: `mediastore`, `file`, `saf`, or null for the
+  /// legacy pipeline.
+  final String? strategy;
+
   @override
-  List<Object?> get props => [success, skipped, uri, newFields, deleted];
+  List<Object?> get props => [success, skipped, uri, newFields, deleted, permission, strategy];
 
   const new({
     required super.success,
@@ -39,6 +47,8 @@ class MoveOpEvent extends ImageOpEvent {
     required super.uri,
     required this.newFields,
     required this.deleted,
+    this.permission,
+    this.strategy,
   });
 
   factory fromMap(Map map) {
@@ -51,6 +61,8 @@ class MoveOpEvent extends ImageOpEvent {
       uri: map['uri'],
       newFields: newFields,
       deleted: deleted,
+      permission: map['permission'] as String?,
+      strategy: map['strategy'] as String?,
     );
   }
 }

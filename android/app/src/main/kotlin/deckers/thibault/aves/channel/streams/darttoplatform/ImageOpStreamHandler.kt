@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.core.net.toUri
 import deckers.thibault.aves.channel.calls.MediaEditHandler.Companion.cancelledOps
 import deckers.thibault.aves.channel.streams.BaseStreamHandler
+import deckers.thibault.aves.features.media_ops.MediaOpEngine
+import deckers.thibault.aves.features.media_ops.MediaOpV2
 import deckers.thibault.aves.model.AvesEntry
 import deckers.thibault.aves.model.FieldMap
 import deckers.thibault.aves.model.NameConflictStrategy
@@ -21,6 +23,11 @@ class ImageOpStreamHandler(private val context: Context, private val arguments: 
     private var opId: String? = null
     private val entryMapList = ArrayList<FieldMap>()
 
+    // fork: the operation engine is chosen per operation, so switching back to
+    // the legacy pipeline never needs a code change
+    private var engine: MediaOpEngine = MediaOpEngine.DEFAULT
+    private var allowPermissionPrompt = true
+
     init {
         if (arguments is Map<*, *>) {
             op = arguments["op"] as String?
@@ -30,6 +37,8 @@ class ImageOpStreamHandler(private val context: Context, private val arguments: 
             if (rawEntries != null) {
                 entryMapList.addAll(rawEntries)
             }
+            engine = MediaOpEngine.fromName(arguments["engine"] as String?)
+            allowPermissionPrompt = arguments["allowPermissionPrompt"] as Boolean? ?: true
         }
     }
 
@@ -156,6 +165,21 @@ class ImageOpStreamHandler(private val context: Context, private val arguments: 
         // always use Media Store (as we move from or to it)
         val provider = MediaStoreImageProvider()
 
+        if (engine == MediaOpEngine.V2) {
+            MediaOpV2(context, allowPermissionPrompt).moveMultiple(
+                copy = copy,
+                nameConflictStrategy = nameConflictStrategy,
+                entriesByTargetDir = entriesByTargetDir,
+                isCancelledOp = ::isCancelledOp,
+                callback = object : ImageOpCallback {
+                    override fun onSuccess(fields: FieldMap) = success(fields)
+                    override fun onFailure(throwable: Throwable) = error("move-failure", "failed to move entries", throwable)
+                },
+            )
+            endOfStream()
+            return
+        }
+
         provider.moveMultiple(
             context = context,
             copy = copy,
@@ -190,7 +214,21 @@ class ImageOpStreamHandler(private val context: Context, private val arguments: 
             entriesToNewName[AvesEntry(rawEntry)] = newName
         }
 
+        if (engine == MediaOpEngine.V2) {
+            MediaOpV2(context, allowPermissionPrompt).renameMultiple(
+                entriesToNewName = entriesToNewName,
+                isCancelledOp = ::isCancelledOp,
+                callback = object : ImageOpCallback {
+                    override fun onSuccess(fields: FieldMap) = success(fields)
+                    override fun onFailure(throwable: Throwable) = error("rename-failure", "failed to rename", throwable.message)
+                },
+            )
+            endOfStream()
+            return
+        }
+
         val byProvider = entriesToNewName.entries.groupBy { kv -> getProvider(context, kv.key.uri) }
+
         for ((provider, entryList) in byProvider) {
             if (provider == null) {
                 error("rename-provider", "failed to find provider for entry=${entryList.firstOrNull()}", null)

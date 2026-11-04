@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/view/paged_scope_guard.dart';
+import 'package:aves/features/media_ops/media_op_outcome.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/dynamic_albums.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -536,6 +537,7 @@ class AlbumChipSetActionDelegate extends ChipSetActionDelegate<AlbumBaseFilter> 
       itemCount: todoCount,
       onCancel: () => mediaEditService.cancelFileOp(opId),
       onDone: (processed) async {
+        await recordMediaOpOutcome(processed);
         final successOps = processed.where((op) => op.success).toSet();
         final movedOps = successOps.where((op) => !op.skipped).toSet();
         await source.renameStoredAlbum(album, destinationAlbum, todoEntries, movedOps);

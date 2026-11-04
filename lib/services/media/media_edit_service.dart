@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/media_ops/engine/media_op_prefs.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/services/common/channel.dart';
 import 'package:aves/services/common/image_op_events.dart';
@@ -102,6 +103,8 @@ class PlatformMediaEditService implements MediaEditService {
             'entriesByDestination': entriesByDestination.map((destination, entries) => MapEntry(destination, entries.map((entry) => entry.toPlatformEntryMap()).toList())),
             'copy': copy,
             'nameConflictStrategy': nameConflictStrategy.toPlatform(),
+            'engine': mediaOpPrefs.engine.name,
+            'allowPermissionPrompt': mediaOpPrefs.allowPermissionPrompt,
           })
           .where((event) => event is Map)
           .map((event) => MoveOpEvent.fromMap(event as Map));
@@ -151,6 +154,8 @@ class PlatformMediaEditService implements MediaEditService {
             'op': 'rename',
             'id': opId,
             'entriesToNewName': entriesToNewName.map((entry, name) => MapEntry(entry.toPlatformEntryMap(), name)),
+            'engine': mediaOpPrefs.engine.name,
+            'allowPermissionPrompt': mediaOpPrefs.allowPermissionPrompt,
           })
           .where((event) => event is Map)
           .map((event) => MoveOpEvent.fromMap(event as Map));

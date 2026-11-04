@@ -1,4 +1,5 @@
 import 'package:aves/features/collection_paging/view/collection_paging_editors.dart';
+import 'package:aves/features/media_ops/view/media_op_engine_editor.dart';
 import 'package:aves/features/meta_settings/model/editor_keys.dart';
 import 'package:aves/features/meta_settings/model/setting_def.dart';
 import 'package:aves/features/meta_settings/view/widgets/editors/accessibility_editors.dart';
@@ -40,6 +41,7 @@ final Map<String, MetaEditorBuilder> metaEditorRegistry = {
   MetaEditorKeys.collectionAskBeforeCatalog: (context, def) => CollectionAskBeforeCatalogEditor(def: def),
   MetaEditorKeys.collectionBrowseOnlyBar: (context, def) => CollectionBrowseOnlyBarEditor(def: def),
   MetaEditorKeys.collectionBackgroundWork: (context, def) => CollectionBackgroundWorkEditor(def: def),
+  MetaEditorKeys.mediaOpEngine: (context, def) => const MediaOpEngineEditor(),
   MetaEditorKeys.wallpaperNavMode: (context, def) => WallpaperNavModeEditor(def: def),
   MetaEditorKeys.wallpaperNotification: (context, def) => WallpaperNotificationEditor(def: def),
   MetaEditorKeys.wallpaperNotificationActions: (context, def) => WallpaperNotificationActionsEditor(def: def),

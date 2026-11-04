@@ -1,5 +1,6 @@
 import 'package:aves/features/collection_paging/engine/collection_paging_keys.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
+import 'package:aves/features/media_ops/engine/media_op_keys.dart';
 import 'package:aves/features/wallpaper_lock/db/wallpaper_lock_store.dart';
 import 'package:aves/features/meta_settings/data/def_visibility.dart';
 import 'package:aves/features/meta_settings/model/editor_keys.dart';
@@ -626,6 +627,14 @@ final List<SettingDef> _advancedDefs = [
     title: (context) => context.l10n.settingsCollectionEngineTile,
     editorKey: MetaEditorKeys.collectionEngine,
     sortOrder: 20,
+  ),
+  SettingDef(
+    key: MediaOpKeys.engine,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.custom,
+    title: (context) => context.l10n.settingsMediaOpEngineTile,
+    editorKey: MetaEditorKeys.mediaOpEngine,
+    sortOrder: 25,
   ),
   SettingDef(
     key: CollectionPagingKeys.windowSize,

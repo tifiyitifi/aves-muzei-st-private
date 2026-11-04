@@ -160,6 +160,7 @@ New fork-only features must reuse the existing stack, not introduce a parallel o
 - **Exempt:** UI widgets/layout, adapted third-party sources, platform channels (video/Google/report/Android native), and flavor/build config. For bug fixes, add a regression test that reproduces the bug first whenever feasible.
 - Tests that need platform services must call `setUpAllServices()` / `setUpServices()` from `test/common.dart`, which registers in-memory fakes (SharedPreferences, media/db/storage services). Don't hit real platform channels.
 - Database tests use an in-memory database; `test/common.dart` forces a POSIX `p.Context` so path tests behave the same on Windows.
+- **Database tests on a Windows host need a full native sqlite3.** `flutter test` runs on the host VM without the plugin bundling step, so `sqlite3_flutter_libs` supplies nothing there and `test/helpers/sqlite3_loader.dart` fails loudly instead of skipping. Point `AVES_SQLITE3_DLL` at a full build, e.g. `setx AVES_SQLITE3_DLL "%LOCALAPPDATA%\aves-dev\sqlite3\sqlite3.dll"` (new shells only). Do **not** use `%SystemRoot%\System32\winsqlite3.dll`: Microsoft's build has no working `localtime` modifier, so `datetime('now','localtime')` returns NULL, every month/day section header query comes back empty, and the paged lens blocks instead of showing rows (77 collection-paging tests fail). Linux/macOS need nothing.
 
 ## Version bump checklist
 

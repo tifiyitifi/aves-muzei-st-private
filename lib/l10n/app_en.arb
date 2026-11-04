@@ -831,6 +831,37 @@
   "albumPickPageTitleMove": "Move to Album",
   "albumPickPageTitlePick": "Pick Album",
 
+  "albumContentsMoveAction": "Move album contents",
+  "albumContentsMoveTitle": "Move album contents",
+  "albumContentsMoveSummary": "{count, plural, =1{Move 1 item into one destination album.} other{Move {count} items into one destination album.}}",
+  "@albumContentsMoveSummary": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "albumContentsMoveSelectedAlbums": "Selected albums: {count}",
+  "@albumContentsMoveSelectedAlbums": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "albumContentsMoveDestination": "Destination album",
+  "albumContentsMoveDestinationNone": "Not selected",
+  "albumContentsMoveDeleteEmptyFolders": "Delete emptied album folders",
+  "albumContentsMoveDeleteEmptyFoldersHint": "Only selected albums that this move emptied are removed, and only when they are completely empty. Any file, hidden item, or subfolder, even an empty one, keeps the folder.",
+  "albumContentsMoveDeleteEmptyFoldersUnavailable": "Only ordinary album folders can be removed. App, camera, download, and vault folders are kept.",
+  "albumContentsMoveEmpty": "No visible items to move in the selected albums.",
+  "albumContentsMoveDestinationInsideSource": "Choose a destination outside the selected albums.",
+  "albumContentsMoveDestinationIsSource": "Choose a different album. The destination is the only selected album.",
+  "albumContentsMoveInvalidDestination": "This destination cannot be used. Choose another album.",
+  "albumContentsMoveButtonLabel": "MOVE",
+
   "albumCamera": "Camera",
   "albumDownload": "Download",
   "albumScreenshots": "Screenshots",

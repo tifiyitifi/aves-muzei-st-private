@@ -201,6 +201,9 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
     required MoveType moveType,
     required Map<String, Set<AvesEntry>> entriesByDestination,
     bool hideShowAction = false,
+    // Callers that own a stricter cleanup pass (for example, one that only
+    // removes folders the user explicitly opted into) disable this legacy sweep.
+    bool cleanupEmptySourceDirectories = true,
     VoidCallback? onSuccess,
   }) async {
     if (moveType == MoveType.move) {
@@ -330,7 +333,7 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
         source.resumeMonitoring();
 
         // cleanup
-        if ({MoveType.move, MoveType.toBin}.contains(moveType)) {
+        if (cleanupEmptySourceDirectories && {MoveType.move, MoveType.toBin}.contains(moveType)) {
           await storageService.deleteEmptyRegularDirectories(originAlbums);
         }
 

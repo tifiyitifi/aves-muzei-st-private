@@ -30,6 +30,9 @@ class FilterNavigationPage<T extends CollectionFilter, CSAD extends ChipSetActio
   final SortFactor sortFactor;
   final bool showHeaders;
   final CSAD actionDelegate;
+  final ActionsBuilder<T, CSAD>? extraActionsBuilder;
+  final ExtraMenuEntriesBuilder<T, CSAD>? extraMenuEntriesBuilder;
+  final ValueChanged<Object>? onExtraMenuSelected;
   final Map<ChipSectionKey, List<FilterGridItem<T>>> filterSections;
   final Set<T>? newFilters;
   final Widget Function() emptyBuilder;
@@ -41,6 +44,9 @@ class FilterNavigationPage<T extends CollectionFilter, CSAD extends ChipSetActio
     required this.sortFactor,
     this.showHeaders = false,
     required this.actionDelegate,
+    this.extraActionsBuilder,
+    this.extraMenuEntriesBuilder,
+    this.onExtraMenuSelected,
     required this.filterSections,
     this.newFilters,
     required this.emptyBuilder,
@@ -151,6 +157,9 @@ class _FilterNavigationPageState<T extends CollectionFilter, CSAD extends ChipSe
                 source: widget.source,
                 title: widget.title,
                 actionDelegate: widget.actionDelegate,
+                extraActionsBuilder: widget.extraActionsBuilder,
+                extraMenuEntriesBuilder: widget.extraMenuEntriesBuilder,
+                onExtraMenuSelected: widget.onExtraMenuSelected,
                 appBarHeightNotifier: _appBarHeightNotifier,
                 scrollController: scrollController,
                 onGroupCrumbTap: (context, filter) {

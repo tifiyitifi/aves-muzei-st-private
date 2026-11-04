@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/album_contents_move/view/album_contents_move_action.dart';
 import 'package:aves/features/browse_only/view/browse_albums_view.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/summary/ensure_album_list.dart';
@@ -127,6 +128,9 @@ class _AlbumListPageState extends State<AlbumListPage> {
                             sortFactor: settings.albumSortFactor,
                             showHeaders: settings.albumSectionFactor != ChipSectionFactor.none,
                             actionDelegate: AlbumChipSetActionDelegate(gridItems),
+                            extraActionsBuilder: buildAlbumContentsMoveActions,
+                            extraMenuEntriesBuilder: buildAlbumContentsMoveMenuEntries,
+                            onExtraMenuSelected: (value) => unawaited(handleAlbumContentsMoveMenuSelection(context, value)),
                             filterSections: groupToSections(context, source, gridItems),
                             newFilters: source.getNewAlbumFilters(context),
                             emptyBuilder: () => EmptyContent(

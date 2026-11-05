@@ -932,7 +932,7 @@ class PagedCollectionLens extends CollectionLens {
         // Bounded, like the bootstrap's own generation read: a platform reply lost
         // while the engine restarts would otherwise freeze the resolve on its
         // loading body (see `withPlatformTimeout`).
-        await withPlatformTimeout(() => PagedDiscoverer().syncIfChanged(), label: 'media store sync');
+        await withPlatformTimeout(pagedDiscoverer.syncIfChanged, label: 'media store sync');
         if (!_current(gen)) return;
 
         var decision = await const CollectionEngineRouter().resolve(filters: filters);
@@ -1103,7 +1103,7 @@ class PagedCollectionLens extends CollectionLens {
   /// hands entries over newest first, later batches only append older rows at
   /// the tail, so nothing already on screen is reordered.
   Future<void> _initialImport(int gen) async {
-    final discoverer = PagedDiscoverer();
+    final discoverer = pagedDiscoverer;
     if (!collectionPagingPrefs.importExplained) {
       // One-time: what the app is doing and how long it takes. The settings
       // page keeps the same explanation available afterwards.

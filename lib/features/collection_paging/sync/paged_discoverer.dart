@@ -551,3 +551,11 @@ class PagedDiscoverer {
     }
   }
 }
+
+/// The app-wide discoverer.
+///
+/// One instance, because part of its state is in memory: the import flag and
+/// the failed-URI list only live here, while the generation cursor is on disk.
+/// Two instances would each read that cursor and both move it past the same
+/// change, and a resolve would race the resume sync for the same rows.
+final PagedDiscoverer pagedDiscoverer = PagedDiscoverer();

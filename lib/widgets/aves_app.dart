@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:aves/app_flavor.dart';
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
+import 'package:aves/features/collection_paging/sync/paged_resume_sync.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_restore_notice.dart';
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_target_source.dart';
@@ -409,6 +410,12 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
         availability.onResume();
         RecentlyAddedFilter.updateNow();
         _mediaStoreSource.checkForChanges();
+        // A view that stays mounted never resolves again, so returning to the
+        // foreground is the other moment the database has to catch up with the
+        // MediaStore. The generation check is what makes it cheap when nothing
+        // changed; a database-owned source skips the legacy path above, so the
+        // two never race for the same rows.
+        unawaited(syncPagedLibraryOnResume());
         // The wallpaper binding is lost while the app is away, and it comes back
         // when the user re-applies through the picker, so the notice is re-asked
         // on every return instead of trusting the startup answer.

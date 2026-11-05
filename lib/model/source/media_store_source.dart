@@ -299,6 +299,12 @@ class MediaStoreSource extends CollectionSource {
   // sometimes yields an entry with its temporary path: `/data/sec/camera/!@#$%^..._temp.jpg`
   @override
   Future<Set<String>> refreshUris(Set<String> changedUris, {AnalysisController? analysisController}) async {
+    // A database-owned source has its own discovery (the paged sync): this path
+    // materializes rows into `_entriesById`, which would write behind the engine
+    // and duplicate what it already stored. Returning nothing also keeps the
+    // caller from re-arming itself, so a paused source no longer reorders the
+    // library once per debounce delay.
+    if (summaries != null) return const {};
     if (!canRefresh || _essentialLoader == null || !isReady) return changedUris;
 
     state = SourceState.loading;
@@ -424,6 +430,10 @@ class MediaStoreSource extends CollectionSource {
 
   @override
   Future<void> checkForChanges() async {
+    // Same ownership rule as `refreshUris`: a database-backed source syncs by
+    // generation on its own (see `syncPagedLibraryOnResume`), so collecting URIs
+    // here would only fill a set the in-memory refresh never drains.
+    if (summaries != null) return;
     final sinceGeneration = _lastGenerationByVolume;
     await updateGeneration();
     if (sinceGeneration != null) {

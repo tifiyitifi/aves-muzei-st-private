@@ -1,6 +1,7 @@
 import 'package:aves/features/album_contents_transfer/model/album_contents_rename_plan.dart';
 import 'package:aves/features/album_contents_transfer/services/album_directory_rename_service.dart';
 import 'package:aves/features/album_contents_transfer/services/album_rename_outcome_applier.dart';
+import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/services/common/services.dart';
@@ -19,9 +20,11 @@ const _proactiveSafGrantThreshold = 500;
 /// Renames the album's folder in one call when the platform can do it, and
 /// carries the database rows and the album state over.
 ///
-/// Two strategies, in order: app-private storage (the vault), then a SAF
-/// grant. Both move the whole folder, and both keep the row ids that
-/// favourites, covers and pins are keyed on.
+/// Three strategies, in order: app-private storage (the vault), a SAF grant,
+/// then one Media Store update per collection. The first two move the whole
+/// folder; the third moves the direct children, exactly what the batched move
+/// does. All of them keep the row ids that favourites, covers and pins are
+/// keyed on.
 ///
 /// Answers false when the caller must keep the batched move: no strategy
 /// applies, the platform refused, or a folder with that name exists (the
@@ -41,6 +44,14 @@ Future<bool> renameAlbumDirectoryInstantly(
     // A large album is worth one system dialog: the grant turns a long, visible
     // move into a single folder rename, and a refusal only costs the prompt.
     outcome = await _requestFolderAccessAndRetry(context, plan: plan, newName: newName) ?? outcome;
+  }
+
+  if (outcome.failure == AlbumDirectoryRenameFailure.partial) {
+    // The platform moved some rows and kept their ids. Catch the database up
+    // before the batched path reads the old folder, or it would try to move
+    // files already sitting in the destination and report them as missing.
+    await pagedDiscoverer.syncIfChanged();
+    return false;
   }
 
   if (!outcome.succeeded) return false;

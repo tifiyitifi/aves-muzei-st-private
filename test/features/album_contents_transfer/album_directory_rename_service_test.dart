@@ -2,8 +2,9 @@ import 'package:aves/features/album_contents_transfer/services/album_directory_r
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The platform answers with the strategy it ran: the caller decides between
-/// carrying the rename over and falling back to the batched move.
+/// The platform answers with a strategy and, for a partial Media Store move,
+/// how many rows already moved: the caller decides between falling back and
+/// syncing the database first.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -47,11 +48,13 @@ void main() {
       'renamed': true,
       'strategy': 'saf',
       'destination': '/storage/emulated/0/Pictures/Trips',
+      'movedRows': -1,
       'failure': null,
     });
 
     expect(outcome.succeeded, isTrue);
     expect(outcome.strategy, AlbumDirectoryRenameStrategy.saf);
+    expect(outcome.movedRows, -1);
   });
 
   test('an unsupported folder falls back to the batched move', () async {
@@ -60,6 +63,20 @@ void main() {
     expect(outcome.succeeded, isFalse);
     expect(outcome.failure, AlbumDirectoryRenameFailure.unsupported);
     expect(outcome.strategy, isNull);
+  });
+
+  test('a partial bulk move reports the rows that already moved', () async {
+    final outcome = await rename(reply: {
+      'renamed': false,
+      'strategy': 'mediaStoreBulk',
+      'movedRows': 3,
+      'failure': 'partial',
+    });
+
+    expect(outcome.succeeded, isFalse);
+    expect(outcome.failure, AlbumDirectoryRenameFailure.partial);
+    expect(outcome.strategy, AlbumDirectoryRenameStrategy.mediaStoreBulk);
+    expect(outcome.movedRows, 3);
   });
 
   test('a missing platform answers a plain failure', () async {

@@ -197,6 +197,12 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   Future<int> countEntries([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
   @override
+  Future<int> countInDirectory(String directory) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
+  Future<int> renameDirectoryPrefix({required String oldDirectory, required String newDirectory}) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
+  @override
   Future<List<AvesEntry>> loadEntryWindow({
     CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     String? directoryEquals,

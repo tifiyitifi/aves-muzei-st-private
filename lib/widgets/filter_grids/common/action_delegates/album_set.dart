@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/album_contents_transfer/view/album_contents_delete_action.dart';
 import 'package:aves/features/album_contents_transfer/view/album_contents_rename_action.dart';
+import 'package:aves/features/album_contents_transfer/view/album_rename_guard.dart';
 import 'package:aves/features/media_ops/media_op_outcome.dart';
 import 'package:aves/features/visible_range/services/visible_range_locks.dart';
 import 'package:aves/model/covers.dart';
@@ -457,6 +458,12 @@ class AlbumChipSetActionDelegate extends ChipSetActionDelegate<AlbumBaseFilter> 
         // do not allow renaming volume root
         if (dir == null || dir.relativeDir.isEmpty) return;
       }
+
+      // A rename renames the folder, so it moves what the folder holds. When
+      // that is more than the view shows (a visible range, a hidden filter),
+      // the action asks before taking anything the user cannot see.
+      if (!await allowStoredAlbumRename(context, filter, delegate: this)) return;
+      if (!context.mounted) return;
 
       final newName = await showAvesDialog<String>(
         context: context,

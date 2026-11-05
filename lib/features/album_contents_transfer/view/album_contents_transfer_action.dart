@@ -113,6 +113,27 @@ Future<void> handleAlbumContentsTransferMenuSelection(BuildContext context, Obje
   );
 }
 
+/// Moves what the view shows of one album into another, without the album grid
+/// behind it.
+///
+/// The rename guard offers this when the album's folder holds items outside the
+/// current view: a move is defined over the visible set, so it cannot take
+/// anything the user was not looking at.
+Future<void> moveAlbumContentsToAnotherAlbum(
+  BuildContext context,
+  StoredAlbumFilter filter, {
+  required AlbumChipSetActionDelegate delegate,
+}) async {
+  await _start(
+    context: context,
+    moveType: MoveType.move,
+    albums: {filter},
+    // No grid selection to return to: the caller decides where to go next.
+    selection: null,
+    delegate: delegate,
+  );
+}
+
 String _actionLabel(BuildContext context, MoveType moveType) {
   return moveType == MoveType.copy ? context.l10n.albumContentsCopyAction : context.l10n.albumContentsMoveAction;
 }
@@ -154,7 +175,7 @@ Future<void> _start({
   required BuildContext context,
   required MoveType moveType,
   required Set<StoredAlbumFilter> albums,
-  required Selection<FilterGridItem<AlbumBaseFilter>> selection,
+  required Selection<FilterGridItem<AlbumBaseFilter>>? selection,
   required AlbumChipSetActionDelegate delegate,
 }) async {
   if (albums.isEmpty) return;
@@ -255,7 +276,7 @@ Future<void> _start({
       cleanupEmptySourceDirectories: false,
     );
     if (!context.mounted || !completed) return;
-    selection.browse();
+    selection?.browse();
   } else {
     final transferAlbums = albums.where((filter) => plan.movingAlbums.contains(filter.album)).toSet();
     final predicate = AlbumContentsScope.predicateFor(transferAlbums);
@@ -292,7 +313,7 @@ Future<void> _start({
     if (summary != null) {
       delegate.showFeedback(context, summary.type, summary.message, summary.action);
     }
-    selection.browse();
+    selection?.browse();
   }
 
   if (!copy && answer.deleteEmptyFolders) {

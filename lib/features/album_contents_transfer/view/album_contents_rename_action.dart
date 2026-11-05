@@ -1,6 +1,7 @@
 import 'package:aves/features/album_contents_transfer/model/album_contents_rename_plan.dart';
 import 'package:aves/features/album_contents_transfer/services/album_contents_entry_feed.dart';
 import 'package:aves/features/album_contents_transfer/services/album_contents_scope.dart';
+import 'package:aves/features/album_contents_transfer/view/album_instant_rename_action.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/features/collection_paging/summary/paged_summary_registry.dart';
 import 'package:aves/features/collection_paging/view/paged_scope_guard.dart';
@@ -14,11 +15,13 @@ import 'package:provider/provider.dart';
 
 /// Renames a stored album on a windowed library.
 ///
-/// A rename moves the album's contents into a sibling folder, and a library too
-/// large to load holds no entries to hand to that move. The album's visible
-/// scope is resolved as the very predicate its tile counts (visible range,
-/// hidden filters and locked vaults included) and walked in bounded batches, so
-/// the album-level state that follows the rename still applies once, at the end,
+/// Two ways, in order. A folder the app owns (the vault) is renamed by one
+/// native call, and its rows follow it with a single prefix rewrite; anything
+/// else moves the album's contents into a sibling folder. A library too large
+/// to load holds no entries to hand to that move, so the album's visible scope
+/// is resolved as the very predicate its tile counts (visible range, hidden
+/// filters and locked vaults included) and walked in bounded batches, so the
+/// album-level state that follows the rename still applies once, at the end,
 /// exactly like the legacy path.
 ///
 /// Answers false when the caller must keep its in-memory path: the source is
@@ -38,6 +41,12 @@ Future<bool> renameStoredAlbumFromDatabase(
   // name has nothing to move: both answer success without touching the library.
   if (plan.isNoOp || !plan.isValid) return true;
 
+  final delegate = EntrySetActionDelegate();
+
+  // A folder the app owns moves in one call, and the rows follow it: no batch,
+  // no per-entry progress. Everything else keeps the batched move below.
+  if (await renameAppPrivateAlbumDirectory(context, filter: filter, plan: plan, delegate: delegate)) return true;
+
   final scope = await AlbumContentsScope.resolve({filter});
   if (!context.mounted) return true;
   if (scope == null) {
@@ -48,7 +57,6 @@ Future<bool> renameStoredAlbumFromDatabase(
   }
 
   final source = context.read<CollectionSource>();
-  final delegate = EntrySetActionDelegate();
   var movedAny = false;
 
   if (scope.entryCount > 0) {
@@ -95,8 +103,9 @@ Future<bool> renameStoredAlbumFromDatabase(
 
   await source.applyStoredAlbumRename(filter.album, plan.destination);
 
-  // Only the visible entries moved, so a folder the range left something in
-  // stays: this is the same strict emptiness check the legacy cleanup does.
+  // The rename guard keeps this path to albums whose whole folder the view
+  // shows, so what moved is everything the folder held; the strict emptiness
+  // check below still covers a merge into a non-empty destination.
   await storageService.deleteEmptyRegularDirectories({filter.album});
   // The database holds the renamed rows now: reload the summaries so the album
   // list and its counts stop showing the album under its old name.

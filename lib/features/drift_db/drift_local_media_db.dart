@@ -218,6 +218,13 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<int> countEntries([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]) => _entries.count(predicate: predicate);
 
   @override
+  Future<int> countInDirectory(String directory) => _entries.countInDirectory(directory);
+
+  @override
+  Future<int> renameDirectoryPrefix({required String oldDirectory, required String newDirectory}) =>
+      _entries.renameDirectoryPrefix(oldDirectory: oldDirectory, newDirectory: newDirectory);
+
+  @override
   Future<List<AvesEntry>> loadEntryWindow({
     CollectionWindowPredicate predicate = const CollectionWindowPredicate(),
     String? directoryEquals,

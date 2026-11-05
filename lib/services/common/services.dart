@@ -1,4 +1,5 @@
 import 'package:aves/model/availability.dart';
+import 'package:aves/features/album_contents_transfer/services/album_directory_rename_service.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/drift_db/drift_local_media_db.dart';
 import 'package:aves/features/meta_settings/store/settings_store_router.dart';
@@ -93,4 +94,6 @@ void initPlatformServices() {
   getIt.registerLazySingleton<StorageService>(PlatformStorageService.new);
   getIt.registerLazySingleton<StoragePermissionService>(PlatformStoragePermissionService.new);
   getIt.registerLazySingleton<WindowService>(PlatformWindowService.new);
+  // fork slice: whole-directory rename for albums the app owns
+  getIt.registerLazySingleton<AlbumDirectoryRenameService>(PlatformAlbumDirectoryRenameService.new);
 }

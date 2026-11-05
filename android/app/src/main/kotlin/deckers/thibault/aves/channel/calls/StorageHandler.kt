@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.os.storage.StorageManager
 import deckers.thibault.aves.channel.calls.Coresult.Companion.safe
+import deckers.thibault.aves.storage.AlbumRename
 import deckers.thibault.aves.storage.PermissionManager
 import deckers.thibault.aves.storage.StorageUtils
 import deckers.thibault.aves.utils.FileUtils.getFolderSize
@@ -32,6 +33,7 @@ class StorageHandler(private val context: Context) : MethodCallHandler {
             "deleteEmptyDirectories" -> ioScope.launch { safe(call, result, ::deleteEmptyDirectories) }
             "deleteTempDirectory" -> ioScope.launch { safe(call, result, ::deleteTempDirectory) }
             "deleteExternalCache" -> ioScope.launch { safe(call, result, ::deleteExternalCache) }
+            "renameAppPrivateDirectory" -> ioScope.launch { safe(call, result, ::renameAppPrivateDirectory) }
             else -> result.notImplemented()
         }
     }
@@ -197,6 +199,16 @@ class StorageHandler(private val context: Context) : MethodCallHandler {
 
     private fun deleteTempDirectory(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
         result.success(StorageUtils.deleteTempDirectory(context))
+    }
+
+    private fun renameAppPrivateDirectory(call: MethodCall, result: MethodChannel.Result) {
+        val oldDir = call.argument<String>("oldDir")
+        val newName = call.argument<String>("newName")
+        if (oldDir == null || newName == null) {
+            result.error("renameAppPrivateDirectory-args", "missing arguments", null)
+            return
+        }
+        result.success(AlbumRename.renameAppPrivateDirectory(context, oldDir, newName))
     }
 
     private fun deleteExternalCache(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {

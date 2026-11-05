@@ -876,6 +876,17 @@
   "albumContentsCopyEmpty": "No visible items to copy in the selected albums.",
   "albumContentsCopyButtonLabel": "COPY",
 
+  "albumRenameUnseenContents": "{count, plural, =1{1 item in this album's folder is outside the current view, and renaming renames the whole folder.} other{{count} items in this album's folder are outside the current view, and renaming renames the whole folder.}}",
+  "@albumRenameUnseenContents": {
+    "description": "Explains why renaming is refused for an album whose folder holds items the current view does not show.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+
   "albumCamera": "Camera",
   "albumDownload": "Download",
   "albumScreenshots": "Screenshots",

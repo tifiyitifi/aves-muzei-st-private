@@ -56,6 +56,15 @@ abstract class LocalMediaDb {
   /// [loadEntryWindow], so the total always matches a full walk of windows).
   Future<int> countEntries([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]);
 
+  /// Counts every row the folder [directory] holds, ignoring the view
+  /// predicate: a whole-folder rename moves the folder's contents, not the
+  /// ones the view shows.
+  Future<int> countInDirectory(String directory);
+
+  /// Moves the rows under [oldDirectory] to [newDirectory] after a native
+  /// directory rename, keeping their ids, and answers how many changed.
+  Future<int> renameDirectoryPrefix({required String oldDirectory, required String newDirectory});
+
   /// Loads one window of entries in collection order ([SortFactor] + whole-list
   /// [reverse]), for paged collection loading without full materialization.
   ///

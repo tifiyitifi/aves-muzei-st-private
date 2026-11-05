@@ -31,6 +31,9 @@ class EntryStore {
   /// pins for raw-map access).
   static const String directoryColumn = 'directory';
 
+  static const String _pathColumn = 'path';
+  static const String _uriColumn = 'uri';
+
   /// Physical names of the maintained stack index columns (pinned via `.named`
   /// in `EntriesTable`, see `MigrationV4`).
   static const String baseNameColumn = 'baseName';
@@ -264,6 +267,68 @@ class EntryStore {
     final where = _windowWhere(predicate: predicate);
     final rows = await db.customSelect('SELECT COUNT(*) AS n ${_from(predicate)} ${where.sql}', variables: where.variables).get();
     return (rows.firstOrNull?.data['n'] as int?) ?? 0;
+  }
+
+  /// Counts every row the folder [directory] holds, whatever the current view
+  /// shows.
+  ///
+  /// A whole-folder rename moves what the folder contains, while the album tile
+  /// counts what the view shows, so the two are only comparable when this side
+  /// ignores every scope predicate (visible range, hidden filters, locked
+  /// vaults). Equality uses SQLite's default BINARY collation, which keeps two
+  /// folders differing only in case apart.
+  Future<int> countInDirectory(String directory) async {
+    final rows = await db.customSelect(
+      'SELECT COUNT(*) AS n FROM $_table WHERE $directoryColumn = ?',
+      variables: [Variable(directory)],
+    ).get();
+    return (rows.firstOrNull?.data['n'] as int?) ?? 0;
+  }
+
+  /// Rewrites the location of every row under [oldDirectory] to [newDirectory],
+  /// answering how many rows changed.
+  ///
+  /// A native rename has already moved the files; this carries the database
+  /// over so the rows keep their id, which is what favourites, covers, pins and
+  /// bookmarks are keyed on. `path`, `directory` and the burst `stackKey` are
+  /// prefixes of the folder, so they follow the same substitution. `uri` is
+  /// rewritten only for `file:` rows: a MediaStore URI is the row's identity
+  /// rather than a path, and a SAF document id is not a path this layer can
+  /// rewrite.
+  ///
+  /// Both arguments are album paths without a trailing separator. The columns
+  /// are derived (`_toRowMap`), so a second run matches no row and is a no-op.
+  Future<int> renameDirectoryPrefix({required String oldDirectory, required String newDirectory}) async {
+    if (oldDirectory.isEmpty || newDirectory.isEmpty || oldDirectory == newDirectory) return 0;
+    final oldWithSeparator = '$oldDirectory${pContext.separator}';
+    final newWithSeparator = '$newDirectory${pContext.separator}';
+    final oldLength = oldWithSeparator.length;
+    // A `file:` URI is the same path in percent-encoded form (the platform
+    // builds it with `Uri.fromFile`), so the prefix is encoded before comparing.
+    final oldUriPrefix = Uri.file(oldWithSeparator).toString();
+    final newUriPrefix = Uri.file(newWithSeparator).toString();
+    final uriPrefixLength = oldUriPrefix.length;
+
+    final rows = await db.customUpdate(
+      'UPDATE $_table SET '
+      // `/a/b/c.jpg` -> `/new/c.jpg`
+      '$_pathColumn = ? || substr($_pathColumn, ?), '
+      // `/a/b` -> `/new`, `/a/b/sub` -> `/new/sub`
+      '$directoryColumn = ? || substr($directoryColumn, ?), '
+      // `stackKey` is `<directory>/<burst key>`, i.e. the same prefix as `path`
+      '$stackKeyColumn = CASE WHEN $stackKeyColumn IS NULL THEN NULL ELSE ? || substr($stackKeyColumn, ?) END, '
+      '$_uriColumn = CASE WHEN substr($_uriColumn, 1, ?) = ? THEN ? || substr($_uriColumn, ?) ELSE $_uriColumn END '
+      'WHERE substr($_pathColumn, 1, ?) = ?',
+      variables: [
+        Variable(newWithSeparator), Variable(oldLength + 1),
+        Variable(newDirectory), Variable(oldLength),
+        Variable(newWithSeparator), Variable(oldLength + 1),
+        Variable(uriPrefixLength), Variable(oldUriPrefix), Variable(newUriPrefix), Variable(uriPrefixLength + 1),
+        Variable(oldLength), Variable(oldWithSeparator),
+      ],
+    );
+    _log.d('$runtimeType renamed $rows rows from $oldDirectory to $newDirectory');
+    return rows;
   }
 
   /// Loads one window of entries in collection order.

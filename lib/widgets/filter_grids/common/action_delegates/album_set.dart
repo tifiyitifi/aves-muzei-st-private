@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/album_contents_transfer/view/album_contents_delete_action.dart';
-import 'package:aves/features/collection_paging/view/paged_scope_guard.dart';
+import 'package:aves/features/album_contents_transfer/view/album_contents_rename_action.dart';
 import 'package:aves/features/media_ops/media_op_outcome.dart';
 import 'package:aves/features/visible_range/services/visible_range_locks.dart';
 import 'package:aves/model/covers.dart';
@@ -503,9 +503,13 @@ class AlbumChipSetActionDelegate extends ChipSetActionDelegate<AlbumBaseFilter> 
   }
 
   Future<void> _doRenameStoredAlbum(BuildContext context, StoredAlbumFilter albumFilter, String newName) async {
-    // Renaming an album moves its entries: a library too large to load holds
-    // none, so the move would carry nothing.
-    if (await pagedScopeUnsupported(context)) return;
+    // Renaming an album moves its entries: a windowed library holds none, so the
+    // rename walks the album scope from the database instead. A small library
+    // keeps the legacy path below, which moves one set and asks its guards once.
+    if (await renameStoredAlbumFromDatabase(context, filter: albumFilter, newName: newName)) {
+      if (context.mounted) browse(context);
+      return;
+    }
 
     final l10n = context.l10n;
     final messenger = ScaffoldMessenger.of(context);

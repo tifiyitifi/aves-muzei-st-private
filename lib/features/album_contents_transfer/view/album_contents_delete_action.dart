@@ -1,7 +1,7 @@
 import 'package:aves/features/album_contents_transfer/services/album_contents_entry_feed.dart';
 import 'package:aves/features/album_contents_transfer/services/album_contents_scope.dart';
-import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
+import 'package:aves/features/collection_paging/summary/paged_summary_registry.dart';
 import 'package:aves/features/collection_paging/view/paged_scope_guard.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -32,7 +32,7 @@ Future<bool> deleteAlbumContentsFromDatabase(
   required bool enableBin,
 }) async {
   if (filters.isEmpty) return true;
-  if (await const CollectionEngineRouter().allowFullLoad()) return false;
+  if (!await albumActionUsesDatabase(context)) return false;
 
   final scope = await AlbumContentsScope.resolve(filters);
   if (!context.mounted) return true;
@@ -105,5 +105,8 @@ Future<bool> deleteAlbumContentsFromDatabase(
       }
     }
   }
+  // The rows are gone from the database: reload the summaries so the album list
+  // and its counts stop showing the deleted contents.
+  await reloadPagedSummaries();
   return true;
 }

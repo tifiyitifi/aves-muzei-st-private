@@ -6,8 +6,8 @@ import 'package:aves/features/album_contents_transfer/services/album_contents_en
 import 'package:aves/features/album_contents_transfer/services/album_contents_scope.dart';
 import 'package:aves/features/album_contents_transfer/services/empty_album_folder_cleaner.dart';
 import 'package:aves/features/album_contents_transfer/view/album_contents_transfer_dialog.dart';
-import 'package:aves/features/collection_paging/engine/collection_engine_router.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
+import 'package:aves/features/collection_paging/summary/paged_summary_registry.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/view/paged_scope_guard.dart';
 import 'package:aves/features/visible_range/services/visible_range_gate.dart';
@@ -167,7 +167,10 @@ Future<void> _start({
   // leaves every source folder in place, so it offers no removal at all.
   final removableAlbumPaths = copy ? const <String>{} : _removableAlbumPaths(albums);
 
-  final fullLoad = await const CollectionEngineRouter().allowFullLoad();
+  // A source that holds its entries answers from them; a windowed one keeps them
+  // in the database only. `allowFullLoad` alone would take the in-memory path
+  // over an entry-free source, so both signals decide together.
+  final fullLoad = !await albumActionUsesDatabase(context);
   if (!context.mounted) return;
 
   final Set<AvesEntry>? inMemoryEntries;
@@ -300,6 +303,14 @@ Future<void> _start({
     if (candidates.isNotEmpty) {
       await const EmptyAlbumFolderCleaner().clean(candidates);
     }
+  }
+
+  if (scope != null) {
+    // The database holds the transferred rows now. A windowed library answers
+    // the album list and its counts from the summaries, which reload only on a
+    // lens resolve: without this the album page keeps showing the pre-transfer
+    // counts (and an emptied album) until the user re-enters the collection.
+    await reloadPagedSummaries();
   }
 }
 

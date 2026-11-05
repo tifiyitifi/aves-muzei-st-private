@@ -351,7 +351,32 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
     }
   }
 
-  Future<void> renameStoredAlbum(String sourceAlbum, String destinationAlbum, Set<AvesEntry> entries, Set<MoveOpEvent> movedOps) async {
+  Future<void> renameStoredAlbum(String sourceAlbum, String destinationAlbum, Set<AvesEntry> entries, Set<MoveOpEvent> movedOps) {
+    return applyStoredAlbumRename(
+      sourceAlbum,
+      destinationAlbum,
+      move: () => updateAfterMove(
+        todoEntries: entries,
+        moveType: MoveType.move,
+        destinationAlbums: {destinationAlbum},
+        movedOps: movedOps,
+      ),
+    );
+  }
+
+  /// Applies the album-level bookkeeping of a rename around the move of its
+  /// entries.
+  ///
+  /// [move] is omitted by a caller that already moved them itself: a windowed
+  /// library walks the album in bounded batches, because the whole set is
+  /// exactly what it cannot materialize. The steps that must precede the move
+  /// (vault metadata, cover, new-album flag) and those that must follow it
+  /// (bookmarks, group membership, pin) keep this order either way.
+  Future<void> applyStoredAlbumRename(
+    String sourceAlbum,
+    String destinationAlbum, {
+    Future<void> Function()? move,
+  }) async {
     final oldFilter = StoredAlbumFilter(sourceAlbum, null);
     final newFilter = StoredAlbumFilter(destinationAlbum, null);
 
@@ -371,12 +396,9 @@ abstract class CollectionSource with SourceBase, AlbumMixin, CountryMixin, Place
     );
 
     renameNewAlbum(sourceAlbum, destinationAlbum);
-    await updateAfterMove(
-      todoEntries: entries,
-      moveType: MoveType.move,
-      destinationAlbums: {destinationAlbum},
-      movedOps: movedOps,
-    );
+    if (move != null) {
+      await move();
+    }
 
     // update bookmark
     final albumBookmarks = settings.drawerAlbumBookmarks;

@@ -33,7 +33,7 @@ class StorageHandler(private val context: Context) : MethodCallHandler {
             "deleteEmptyDirectories" -> ioScope.launch { safe(call, result, ::deleteEmptyDirectories) }
             "deleteTempDirectory" -> ioScope.launch { safe(call, result, ::deleteTempDirectory) }
             "deleteExternalCache" -> ioScope.launch { safe(call, result, ::deleteExternalCache) }
-            "renameAppPrivateDirectory" -> ioScope.launch { safe(call, result, ::renameAppPrivateDirectory) }
+            "renameAlbumDirectory" -> ioScope.launch { safe(call, result, ::renameAlbumDirectory) }
             else -> result.notImplemented()
         }
     }
@@ -201,14 +201,14 @@ class StorageHandler(private val context: Context) : MethodCallHandler {
         result.success(StorageUtils.deleteTempDirectory(context))
     }
 
-    private fun renameAppPrivateDirectory(call: MethodCall, result: MethodChannel.Result) {
+    private fun renameAlbumDirectory(call: MethodCall, result: MethodChannel.Result) {
         val oldDir = call.argument<String>("oldDir")
         val newName = call.argument<String>("newName")
         if (oldDir == null || newName == null) {
-            result.error("renameAppPrivateDirectory-args", "missing arguments", null)
+            result.error("renameAlbumDirectory-args", "missing arguments", null)
             return
         }
-        result.success(AlbumRename.renameAppPrivateDirectory(context, oldDir, newName))
+        result.success(AlbumRename.renameAlbumDirectory(context, oldDir, newName))
     }
 
     private fun deleteExternalCache(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {

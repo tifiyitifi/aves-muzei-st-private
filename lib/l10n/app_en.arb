@@ -886,6 +886,10 @@
       }
     }
   },
+  "albumRenameGrantFolderAccess": "This album holds many items. Grant access to its folder so the rename completes instantly instead of moving each item?",
+  "@albumRenameGrantFolderAccess": {
+    "description": "Offered before renaming a large album, when a folder access grant would let the app rename the folder in one step. Declining falls back to moving the items one by one."
+  },
 
   "albumCamera": "Camera",
   "albumDownload": "Download",

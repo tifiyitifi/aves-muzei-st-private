@@ -41,4 +41,18 @@ void main() {
     expect(plan.isValid, isFalse);
     expect(plan.error, AlbumContentsRenameError.noAlbum);
   });
+
+  test('flags a rename that only changes the case', () {
+    final plan = AlbumContentsRenamePlan.resolve(album: album, newName: 'HOLIDAYS');
+
+    expect(plan.isValid, isTrue);
+    expect(plan.isCaseOnly, isTrue);
+    expect(plan.destination, '/storage/emulated/0/Pictures/HOLIDAYS');
+  });
+
+  test('a different name is not case-only', () {
+    final plan = AlbumContentsRenamePlan.resolve(album: album, newName: 'Trips');
+
+    expect(plan.isCaseOnly, isFalse);
+  });
 }

@@ -94,6 +94,6 @@ void initPlatformServices() {
   getIt.registerLazySingleton<StorageService>(PlatformStorageService.new);
   getIt.registerLazySingleton<StoragePermissionService>(PlatformStoragePermissionService.new);
   getIt.registerLazySingleton<WindowService>(PlatformWindowService.new);
-  // fork slice: whole-directory rename for albums the app owns
+  // fork slice: whole-directory rename for albums the platform can move
   getIt.registerLazySingleton<AlbumDirectoryRenameService>(PlatformAlbumDirectoryRenameService.new);
 }

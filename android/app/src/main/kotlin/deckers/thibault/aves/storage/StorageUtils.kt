@@ -443,6 +443,16 @@ object StorageUtils {
         return null
     }
 
+    /**
+     * The document for an existing directory inside a tree the user granted.
+     *
+     * Unlike [getDocumentFileForExistingFile], this never falls back to a plain
+     * `File`: a path outside every granted tree answers null, so a caller can
+     * tell a real SAF grant from app-private or legacy file access.
+     */
+    fun getDocumentFileForExistingDirectory(context: Context, dirPath: String): DocumentFileCompat? =
+        getDocumentFileByTreeDoc(context, ensureTrailingSeparator(dirPath))
+
     fun getDocumentFileForNewFile(context: Context, filePath: String, mimeType: String): DocumentFileCompat? {
         try {
             if (!FilePermissions.canEdit(context, filePath)) {

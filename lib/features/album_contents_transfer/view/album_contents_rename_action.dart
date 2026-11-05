@@ -15,11 +15,12 @@ import 'package:provider/provider.dart';
 
 /// Renames a stored album on a windowed library.
 ///
-/// Two ways, in order. A folder the app owns (the vault) is renamed by one
-/// native call, and its rows follow it with a single prefix rewrite; anything
-/// else moves the album's contents into a sibling folder. A library too large
-/// to load holds no entries to hand to that move, so the album's visible scope
-/// is resolved as the very predicate its tile counts (visible range, hidden
+/// Two ways, in order. A folder the platform can move in one call (app-private
+/// storage, a SAF grant, or one Media Store update per collection) is renamed
+/// that way, and its rows follow it with a single prefix rewrite; anything else
+/// moves the album's contents into a sibling folder. A library too large to
+/// load holds no entries to hand to that move, so the album's visible scope is
+/// resolved as the very predicate its tile counts (visible range, hidden
 /// filters and locked vaults included) and walked in bounded batches, so the
 /// album-level state that follows the rename still applies once, at the end,
 /// exactly like the legacy path.
@@ -43,9 +44,10 @@ Future<bool> renameStoredAlbumFromDatabase(
 
   final delegate = EntrySetActionDelegate();
 
-  // A folder the app owns moves in one call, and the rows follow it: no batch,
-  // no per-entry progress. Everything else keeps the batched move below.
-  if (await renameAppPrivateAlbumDirectory(context, filter: filter, plan: plan, delegate: delegate)) return true;
+  // A folder the platform can move in one call is renamed that way, and the
+  // rows follow it: no batch, no per-entry progress. Everything else keeps the
+  // batched move below.
+  if (await renameAlbumDirectoryInstantly(context, filter: filter, plan: plan, delegate: delegate)) return true;
 
   final scope = await AlbumContentsScope.resolve({filter});
   if (!context.mounted) return true;

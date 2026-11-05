@@ -48,4 +48,9 @@ class AlbumContentsRenamePlan {
   /// Whether the new name resolves to the album itself: there is nothing to
   /// move, so the caller can answer success without touching anything.
   bool get isNoOp => error == AlbumContentsRenameError.sameName;
+
+  /// Only the case differs. A case-insensitive lookup would resolve the new
+  /// name to the album itself and turn a direct rename into a silent no-op, so
+  /// the rename strategies go through a temporary name for this case.
+  bool get isCaseOnly => album != destination && album.toLowerCase() == destination.toLowerCase();
 }

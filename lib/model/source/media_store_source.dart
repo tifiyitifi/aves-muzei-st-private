@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/collection_paging/sync/paged_media_store_bridge.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/model/covers.dart';
@@ -414,6 +415,9 @@ class MediaStoreSource extends CollectionSource {
   }
 
   void onStoreChanged(String? uri) {
+    // A database-owned source consumes the change through the windowed engine:
+    // the legacy re-read below would write rows behind it.
+    if (pagedMediaStoreBridge.onStoreChanged(this)) return;
     if (uri != null) _changedUris.add(uri);
     if (_changedUris.isNotEmpty) {
       _changeDebouncer(() async {

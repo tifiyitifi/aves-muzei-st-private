@@ -20,6 +20,7 @@ import 'package:aves/model/db/db.dart';
 import 'package:aves/features/collection_paging/summary/paged_filter_summaries.dart';
 import 'package:aves/features/collection_paging/summary/paged_summary_registry.dart';
 import 'package:aves/features/collection_paging/sync/paged_discoverer.dart';
+import 'package:aves/features/collection_paging/sync/paged_library_changes.dart';
 import 'package:aves/features/collection_paging/sync/platform_timeout.dart';
 import 'package:aves/features/collection_paging/windows/window_cache.dart';
 import 'package:aves/features/drift_db/entries/section_header.dart';
@@ -307,6 +308,7 @@ class PagedCollectionLens extends CollectionLens {
 
   StreamSubscription<SettingsChangedEvent>? _layoutFactorSub;
   VoidCallback? _vaultsListener;
+  VoidCallback? _libraryChangesListener;
 
   new({
     required super.source,
@@ -339,6 +341,12 @@ class PagedCollectionLens extends CollectionLens {
     ]);
     _vaultsListener = refresh;
     vaults.lockStateChangeNotifier.addListener(_vaultsListener!);
+    // Rows written outside a lens (the resume sync, the MediaStore observer)
+    // have no view to notify: they announce the change here, and every live
+    // view re-reads its window. The legacy events above are in-memory facts and
+    // say nothing about a database write.
+    _libraryChangesListener = () => refresh(dataChanged: true);
+    pagedLibraryChanges.addListener(_libraryChangesListener!);
     // The superclass already subscribed its own layout-factor handler, which
     // keeps the public factors current and rebuilds the legacy structures.
     // Ours only triggers a windowed reload; it skips morphed lenses because
@@ -401,6 +409,11 @@ class PagedCollectionLens extends CollectionLens {
     if (vaultsListener != null) {
       vaults.lockStateChangeNotifier.removeListener(vaultsListener);
       _vaultsListener = null;
+    }
+    final libraryChangesListener = _libraryChangesListener;
+    if (libraryChangesListener != null) {
+      pagedLibraryChanges.removeListener(libraryChangesListener);
+      _libraryChangesListener = null;
     }
     final states = _sectionStates;
     _sectionStates = const [];

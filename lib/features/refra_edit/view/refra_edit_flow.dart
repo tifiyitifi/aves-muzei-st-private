@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:aves/features/refra_edit/log.dart';
+import 'package:aves/features/refra_edit/model/refra_edit_paths.dart';
 import 'package:aves/features/refra_edit/services/refra_edit_service.dart';
 import 'package:aves/features/refra_edit/view/refra_edit_intro_dialog.dart';
+import 'package:aves/features/refra_edit/view/refra_edit_records_page.dart';
 import 'package:aves/features/refra_edit/view/refra_edit_sessions_page.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
@@ -11,11 +13,33 @@ import 'package:flutter/material.dart';
 /// Entry point of the copy-first edit flow.
 ///
 /// The original file is never handed to an editor: the source is copied into
-/// `Pictures/aves_refra_edit/<sessionId>` first, and only that copy is opened. The chooser runs
+/// `Pictures/aves_refra_edit` first, and only that copy is opened. The chooser runs
 /// before the copy so cancelling it leaves no files behind.
 Future<void> startRefraEdit(BuildContext context, AvesEntry entry) async {
   final l10n = context.l10n;
   const service = refraEditService;
+
+  // Editing a staged copy would copy a copy and lose the folder the user edits from, so the
+  // staging tree only offers the records page instead.
+  if (isRefraEditStagingPath(entry.directory ?? '')) {
+    final navigator = Navigator.of(context);
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(l10n.refraEditAlreadyStaged),
+        action: SnackBarAction(
+          label: l10n.showButtonLabel,
+          onPressed: () {
+            unawaited(
+              navigator.push(
+                MaterialPageRoute(builder: (_) => const RefraEditRecordsPage()),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    return;
+  }
 
   if (!await service.hasSeenIntro()) {
     if (!context.mounted) return;

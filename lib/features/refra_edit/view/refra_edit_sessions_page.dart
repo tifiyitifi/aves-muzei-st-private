@@ -158,7 +158,11 @@ class _SessionTileState extends State<_SessionTile> {
                     child: Text(l10n.refraEditDiscard),
                   ),
                   TextButton(
-                    onPressed: _moveBack,
+                    onPressed: () => _transfer(copy: true),
+                    child: Text(l10n.refraEditCopyBack),
+                  ),
+                  TextButton(
+                    onPressed: () => _transfer(copy: false),
                     child: Text(l10n.refraEditMoveBack),
                   ),
                 ],
@@ -167,7 +171,11 @@ class _SessionTileState extends State<_SessionTile> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
-                  session.status == RefraEditSessionStatus.moved ? l10n.refraEditStatusMoved : l10n.refraEditStatusDiscarded,
+                  switch (session.status) {
+                    RefraEditSessionStatus.moved => l10n.refraEditStatusMoved,
+                    RefraEditSessionStatus.copied => l10n.refraEditStatusCopied,
+                    _ => l10n.refraEditStatusDiscarded,
+                  },
                   style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
               ),
@@ -186,7 +194,7 @@ class _SessionTileState extends State<_SessionTile> {
     );
   }
 
-  Future<void> _moveBack() async {
+  Future<void> _transfer({required bool copy}) async {
     final l10n = context.l10n;
     final session = widget.session;
     final outputs = _outputs ?? await refraEditService.refreshOutputs(session);
@@ -217,21 +225,24 @@ class _SessionTileState extends State<_SessionTile> {
       if (choice == null || !mounted) return;
       strategy = choice;
     }
-    final success = await refraEditService.moveBack(session, nameConflictStrategy: strategy);
+    final success = await refraEditService.transferBack(
+      session,
+      copy: copy,
+      nameConflictStrategy: strategy,
+    );
     if (!mounted) return;
     if (!success) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.refraEditMoveBackFailed)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(copy ? l10n.refraEditCopyBackFailed : l10n.refraEditMoveBackFailed)),
+      );
       return;
     }
     widget.onChanged();
     await _loadOutputs();
   }
 
-  Future<Set<String>> _conflictingNames(RefraEditSession session, List<RefraEditOutput> outputs) async {
-    if (session.sourceDirectory.isEmpty) return {};
-    final existing = await localMediaDb.loadEntries(directory: session.sourceDirectory);
-    final names = existing.map((e) => e.fileNameWithoutExtension).whereType<String>().toSet();
-    return outputs.map((o) => pContext.basenameWithoutExtension(o.fileName)).where(names.contains).toSet();
+  Future<Set<String>> _conflictingNames(RefraEditSession session, List<RefraEditOutput> outputs) {
+    return refraEditService.conflictingNames(session.sourceDirectory, outputs.map((output) => output.fileName));
   }
 
   Future<void> _discard() async {

@@ -1,4 +1,5 @@
 import 'package:aves/features/drift_db/app_database.dart';
+import 'package:aves/features/refra_edit/model/refra_edit_paths.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
@@ -9,6 +10,9 @@ enum RefraEditSessionStatus {
 
   /// Every kept output was moved back to the source directory.
   moved,
+
+  /// The session's files were copied back; the staged copies are still there.
+  copied,
 
   /// The user deleted the staged copies.
   discarded,
@@ -133,4 +137,57 @@ class RefraEditOutput extends Equatable {
 
   @override
   List<Object?> get props => [id, sessionId, uri, path, fileName, kind, sizeBytes, createdAt];
+}
+
+/// One file a session is still holding, as listed on the records page.
+///
+/// The same file can be recorded more than once: the move operation and the media
+/// scanner name the same volume differently (`external_primary` vs `external`), so
+/// [rowIds] keeps every alias. Deleting a record removes the file once and forgets
+/// all of its rows.
+@immutable
+class RefraEditRecord extends Equatable {
+  /// Identity of the file, independent of the volume alias used by each row.
+  final String key;
+
+  /// Every output row describing this file.
+  final Set<String> rowIds;
+
+  final String sessionId;
+  final String uri;
+  final String fileName;
+  final RefraEditOutputKind kind;
+  final int sizeBytes;
+  final DateTime createdAt;
+
+  /// The session the file belongs to, when its row still resolves one.
+  final RefraEditSession? session;
+
+  const new({
+    required this.key,
+    required this.rowIds,
+    required this.sessionId,
+    required this.uri,
+    required this.fileName,
+    required this.kind,
+    required this.sizeBytes,
+    required this.createdAt,
+    required this.session,
+  });
+
+  /// Absolute directory the file can be moved or copied back to.
+  String get sourceDirectory => session?.sourceDirectory ?? '';
+
+  /// Whether the record knows a destination that is not the staging tree itself.
+  ///
+  /// Only files the editor staged may leave the staging tree, and only towards the
+  /// folder their source came from: a session started on a staging file has no
+  /// meaningful destination.
+  bool get canTransferBack {
+    final directory = sourceDirectory;
+    return directory.isNotEmpty && !isRefraEditStagingPath(directory);
+  }
+
+  @override
+  List<Object?> get props => [key, rowIds, sessionId, uri, fileName, kind, sizeBytes, createdAt, session];
 }

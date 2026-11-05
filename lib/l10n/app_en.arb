@@ -2667,6 +2667,36 @@
   "refraEditCopyFailed": "Could not copy the photo for editing",
   "refraEditSaved": "Edited copy saved",
   "refraEditShowIntro": "About copy editing",
-  "refraEditShowIntroSubtitle": "Show the explanation again"
+  "refraEditShowIntroSubtitle": "Show the explanation again",
+  "refraEditRecordListTitle": "Edit records",
+  "refraEditRecordListSubtitle": "Files kept in Pictures/aves_refra_edit",
+  "refraEditRecordCount": "{count, plural, =0{No file} =1{1 file} other{{count} files}}",
+  "@refraEditRecordCount": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "refraEditRecordEmpty": "No edit record. Files staged by an edit show up here.",
+  "refraEditRecordUnknownSource": "Source folder unknown",
+  "refraEditRecordKindStaged": "Staged copy",
+  "refraEditRecordKindBuiltIn": "Built-in editor",
+  "refraEditRecordKindExternal": "Another app",
+  "refraEditRecordKindUnknown": "Unknown origin",
+  "refraEditCopyBack": "Copy back",
+  "refraEditCopyBackFailed": "Could not copy the files back",
+  "refraEditMoveSelectedBack": "Move selected back",
+  "refraEditCopySelectedBack": "Copy selected back",
+  "refraEditTransferUnavailable": "Some selected files have no source folder to go back to",
+  "refraEditDeleteSelected": "Delete selected",
+  "refraEditDeleteSelectedConfirmTitle": "Delete the selected files?",
+  "refraEditDeleteSelectedConfirmBody": "The selected copies and results will be deleted. Your original photos are not affected.",
+  "refraEditClearRecords": "Clear records",
+  "refraEditClearRecordsConfirm": "Delete every file recorded in Pictures/aves_refra_edit? Your original photos are not affected.",
+  "refraEditClearRecordsFailed": "Could not clear the edit records",
+  "refraEditStatusCopied": "Copied back to the source folder",
+  "refraEditAlreadyStaged": "This file already lives in Pictures/aves_refra_edit. Edit the original photo instead."
 }
 

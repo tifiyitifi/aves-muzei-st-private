@@ -22,6 +22,7 @@ import 'package:aves/widgets/common/action_mixins/entry_editor.dart';
 import 'package:aves/widgets/common/action_mixins/entry_storage.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/features/collection_paging/view/viewer_delete_policy.dart';
+import 'package:aves/features/refra_edit/model/refra_edit_paths.dart';
 import 'package:aves/features/refra_edit/view/refra_edit_flow.dart';
 import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/features/visible_range/services/visible_range_locks.dart';
@@ -125,7 +126,7 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
         case .addShortcut:
           return device.canPinShortcut;
         case .edit:
-          return canWrite && targetEntry.isImage;
+          return canWrite && targetEntry.isImage && !isRefraEditStagingPath(targetEntry.directory ?? '');
         case .copyToClipboard:
           // Leaving the device like a share, so a locked range can withhold it.
           return !settings.useTvLayout && !visibleRangeLocksEntryAction(action);

@@ -71,6 +71,54 @@ class RefraEditStore {
     return (await query.get()).map(RefraEditOutput.fromRow).toList(growable: false);
   }
 
+  /// Every recorded output, newest first, for the records page.
+  Future<List<RefraEditOutput>> getAllOutputs() async {
+    final query = db.select(db.refraEditOutputRows)..orderBy([(t) => OrderingTerm.desc(t.createdAt)]);
+    return (await query.get()).map(RefraEditOutput.fromRow).toList(growable: false);
+  }
+
+  /// Rewrites where an output lives, after a move or copy changed its uri and path.
+  Future<void> updateOutputLocation(
+    String id, {
+    required String uri,
+    required String path,
+    required String fileName,
+    required int sizeBytes,
+  }) async {
+    await (db.update(db.refraEditOutputRows)..where((t) => t.id.equals(id))).write(
+      RefraEditOutputRowsCompanion(
+        uri: Value(uri),
+        path: Value(path),
+        fileName: Value(fileName),
+        sizeBytes: Value(sizeBytes),
+      ),
+    );
+  }
+
+  Future<void> deleteOutputs(Iterable<String> ids) async {
+    final list = ids.toList(growable: false);
+    if (list.isEmpty) return;
+    await (db.delete(db.refraEditOutputRows)..where((t) => t.id.isIn(list))).go();
+  }
+
+  /// Forgets sessions that no longer own a single output row.
+  Future<void> deleteSessionsWithoutOutputs() async {
+    final sessions = await getSessions();
+    final alive = (await getAllOutputs()).map((o) => o.sessionId).toSet();
+    final orphans = sessions.where((session) => !alive.contains(session.id)).map((session) => session.id).toList(growable: false);
+    if (orphans.isEmpty) return;
+    await (db.delete(db.refraEditSessionRows)..where((t) => t.id.isIn(orphans))).go();
+  }
+
+  /// Deletes every session and output row, leaving the files untouched.
+  ///
+  /// The records page deletes the files itself (one entry per file), so clearing the
+  /// bookkeeping must not go through the per-session path.
+  Future<void> clearAll() async {
+    await db.delete(db.refraEditOutputRows).go();
+    await db.delete(db.refraEditSessionRows).go();
+  }
+
   /// Output counts per session, for the session list's "results" column.
   Stream<Map<String, int>> watchOutputCounts() {
     final count = db.refraEditOutputRows.id.count();

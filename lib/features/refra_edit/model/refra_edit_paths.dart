@@ -13,3 +13,23 @@ bool isRefraEditStagingPath(String dirPath) {
   final root = refraEditStagingRelativeRoot.toLowerCase();
   return normalized.endsWith('/$root') || normalized.contains('/$root/');
 }
+
+final _contentMediaIdPattern = RegExp(r'/(?:media|file)/(\d+)$');
+
+/// Identity of a file inside the staging tree, independent of how a row names its volume.
+///
+/// The media operation reports the primary volume as `external_primary` while the scanner reports
+/// `external`, and the legacy `files` collection adds yet another alias; all of them name the same
+/// media row, so the media id wins. Paths cover files the scanner has not indexed yet, and the
+/// name/size pair is the last resort (the staging folder is flat, so a name is unique there).
+String refraEditFileKey({
+  required String path,
+  required String uri,
+  required String fileName,
+  required int sizeBytes,
+}) {
+  final mediaId = uri.startsWith('content://media/') ? _contentMediaIdPattern.firstMatch(uri)?.group(1) : null;
+  if (mediaId != null) return 'media:$mediaId';
+  if (path.isNotEmpty) return 'path:${path.replaceAll(r'\', '/').toLowerCase()}';
+  return 'name:${fileName.toLowerCase()}:$sizeBytes';
+}

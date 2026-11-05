@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aves/features/refra_edit/model/refra_edit_session.dart';
 import 'package:aves/features/refra_edit/services/refra_edit_service.dart';
 import 'package:aves/features/refra_edit/view/refra_edit_intro_dialog.dart';
+import 'package:aves/features/refra_edit/view/refra_edit_records_page.dart';
 import 'package:aves/features/refra_edit/view/refra_edit_sessions_page.dart';
 import 'package:aves/widgets/common/basic/divider.dart';
 import 'package:aves/widgets/common/basic/scaffold.dart';
@@ -24,6 +25,7 @@ class RefraEditSettingsPage extends StatefulWidget {
 
 class _RefraEditSettingsPageState extends State<RefraEditSettingsPage> {
   List<RefraEditSession>? _sessions;
+  int _recordCount = 0;
 
   @override
   void initState() {
@@ -37,8 +39,12 @@ class _RefraEditSettingsPageState extends State<RefraEditSettingsPage> {
     await refraEditService.pruneMissingSessions();
     final store = await refraEditService.store();
     final sessions = await store.getSessions();
+    final records = await refraEditService.records();
     if (!mounted) return;
-    setState(() => _sessions = sessions);
+    setState(() {
+      _sessions = sessions;
+      _recordCount = records.length;
+    });
   }
 
   @override
@@ -78,6 +84,25 @@ class _RefraEditSettingsPageState extends State<RefraEditSettingsPage> {
                     onTap: () async {
                       await Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const RefraEditSessionsPage()),
+                      );
+                      await _load();
+                    },
+                  ),
+                  const ThinDivider(),
+                  ListTile(
+                    leading: const Icon(Icons.history),
+                    title: Text(l10n.refraEditRecordListTitle),
+                    subtitle: Text(l10n.refraEditRecordListSubtitle),
+                    trailing: Row(
+                      mainAxisSize: .min,
+                      children: [
+                        Text(l10n.refraEditRecordCount(_recordCount)),
+                        const Icon(Icons.chevron_right),
+                      ],
+                    ),
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const RefraEditRecordsPage()),
                       );
                       await _load();
                     },

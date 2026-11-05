@@ -92,11 +92,13 @@ class MediaEditHandler(private val context: Context) : MethodCallHandler {
                     val id = cursor.getLong(0)
                     val mimeType = cursor.getString(3)
                     // The rest of the app resolves entries through the image/video collections; a
-                    // `file/` URI is not a media entry and would never be catalogued.
+                    // `file/` URI is not a media entry and would never be catalogued. The primary
+                    // volume matters: the media operations report it as `external_primary`, and a
+                    // different authority here would record the same file twice.
                     val mediaCollection = if (mimeType?.startsWith("video/") == true) {
-                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                        MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                     } else {
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                        MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                     }
                     outputs.add(
                         mapOf(

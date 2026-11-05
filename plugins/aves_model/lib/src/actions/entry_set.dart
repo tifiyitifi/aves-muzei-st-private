@@ -20,6 +20,7 @@ enum EntrySetAction {
   rescan,
   // selecting
   share,
+  batchProcess,
   delete,
   restore,
   copy,
@@ -84,6 +85,7 @@ class EntrySetActions {
   // `null` items are converted to dividers
   static const pageSelection = <EntrySetAction?>[
     .share,
+    .batchProcess,
     .delete,
     .restore,
     .copy,
@@ -102,6 +104,7 @@ class EntrySetActions {
   // exclude bin related actions
   static const collectionEditorSelectionRegular = <EntrySetAction>[
     .share,
+    .batchProcess,
     .delete,
     .copy,
     .move,

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/batch_ops/view/batch_run_sheet.dart';
 import 'package:aves/model/device.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/favourites.dart';
@@ -138,6 +139,8 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
           return true;
         case .share:
           return VisibleRangeGate.allows(VisibleRangeMutation.share);
+        case .batchProcess:
+          return targetEntry.isImage && VisibleRangeGate.allows(VisibleRangeMutation.share);
         case .restore:
           return false;
         case .editDate:
@@ -234,6 +237,8 @@ class EntryActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAwareMix
         appService.shareEntries({targetEntry}).then((success) {
           if (!success) showNoMatchingAppDialog(context);
         });
+      case .batchProcess:
+        unawaited(startBatch(context, {targetEntry}));
       case .toggleFavourite:
         // `isVisible` already gates this, but a stale menu or a shortcut can
         // still reach the action: never write a browse row's synthetic id.

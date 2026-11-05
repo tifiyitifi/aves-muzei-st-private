@@ -43,4 +43,8 @@ const Map<String, List<String>> metaPageSearchKeys = {
   MetaPageKeys.wallpaperViewPad: <String>[],
   // The fork's edit page owns its state in the Drift session tables, not in v1 settings.
   MetaPageKeys.refraEdit: <String>[],
+  // The batch page owns its state in the batch engine, not in v1 settings.
+  MetaPageKeys.batch: <String>[],
+  // Known issues is a read-only list, so it highlights no setting.
+  MetaPageKeys.knownIssues: <String>[],
 };

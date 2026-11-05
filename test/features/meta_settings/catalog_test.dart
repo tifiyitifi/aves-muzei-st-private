@@ -40,9 +40,10 @@ void main() {
       }
     });
 
-    test('Visible & wallpaper sits just before Advanced', () {
+    test('Batch processing sits between Visible & wallpaper and Advanced', () {
       const values = SettingsCategory.values;
-      expect(values.indexOf(SettingsCategory.wallpaper), values.indexOf(SettingsCategory.advanced) - 1);
+      expect(values.indexOf(SettingsCategory.wallpaper), values.indexOf(SettingsCategory.batch) - 1);
+      expect(values.indexOf(SettingsCategory.batch), values.indexOf(SettingsCategory.advanced) - 1);
       expect(values.indexOf(SettingsCategory.language), values.indexOf(SettingsCategory.wallpaper) - 1);
     });
 
@@ -162,6 +163,16 @@ void main() {
           MetaPageKeys.refraEdit,
         ]),
       );
+    });
+
+    test('Batch processing is fully migrated', () {
+      final keys = metaSettingsDefsFor(SettingsCategory.batch).map((def) => def.key).toList();
+      expect(keys, [MetaPageKeys.batch]);
+    });
+
+    test('Known issues is reachable from Advanced', () {
+      final keys = metaSettingsDefsFor(SettingsCategory.advanced).map((def) => def.key).toSet();
+      expect(keys, contains(MetaPageKeys.knownIssues));
     });
 
     test('the Muzei wallpaper options left Advanced', () {

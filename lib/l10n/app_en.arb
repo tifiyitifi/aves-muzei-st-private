@@ -2697,6 +2697,149 @@
   "refraEditClearRecordsConfirm": "Delete every file recorded in Pictures/aves_refra_edit? Your original photos are not affected.",
   "refraEditClearRecordsFailed": "Could not clear the edit records",
   "refraEditStatusCopied": "Copied back to the source folder",
-  "refraEditAlreadyStaged": "This file already lives in Pictures/aves_refra_edit. Edit the original photo instead."
+  "refraEditAlreadyStaged": "This file already lives in Pictures/aves_refra_edit. Edit the original photo instead.",
+
+  "settingsBatchSectionTitle": "Batch processing",
+  "settingsBatchPageTitle": "Batch processing",
+  "settingsBatchExplanation": "Batch actions run in order on a copy of each selected photo. Originals are never modified, and an interrupted run keeps the photos it already finished.",
+  "settingsBatchOutputFolder": "Output folder",
+  "settingsBatchOutputFolderValue": "Pictures/aves_batch",
+  "settingsBatchSupportedTools": "Supported actions",
+  "entryActionBatchProcess": "Batch process",
+  "batchRunSheetTitle": "Batch process",
+  "batchRunSheetExplanation": "Enable the actions to run, in order, on a copy of every selected photo.",
+  "batchRunSelectedCount": "{count, plural, =1{{count} photo selected} other{{count} photos selected}}",
+  "@batchRunSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "batchRunButton": "Run",
+  "batchRunNothingSelected": "Enable at least one action",
+  "batchProgressTitle": "Processing photos",
+  "batchProgressSummary": "{done} of {total} processed, {failed} failed",
+  "@batchProgressSummary": {
+    "placeholders": {
+      "done": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "total": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "failed": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "batchDoneSummary": "Processed {done} of {total} photos",
+  "@batchDoneSummary": {
+    "placeholders": {
+      "done": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "total": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "batchCancelledSummary": "Cancelled after {done} of {total} photos",
+  "@batchCancelledSummary": {
+    "placeholders": {
+      "done": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "total": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "batchNoImageFeedback": "Batch processing only handles photos.",
+  "batchToolRecipe": "Saved recipe",
+  "batchToolRecipeDescription": "Reuse an edit saved in the built-in editor.",
+  "batchToolFilter": "Colour filter",
+  "batchToolFilterDescription": "Apply one of the editor's colour filters.",
+  "batchToolAdjust": "Adjustment",
+  "batchToolAdjustDescription": "Apply a brightness, contrast, saturation or tone adjustment.",
+  "batchToolRotate": "Rotate",
+  "batchToolRotateDescription": "Rotate by 90, 180 or 270 degrees.",
+  "batchToolFlip": "Flip",
+  "batchToolFlipDescription": "Mirror horizontally or vertically.",
+  "batchToolCrop": "Crop",
+  "batchToolCropDescription": "Crop a margin from each edge.",
+  "batchToolResize": "Resize",
+  "batchToolResizeDescription": "Limit the long edge or scale by a percentage.",
+  "batchToolConvert": "Convert",
+  "batchToolConvertDescription": "Write another format or quality.",
+  "batchToolFooter": "Filename footer",
+  "batchToolFooterDescription": "Append a solid band with the file name or custom text.",
+  "batchToolRefreshTime": "Refresh time",
+  "batchToolRefreshTimeDescription": "Make the copy look new to other apps.",
+  "batchEditorFilterIntensity": "Intensity",
+  "batchEditorAdjustValue": "Value",
+  "batchEditorRotateAngle": "Angle",
+  "batchEditorFlipHorizontal": "Horizontal",
+  "batchEditorFlipVertical": "Vertical",
+  "batchEditorCropLeft": "Left margin",
+  "batchEditorCropTop": "Top margin",
+  "batchEditorCropRight": "Right margin",
+  "batchEditorCropBottom": "Bottom margin",
+  "batchEditorResizeLongEdge": "Long edge (pixels, 0 to disable)",
+  "batchEditorResizePercent": "Scale",
+  "batchEditorConvertFormat": "Format",
+  "batchEditorConvertQuality": "Quality",
+  "batchEditorFooterText": "Text (empty uses the file name)",
+  "batchEditorFooterTextHint": "File name",
+  "batchEditorFooterBandHeight": "Band height",
+  "batchEditorFooterTextSize": "Text size",
+  "batchEditorFooterAtTop": "Place at the top",
+  "batchEditorFormatKeep": "Keep source format",
+  "batchEditorFormatJpeg": "JPEG",
+  "batchEditorFormatPng": "PNG",
+  "batchEditorFormatWebp": "WebP",
+  "batchEditorRecipeReadOnly": "This action runs a saved editor recipe and has no parameters here.",
+  "aboutKnownIssues5": "Batch processing covers colour filters, brightness/contrast/saturation and other adjustments, rotate/flip/crop, resize, format conversion and the filename footer. Markup, cut-out and RAW development are not available in batch.",
+  "aboutKnownIssues6": "RAW files are skipped by batch processing; only standard image formats (JPEG/PNG/WebP/HEIF) are processed.",
+  "batchEditorPercent": "{label}: {value}%",
+  "@batchEditorPercent": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "value": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "batchEditorNumber": "{label}: {value}",
+  "@batchEditorNumber": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "batchEditorDegrees": "{value}°",
+  "@batchEditorDegrees": {
+    "placeholders": {
+      "value": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  }
 }
 

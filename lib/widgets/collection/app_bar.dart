@@ -946,6 +946,7 @@ class _CollectionAppBarState extends State<CollectionAppBar> with RouteAware, Si
       // selecting
       case .selectByTrait:
       case .share:
+      case .batchProcess:
       case .delete:
       case .restore:
       case .copy:

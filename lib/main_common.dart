@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 
 import 'package:aves/app_flavor.dart';
+import 'package:aves/features/batch_ops/log.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_engine.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
@@ -27,6 +28,7 @@ void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
 
   Log.init(
     debugChannels: [
+      ...batchOpsDebugLogKeys,
       ...collectionPagingDebugLogKeys,
       ...mediaOpDebugLogKeys,
       ...muzeiWallpaperDebugLogKeys,

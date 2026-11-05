@@ -32,6 +32,7 @@ extension ExtraEntrySetActionView on EntrySetAction {
       .rescan => l10n.collectionActionRescan,
       // selecting
       .share => l10n.entryActionShare,
+      .batchProcess => l10n.entryActionBatchProcess,
       .delete => l10n.entryActionDelete,
       .restore => l10n.entryActionRestore,
       .copy => l10n.collectionActionCopy,
@@ -87,6 +88,7 @@ extension ExtraEntrySetActionView on EntrySetAction {
       .rescan => AIcons.refresh,
       // selecting
       .share => AIcons.share,
+      .batchProcess => AIcons.convert,
       .delete => AIcons.delete,
       .restore => AIcons.restore,
       .copy => AIcons.copy,

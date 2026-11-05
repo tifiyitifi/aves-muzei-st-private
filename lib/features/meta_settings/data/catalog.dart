@@ -36,6 +36,7 @@ final List<SettingDef> metaSettingsCatalog = [
   ..._thumbnailsDefs,
   ..._navigationDefs,
   ..._wallpaperDefs,
+  ..._batchDefs,
   ..._advancedDefs,
 ];
 
@@ -619,6 +620,20 @@ final List<SettingDef> _wallpaperDefs = [
   ),
 ];
 
+// Batch
+
+final List<SettingDef> _batchDefs = [
+  SettingDef(
+    key: MetaPageKeys.batch,
+    category: SettingsCategory.batch,
+    widgetKind: SettingWidgetKind.subPage,
+    title: (context) => context.l10n.settingsBatchPageTitle,
+    subtitle: (context) => context.l10n.settingsBatchExplanation,
+    routeName: MetaPageKeys.batch,
+    sortOrder: 10,
+  ),
+];
+
 // Advanced
 
 final List<SettingDef> _advancedDefs = [
@@ -693,5 +708,13 @@ final List<SettingDef> _advancedDefs = [
     title: (context) => context.l10n.settingsCollectionBackgroundWorkTile,
     editorKey: MetaEditorKeys.collectionBackgroundWork,
     sortOrder: 70,
+  ),
+  SettingDef(
+    key: MetaPageKeys.knownIssues,
+    category: SettingsCategory.advanced,
+    widgetKind: SettingWidgetKind.subPage,
+    title: (context) => context.l10n.aboutKnownIssuesSectionTitle,
+    routeName: MetaPageKeys.knownIssues,
+    sortOrder: 80,
   ),
 ];

@@ -82,4 +82,11 @@ final Map<SettingsCategory, MetaCategoryMeta> metaCategoryMeta = {
           color: context.select<AvesColorsData, Color>((v) => v.fromHue(260)),
         ),
   ),
+  SettingsCategory.batch: (
+    title: (context) => context.l10n.settingsBatchSectionTitle,
+    icon: (context) => MetaTileLeading(
+          icon: AIcons.convert,
+          color: context.select<AvesColorsData, Color>((v) => v.fromHue(40)),
+        ),
+  ),
 };

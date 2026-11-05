@@ -58,6 +58,8 @@ import deckers.thibault.aves.channel.streams.platformtodart.MediaStoreChangeStre
 import deckers.thibault.aves.channel.streams.platformtodart.MessageStreamHandler
 import deckers.thibault.aves.channel.streams.platformtodart.SettingsChangeStreamHandler
 import deckers.thibault.aves.channel.streams.platformtodart.WindowChangeStreamHandler
+import deckers.thibault.aves.features.batch.BatchHandler
+import deckers.thibault.aves.features.batch.BatchStreamHandler
 import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperAppBridge
 import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperHandler
 import deckers.thibault.aves.features.grouped_wallpaper.GroupedWallpaperRestore
@@ -205,12 +207,16 @@ open class MainActivity : FlutterFragmentActivity() {
         // - need Activity
         MethodChannel(messenger, AppProfileHandler.CHANNEL).setMethodCallHandler(AppProfileHandler(this))
         MethodChannel(messenger, WindowHandler.CHANNEL).setMethodCallHandler(ActivityWindowHandler(this))
+        // - batch processing: cancel a running job from Dart
+        MethodChannel(messenger, BatchHandler.CHANNEL).setMethodCallHandler(BatchHandler())
 
         // result streaming: dart -> platform ->->-> dart
         // - need Context
         StreamsChannel(messenger, ImageByteStreamHandler.CHANNEL).setStreamHandlerFactory { args -> ImageByteStreamHandler(this, args) }
         StreamsChannel(messenger, ImageOpStreamHandler.CHANNEL).setStreamHandlerFactory { args -> ImageOpStreamHandler(this, args) }
         StreamsChannel(messenger, MediaStoreStreamHandler.CHANNEL).setStreamHandlerFactory { args -> MediaStoreStreamHandler(this, args) }
+        // - batch processing: one job per subscription, per-item events
+        StreamsChannel(messenger, BatchStreamHandler.CHANNEL).setStreamHandlerFactory { args -> BatchStreamHandler(this, args) }
         // - need Activity
         StreamsChannel(messenger, ActivityResultStreamHandler.CHANNEL).setStreamHandlerFactory { args -> ActivityResultStreamHandler(this, args) }
 

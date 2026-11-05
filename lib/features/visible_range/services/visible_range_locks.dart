@@ -13,7 +13,7 @@ bool visibleRangeLocksEntrySetAction(EntrySetAction action) => switch (action) {
   .copy || .move => !VisibleRangeGate.allows(VisibleRangeMutation.move),
   .rename => !VisibleRangeGate.allows(VisibleRangeMutation.rename),
   .restore || .emptyBin => !VisibleRangeGate.allows(VisibleRangeMutation.trash),
-  .share || .copyToClipboard => !VisibleRangeGate.allows(VisibleRangeMutation.share),
+  .share || .batchProcess || .copyToClipboard => !VisibleRangeGate.allows(VisibleRangeMutation.share),
   .convert ||
   .rotateCCW ||
   .rotateCW ||
@@ -34,7 +34,7 @@ bool visibleRangeLocksEntryAction(EntryAction action) => switch (action) {
   .copy || .move => !VisibleRangeGate.allows(VisibleRangeMutation.move),
   .rename => !VisibleRangeGate.allows(VisibleRangeMutation.rename),
   .restore => !VisibleRangeGate.allows(VisibleRangeMutation.trash),
-  .share || .copyToClipboard => !VisibleRangeGate.allows(VisibleRangeMutation.share),
+  .share || .batchProcess || .copyToClipboard => !VisibleRangeGate.allows(VisibleRangeMutation.share),
   .edit ||
   .rotateCCW ||
   .rotateCW ||

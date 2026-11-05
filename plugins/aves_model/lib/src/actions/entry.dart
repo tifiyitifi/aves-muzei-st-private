@@ -10,6 +10,7 @@ enum EntryAction {
   copy,
   move,
   share,
+  batchProcess,
   toggleFavourite,
   // raster
   rotateCCW,
@@ -61,6 +62,7 @@ class EntryActions {
   static const topLevel = <EntryAction>[
     .info,
     .share,
+    .batchProcess,
     .edit,
     .rename,
     .delete,

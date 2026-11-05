@@ -19,6 +19,7 @@ extension ExtraEntryActionView on EntryAction {
       .copy => l10n.collectionActionCopy,
       .move => l10n.collectionActionMove,
       .share => l10n.entryActionShare,
+      .batchProcess => l10n.entryActionBatchProcess,
       .toggleFavourite =>
         // different data depending on toggle state
         l10n.entryActionAddFavourite,
@@ -98,6 +99,7 @@ extension ExtraEntryActionView on EntryAction {
       .copy => AIcons.copy,
       .move => AIcons.move,
       .share => AIcons.share,
+      .batchProcess => AIcons.convert,
       .toggleFavourite =>
         // different data depending on toggle state
         AIcons.favourite,

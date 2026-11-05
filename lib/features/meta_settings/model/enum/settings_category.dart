@@ -14,5 +14,6 @@ enum SettingsCategory {
   display,
   language,
   wallpaper,
+  batch,
   advanced,
 }

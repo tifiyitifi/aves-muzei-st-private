@@ -30,33 +30,47 @@ class KnownIssuesSection extends StatelessWidget {
     );
   }
 
-  /// The numbered entries, shared by the mobile list and the TV page.
+  /// The numbered entries, shared by the About page and the Advanced page.
   static Widget buildBody(BuildContext context) {
-    final l10n = context.l10n;
-    final issues = [
-      l10n.aboutKnownIssues1,
-      l10n.aboutKnownIssues2,
-      l10n.aboutKnownIssues3,
-      l10n.aboutKnownIssues4,
-    ];
+    final issues = knownIssues(context);
     return Column(
       crossAxisAlignment: .start,
       children: [
         for (var index = 0; index < issues.length; index++)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              crossAxisAlignment: .start,
-              children: [
-                // The number is a widget of its own rather than concatenated
-                // display text, so it keeps its own side under RTL.
-                Text('${index + 1}.'),
-                const SizedBox(width: 8),
-                Expanded(child: Text(issues[index])),
-              ],
-            ),
-          ),
+          knownIssueRow(context, index, issues[index]),
       ],
     );
   }
+
+  /// One numbered entry: the number is a widget of its own rather than
+  /// concatenated display text, so it keeps its own side under RTL.
+  static Widget knownIssueRow(BuildContext context, int index, String issue) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: .start,
+        children: [
+          Text('${index + 1}.'),
+          const SizedBox(width: 8),
+          Expanded(child: Text(issue)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Every accepted limitation, in display order.
+///
+/// The list is shared by the About section and the Advanced known-issues page so
+/// there is exactly one place to add or remove an entry.
+List<String> knownIssues(BuildContext context) {
+  final l10n = context.l10n;
+  return [
+    l10n.aboutKnownIssues1,
+    l10n.aboutKnownIssues2,
+    l10n.aboutKnownIssues3,
+    l10n.aboutKnownIssues4,
+    l10n.aboutKnownIssues5,
+    l10n.aboutKnownIssues6,
+  ];
 }

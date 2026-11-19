@@ -197,6 +197,9 @@ class DriftLocalMediaDb implements LocalMediaDb {
   Future<Set<AvesEntry>> loadEntriesByContentIds(Set<int> ids) => _entries.loadByContentIds(ids);
 
   @override
+  Future<Set<int>> loadMediaStoreContentIdsUnder(Set<String> directories) => _entries.mediaStoreContentIdsUnder(directories);
+
+  @override
   Future<List<AlbumSummaryRow>> loadAlbumSummaryRows(SummaryExclusion exclusion) => _summaries.albumRows(exclusion);
 
   @override

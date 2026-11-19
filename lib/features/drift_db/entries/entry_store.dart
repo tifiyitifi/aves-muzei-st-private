@@ -9,6 +9,7 @@ import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/features/stacking/model/stack_grouping.dart';
 import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/metadata/trash.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/ref/mime_types.dart';
@@ -108,6 +109,26 @@ class EntryStore {
       }
     }
     return result;
+  }
+
+  /// Media-store ids whose file lives under one of [directories], for the
+  /// obsolete sweep. Compared by prefix rather than `LIKE`, because `_` and `%`
+  /// are wildcards in a path.
+  Future<Set<int>> mediaStoreContentIdsUnder(Set<String> directories) async {
+    final prefixes = {
+      for (final directory in directories)
+        if (directory.isNotEmpty) directory.endsWith(pContext.separator) ? directory : '$directory${pContext.separator}',
+    };
+    if (prefixes.isEmpty) return {};
+    final conditions = prefixes.map((_) => 'substr(path, 1, ?) = ?').join(' OR ');
+    final rows = await db.customSelect(
+      'SELECT contentId FROM $_table WHERE contentId IS NOT NULL AND origin = ? AND ($conditions)',
+      variables: [
+        Variable.withInt(EntryOrigins.mediaStoreContent),
+        for (final prefix in prefixes) ...[Variable.withInt(prefix.length), Variable.withString(prefix)],
+      ],
+    ).get();
+    return {for (final row in rows) row.data['contentId'] as int};
   }
 
   /// Loads entries by MediaStore content id, in chunks. Used to resolve a
@@ -788,7 +809,11 @@ class EntryStore {
       _log.d('$runtimeType inserting slice of [${inserted + 1}, ${inserted + slice.length}] entries');
       await db.batch((batch) {
         for (final entry in slice) {
-          batchInsertReplace(batch, db.entriesTable, _toRowMap(entry));
+          // A file reported twice must not take a second row (see
+          // `MigrationV16`), and `INSERT OR REPLACE` would go further and delete
+          // the row the second report collides with, taking the id favourites,
+          // covers and pins are keyed on. A rejected duplicate is a no-op.
+          batchInsertIgnore(batch, db.entriesTable, _toRowMap(entry));
         }
       });
       inserted += slice.length;

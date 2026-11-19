@@ -52,6 +52,13 @@ abstract class LocalMediaDb {
   /// Loads entries by MediaStore content id (bounded `IN` query, chunked).
   Future<Set<AvesEntry>> loadEntriesByContentIds(Set<int> ids);
 
+  /// Every media-store content id whose file lives under one of [directories].
+  ///
+  /// Scoped to mounted volumes on purpose: a sweep must not ask about rows on a
+  /// volume that is not mounted, because the store reports those items missing
+  /// when it merely cannot see them.
+  Future<Set<int>> loadMediaStoreContentIdsUnder(Set<String> directories);
+
   /// Counts the entries matching the window predicate (same definition as
   /// [loadEntryWindow], so the total always matches a full walk of windows).
   Future<int> countEntries([CollectionWindowPredicate predicate = const CollectionWindowPredicate()]);

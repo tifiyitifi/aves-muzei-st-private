@@ -22,6 +22,15 @@ void batchInsertReplace<T extends Table, D>(Batch batch, TableInfo<T, D> table, 
   batch.insert(table, RawValuesInsertable<D>(_columns(map)), mode: InsertMode.insertOrReplace);
 }
 
+/// Queues an `INSERT OR IGNORE` of [map] into [table] inside [batch].
+///
+/// For inserts where a rejected row must be a no-op: `OR REPLACE` deletes the
+/// row the new one collides with, and for an entry that means losing the id
+/// favourites, covers and pins are keyed on.
+void batchInsertIgnore<T extends Table, D>(Batch batch, TableInfo<T, D> table, Map<String, Object?> map) {
+  batch.insert(table, RawValuesInsertable<D>(_columns(map)), mode: InsertMode.insertOrIgnore);
+}
+
 /// Inserts or replaces [map] into [table].
 ///
 /// `D` is inferred from [table], so callers never name the generated row type.

@@ -110,11 +110,22 @@ void main() {
     final found = await service.searchLiveEntries('beach');
     expect(found.map((e) => e.sourceTitle), ['beach']);
 
-    final duplicateA = entry(service.nextId)..contentId = 777;
-    final duplicateB = entry(service.nextId)..contentId = 777;
-    await service.insertEntries({duplicateA, duplicateB});
-    final duplicates = await service.searchLiveDuplicates(0, null);
-    expect(duplicates.map((e) => e.contentId), contains(777));
+    // A duplicate row cannot be written any more (see the test below), so the
+    // finder has nothing to report.
+    expect(await service.searchLiveDuplicates(0, null), isEmpty);
+  });
+
+  test('a repeated media-store report does not take a second row', () async {
+    final first = entry(service.nextId)..contentId = 777;
+    final repeat = entry(service.nextId)..contentId = 777;
+
+    await service.insertEntries({first, repeat});
+
+    // The row the first report created survives with its id: favourites, covers
+    // and pins are keyed on it, so a duplicate must never replace it.
+    final rows = await db.customSelect('SELECT id FROM entry WHERE contentId = 777').get();
+    expect(rows.map((row) => row.data['id']), [first.id]);
+    expect(await service.loadEntriesById({repeat.id}), isEmpty);
   });
 
   test('catalog metadata and date taken', () async {

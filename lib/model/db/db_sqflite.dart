@@ -190,6 +190,9 @@ class SqfliteLocalMediaDb implements LocalMediaDb {
   @override
   Future<Set<AvesEntry>> loadEntriesByContentIds(Set<int> ids) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
 
+  @override
+  Future<Set<int>> loadMediaStoreContentIdsUnder(Set<String> directories) => throw UnimplementedError('$runtimeType is retired; use the Drift backend');
+
   // Windowed reads are only implemented on the Drift backend. This engine is a
   // retired rollback path ("do not extend it" above): the stubs satisfy the
   // seam so the file still compiles, and fail loudly if ever re-registered.

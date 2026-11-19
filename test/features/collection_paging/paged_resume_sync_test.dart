@@ -117,6 +117,27 @@ void main() {
       await first;
       expect(fixture.changes.revision, 1);
     });
+
+    test('a swept row the store no longer serves refreshes like a change', () async {
+      final fixture = build();
+      fixture.discoverer.applied = 0;
+      fixture.discoverer.swept = 2;
+
+      await fixture.sync.sync();
+
+      expect(fixture.discoverer.sweepCalls, 1);
+      expect(fixture.events, ['reload', 'changed']);
+    });
+
+    test('the sweep runs once per process', () async {
+      final fixture = build();
+
+      await fixture.sync.sync();
+      await fixture.sync.sync();
+
+      expect(fixture.discoverer.sweepCalls, 1);
+      expect(fixture.discoverer.calls, 2);
+    });
   });
 }
 

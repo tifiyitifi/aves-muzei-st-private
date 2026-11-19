@@ -225,6 +225,40 @@ class PagedDiscoverer {
     }
   }
 
+  /// Removes the rows whose media-store item no longer exists.
+  ///
+  /// A deletion leaves nothing for [syncIfChanged] to find: the change query
+  /// asks the store for the rows modified after the cursor, and a deleted row is
+  /// not there to answer. So a row can outlive its file indefinitely, and every
+  /// surface that opens it fails with `No item at <uri>`. This is the sweep that
+  /// settles them, bounded by one id set and the store's own cursors.
+  ///
+  /// Only rows under [mountedVolumePaths] are asked about: a volume that is not
+  /// mounted is invisible to the store, so its rows would look deleted. A sweep
+  /// that would drop most of what it asked about is refused for the same reason
+  /// in the other direction — a store that cannot answer at all reports
+  /// everything missing.
+  Future<int> reconcileObsoleteMediaStoreRows({required Set<String> mountedVolumePaths}) async {
+    if (mountedVolumePaths.isEmpty) return 0;
+    final known = await database.loadMediaStoreContentIdsUnder(mountedVolumePaths);
+    if (known.isEmpty) return 0;
+    final obsolete = (await mediaStore.checkObsoleteContentIds(known.toList())).toSet();
+    if (obsolete.isEmpty) return 0;
+    if (obsolete.length * 2 > known.length) {
+      _log.w('paged sweep refused: ${obsolete.length} of ${known.length} rows are missing from the media store');
+      return 0;
+    }
+    // The store answers with content ids; the delete is by row id. Translating
+    // is what keeps the sweep from deleting an unrelated row whose id happens to
+    // equal a content id.
+    final rows = await database.loadEntriesByContentIds(obsolete);
+    if (rows.isEmpty) return 0;
+    final ids = {for (final row in rows) row.id};
+    await database.removeIds(ids);
+    _log.d('paged sweep removed ${ids.length} rows the media store no longer serves');
+    return ids.length;
+  }
+
   /// Counts the rows [importAll] would stream, for the import progress
   /// denominator. 0 when the platform cannot tell.
   Future<int> countEntries() async {

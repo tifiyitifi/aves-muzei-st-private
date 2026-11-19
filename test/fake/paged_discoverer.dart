@@ -13,6 +13,10 @@ class FakePagedDiscoverer extends Fake implements PagedDiscoverer {
   Completer<void>? gate;
   Object? error;
 
+  /// How many sweeps ran, and how many rows the last one reported removing.
+  int sweepCalls = 0;
+  int swept = 0;
+
   @override
   Future<int> syncIfChanged() async {
     calls++;
@@ -21,5 +25,11 @@ class FakePagedDiscoverer extends Fake implements PagedDiscoverer {
     final error = this.error;
     if (error != null) throw error;
     return applied;
+  }
+
+  @override
+  Future<int> reconcileObsoleteMediaStoreRows({required Set<String> mountedVolumePaths}) async {
+    sweepCalls++;
+    return swept;
   }
 }

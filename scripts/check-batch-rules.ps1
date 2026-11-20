@@ -2,11 +2,15 @@
 #
 # `docs/features/batch-processing/rules.md` is only useful if a row cannot claim
 # coverage it does not have. This check parses every `F:<stem>#<test name>` token,
-# finds the test file under `test/`, and confirms a `test('<name>'` call
-# exists. It also resolves every `decisions/NNNN-*.md` link in the feature docs.
+# finds the test file under `test/`, and confirms a `test('<name>'` or
+# `testWidgets('<name>'` call exists. It also resolves every
+# `decisions/NNNN-*.md` link in the feature docs.
 #
 # It is not part of `flutter test`: a doc edit should not need the test runner.
 # Run it after editing the register, and before committing a rule change.
+#
+# It also guards the coupling in `recurrences.md` C13: the batch views must
+# import the app's Material library, not Flutter's copy of it.
 
 param(
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -85,13 +89,17 @@ foreach ($line in $lines) {
             $failures.Add("row ${id}: no test file '$stem.dart'")
             continue
         }
-        $needle = "test('$name'"
+        $needles = @("test('$name'", "testWidgets('$name'")
         $found = $false
         foreach ($file in $files) {
-            if ((Get-Content -LiteralPath $file.FullName -Raw).Contains($needle)) {
-                $found = $true
-                break
+            $content = Get-Content -LiteralPath $file.FullName -Raw
+            foreach ($needle in $needles) {
+                if ($content.Contains($needle)) {
+                    $found = $true
+                    break
+                }
             }
+            if ($found) { break }
         }
         if (-not $found) {
             $failures.Add("row ${id}: no test named '$name' in $stem.dart")
@@ -109,6 +117,18 @@ foreach ($file in @(Get-ChildItem -LiteralPath $featureDir -Recurse -File -Filte
         if (-not (Test-Path -LiteralPath $target)) {
             $failures.Add("$($file.Name): missing decision '$($link.Groups[1].Value)'")
         }
+    }
+}
+
+# The batch views share the app's Material library (`C13` in `recurrences.md`).
+# A view on `package:flutter/material.dart` resolves `Theme.of` and
+# `ScaffoldMessenger.of` against a different copy of the library, so it paints
+# the fallback theme and its snackbars never reach the app's messenger.
+$viewRoot = Join-Path $Root 'lib/features/batch_ops/view'
+foreach ($file in @(Get-ChildItem -LiteralPath $viewRoot -Recurse -File -Filter '*.dart')) {
+    $content = Get-Content -LiteralPath $file.FullName -Raw
+    if ($content.Contains("import 'package:flutter/material.dart'")) {
+        $failures.Add("$($file.Name): imports package:flutter/material.dart instead of package:material_ui")
     }
 }
 

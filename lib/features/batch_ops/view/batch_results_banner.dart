@@ -12,7 +12,9 @@ import 'package:material_ui/material_ui.dart';
 /// are always about the files the user is looking at. "Not now" keeps every row
 /// pending; nothing is applied without an explicit tap.
 class BatchResultsBannerSliver extends StatefulWidget {
-  const new({super.key});
+  final BatchResultsService service;
+
+  const new({super.key, this.service = batchResultsService});
 
   @override
   State<BatchResultsBannerSliver> createState() => _BatchResultsBannerSliverState();
@@ -30,8 +32,8 @@ class _BatchResultsBannerSliverState extends State<BatchResultsBannerSliver> {
   }
 
   Future<void> _load() async {
-    await batchResultsService.pruneMissingResults();
-    final store = await batchResultsService.store();
+    await widget.service.pruneMissingResults();
+    final store = await widget.service.store();
     final pending = await store.getPending();
     if (!mounted) return;
     setState(() => _pending = pending);
@@ -55,7 +57,7 @@ class _BatchResultsBannerSliverState extends State<BatchResultsBannerSliver> {
     if (confirmed != true || !mounted) return;
 
     setState(() => _busy = true);
-    final replaced = await batchResultsService.replaceWithSource(targets);
+    final replaced = await widget.service.replaceWithSource(targets);
     if (!mounted) return;
     setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -82,7 +84,7 @@ class _BatchResultsBannerSliverState extends State<BatchResultsBannerSliver> {
     if (confirmed != true || !mounted) return;
 
     setState(() => _busy = true);
-    final moved = await batchResultsService.moveBack(targets);
+    final moved = await widget.service.moveBack(targets);
     if (!mounted) return;
     setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(

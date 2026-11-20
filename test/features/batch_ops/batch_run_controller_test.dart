@@ -71,6 +71,24 @@ void main() {
     expect(service.job!.items.single.uri, 'content://media/1');
     expect(controller.total, 1);
   });
+
+  test('a failing recorder does not fail the run', () async {
+    recorder.failures = 1;
+    await controller.run(entries: {_entry(1, 'IMG_0001.jpg')}, actions: [BatchActions.rotate()]);
+
+    service
+      ..emit(const BatchEvent(type: BatchEventType.itemDone, index: 0, entryId: 1, uri: 'content://media/10', name: 'IMG_0001.jpg'))
+      ..emit(const BatchEvent(type: BatchEventType.jobDone, done: 1));
+
+    await controller.recordsSettled;
+
+    // The file is on disk whatever the table says, so the run still finished.
+    expect(recorder.attempts, 1);
+    expect(recorder.recorded, isEmpty);
+    expect(controller.state, BatchRunState.done);
+    expect(controller.error, isNull);
+    expect(controller.done, 1);
+  });
 }
 
 AvesEntry _entry(int id, String name, {String mimeType = 'image/jpeg'}) {
@@ -117,6 +135,14 @@ class _FakeBatchService extends Fake implements BatchService {
 class _FakeRecorder extends Fake implements BatchResultRecorder {
   final List<BatchRecordedItem> recorded = [];
 
+  /// How many of the first attempts must throw, to prove the run survives them.
+  int failures = 0;
+  int attempts = 0;
+
   @override
-  Future<void> record(BatchRecordedItem item) async => recorded.add(item);
+  Future<void> record(BatchRecordedItem item) async {
+    attempts++;
+    if (attempts <= failures) throw StateError('recorder unavailable');
+    recorded.add(item);
+  }
 }

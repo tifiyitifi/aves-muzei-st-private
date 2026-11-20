@@ -208,6 +208,46 @@ void main() {
     expect(await service.pruneMissingResults(), 1);
     expect(await (await service.store()).getResults(), isEmpty);
   });
+
+  test('asks the platform before pruning a fresh result', () async {
+    // Written seconds ago, so the scanner has not indexed it yet: the app's
+    // table cannot answer, and the platform must be asked before the row is
+    // treated as missing.
+    store.entries['content://media/200'] = _entry(200, 'content://media/200', '$_resultsDir/1.jpg');
+    await record();
+
+    expect(await service.pruneMissingResults(), 0);
+    expect(await (await service.store()).getResults(), hasLength(1));
+  });
+
+  test('leaves both files when the superseded result cannot be deleted', () async {
+    store.entries['content://media/200'] = _entry(200, 'content://media/200', '$_resultsDir/1.jpg');
+    await record(resultUri: 'content://media/200', resultName: '1.jpg');
+
+    native.deleteSucceeds = false;
+    store.entries['content://media/201'] = _entry(201, 'content://media/201', '$_resultsDir/1 (1).jpg');
+    await record(resultUri: 'content://media/201', resultPath: '$_resultsDir/1 (1).jpg', resultName: '1 (1).jpg', index: 1);
+
+    // The parked copy survived, so the newer result still took the plain name.
+    // Both files and both rows stay: a half-finished cleanup loses nothing.
+    final paths = store.entries.values.map((entry) => entry.path).toList(growable: false);
+    expect(paths, containsAll(['$_resultsDir/1-to-remove.jpg', '$_resultsDir/1.jpg']));
+    final rows = await (await service.store()).getResults();
+    expect(rows, hasLength(2));
+    expect(native.deleted, hasLength(1), reason: 'the delete was attempted, not skipped');
+  });
+
+  test('deletes parked files left by an interrupted cleanup', () async {
+    final parked = _entry(300, 'content://media/300', '$_resultsDir/1-to-remove.jpg');
+    final result = _entry(301, 'content://media/301', '$_resultsDir/2.jpg');
+    await mediaDb.insertEntries({parked, result});
+
+    expect(await service.pruneSupersededFiles(), 1);
+
+    expect(native.deleted, [parked.uri]);
+    final remaining = await mediaDb.loadEntries(directory: service.resultsDirectory);
+    expect(remaining.map((entry) => entry.path), [result.path]);
+  });
 }
 
 AvesEntry _entry(int id, String uri, String path) {

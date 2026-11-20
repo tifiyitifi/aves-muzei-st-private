@@ -6,20 +6,12 @@ behaviour also updates `rules.md`; a task that changes a judgement adds a
 
 ## Open
 
-- [ ] **Widget fixtures** for the share explainer (`SHR-20`), the share snackbar
-      and album link (`SHR-19`) and the retention radio group (`SHR-15`,
-      `SHR-16`).
-- [ ] **Supersede failure fixture** (`REP-2`). A failing rename or delete must
-      leave both files; today the row is unfalsified.
-- [ ] **Parked-file cleanup fixture** (`HOU-2`) and **fresh-result prune
-      fixture** (`HOU-3`). Both need a storage or platform fake.
-- [ ] **Record-failure fixture** (`REC-6`). A recorder that throws must not fail
-      the run.
-- [ ] **Widget fixtures** for the banner scope (`CLS-5`), the missing delete
-      action (`UI-1`), "not now" (`UI-2`) and the profile join (`PRF-5`).
 - [ ] **Native executor fixtures** (`RUN-4`, `RUN-5`). The cancellation and
       per-item failure rules are native; a host test would need an Android
       instrumentation harness. Accepted gap until one exists.
+- [ ] **Device checklist.** The manual steps in `testing.md` (share explainer,
+      share album, profile isolation, retention, cancellation) still need a run
+      on a device; they are `M` in the register where no fixture can reach them.
 
 ## Done
 
@@ -32,6 +24,15 @@ behaviour also updates `rules.md`; a task that changes a judgement adds a
 - [x] Rule register check script and the docs set.
 - [x] Copy & share: share paths, run kind, share profiles, retention, entry
       points, one-time explainer and settings page (`FR-20` … `FR-24`).
+- [x] Failure-path fixtures: supersede failure (`REP-2`), parked cleanup
+      (`HOU-2`), fresh result (`HOU-3`), recorder failure (`REC-6`) in
+      `batch_results_service_test.dart` and `batch_run_controller_test.dart`.
+- [x] View fixtures: banner scope (`CLS-5`), no delete (`UI-1`), not now
+      (`UI-2`), profile join (`PRF-5`), share explainer (`SHR-20`), share
+      snackbar (`SHR-19`), retention group (`SHR-15`, `SHR-16`) and the share
+      profile list (`SHR-17`) under `test/features/batch_ops/view/`.
+- [x] Batch views import the app's Material library, so their dialogs, sheet and
+      snackbars use the app theme and messenger (`C13`).
 
 ## Accepted gaps
 

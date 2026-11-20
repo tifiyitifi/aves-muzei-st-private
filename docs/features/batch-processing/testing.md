@@ -40,16 +40,28 @@ Which file holds which rule family:
 | --- | --- |
 | `test/features/batch_ops/batch_action_test.dart` | `RUN-1`, `RUN-3`, `RUN-7`, `RUN-8`, `PRF-6`, `PRF-7` |
 | `test/features/batch_ops/batch_paths_test.dart` | `CLS-1` … `CLS-4`, `SHR-1` … `SHR-5` |
-| `test/features/batch_ops/batch_run_controller_test.dart` | `RUN-2`, `REC-1`, `REC-2` |
+| `test/features/batch_ops/batch_view_scope_test.dart` | `CLS-5` |
+| `test/features/batch_ops/batch_run_controller_test.dart` | `RUN-2`, `REC-1`, `REC-2`, `REC-6` |
 | `test/features/batch_ops/batch_result_store_test.dart` | `REC-7` … `REC-9`, `REP-4`, `PRF-1` … `PRF-4`, `SHR-17` |
-| `test/features/batch_ops/batch_results_service_test.dart` | `REC-3` … `REC-5`, `REP-1`, `REP-3`, `APP-1`, `APP-2`, `APP-4`, `APP-5`, `HOU-1`, `SHR-6` |
+| `test/features/batch_ops/batch_results_service_test.dart` | `REC-3` … `REC-5`, `REP-1`, `REP-2`, `REP-3`, `APP-1`, `APP-2`, `APP-4`, `APP-5`, `HOU-1` … `HOU-3`, `SHR-6` |
 | `test/features/batch_ops/batch_settings_test.dart` | `SHR-15`, `SHR-16`, `SHR-18` |
 | `test/features/batch_ops/batch_share_service_test.dart` | `SHR-9` … `SHR-14` |
+| `test/features/batch_ops/view/batch_results_view_test.dart` | `UI-1`, `UI-2` |
+| `test/features/batch_ops/view/batch_run_sheet_test.dart` | `PRF-5` |
+| `test/features/batch_ops/view/batch_share_intro_dialog_test.dart` | `SHR-20` |
+| `test/features/batch_ops/view/batch_share_done_snack_bar_test.dart` | `SHR-19` |
+| `test/features/batch_ops/view/batch_share_settings_page_test.dart` | `SHR-15`, `SHR-16`, `SHR-17` |
 | `test/features/drift_db/migration_v17_test.dart` | `SCH-1`, `SCH-2` |
 | `test/utils/android_file_utils_test.dart` | `SHR-7` |
 
 Database tests need a full native sqlite3 on a Windows host; see `AGENTS.md`
 (`AVES_SQLITE3_DLL`). The Microsoft `winsqlite3.dll` is not a substitute.
+
+Database-backed **widget** tests keep every database call inside the test body:
+the in-memory connection is constructed in `setUp` but first opened in the body.
+A write issued from the widget tester's fake-async zone after the connection was
+opened in `setUp` never completes, so the page would spin forever. That is also
+why those files do not close the connection.
 
 ## 3. Android build
 
@@ -67,10 +79,13 @@ JDK 21 is required. The target property matters: without it Gradle looks for
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-batch-rules.ps1
 ```
 
-It parses `rules.md`, resolves every `F:` token against `test/**`, and
-checks that every `decisions/` link exists. Exit code 1 means a row claims
-coverage it does not have, or a link points nowhere. It is not part of `flutter
-test` because a doc edit should not need the test runner.
+It parses `rules.md`, resolves every `F:` token against `test/**` (a `test('name'`
+or `testWidgets('name'` declaration both count), checks that every `decisions/`
+link exists, and fails when a file under `lib/features/batch_ops/view/` imports
+`package:flutter/material.dart` instead of the app's `package:material_ui`
+(`recurrences.md` C13). Exit code 1 means a row claims coverage it does not
+have, a link points nowhere, or a view left the app's Material library. It is not
+part of `flutter test` because a doc edit should not need the test runner.
 
 A row with only `-:<reason>` or `M` is allowed; it is unfalsified, and the reason
 says why. Prefer adding the fixture to widening the reason.
@@ -113,6 +128,9 @@ file name.
     the preferences): it does not return. (`SHR-18`)
 15. Cancel a share run after a few items. Expect the finished copies kept.
     (`RUN-4`)
+16. With a dark theme, open the run sheet, an action editor and the progress
+    dialog: they follow the app theme, and the snackbar after a run shows.
+    (`UI-4`)
 
 ## 6. Privacy gate
 

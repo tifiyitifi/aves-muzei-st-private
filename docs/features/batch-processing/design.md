@@ -180,12 +180,23 @@ reuses it instead of inventing a second prompt policy.
 | Share explainer | retention, folder path | shows once; links to share settings |
 
 The banner appears only when the visible filters are exactly the results album
-(`_isBatchResultsView`). A broader album that merely contains the folder, or a
-multi-filter view, gets no banner: the banner offers to overwrite originals, so
-it must only appear where the user is looking at results.
+(`isBatchResultsView` in `model/batch_view_scope.dart`). A broader album that
+merely contains the folder, or a multi-filter view, gets no banner: the banner
+offers to overwrite originals, so it must only appear where the user is looking
+at results.
 
 The results page and the banner both call `pruneMissingResults()` before
 reading, so a result deleted from the album cannot keep offering an action.
+
+Every surface imports `package:material_ui/material_ui.dart`, like the rest of
+the app. The fork runs a copied Material library, and `Theme.of` /
+`ScaffoldMessenger.of` resolve by exact type: a view on `package:flutter/material.dart`
+would paint with the fallback theme and could not reach the app's messenger, so
+its snackbars would never show.
+
+The banner and the results page take their `BatchResultsService` as a
+constructor parameter (defaulting to the process-wide one), so a fixture can
+drive them against an in-memory database instead of the app's singletons.
 
 ## 9. Invariants
 

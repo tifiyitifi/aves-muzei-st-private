@@ -22,7 +22,9 @@ import 'package:material_ui/material_ui.dart';
 class BatchResultsPage extends StatefulWidget {
   static const routeName = '/settings/batch/results';
 
-  const new({super.key});
+  final BatchResultsService service;
+
+  const new({super.key, this.service = batchResultsService});
 
   @override
   State<BatchResultsPage> createState() => _BatchResultsPageState();
@@ -59,8 +61,8 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
   Future<void> _load() async {
     // A result deleted from the album is normal browsing; its row must not keep
     // offering actions for a file that no longer exists.
-    await batchResultsService.pruneMissingResults();
-    final store = await batchResultsService.store();
+    await widget.service.pruneMissingResults();
+    final store = await widget.service.store();
     final results = await store.getResults();
     final entries = results.isEmpty
         ? <AvesEntry>{}
@@ -101,7 +103,7 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
     if (!await _confirm(l10n.batchResultsReplaceConfirmTitle, l10n.batchResultsReplaceConfirmBody(targets.length))) return;
 
     setState(() => _busy = true);
-    final replaced = await batchResultsService.replaceWithSource(targets);
+    final replaced = await widget.service.replaceWithSource(targets);
     if (!mounted) return;
     setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -118,7 +120,7 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
     if (!await _confirm(l10n.batchResultsMoveBackConfirmTitle, l10n.batchResultsMoveBackConfirmBody(targets.length))) return;
 
     setState(() => _busy = true);
-    final moved = await batchResultsService.moveBack(targets);
+    final moved = await widget.service.moveBack(targets);
     if (!mounted) return;
     setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(

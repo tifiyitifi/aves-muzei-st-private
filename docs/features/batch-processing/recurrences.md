@@ -33,6 +33,7 @@ touches. `decisions/` records the ones that needed a judgement, not a fix.
 | R13 | The explainer returns after it was dismissed | The marker went to preferences (cleared by a reset) or was never written | `SHR-18`: an `appMeta` marker, written after the dialog | The marker moves to `SharedPreferences`, or the dialog is shown again before the marker is written | copy & share |
 | R14 | Retention deletes a batch result or a source | The prune read a broader scope or walked storage | `SHR-12`: only the share folder's direct children, from the app table | The prune is pointed at the results folder, or a storage walk replaces the table read | copy & share |
 | R15 | Two share runs collide as `name (1).jpg` | Share has no supersede pass, so the plain name was reused | `SHR-8`: share always names copies `{name}_{date}` | The share output copies the batch name pattern | copy & share |
+| R16 | The batch sheet ignores the app theme and the post-run snackbar never appears | A batch view imported `package:flutter/material.dart`, and the fork's Material is a separate copy: `Theme.of` and `ScaffoldMessenger.of` resolve by exact type, so the app's theme and messenger are invisible | `UI-4`: every batch view imports `material_ui`, and the rule check refuses the other import (`C13`) | A new batch view copies an upstream `flutter/material` import | copy & share |
 
 ## C — the couplings
 
@@ -50,3 +51,4 @@ touches. `decisions/` records the ones that needed a judgement, not a fix.
 | C10 | The output root | run sheet, native output spec, recorder gate, album classification, retention scope | Change a constant and its predicate together; the two roots must stay disjoint | copy & share |
 | C11 | A copy's modified time | retention cutoff, media scan, album sorting | Expiry uses `dateModifiedMillis`; `bestDate` is the photo's capture time, which a copy inherits | copy & share |
 | C12 | `appMeta` markers | results pin claim, share explainer | Write the marker before the effect it guards, and keep it out of the preference reset | `3c827fe54`, copy & share |
+| C13 | The Material library | every batch view, the app theme, the scaffold messenger, dialogs and sheets | Import `package:material_ui/material_ui.dart` in a batch view; `Theme.of` and `ScaffoldMessenger.of` match by exact type, so `package:flutter/material.dart` paints the fallback theme and never reaches the app's messenger | copy & share |

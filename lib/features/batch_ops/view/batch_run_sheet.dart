@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:aves/features/batch_ops/db/batch_profile_store.dart';
 import 'package:aves/features/batch_ops/model/batch_action.dart';
 import 'package:aves/features/batch_ops/model/batch_job.dart';
+import 'package:aves/features/batch_ops/model/batch_paths.dart';
 import 'package:aves/features/batch_ops/model/batch_result.dart';
 import 'package:aves/features/batch_ops/services/batch_results_service.dart';
 import 'package:aves/features/batch_ops/services/batch_run_controller.dart';
 import 'package:aves/features/batch_ops/services/batch_settings.dart';
+import 'package:aves/features/batch_ops/services/batch_share_service.dart';
 import 'package:aves/features/batch_ops/view/batch_action_editor.dart';
 import 'package:aves/features/batch_ops/view/batch_progress_dialog.dart';
 import 'package:aves/features/batch_ops/view/batch_results_page.dart';
@@ -14,33 +16,45 @@ import 'package:aves/features/batch_ops/view/batch_tool_catalog.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/props.dart';
+import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/services/common/services.dart';
+import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-/// Entry point for the collection/viewer batch action.
+/// Entry point for the collection/viewer batch and copy & share actions.
 ///
 /// The sheet only selects and configures actions; the run itself lives in
-/// [BatchRunController] so the same flow can later be driven by a saved profile
-/// or by copy-share without a UI round trip.
-Future<void> startBatch(BuildContext context, Set<AvesEntry> entries) async {
+/// [BatchRunController] so the same flow can be driven by a saved profile or by
+/// copy & share without a second engine. [kind] decides only where the output
+/// goes and which profiles are offered.
+Future<void> startBatch(BuildContext context, Set<AvesEntry> entries, {BatchProfileKind kind = BatchProfileKind.batch}) async {
   final l10n = context.l10n;
+  final share = kind == BatchProfileKind.share;
   final images = entries.where((entry) => entry.isImage && !entry.isRaw).toSet();
   if (images.isEmpty) {
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(l10n.batchNoImageFeedback)));
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(share ? l10n.batchShareNoImageFeedback : l10n.batchNoImageFeedback)));
     return;
   }
 
   await batchSettings.ensureLoaded();
-  final actions = await showBatchRunSheet(context, images.length);
+  final actions = await showBatchRunSheet(context, images.length, kind: kind);
   if (actions == null || actions.isEmpty || !context.mounted) return;
 
   final output = BatchOutput(
+    relativePath: share ? batchShareRelativeRoot : batchResultsRelativeRoot,
     // Replace-previous keeps the plain source name; keeping versions needs a
     // distinct name per run so the older result is not overwritten in place.
-    namePattern: batchSettings.resultMode == BatchResultMode.keepVersions ? '{name}_{date}' : '{name}',
+    // A share run has no supersede pass, so it always dates the copy.
+    namePattern: share || batchSettings.resultMode == BatchResultMode.keepVersions ? '{name}_{date}' : '{name}',
   );
+
+  // Share output expires; the cleanup is bounded to the share folder and must
+  // never delay or fail the run it precedes.
+  if (share) await batchShareService.pruneExpired();
 
   final controller = BatchRunController();
   unawaited(controller.run(entries: images, actions: actions, output: output));
@@ -52,8 +66,31 @@ Future<void> startBatch(BuildContext context, Set<AvesEntry> entries) async {
   await controller.recordsSettled;
   final done = controller.done;
   controller.dispose();
-  unawaited(batchResultsService.pruneSupersededFiles());
+  if (!share) unawaited(batchResultsService.pruneSupersededFiles());
   if (!context.mounted || done == 0) return;
+
+  if (share) {
+    final navigator = Navigator.maybeOf(context);
+    final source = context.read<CollectionSource>();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(l10n.batchShareReady(done)),
+        action: SnackBarAction(
+          label: l10n.batchViewResults,
+          onPressed: () => navigator?.push(
+            MaterialPageRoute(
+              settings: const RouteSettings(name: CollectionPage.routeName),
+              builder: (_) => CollectionPage(
+                source: source,
+                filters: {StoredAlbumFilter(batchShareService.directory, null)},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return;
+  }
 
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
@@ -68,19 +105,20 @@ Future<void> startBatch(BuildContext context, Set<AvesEntry> entries) async {
   );
 }
 
-Future<List<BatchAction>?> showBatchRunSheet(BuildContext context, int entryCount) {
+Future<List<BatchAction>?> showBatchRunSheet(BuildContext context, int entryCount, {BatchProfileKind kind = BatchProfileKind.batch}) {
   return showModalBottomSheet<List<BatchAction>>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (context) => BatchRunSheet(entryCount: entryCount),
+    builder: (context) => BatchRunSheet(entryCount: entryCount, kind: kind),
   );
 }
 
 class BatchRunSheet extends StatefulWidget {
   final int entryCount;
+  final BatchProfileKind kind;
 
-  const new({super.key, required this.entryCount});
+  const new({super.key, required this.entryCount, this.kind = BatchProfileKind.batch});
 
   @override
   State<BatchRunSheet> createState() => _BatchRunSheetState();
@@ -102,8 +140,8 @@ class _BatchRunSheetState extends State<BatchRunSheet> {
   Future<void> _loadProfiles() async {
     try {
       final store = BatchProfileStore(await getIt<AppDatabaseProvider>().open());
-      await store.ensureSeeded(BatchProfileKind.batch);
-      final profiles = await store.getProfiles(BatchProfileKind.batch);
+      await store.ensureSeeded(widget.kind);
+      final profiles = await store.getProfiles(widget.kind);
       if (!mounted) return;
       setState(() => _profiles = profiles);
       // "Used by default" means exactly that: the sheet starts from the active
@@ -151,10 +189,10 @@ class _BatchRunSheetState extends State<BatchRunSheet> {
     final store = BatchProfileStore(await getIt<AppDatabaseProvider>().open());
     final now = DateTime.now();
     final profile = BatchProfile(
-      id: 'batch-${now.microsecondsSinceEpoch}',
+      id: '${widget.kind.name}-${now.microsecondsSinceEpoch}',
       name: name,
       actionsJson: encodeBatchActions(_actions),
-      kind: BatchProfileKind.batch,
+      kind: widget.kind,
       sortOrder: (_profiles?.length ?? 0) + 1,
       isActive: false,
       createdAt: now,
@@ -175,6 +213,7 @@ class _BatchRunSheetState extends State<BatchRunSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final share = widget.kind == BatchProfileKind.share;
     final profiles = _profiles;
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -184,11 +223,14 @@ class _BatchRunSheetState extends State<BatchRunSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(l10n.batchRunSheetTitle, style: Theme.of(context).textTheme.titleLarge),
+              Text(share ? l10n.batchShareRunSheetTitle : l10n.batchRunSheetTitle, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 4),
-              Text(l10n.batchRunSheetExplanation),
+              Text(share ? l10n.batchShareRunSheetExplanation : l10n.batchRunSheetExplanation),
               const SizedBox(height: 4),
-              Text(l10n.batchRunSheetOutputFolder(batchResultsService.resultsDirectory), style: Theme.of(context).textTheme.bodySmall),
+              Text(
+                share ? l10n.batchShareRunSheetOutputFolder(batchShareService.directory) : l10n.batchRunSheetOutputFolder(batchResultsService.resultsDirectory),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ],
           ),
         ),

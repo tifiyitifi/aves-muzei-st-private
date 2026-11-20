@@ -6,12 +6,9 @@ behaviour also updates `rules.md`; a task that changes a judgement adds a
 
 ## Open
 
-- [ ] **Copy & share entry point** (`FR-P1`). A second action beside Batch
-      process, its first-run explainer with a permanently dismissible dialog, and
-      an edit/add-configuration entry. It runs the same engine with a share
-      output folder and records nothing in `batch_results`.
-- [ ] **Share output retention** (`FR-P2`). A policy for the share folder only;
-      batch results keep their current lifecycle.
+- [ ] **Widget fixtures** for the share explainer (`SHR-20`), the share snackbar
+      and album link (`SHR-19`) and the retention radio group (`SHR-15`,
+      `SHR-16`).
 - [ ] **Supersede failure fixture** (`REP-2`). A failing rename or delete must
       leave both files; today the row is unfalsified.
 - [ ] **Parked-file cleanup fixture** (`HOU-2`) and **fresh-result prune
@@ -33,6 +30,8 @@ behaviour also updates `rules.md`; a task that changes a judgement adds a
 - [x] Controller fixtures for the selection filter and the record trigger
       (`RUN-2`, `REC-1`, `REC-2`).
 - [x] Rule register check script and the docs set.
+- [x] Copy & share: share paths, run kind, share profiles, retention, entry
+      points, one-time explainer and settings page (`FR-20` … `FR-24`).
 
 ## Accepted gaps
 
@@ -42,3 +41,7 @@ behaviour also updates `rules.md`; a task that changes a judgement adds a
   writes them (`design.md` §11).
 - The banner's "not now" is not persisted; the rows stay pending, which is the
   part that matters.
+- Retention only sees share copies the scanner already imported. A copy written
+  seconds ago has no row yet and is picked up by the next prune.
+- Copy & share has no results page and no pin: the share album is the surface,
+  and the snackbar links to it (`0013`).

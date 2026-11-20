@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/batch_ops/view/batch_run_sheet.dart';
+import 'package:aves/features/batch_ops/view/batch_share_flow.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
@@ -127,6 +128,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
       // selecting
       case .share:
       case .batchProcess:
+      case .batchShare:
       case .toggleFavourite:
         return isMain && isSelecting && !isTrash;
       case .copyToClipboard:
@@ -205,6 +207,7 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
       // selecting
       case .share:
       case .batchProcess:
+      case .batchShare:
       case .delete:
       case .restore:
       case .copy:
@@ -272,6 +275,8 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
         _share(context);
       case .batchProcess:
         _batchProcess(context);
+      case .batchShare:
+        _batchShare(context);
       case .delete:
         _runOverFeed(context, () => _delete(context));
       case .emptyBin:
@@ -387,6 +392,12 @@ class EntrySetActionDelegate with FeedbackMixin, PermissionAwareMixin, SizeAware
     final entries = (await _getTargetEntries(context)) ?? {};
     if (entries.isEmpty || !context.mounted) return;
     await startBatch(context, entries);
+  }
+
+  Future<void> _batchShare(BuildContext context) async {
+    final entries = (await _getTargetEntries(context)) ?? {};
+    if (entries.isEmpty || !context.mounted) return;
+    await startBatchShare(context, entries);
   }
 
   Future<void> _rescan(BuildContext context) async {

@@ -63,8 +63,11 @@ class BatchResultsService implements BatchResultRecorder {
   Future<void> record(BatchRecordedItem recorded) async {
     final output = recorded.outputRelativePath;
     final absolute = recorded.resultPath;
-    // Copy-share writes elsewhere: only a normal batch run belongs here.
-    if (output == null || !isBatchResultsRelativePath(output)) return;
+    // Copy-share writes elsewhere: only a normal batch run belongs here. The
+    // share check comes first so the invariant holds even if the two roots ever
+    // overlap (a share root below the results root would match both predicates).
+    if (output == null || isBatchShareRelativePath(output)) return;
+    if (!isBatchResultsRelativePath(output)) return;
     if (absolute != null && absolute.isNotEmpty && !isBatchResultsPath(absolute)) return;
 
     await _settings.ensureLoaded();

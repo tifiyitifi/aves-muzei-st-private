@@ -39,11 +39,14 @@ Which file holds which rule family:
 | File | Rule families |
 | --- | --- |
 | `test/features/batch_ops/batch_action_test.dart` | `RUN-1`, `RUN-3`, `RUN-7`, `RUN-8`, `PRF-6`, `PRF-7` |
-| `test/features/batch_ops/batch_paths_test.dart` | `CLS-1` … `CLS-4` |
+| `test/features/batch_ops/batch_paths_test.dart` | `CLS-1` … `CLS-4`, `SHR-1` … `SHR-5` |
 | `test/features/batch_ops/batch_run_controller_test.dart` | `RUN-2`, `REC-1`, `REC-2` |
-| `test/features/batch_ops/batch_result_store_test.dart` | `REC-7` … `REC-9`, `REP-4`, `PRF-1` … `PRF-4` |
-| `test/features/batch_ops/batch_results_service_test.dart` | `REC-3` … `REC-5`, `REP-1`, `REP-3`, `APP-1`, `APP-2`, `APP-4`, `APP-5`, `HOU-1` |
+| `test/features/batch_ops/batch_result_store_test.dart` | `REC-7` … `REC-9`, `REP-4`, `PRF-1` … `PRF-4`, `SHR-17` |
+| `test/features/batch_ops/batch_results_service_test.dart` | `REC-3` … `REC-5`, `REP-1`, `REP-3`, `APP-1`, `APP-2`, `APP-4`, `APP-5`, `HOU-1`, `SHR-6` |
+| `test/features/batch_ops/batch_settings_test.dart` | `SHR-15`, `SHR-16`, `SHR-18` |
+| `test/features/batch_ops/batch_share_service_test.dart` | `SHR-9` … `SHR-14` |
 | `test/features/drift_db/migration_v17_test.dart` | `SCH-1`, `SCH-2` |
+| `test/utils/android_file_utils_test.dart` | `SHR-7` |
 
 Database tests need a full native sqlite3 on a Windows host; see `AGENTS.md`
 (`AVES_SQLITE3_DLL`). The Microsoft `winsqlite3.dll` is not a substitute.
@@ -64,7 +67,7 @@ JDK 21 is required. The target property matters: without it Gradle looks for
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-batch-rules.ps1
 ```
 
-It parses `rules.md`, resolves every `F:` token against `test/features/**`, and
+It parses `rules.md`, resolves every `F:` token against `test/**`, and
 checks that every `decisions/` link exists. Exit code 1 means a row claims
 coverage it does not have, or a link points nowhere. It is not part of `flutter
 test` because a doc edit should not need the test runner.
@@ -95,6 +98,21 @@ file name.
    reported as cancelled. (`RUN-4`)
 9. Force one item to fail (for example a corrupt source) and run a selection
    with good items around it. Expect the good ones to finish. (`RUN-5`)
+10. Select photos and choose Copy & share. On the first run the explainer names
+    the temporary folder and offers Settings; Continue opens the sheet. (`SHR-20`)
+11. Run it. Expect the copies in the share album under Apps, the batch results
+    table empty, and a snackbar whose VIEW opens the share album. (`SHR-6`,
+    `SHR-7`, `SHR-19`)
+12. Save a share profile in the share sheet. It is not listed in the batch
+    settings page, and a batch profile is not listed in the share page.
+    (`SHR-17`)
+13. Set retention to one day. A copy older than a day is removed when the share
+    settings page opens or the next share run starts; a fresh copy and a batch
+    result stay. (`SHR-9` … `SHR-13`)
+14. Dismiss the explainer, then start copy & share again (also after resetting
+    the preferences): it does not return. (`SHR-18`)
+15. Cancel a share run after a few items. Expect the finished copies kept.
+    (`RUN-4`)
 
 ## 6. Privacy gate
 

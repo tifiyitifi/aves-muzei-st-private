@@ -62,7 +62,7 @@ What a shipped feature must have is `spec.md`, `rules.md` and `decisions/`.
 `rules.md` uses `;`-separated tokens in its coverage column:
 
 - `F:<test file stem>#<test name>` — a test with exactly that name exists in
-  `test/features/**/<stem>.dart` and fails when the rule breaks.
+  `test/**/<stem>.dart` and fails when the rule breaks.
 - `M` — needs a human on a device; the step is listed in `testing.md`.
 - `-:<reason>` — deliberately unfalsified, with the reason it cannot be tested
   on the host.

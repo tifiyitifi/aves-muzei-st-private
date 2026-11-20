@@ -21,6 +21,7 @@ enum EntrySetAction {
   // selecting
   share,
   batchProcess,
+  batchShare,
   delete,
   restore,
   copy,
@@ -86,6 +87,7 @@ class EntrySetActions {
   static const pageSelection = <EntrySetAction?>[
     .share,
     .batchProcess,
+    .batchShare,
     .delete,
     .restore,
     .copy,
@@ -105,6 +107,7 @@ class EntrySetActions {
   static const collectionEditorSelectionRegular = <EntrySetAction>[
     .share,
     .batchProcess,
+    .batchShare,
     .delete,
     .copy,
     .move,

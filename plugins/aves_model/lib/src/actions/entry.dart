@@ -11,6 +11,7 @@ enum EntryAction {
   move,
   share,
   batchProcess,
+  batchShare,
   toggleFavourite,
   // raster
   rotateCCW,
@@ -63,6 +64,7 @@ class EntryActions {
     .info,
     .share,
     .batchProcess,
+    .batchShare,
     .edit,
     .rename,
     .delete,

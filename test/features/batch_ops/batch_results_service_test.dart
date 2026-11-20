@@ -123,6 +123,15 @@ void main() {
     expect(await (await service.store()).getResults(), isEmpty);
   });
 
+  test('ignores a copy & share run', () async {
+    await record(
+      output: batchShareRelativeRoot,
+      resultPath: '/storage/emulated/0/Pictures/aves_share/1_20260101_120000.jpg',
+      resultName: '1_20260101_120000.jpg',
+    );
+    expect(await (await service.store()).getResults(), isEmpty);
+  });
+
   test('replace-previous parks and deletes the older result, then frees its name', () async {
     store.entries['content://media/200'] = _entry(200, 'content://media/200', '$_resultsDir/1.jpg');
     await record(resultUri: 'content://media/200', resultName: '1.jpg');

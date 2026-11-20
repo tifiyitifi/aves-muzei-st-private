@@ -632,6 +632,15 @@ final List<SettingDef> _batchDefs = [
     routeName: MetaPageKeys.batch,
     sortOrder: 10,
   ),
+  SettingDef(
+    key: MetaPageKeys.batchShare,
+    category: SettingsCategory.batch,
+    widgetKind: SettingWidgetKind.subPage,
+    title: (context) => context.l10n.batchShareSettingsTitle,
+    subtitle: (context) => context.l10n.batchShareSettingsSubtitle,
+    routeName: MetaPageKeys.batchShare,
+    sortOrder: 20,
+  ),
 ];
 
 // Advanced

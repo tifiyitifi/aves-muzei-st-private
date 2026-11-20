@@ -172,6 +172,9 @@ class AndroidFileUtils {
       // Batch results are derived copies this app produced, not a user album.
       if (isBatchResultsPath(dirPath)) return AlbumType.app;
 
+      // Copy & share output is temporary, so it is not a user album either.
+      if (isBatchSharePath(dirPath)) return AlbumType.app;
+
       // do not restrict to directories on primary storage, as the directory could
       // legitimately be elsewhere (e.g. Dual Messenger storage in `/storage/emulated/95/`)
       if (appInventory.isPotentialAppDir(dirPath)) return AlbumType.app;

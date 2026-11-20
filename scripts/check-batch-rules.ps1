@@ -2,7 +2,7 @@
 #
 # `docs/features/batch-processing/rules.md` is only useful if a row cannot claim
 # coverage it does not have. This check parses every `F:<stem>#<test name>` token,
-# finds the test file under `test/features`, and confirms a `test('<name>'` call
+# finds the test file under `test/`, and confirms a `test('<name>'` call
 # exists. It also resolves every `decisions/NNNN-*.md` link in the feature docs.
 #
 # It is not part of `flutter test`: a doc edit should not need the test runner.
@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 
 $featureDir = Join-Path $Root 'docs/features/batch-processing'
 $rulesPath = Join-Path $featureDir 'rules.md'
-$testRoot = Join-Path $Root 'test/features'
+$testRoot = Join-Path $Root 'test'
 
 if (-not (Test-Path -LiteralPath $rulesPath)) {
     Write-Host "FAIL: missing $rulesPath"

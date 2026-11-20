@@ -45,6 +45,8 @@ const Map<String, List<String>> metaPageSearchKeys = {
   MetaPageKeys.refraEdit: <String>[],
   // The batch page owns its state in the batch engine, not in v1 settings.
   MetaPageKeys.batch: <String>[],
+  // Copy & share owns its folder, retention and profiles in the batch engine.
+  MetaPageKeys.batchShare: <String>[],
   // Known issues is a read-only list, so it highlights no setting.
   MetaPageKeys.knownIssues: <String>[],
 };

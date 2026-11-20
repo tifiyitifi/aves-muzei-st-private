@@ -16,3 +16,5 @@ Append-only. A decision keeps its text when it is reversed; it gains a
 | [0009](0009-no-undo-history-in-v1.md) | v1 has no undo history |
 | [0010](0010-profiles-share-one-table-by-kind.md) | Profiles share one table, keyed by kind |
 | [0011](0011-record-on-item-done.md) | Record on `itemDone`, not at the end of the job |
+| [0012](0012-share-output-is-temporary.md) | Share output is temporary and lives in its own folder |
+| [0013](0013-no-auto-share-sheet.md) | A share run does not open the share sheet |

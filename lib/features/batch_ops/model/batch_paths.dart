@@ -5,6 +5,13 @@
 /// album list groups the folder as an app directory from it.
 const String batchResultsRelativeRoot = 'Pictures/aves_batch_results';
 
+/// Where copy & share writes its copies, relative to the primary storage root.
+///
+/// It is deliberately a sibling of the results root: share output is temporary
+/// and never actionable, so it must not be recorded as a batch result or offered
+/// the results page's replace/move-back decisions.
+const String batchShareRelativeRoot = 'Pictures/aves_share';
+
 /// Suffix a superseded result takes while the newer one claims its name.
 ///
 /// Renaming the old file first frees the target name without ever leaving two
@@ -30,5 +37,25 @@ bool isBatchResultsPath(String dirPath) {
 bool isBatchResultsRelativePath(String relativePath) {
   final normalized = relativePath.replaceAll(r'\', '/').toLowerCase();
   final root = batchResultsRelativeRoot.toLowerCase();
+  return normalized == root || normalized == '/$root' || normalized.endsWith('/$root');
+}
+
+/// Whether [dirPath] lies inside the copy & share tree.
+///
+/// Share copies are this app's temporary output, so the folder is grouped with
+/// the other app-owned directories and kept out of the user's albums.
+bool isBatchSharePath(String dirPath) {
+  final normalized = dirPath.replaceAll(r'\', '/').toLowerCase();
+  final root = batchShareRelativeRoot.toLowerCase();
+  return normalized.endsWith('/$root') || normalized.contains('/$root/');
+}
+
+/// Whether [relativePath] is exactly the share folder.
+///
+/// The run sheet uses this on the output spec, before an absolute path exists,
+/// to say where the run will write. A share run is never recorded.
+bool isBatchShareRelativePath(String relativePath) {
+  final normalized = relativePath.replaceAll(r'\', '/').toLowerCase();
+  final root = batchShareRelativeRoot.toLowerCase();
   return normalized == root || normalized == '/$root' || normalized.endsWith('/$root');
 }

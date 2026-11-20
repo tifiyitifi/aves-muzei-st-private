@@ -67,10 +67,23 @@ Unknown settings keys are ignored. Unknown tool ids are skipped (`RUN-6`).
 - `{name}` — the source base name.
 - `{date}` — the run time.
 
-The pattern is chosen by the Dart side from the result mode: `{name}` for
-replace previous, `{name}_{date}` for keep versions. The native side applies the
-pattern and reports the name the MediaStore actually assigned, which can include
-a ` (1)` suffix.
+The pattern is chosen by the Dart side: `{name}` for replace previous,
+`{name}_{date}` for keep versions and for copy & share. The native side applies
+the pattern and reports the name the MediaStore actually assigned, which can
+include a ` (1)` suffix.
+
+Copy & share has no supersede pass, so it always dates its copies; a plain name
+would collide between two runs on the same source.
+
+### Job kinds
+
+Batch processing and copy & share send the same job map. Only
+`output.relativePath` differs: `Pictures/aves_batch_results` for batch results,
+`Pictures/aves_share` for share copies. The native side has no notion of a run
+kind, and needs none: the relative path is the whole difference.
+
+The Dart reader still gates recording on the batch root, so a share job's
+`itemDone` events are dropped (`SHR-6`).
 
 ### Events
 
@@ -100,7 +113,7 @@ Rules for the Dart reader:
 | `cancel` | `jobId` | `null` | adds the id to the cancelled set; the executor skips the remaining items |
 | `replaceWithResult` | `sourceUri`, `resultUri` | `bool` | overwrites the source in place, consumes the result |
 | `requestWriteAccess` | `uris`, `mimeTypes` | `bool` | one system request for the batch; a denial is not an error |
-| `deleteResult` | `resultUri` | `bool` | permanent delete, bypasses the recycle-bin setting |
+| `deleteResult` | `resultUri` | `bool` | permanent delete, bypasses the recycle-bin setting; used for a consumed result, a superseded result and an expired share copy |
 
 ### `replaceWithResult`
 
@@ -122,9 +135,10 @@ A `false` return leaves the result row pending (`APP-2`).
 
 ### `deleteResult`
 
-Permanent. Used for a consumed result and for a superseded result parked as
-`<name>-to-remove`. It intentionally does not consult the app's delete setting:
-a consumed copy in the recycle bin is noise, not a safety net.
+Permanent. Used for a consumed result, a superseded result parked as
+`<name>-to-remove`, and an expired share copy. It intentionally does not consult
+the app's delete setting: a consumed or expired copy in the recycle bin is noise,
+not a safety net.
 
 ## Compatibility
 
@@ -135,3 +149,6 @@ a consumed copy in the recycle bin is noise, not a safety net.
   know, so an older app ignores a newer call.
 - Removing a tool: keep the id in the Dart enum long enough to decode old
   profiles, or let `tryFromJson` drop the action.
+- Copy & share needs no native change: it is the same job map with another
+  `output.relativePath`. `deleteResult` gained a third caller (retention), not a
+  new behaviour.

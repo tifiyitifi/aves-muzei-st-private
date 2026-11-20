@@ -13,6 +13,8 @@ register in `rules.md` maps every requirement to the test that holds it.
 | **Result record** | The database row that says which source a result came from. |
 | **Profile** | A saved, named action chain. |
 | **Results folder** | `Pictures/aves_batch_results`, an app-owned album. |
+| **Share copy** | A file a copy & share run produced, always below the share folder. |
+| **Share folder** | `Pictures/aves_share`, an app-owned temporary folder. |
 
 ## Requirements
 
@@ -157,21 +159,42 @@ apply the shared XOR-range rule to the results list.
 
 Rules: `UI-3`.
 
-## Planned requirements (not implemented)
-
-These are specified so the next step has an acceptance criterion, but nothing in
-the code holds them yet. They are listed in `tasks.md`.
-
-### FR-P1 — Copy & share reuses the engine
+### FR-20 — Copy & share reuses the engine and records nothing
 
 WHEN the user starts copy & share, THE SYSTEM SHALL run the same tool chain as a
-batch run, write to a separate share folder, and SHALL NOT record the output in
-the batch results table.
+batch run, write every copy below the share folder, and SHALL NOT record the
+output in the batch results table.
 
-### FR-P2 — Share output has a retention policy
+Rules: `SHR-1` … `SHR-8`.
 
-WHEN copy & share output is older than the configured retention, THE SYSTEM SHALL
-remove it without touching batch results or sources.
+### FR-21 — Share output has a retention policy
+
+WHEN a share copy is older than the configured retention, THE SYSTEM SHALL
+delete it without touching a batch result, a source, or a copy exactly at the
+cutoff.
+
+Rules: `SHR-9` … `SHR-16`.
+
+### FR-22 — The share explainer is shown once and offers settings
+
+WHEN the user starts copy & share for the first time on an install, THE SYSTEM
+SHALL explain the temporary folder and SHALL offer its settings before the run.
+
+Rules: `SHR-18`, `SHR-20`.
+
+### FR-23 — Share profiles are separate from batch profiles
+
+WHEN the share sheet or the share settings page opens, THE SYSTEM SHALL offer
+only share profiles and SHALL seed one default share profile.
+
+Rules: `PRF-1`, `PRF-2`, `SHR-17`.
+
+### FR-24 — A share run ends at the share album
+
+WHEN a share run finishes, THE SYSTEM SHALL offer to open the share album and
+SHALL NOT open a system share sheet automatically.
+
+Rules: `SHR-19`.
 
 ## Non-goals
 
@@ -180,3 +203,5 @@ remove it without touching batch results or sources.
 - Undo/redo of an applied result.
 - Automatic sharing or any network step.
 - A retention policy for batch results (only copy & share gets one).
+- A dedicated results page for share output: the share album is the page, and
+  share output has no replace or move-back decision.

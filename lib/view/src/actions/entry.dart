@@ -2,7 +2,7 @@ import 'package:aves/theme/colors.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves_model/aves_model.dart';
-import 'package:flutter/widgets.dart';
+import 'package:material_ui/material_ui.dart';
 
 extension ExtraEntryActionView on EntryAction {
   String getText(BuildContext context) {
@@ -20,6 +20,7 @@ extension ExtraEntryActionView on EntryAction {
       .move => l10n.collectionActionMove,
       .share => l10n.entryActionShare,
       .batchProcess => l10n.entryActionBatchProcess,
+      .batchShare => l10n.entryActionBatchShare,
       .toggleFavourite =>
         // different data depending on toggle state
         l10n.entryActionAddFavourite,
@@ -100,6 +101,7 @@ extension ExtraEntryActionView on EntryAction {
       .move => AIcons.move,
       .share => AIcons.share,
       .batchProcess => AIcons.convert,
+      .batchShare => Icons.ios_share,
       .toggleFavourite =>
         // different data depending on toggle state
         AIcons.favourite,

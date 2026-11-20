@@ -1,4 +1,5 @@
 import 'package:aves/features/batch_ops/view/batch_settings_page.dart';
+import 'package:aves/features/batch_ops/view/batch_share_settings_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_pad_editor_page.dart';
@@ -45,5 +46,6 @@ final Map<String, WidgetBuilder> metaPageRegistry = {
   MetaPageKeys.wallpaperViewPad: (context) => const GroupedWallpaperPadEditorPage(),
   MetaPageKeys.refraEdit: (context) => const RefraEditSettingsPage(),
   MetaPageKeys.batch: (context) => const BatchSettingsPage(),
+  MetaPageKeys.batchShare: (context) => const BatchShareSettingsPage(),
   MetaPageKeys.knownIssues: (context) => const KnownIssuesPage(),
 };

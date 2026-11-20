@@ -1,6 +1,7 @@
 import 'package:aves/services/common/services.dart';
 import 'package:aves/services/storage_service.dart';
 import 'package:aves/utils/android_file_utils.dart';
+import 'package:aves_model/aves_model.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -23,5 +24,11 @@ void main() {
   test('camera album identification', () {
     expect(androidFileUtils.isCameraPath('${FakeStorageService.primaryPath}DCIM/Camera'), true);
     expect(androidFileUtils.isCameraPath('${FakeStorageService.primaryPath}DCIM/YoloCamera'), false);
+  });
+
+  test('app album classification', () {
+    expect(androidFileUtils.getAlbumType('${FakeStorageService.primaryPath}Pictures/aves_share'), AlbumType.app);
+    expect(androidFileUtils.getAlbumType('${FakeStorageService.primaryPath}Pictures/aves_batch_results'), AlbumType.app);
+    expect(androidFileUtils.getAlbumType('${FakeStorageService.primaryPath}Pictures/aves_share_old'), AlbumType.regular);
   });
 }

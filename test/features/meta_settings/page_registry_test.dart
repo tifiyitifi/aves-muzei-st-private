@@ -1,3 +1,4 @@
+import 'package:aves/features/batch_ops/view/batch_share_settings_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/meta_settings/model/page_keys.dart';
@@ -37,5 +38,6 @@ void main() {
     expect(MetaPageKeys.confirmationDialog, ConfirmationDialogPage.routeName);
     expect(MetaPageKeys.wallpaperHistory, GroupedWallpaperHistoryPage.routeName);
     expect(MetaPageKeys.wallpaperGestures, GroupedWallpaperGesturesPage.routeName);
+    expect(MetaPageKeys.batchShare, BatchShareSettingsPage.routeName);
   });
 }

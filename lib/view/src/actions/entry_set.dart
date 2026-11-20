@@ -33,6 +33,7 @@ extension ExtraEntrySetActionView on EntrySetAction {
       // selecting
       .share => l10n.entryActionShare,
       .batchProcess => l10n.entryActionBatchProcess,
+      .batchShare => l10n.entryActionBatchShare,
       .delete => l10n.entryActionDelete,
       .restore => l10n.entryActionRestore,
       .copy => l10n.collectionActionCopy,
@@ -89,6 +90,7 @@ extension ExtraEntrySetActionView on EntrySetAction {
       // selecting
       .share => AIcons.share,
       .batchProcess => AIcons.convert,
+      .batchShare => Icons.ios_share,
       .delete => AIcons.delete,
       .restore => AIcons.restore,
       .copy => AIcons.copy,

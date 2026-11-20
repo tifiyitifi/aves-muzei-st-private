@@ -167,7 +167,7 @@ void main() {
 
     test('Batch processing is fully migrated', () {
       final keys = metaSettingsDefsFor(SettingsCategory.batch).map((def) => def.key).toList();
-      expect(keys, [MetaPageKeys.batch]);
+      expect(keys, [MetaPageKeys.batch, MetaPageKeys.batchShare]);
     });
 
     test('Known issues is reachable from Advanced', () {

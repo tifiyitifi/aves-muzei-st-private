@@ -10,9 +10,10 @@ lib/features/batch_ops/
   model/     batch_action, batch_job, batch_paths, batch_result
   db/        batch_result_store, batch_profile_store, batch_result_tables
   services/  batch_service (channel), batch_run_controller, batch_results_service,
-             batch_result_recorder, batch_settings
+             batch_result_recorder, batch_settings, batch_share_service
   view/      run sheet, action editor, progress dialog, results page,
-             results banner, settings page, tool catalog
+             results banner, settings pages, share flow, share explainer,
+             tool catalog
 ```
 
 The Dart side owns selection, configuration, progress and every database write.
@@ -112,6 +113,11 @@ removes parked files a later run finds in the app's table.
 case. The relative variant is exact (the folder itself), because it decides
 whether an item belongs to the batch table before an absolute path exists.
 
+Copy & share always uses `{name}_{date}` and writes below
+`batchShareRelativeRoot` (`Pictures/aves_share`). It has no supersede pass, so
+the dated name is what keeps two runs on the same source apart. The two roots
+are siblings, and neither predicate matches the other's folder.
+
 ## 6. Applying a result
 
 ### Replace the original
@@ -169,6 +175,9 @@ reuses it instead of inventing a second prompt policy.
 | Results album banner | pending rows | replace / move back |
 | Results page | all rows, app entries for thumbnails | replace / move back, selection |
 | Settings › Batch | settings, profiles, pending count | result mode, active profile, delete profile |
+| Settings › Copy & share | retention, share profiles, share folder | retention, active share profile, delete share profile |
+| Share album | app entries in the share folder | ordinary multi-select share/delete |
+| Share explainer | retention, folder path | shows once; links to share settings |
 
 The banner appears only when the visible filters are exactly the results album
 (`_isBatchResultsView`). A broader album that merely contains the folder, or a
@@ -194,6 +203,11 @@ reading, so a result deleted from the album cannot keep offering an action.
 - **I7** A row's `resultUri` always names the file's current URI.
 - **I8** A superseded result is parked before its plain name is reused.
 - **I9** A replaced source keeps its date columns.
+- **I10** A share copy is never recorded in `batch_results`.
+- **I11** Retention deletes only share copies older than the cutoff, judged by
+  the file's modified time.
+- **I12** Share output has no replace, move-back or delete decision in a
+  feature-owned UI; the share album is an ordinary album.
 
 ## 10. Anti-patterns
 
@@ -212,6 +226,10 @@ reading, so a result deleted from the album cannot keep offering an action.
   gone.
 - **Re-pinning the results folder after the user unpinned it.** The one-time
   claim is written before the pin for exactly this reason.
+- **Using capture time for share expiry.** A copy inherits the source's capture
+  date, so a fresh copy of an old photo would expire at once.
+- **Opening the share sheet at the end of a run.** It hides partial completion
+  and cannot represent a folder that is still being scanned.
 
 ## 11. Where the code differs from the spec
 
@@ -226,4 +244,28 @@ reading, so a result deleted from the album cannot keep offering an action.
   every row starts disabled, the profile is the whole chain.
 - The native executor and the EXIF copy have no host tests; `rules.md` marks
   those rows `-:` rather than pretending otherwise.
-- Copy & share is specified (`FR-P1`, `FR-P2`) and not implemented.
+- Copy & share has no results page and no pin: the share album is the surface,
+  and the snackbar links to it (`0012`, `0013`).
+- Share retention reads only the app's entry table, so a copy the scanner has not
+  imported yet is not expired until the next prune.
+
+## 12. Copy & share
+
+`startBatchShare` shows the one-time explainer, then delegates to `startBatch`
+with `kind = share`. The run differs only in:
+
+- output: `Pictures/aves_share`, named `{name}_{date}`;
+- recording: `BatchResultsService.record` drops every item, because the output
+  spec is not the results root;
+- housekeeping: `BatchShareService.pruneExpired` runs before the run, and the
+  run does not prune superseded files (there are none);
+- the end: a snackbar with VIEW opens the share album.
+
+Profiles are the same table with `kind = 'share'`, seeded per kind. The explainer
+marker (`batch.shareIntroSeen`) lives in `appMeta` and is written after the
+dialog, so resetting preferences does not bring it back.
+
+Retention is the only destructive operation here. It reads the share folder's
+direct children from the app's entry table, keeps a file exactly at the cutoff,
+keeps a file with an unknown modified time, and deletes through `deleteResult`.
+A failure keeps the row, so the next prune can retry.

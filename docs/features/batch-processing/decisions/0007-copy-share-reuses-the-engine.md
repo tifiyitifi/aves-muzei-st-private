@@ -1,6 +1,6 @@
 # 0007 — Copy & share reuses the engine, separated by the output path
 
-Status: accepted (`3c827fe54`, not implemented)
+Status: accepted (`3c827fe54`); implemented by the copy & share change
 
 ## Context
 

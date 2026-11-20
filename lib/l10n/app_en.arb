@@ -2941,6 +2941,60 @@
   "batchSettingsProfileActive": "Used by default",
   "batchSettingsProfileInactive": "Tap to use by default",
   "batchSettingsProfilesHint": "The run sheet can start from any profile and save the current actions as a new one.",
+  "entryActionBatchShare": "Copy & share",
+  "batchShareRunSheetTitle": "Copy & share",
+  "batchShareRunSheetExplanation": "Enable the actions to run, in order, on a copy of every selected photo. The copies are kept in a separate folder for sharing.",
+  "batchShareRunSheetOutputFolder": "Copies go to {path}",
+  "@batchShareRunSheetOutputFolder": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "batchShareNoImageFeedback": "Copy & share only handles photos.",
+  "batchShareReady": "{count, plural, =1{{count} copy ready to share} other{{count} copies ready to share}}",
+  "@batchShareReady": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "batchShareIntroTitle": "Sharing works on a copy",
+  "batchShareIntroBody": "The selected photos are copied to Pictures/aves_share, and only those copies are shared. The originals are not changed.",
+  "batchShareIntroRetention": "This folder is temporary: copies older than {days} days are removed automatically.",
+  "@batchShareIntroRetention": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "batchShareIntroKeep": "This folder is temporary: copies stay until you delete them.",
+  "batchShareIntroNotBackup": "It is not a backup. Deleting a copy never affects the original, and the original is never replaced from here.",
+  "batchShareIntroSettings": "Settings",
+  "batchShareIntroContinue": "Continue",
+  "batchShareSettingsTitle": "Copy & share",
+  "batchShareSettingsSubtitle": "Copy, process and share without changing the originals.",
+  "batchShareSettingsExplanation": "Copy & share runs the same actions as batch processing, but writes to its own folder and records nothing. Use the share album to send the copies with the normal share action.",
+  "batchShareSettingsOutputFolder": "Share folder",
+  "batchShareSettingsOpenAlbum": "Open share album",
+  "batchShareSettingsRetentionSection": "Automatic cleanup",
+  "batchShareSettingsRetentionHint": "Only this folder is cleaned. Batch results and originals are never touched.",
+  "batchShareRetentionOff": "Keep until I delete",
+  "batchShareRetentionDays": "{days, plural, =1{After {days} day} other{After {days} days}}",
+  "@batchShareRetentionDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "batchShareSettingsProfilesSection": "Share profiles",
+  "batchShareSettingsProfilesHint": "The share sheet can start from any share profile and save the current actions as a new one.",
+  "batchShareSettingsIntro": "What this folder is",
   "batchEditorPercent": "{label}: {value}%",
   "@batchEditorPercent": {
     "placeholders": {

@@ -31,6 +31,7 @@ This repo is a fork, so keeping the diff against `upstream` small matters more t
 - Touch upstream-owned trees (`lib/model`, `lib/services`, `lib/widgets`, `lib/view`, `lib/convert`, ...) only for the minimum cross-cutting wiring (DI/`get_it` registration, a route, a settings entry point).
 - Keep changes additive and localized so a fork slice can be dropped cleanly if upstream ships the same capability.
 - Inside a feature slice, package by **domain/feature**, not by technical layer: no shared `tables/`, `dao/`, `models/` catch-alls. Each domain gets its own subdirectory that owns its table, queries and mapping, and exposes a small domain-typed interface. Adding a capability adds a slice, not edits spread across several shared files.
+- Track each feature's documentation in `docs/features/<feature>/` (spec, design, rule register, recurrences, decisions); start from `docs/README.md`, and update the register in the same change as the behaviour.
 
 ## Toolchain and setup
 

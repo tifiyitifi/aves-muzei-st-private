@@ -150,7 +150,7 @@ page that is rarely opened.
   underneath (the media set, the albums page, the range page), and a page that
   replaced the stack lands on the range page. A pinned entry stays, because it is
   the user's own navigation item.
-- Notifications, the three-finger gesture and session restore deep-link the route.
+- Notifications, the view gesture and session restore deep-link the route.
   In the shared mode the deep link is routed through the shell
   (`VisibleRangeShellPage`, which passes `promptUnlock` on) so the bar still has
   an entry to highlight; the unlock route keeps its reason for prompting.
@@ -244,7 +244,7 @@ which textures are alive. The rule lives in `GroupedTextureRetention`:
 
 The renderer keeps the state's intent (`desired`) apart from the slot it really
 draws (`displayed`, which is what `displayedSlotId()` and therefore the
-three-finger view and the bar report). When the wanted slot's texture is missing a
+view page and the bar report). When the wanted slot's texture is missing a
 reload falls back to a neighbour, but the fallback is temporary: the next reload
 that uploads the wanted slot restores it (`display.restore`). A slot whose file
 exists but whose texture still does not appear is retried at most three times per
@@ -356,7 +356,7 @@ no touch events still works through its two commands. Each signal logs
 `tap.signal src=touch|command fired=…` so a future report can tell a gesture the
 gate ate from one that never arrived.
 
-A double tap advances the **home** queue only: the lock decoy has no gesture and
+The next-photo gesture (a three-finger tap by default) advances the **home** queue only: the lock decoy has no gesture and
 `_syncLock` keeps its entry unless it is missing or its range moved. The lock
 photo changes on the group's interval, or from the view page's previous/next
 controls. A manual home step additionally restarts the auto-advance countdown
@@ -372,7 +372,7 @@ time instead of trusting the cached broadcast state, so a missed
 **Another live wallpaper can intercept the gesture.** Multi-finger touches are
 delivered to whichever live wallpaper is active, and an app that keeps its own
 service (Muzei, for example) may still consume them after this wallpaper is set,
-so the three-finger tap silently does nothing. Setting this wallpaper again, or
+so a gesture silently does nothing. Setting this wallpaper again, or
 clearing the other app's data / uninstalling it, hands the gesture back. Both the
 group page's About text and the gestures hint state this; there is nothing to fix
 in this code, and the notification still opens the view page.
@@ -677,7 +677,7 @@ The bar only exists while this service is the wallpaper the system is showing:
   a leftover.
 
 Tapping the body opens the immersive view of the photo on screen, exactly like
-the three-finger gesture: the app puts the group page (`/wallpaper_groups`, on
+the view gesture: the app puts the group page (`/wallpaper_groups`, on
 the playing group) below the view, so backing out lands on the wallpaper page.
 The expanded first button only switches the button set. The screen broadcasts
 (`ACTION_SCREEN_OFF`, `ACTION_SCREEN_ON`, `ACTION_USER_PRESENT`) switch the layout
@@ -686,7 +686,7 @@ keyguard's default.
 
 Actions are broadcasts to `GroupedWallpaperActionReceiver`, so they work without
 an Activity. "Next" and "previous" both first promote the queued neighbour in the
-live renderer (instant, like a double tap) and only fall back to the app's command
+live renderer (instant, like a next-photo gesture) and only fall back to the app's command
 when the renderer has nothing to show. The commands are the names of
 `GroupedWallpaperCommand` (`previousArtwork`, `nextGroup`, ...), so both sides
 share one vocabulary. Turning the grouped wallpaper off cancels the notification.
@@ -808,7 +808,7 @@ bar re-posts once when the wait starts and once when it ends.
 
 ### The view page
 
-A three-finger tap opens an immersive view of the current photo, modelled on
+A double tap opens an immersive view of the current photo, modelled on
 Muzei's artwork screen: pan and zoom, chrome visible on open and toggled by a
 tap, the group number · name · count at the bottom left, and a floating control
 pad instead of buttons in the bar. A wallpaper gesture has no Activity, so the
@@ -862,7 +862,7 @@ carry the resolved value in `state.json` instead. An older state without the
 field reads 0, i.e. upright.
 
 A home photo step first asks the renderer to **promote the queued neighbour**,
-which is the texture swap a wallpaper double tap makes, so the frame and the page
+which is the texture swap a next-photo gesture makes, so the frame and the page
 change at once; only a step it cannot promote (no live engine, the neighbour
 still baking, or `frameRetention` keeping the frame on screen only) bakes, and
 only then does the title say what it is doing and every step control grey out.
@@ -961,7 +961,7 @@ case where the native placeholder is unavoidable.
 
 The slot the renderer is actually drawing is not in `state.json`: a promotion
 from a tap or the bar moves it before Dart writes. The app asks the live renderer
-(`GroupedWallpaperRenderBus.displayedSlot()`), so the three-finger view and the
+(`GroupedWallpaperRenderBus.displayedSlot()`), so the view page and the
 bar describe the frame on screen immediately, without waiting for the reload that
 would rewrite the state. The renderer's `locked` status is legacy: an upgraded
 install can still read it, and it navigates exactly like `ready`.

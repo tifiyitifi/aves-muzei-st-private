@@ -308,7 +308,7 @@ void main() {
         {'id': 0, 'entryId': 7, 'uri': '', 'title': 'IMG_7', 'photo': 'slots/0/photo.png'},
         {'id': 1, 'entryId': 8, 'uri': '', 'title': 'IMG_8', 'photo': 'slots/1/photo.png'},
       ],
-      'gestures': {'doubleTap': 'nextArtwork', 'threeFinger': 'viewArtwork'},
+      'gestures': {'doubleTap': 'viewArtwork', 'threeFinger': 'nextArtwork'},
       'bakedAt': 9,
     })!;
     expect(parsed.version, GroupedWallpaperState.currentVersion);

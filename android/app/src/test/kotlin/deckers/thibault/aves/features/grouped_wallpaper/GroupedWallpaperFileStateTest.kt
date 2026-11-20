@@ -45,8 +45,8 @@ class GroupedWallpaperFileStateTest {
         previous = previous,
         next = next,
         slots = emptyList(),
-        doubleTap = GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,
-        threeFinger = GroupedWallpaperFileState.ACTION_VIEW_ARTWORK,
+        doubleTap = GroupedWallpaperFileState.ACTION_VIEW_ARTWORK,
+        threeFinger = GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,
         canPrevious = canPrevious,
     )
 

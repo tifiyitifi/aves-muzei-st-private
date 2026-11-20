@@ -14,7 +14,7 @@ import 'package:aves/widgets/common/basic/scaffold.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:material_ui/material_ui.dart';
 
-/// Configures the 9 cells of the three-finger view page's control pad.
+/// Configures the 9 cells of the wallpaper view page's control pad.
 ///
 /// The editor always shows the fixed 9 slots, even when the live pad is set to
 /// shrink: the positions are how the user places an action, and a compacted

@@ -567,7 +567,7 @@ class GroupedWallpaperRenderer(
 
     /** The action bound to a gesture, from the latest `state.json`. */
     fun actionFor(threeFinger: Boolean): String {
-        val current = state ?: return if (threeFinger) GroupedWallpaperFileState.ACTION_VIEW_ARTWORK else GroupedWallpaperFileState.ACTION_NEXT_ARTWORK
+        val current = state ?: return if (threeFinger) GroupedWallpaperFileState.ACTION_NEXT_ARTWORK else GroupedWallpaperFileState.ACTION_VIEW_ARTWORK
         return if (threeFinger) current.threeFinger else current.doubleTap
     }
 

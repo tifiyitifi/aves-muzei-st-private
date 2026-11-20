@@ -196,7 +196,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// `state.json` is what Dart baked; the renderer may have promoted a slot on
   /// its own, or kept drawing one a reload no longer calls current. Reading
   /// `current` alone therefore describes a photo the user may not be looking at,
-  /// which is what made the three-finger view differ from the wallpaper. A
+  /// which is what made the view page differ from the wallpaper. A
   /// missing or pruned slot falls back to the state: a stale answer beats none.
   ///
   /// [surface] picks which picture is described. The decoy lock frame is not a
@@ -311,7 +311,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   /// Shows the queued neighbour without waiting for a bake.
   ///
-  /// This is the same move a wallpaper double tap makes: the live renderer
+  /// This is the same move a next-photo gesture makes: the live renderer
   /// promotes the slot it already uploaded, so the frame changes in one texture
   /// swap. It only works on the home queue with that neighbour baked; the caller
   /// falls back to [nextArtwork] or [previousArtwork] when this answers false.
@@ -755,7 +755,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     }
 
     // A forward step walks the usage history: both neighbours are already
-    // baked, so a double tap, the interval and the bar's "next" are the same
+    // baked, so a wallpaper tap, the interval and the bar's "next" are the same
     // move, and only the newest record creates a new photo.
     final move = advance ? _moveTo(current, current.next, navigated: true) : null;
     if (move != null) {
@@ -1289,7 +1289,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     var isNavigated = navigated;
     var result = GroupedWallpaperSyncResult.unchanged;
     // A tap during the first bake, then another during the refill: bounded so a
-    // very fast double tap cannot spin here.
+    // very fast wallpaper tap cannot spin here.
     for (var attempt = 0; attempt < 3; attempt++) {
       final outcome = await _settleOnce(
         store,
@@ -1538,7 +1538,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   /// Picks the photo a forward step from the newest record will show.
   ///
-  /// It is baked now, so the next double tap or interval is instant. A photo that
+  /// It is baked now, so the next wallpaper tap or interval is instant. A photo that
   /// already belongs to the walk is not a new record: [_moveTo] then moves the
   /// cursor to it instead.
   Future<({GroupedWallpaperSlot slot, int cursor})?> _pickNext(

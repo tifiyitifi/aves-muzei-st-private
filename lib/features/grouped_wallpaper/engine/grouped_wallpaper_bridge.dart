@@ -67,7 +67,7 @@ abstract interface class GroupedWallpaperPlatform {
   /// Asks the renderer to re-read `state.json`.
   Future<void> reload();
 
-  /// Promotes the queued neighbour without a bake, like a wallpaper double tap.
+  /// Promotes the queued neighbour without a bake, like a next-photo gesture.
   ///
   /// The renderer writes the promotion to `runtime.json` synchronously, so the
   /// caller can describe the frame on screen as soon as this answers true. False

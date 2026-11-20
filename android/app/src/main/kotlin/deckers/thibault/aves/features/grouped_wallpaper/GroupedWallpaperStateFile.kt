@@ -308,8 +308,8 @@ object GroupedWallpaperStateFile {
             previous = -1,
             next = -1,
             slots = slots,
-            doubleTap = GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,
-            threeFinger = GroupedWallpaperFileState.ACTION_VIEW_ARTWORK,
+            doubleTap = GroupedWallpaperFileState.ACTION_VIEW_ARTWORK,
+            threeFinger = GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,
         )
     }
 
@@ -376,10 +376,10 @@ object GroupedWallpaperStateFile {
             previous = json.optInt("previous", -1),
             next = json.optInt("next", -1),
             slots = slots,
-            doubleTap = gestures?.optString("doubleTap", GroupedWallpaperFileState.ACTION_NEXT_ARTWORK)
-                ?: GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,
-            threeFinger = gestures?.optString("threeFinger", GroupedWallpaperFileState.ACTION_VIEW_ARTWORK)
+            doubleTap = gestures?.optString("doubleTap", GroupedWallpaperFileState.ACTION_VIEW_ARTWORK)
                 ?: GroupedWallpaperFileState.ACTION_VIEW_ARTWORK,
+            threeFinger = gestures?.optString("threeFinger", GroupedWallpaperFileState.ACTION_NEXT_ARTWORK)
+                ?: GroupedWallpaperFileState.ACTION_NEXT_ARTWORK,
             // A file written before the setting existed means "on", which is
             // what those builds did.
             notification = json.optBoolean("notification", true),

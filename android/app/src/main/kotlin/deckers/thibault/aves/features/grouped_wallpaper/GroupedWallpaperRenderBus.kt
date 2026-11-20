@@ -45,7 +45,7 @@ object GroupedWallpaperRenderBus {
      *
      * A promotion from the bar or a tap moves `displayed` immediately, while
      * anything the service caches is only as fresh as the last callback; asking
-     * the renderer is what keeps the three-finger view and the bar describing the
+     * the renderer is what keeps the view page and the bar describing the
      * frame the user can see. `-1` means no real engine is attached.
      */
     fun displayedSlot(): Int = rendererRef?.get()?.displayedSlotId() ?: -1

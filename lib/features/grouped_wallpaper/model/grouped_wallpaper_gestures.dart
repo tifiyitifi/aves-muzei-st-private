@@ -32,8 +32,8 @@ enum GroupedWallpaperTapAction {
 /// config is stored once and copied into every state the engine writes.
 @immutable
 class GroupedWallpaperGestures extends Equatable {
-  static const GroupedWallpaperTapAction defaultDoubleTap = GroupedWallpaperTapAction.nextArtwork;
-  static const GroupedWallpaperTapAction defaultThreeFinger = GroupedWallpaperTapAction.viewArtwork;
+  static const GroupedWallpaperTapAction defaultDoubleTap = GroupedWallpaperTapAction.viewArtwork;
+  static const GroupedWallpaperTapAction defaultThreeFinger = GroupedWallpaperTapAction.nextArtwork;
 
   final GroupedWallpaperTapAction doubleTap;
   final GroupedWallpaperTapAction threeFinger;

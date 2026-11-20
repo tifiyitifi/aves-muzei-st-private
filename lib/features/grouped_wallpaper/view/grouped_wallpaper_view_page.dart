@@ -319,7 +319,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
   ///
   /// The home queue already holds both neighbours, so the step first asks the
   /// renderer to promote the one it has: that is a texture swap, the same move a
-  /// wallpaper double tap makes, and the page can describe the new photo at once.
+  /// next-photo gesture makes, and the page can describe the new photo at once.
   /// Only a step it cannot promote (no live engine, the neighbour still baking,
   /// or the lock decoy, which has no queue by design) waits for a bake, and only
   /// then does the page show what it is doing.

@@ -6,7 +6,7 @@
 /// decides the unlocked default. The expanded bar's first button still flips
 /// the set for the current session, so both remain reachable.
 enum GroupedWallpaperNotificationActions {
-  /// Previous/next photo, like a wallpaper double tap.
+  /// Previous/next photo, like a next-photo gesture.
   wallpaper,
 
   /// Previous/next group, plus the group lock.

@@ -1,3 +1,4 @@
+import 'package:aves/features/batch_ops/db/batch_result_tables.dart';
 import 'package:aves/features/drift_db/addresses/address_table.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_table.dart';
 import 'package:aves/features/drift_db/catalog/catalog_tables.dart';
@@ -20,6 +21,7 @@ import 'package:aves/features/drift_db/migration/migration_v13.dart';
 import 'package:aves/features/drift_db/migration/migration_v14.dart';
 import 'package:aves/features/drift_db/migration/migration_v15.dart';
 import 'package:aves/features/drift_db/migration/migration_v16.dart';
+import 'package:aves/features/drift_db/migration/migration_v17.dart';
 import 'package:aves/features/drift_db/migration/migration_v9.dart';
 import 'package:aves/features/drift_db/trash/trash_table.dart';
 import 'package:aves/features/drift_db/vaults/vault_table.dart';
@@ -68,6 +70,8 @@ part 'app_database.g.dart';
     GroupedWallpaperHistoryRows,
     RefraEditSessionRows,
     RefraEditOutputRows,
+    BatchResultRows,
+    BatchProfileRows,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -78,7 +82,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -103,6 +107,7 @@ class AppDatabase extends _$AppDatabase {
           if (from < 14) await MigrationV14(this).run(m);
           if (from < 15) await MigrationV15(this).run(m);
           if (from < 16) await MigrationV16(this).run(m);
+          if (from < 17) await MigrationV17(this).run(m);
         },
         beforeOpen: (details) async {
           // The main isolate and the analysis background isolate each open
@@ -128,5 +133,6 @@ class AppDatabase extends _$AppDatabase {
     await MigrationV13.createNewIndexes(this);
     await MigrationV15.createNewIndexes(this);
     await MigrationV16.createNewIndexes(this);
+    await MigrationV17.createNewIndexes(this);
   }
 }

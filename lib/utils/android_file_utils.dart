@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/batch_ops/model/batch_paths.dart';
 import 'package:aves/features/refra_edit/model/refra_edit_paths.dart';
 import 'package:aves/model/app_inventory.dart';
 import 'package:aves/model/vaults/vaults.dart';
@@ -167,6 +168,9 @@ class AndroidFileUtils {
 
       // The copy-first editor's staging tree belongs to this app, not to the user's albums.
       if (isRefraEditStagingPath(dirPath)) return AlbumType.app;
+
+      // Batch results are derived copies this app produced, not a user album.
+      if (isBatchResultsPath(dirPath)) return AlbumType.app;
 
       // do not restrict to directories on primary storage, as the directory could
       // legitimately be elsewhere (e.g. Dual Messenger storage in `/storage/emulated/95/`)

@@ -42,7 +42,11 @@ class BatchExecutor(
                             "type" to "itemDone",
                             "index" to index,
                             "entryId" to item.entryId,
-                            "uri" to output.toString(),
+                            "uri" to output.uri,
+                            "path" to output.path,
+                            "name" to output.displayName,
+                            "size" to output.sizeBytes,
+                            "mimeType" to output.mimeType,
                         ),
                     )
                 } else {

@@ -207,8 +207,8 @@ open class MainActivity : FlutterFragmentActivity() {
         // - need Activity
         MethodChannel(messenger, AppProfileHandler.CHANNEL).setMethodCallHandler(AppProfileHandler(this))
         MethodChannel(messenger, WindowHandler.CHANNEL).setMethodCallHandler(ActivityWindowHandler(this))
-        // - batch processing: cancel a running job from Dart
-        MethodChannel(messenger, BatchHandler.CHANNEL).setMethodCallHandler(BatchHandler())
+        // - batch processing: cancel a running job and apply its results
+        MethodChannel(messenger, BatchHandler.CHANNEL).setMethodCallHandler(BatchHandler(this))
 
         // result streaming: dart -> platform ->->-> dart
         // - need Context

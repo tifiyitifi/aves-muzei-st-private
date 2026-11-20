@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/batch_ops/model/batch_paths.dart';
+import 'package:aves/features/batch_ops/view/batch_results_banner.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/collection_paging/selection/selection_mark.dart';
@@ -13,6 +15,7 @@ import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/favourites.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/selection.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -638,6 +641,7 @@ class _CollectionScrollViewState extends State<_CollectionScrollView> with Widge
       scrollCacheExtent: ScrollCacheExtent.pixels(context.select<TileExtentController, double>((controller) => controller.effectiveExtentMax)),
       slivers: [
         appBar,
+        if (_isBatchResultsView(collection)) const BatchResultsBannerSliver(),
         if (layoutPending)
           SliverFillRemaining(
             hasScrollBody: false,
@@ -657,6 +661,17 @@ class _CollectionScrollViewState extends State<_CollectionScrollView> with Widge
         const TvTileGridBottomPaddingSliver(),
       ],
     );
+  }
+
+  /// Whether the view is exactly the batch results folder.
+  ///
+  /// The banner offers to replace originals, so it must not appear in a
+  /// multi-filter view or in a broader album that merely contains the folder.
+  bool _isBatchResultsView(CollectionLens collection) {
+    final filters = collection.visibleFilters;
+    if (filters.length != 1) return false;
+    final filter = filters.first;
+    return filter is StoredAlbumFilter && isBatchResultsPath(filter.album);
   }
 
   Widget _buildEmptyContent(CollectionLens collection) {

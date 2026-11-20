@@ -794,6 +794,30 @@ private fun applyExifToStaging(
     exif.saveAttributes()
 }
 
+/**
+ * Carries the source's capture metadata onto a file the app just produced.
+ *
+ * A re-encoded copy has no EXIF of its own, so without this a batch result (and
+ * a source replaced by one) would lose its capture time, camera and location.
+ * Best-effort: a format the platform cannot tag simply keeps its pixels.
+ */
+suspend fun ContentResolver.copyExifToUri(sourceUri: Uri, targetUri: Uri): Boolean = withContext(Dispatchers.IO) {
+    runCatching {
+        val exifData = openInputStream(sourceUri)?.use { input -> copyExifTags(ExifInterface(input)) }
+            ?: return@runCatching false
+        openFileDescriptor(targetUri, "rw")?.use { pfd ->
+            val exif = ExifInterface(pfd.fileDescriptor)
+            exifData.forEach { (key, value) -> exif.setAttribute(key, value) }
+            exif.setAttribute(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL.toString(),
+            )
+            exif.saveAttributes()
+        }
+        true
+    }.getOrDefault(false)
+}
+
 private fun ContentResolver.queryDateColumns(uri: Uri): Pair<Long?, Long?>? {
     return try {
         query(

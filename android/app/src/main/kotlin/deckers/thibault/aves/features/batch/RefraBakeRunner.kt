@@ -19,6 +19,7 @@ import androidx.exifinterface.media.ExifInterface
 import androidx.core.net.toUri
 import com.dot.gallery.core.decoder.format.ImageReencoder
 import com.dot.gallery.core.util.SafeExif
+import com.dot.gallery.core.util.ext.copyExifToUri
 import com.dot.gallery.core.util.ext.saveImageEncoded
 import com.dot.gallery.core.util.ext.saveImageStreaming
 import com.dot.gallery.feature_node.domain.model.editor.Adjustment
@@ -45,7 +46,7 @@ import kotlin.math.roundToInt
  */
 class RefraBakeRunner(private val context: Context) {
 
-    suspend fun run(item: BatchItem, pipeline: BatchPipeline, output: BatchOutputSpec): Uri? {
+    suspend fun run(item: BatchItem, pipeline: BatchPipeline, output: BatchOutputSpec): BatchOutputFile? {
         val sourceUri = item.uri.toUri()
         val writeFormat = resolveFormat(pipeline.format ?: output.format, item.mimeType, item.displayName)
         val config = ImageReencoder.ReencodeConfig(
@@ -67,10 +68,15 @@ class RefraBakeRunner(private val context: Context) {
             ?: bitmapBake(sourceUri, pipeline, writeFormat, config, relativePath, displayName)
             ?: return null
 
+        // The re-encode dropped the source's EXIF; a result must still carry its
+        // capture time, camera and location, whether it stays here or replaces
+        // the original later.
+        runCatching { context.contentResolver.copyExifToUri(sourceUri, uri) }
+
         if (pipeline.refreshTime) {
             refreshModifiedTime(uri)
         }
-        return uri
+        return describe(uri, displayName)
     }
 
     private suspend fun streamBake(
@@ -282,6 +288,45 @@ class RefraBakeRunner(private val context: Context) {
         val date = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val name = pattern.replace("{name}", base).replace("{date}", date).ifBlank { base }
         return if (name.contains('.')) name else "$name.${format.fileExtension}"
+    }
+
+    /**
+     * Reads the written row back, so the result is recorded with the name, path
+     * and size the MediaStore actually assigned (a duplicate name gets a suffix).
+     */
+    private fun describe(uri: Uri, fallbackName: String): BatchOutputFile {
+        var name = fallbackName
+        var path = ""
+        var size = 0L
+        var mime = ""
+        runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.DATA,
+                    MediaStore.MediaColumns.SIZE,
+                    MediaStore.MediaColumns.MIME_TYPE,
+                ),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    name = cursor.getString(0) ?: name
+                    path = cursor.getString(1) ?: ""
+                    size = if (cursor.isNull(2)) 0L else cursor.getLong(2)
+                    mime = cursor.getString(3) ?: ""
+                }
+            }
+        }
+        return BatchOutputFile(
+            uri = uri.toString(),
+            path = path,
+            displayName = name,
+            sizeBytes = size,
+            mimeType = mime,
+        )
     }
 
     /**

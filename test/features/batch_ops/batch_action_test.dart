@@ -64,7 +64,7 @@ void main() {
 
     test('sends the default output folder', () {
       const output = BatchOutput();
-      expect(output.relativePath, 'Pictures/aves_batch');
+      expect(output.relativePath, 'Pictures/aves_batch_results');
       expect(output.namePattern, '{name}');
       expect(output.format, 'keep');
     });

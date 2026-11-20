@@ -2716,9 +2716,9 @@
 
   "settingsBatchSectionTitle": "Batch processing",
   "settingsBatchPageTitle": "Batch processing",
-  "settingsBatchExplanation": "Batch actions run in order on a copy of each selected photo. Originals are never modified, and an interrupted run keeps the photos it already finished.",
+  "settingsBatchExplanation": "Batch actions run in order on a copy of each selected photo. Results go to the results folder, an interrupted run keeps the photos it already finished, and an original is only replaced when you ask for it from the results.",
   "settingsBatchOutputFolder": "Output folder",
-  "settingsBatchOutputFolderValue": "Pictures/aves_batch",
+  "settingsBatchOutputFolderValue": "Pictures/aves_batch_results",
   "settingsBatchSupportedTools": "Supported actions",
   "entryActionBatchProcess": "Batch process",
   "batchRunSheetTitle": "Batch process",
@@ -2824,6 +2824,123 @@
   "batchEditorRecipeReadOnly": "This action runs a saved editor recipe and has no parameters here.",
   "aboutKnownIssues5": "Batch processing covers colour filters, brightness/contrast/saturation and other adjustments, rotate/flip/crop, resize, format conversion and the filename footer. Markup, cut-out and RAW development are not available in batch.",
   "aboutKnownIssues6": "RAW files are skipped by batch processing; only standard image formats (JPEG/PNG/WebP/HEIF) are processed.",
+  "aboutKnownIssues7": "Batch results are not a backup: replacing an original overwrites it with the processed copy. Move a result back to its source folder when the original should stay.",
+  "batchRunSheetOutputFolder": "Results go to {path}",
+  "@batchRunSheetOutputFolder": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "batchResultsPageTitle": "Batch results",
+  "batchResultsEmpty": "No batch results yet.",
+  "batchResultsWaitingCount": "{count, plural, =1{{count} result waiting} other{{count} results waiting}}",
+  "@batchResultsWaitingCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "batchResultsSelectedCount": "{count, plural, =1{{count} result selected} other{{count} results selected}}",
+  "@batchResultsSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "batchResultsReplace": "Replace original",
+  "batchResultsMoveBack": "Move to source folder",
+  "batchResultsNotNow": "Not now",
+  "batchResultsManage": "Manage results",
+  "batchResultsReplaceConfirmTitle": "Replace originals?",
+  "batchResultsReplaceConfirmBody": "{count, plural, =1{The original photo will be overwritten by its batch result. This cannot be undone.} other{The {count} original photos will be overwritten by their batch results. This cannot be undone.}}",
+  "@batchResultsReplaceConfirmBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "batchResultsMoveBackConfirmTitle": "Move results back?",
+  "batchResultsMoveBackConfirmBody": "{count, plural, =1{The result will be moved into its source folder. Existing files with the same name are kept and the result is renamed.} other{The {count} results will be moved into their source folders. Existing files with the same name are kept and the results are renamed.}}",
+  "@batchResultsMoveBackConfirmBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "batchResultsReplaced": "{count, plural, =1{Replaced {count} original} other{Replaced {count} originals}}",
+  "@batchResultsReplaced": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "batchResultsMoved": "{count, plural, =1{Moved {count} result back} other{Moved {count} results back}}",
+  "@batchResultsMoved": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "batchResultsActionFailed": "Nothing was changed.",
+  "batchResultsSource": "From {directory}",
+  "@batchResultsSource": {
+    "placeholders": {
+      "directory": {
+        "type": "String"
+      }
+    }
+  },
+  "batchResultsUnknownSource": "Source folder unknown",
+  "batchResultsStatusPending": "waiting",
+  "batchResultsStatusApplied": "applied",
+  "batchResultsStatusDiscarded": "discarded",
+  "batchResultsReady": "{count, plural, =1{{count} result ready} other{{count} results ready}}",
+  "@batchResultsReady": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "batchViewResults": "VIEW",
+  "batchProfilePickerHint": "Start from a profile",
+  "batchProfileSave": "Save as profile",
+  "batchProfileSaved": "Saved profile {name}",
+  "@batchProfileSaved": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "batchProfileNameLabel": "Profile name",
+  "batchProfileDefaultName": "Default",
+  "batchProfileDeleteTitle": "Delete profile?",
+  "batchProfileDeleteBody": "The saved actions of {name} will be removed. Photos are not affected.",
+  "@batchProfileDeleteBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "batchSettingsResultsSection": "Results",
+  "batchSettingsResultsModeReplace": "Keep only the newest result",
+  "batchSettingsResultsModeReplaceDescription": "A new run on the same photo replaces its previous waiting result. Applied results are never touched.",
+  "batchSettingsResultsModeKeep": "Keep every version",
+  "batchSettingsResultsModeKeepDescription": "Each run adds a dated result, so several versions of one photo can coexist.",
+  "batchSettingsProfilesSection": "Profiles",
+  "batchSettingsProfileActive": "Used by default",
+  "batchSettingsProfileInactive": "Tap to use by default",
+  "batchSettingsProfilesHint": "The run sheet can start from any profile and save the current actions as a new one.",
   "batchEditorPercent": "{label}: {value}%",
   "@batchEditorPercent": {
     "placeholders": {

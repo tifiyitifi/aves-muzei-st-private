@@ -9408,6 +9408,1396 @@ class RefraEditOutputRowsCompanion extends UpdateCompanion<RefraEditOutputRow> {
   }
 }
 
+class $BatchResultRowsTable extends BatchResultRows
+    with TableInfo<$BatchResultRowsTable, BatchResultRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BatchResultRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _jobIdMeta = const VerificationMeta('jobId');
+  @override
+  late final GeneratedColumn<String> jobId = GeneratedColumn<String>(
+    'jobId',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceEntryIdMeta = const VerificationMeta(
+    'sourceEntryId',
+  );
+  @override
+  late final GeneratedColumn<int> sourceEntryId = GeneratedColumn<int>(
+    'sourceEntryId',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceUriMeta = const VerificationMeta(
+    'sourceUri',
+  );
+  @override
+  late final GeneratedColumn<String> sourceUri = GeneratedColumn<String>(
+    'sourceUri',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourcePathMeta = const VerificationMeta(
+    'sourcePath',
+  );
+  @override
+  late final GeneratedColumn<String> sourcePath = GeneratedColumn<String>(
+    'sourcePath',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _sourceDirectoryMeta = const VerificationMeta(
+    'sourceDirectory',
+  );
+  @override
+  late final GeneratedColumn<String> sourceDirectory = GeneratedColumn<String>(
+    'sourceDirectory',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _sourceNameMeta = const VerificationMeta(
+    'sourceName',
+  );
+  @override
+  late final GeneratedColumn<String> sourceName = GeneratedColumn<String>(
+    'sourceName',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _resultUriMeta = const VerificationMeta(
+    'resultUri',
+  );
+  @override
+  late final GeneratedColumn<String> resultUri = GeneratedColumn<String>(
+    'resultUri',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _resultPathMeta = const VerificationMeta(
+    'resultPath',
+  );
+  @override
+  late final GeneratedColumn<String> resultPath = GeneratedColumn<String>(
+    'resultPath',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _resultFileNameMeta = const VerificationMeta(
+    'resultFileName',
+  );
+  @override
+  late final GeneratedColumn<String> resultFileName = GeneratedColumn<String>(
+    'resultFileName',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _resultMimeTypeMeta = const VerificationMeta(
+    'resultMimeType',
+  );
+  @override
+  late final GeneratedColumn<String> resultMimeType = GeneratedColumn<String>(
+    'resultMimeType',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _resultSizeBytesMeta = const VerificationMeta(
+    'resultSizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> resultSizeBytes = GeneratedColumn<int>(
+    'resultSizeBytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _actionsJsonMeta = const VerificationMeta(
+    'actionsJson',
+  );
+  @override
+  late final GeneratedColumn<String> actionsJson = GeneratedColumn<String>(
+    'actionsJson',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'createdAt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('pending'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    jobId,
+    sourceEntryId,
+    sourceUri,
+    sourcePath,
+    sourceDirectory,
+    sourceName,
+    resultUri,
+    resultPath,
+    resultFileName,
+    resultMimeType,
+    resultSizeBytes,
+    actionsJson,
+    createdAt,
+    status,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'batch_results';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BatchResultRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('jobId')) {
+      context.handle(
+        _jobIdMeta,
+        jobId.isAcceptableOrUnknown(data['jobId']!, _jobIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_jobIdMeta);
+    }
+    if (data.containsKey('sourceEntryId')) {
+      context.handle(
+        _sourceEntryIdMeta,
+        sourceEntryId.isAcceptableOrUnknown(
+          data['sourceEntryId']!,
+          _sourceEntryIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sourceUri')) {
+      context.handle(
+        _sourceUriMeta,
+        sourceUri.isAcceptableOrUnknown(data['sourceUri']!, _sourceUriMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceUriMeta);
+    }
+    if (data.containsKey('sourcePath')) {
+      context.handle(
+        _sourcePathMeta,
+        sourcePath.isAcceptableOrUnknown(data['sourcePath']!, _sourcePathMeta),
+      );
+    }
+    if (data.containsKey('sourceDirectory')) {
+      context.handle(
+        _sourceDirectoryMeta,
+        sourceDirectory.isAcceptableOrUnknown(
+          data['sourceDirectory']!,
+          _sourceDirectoryMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sourceName')) {
+      context.handle(
+        _sourceNameMeta,
+        sourceName.isAcceptableOrUnknown(data['sourceName']!, _sourceNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceNameMeta);
+    }
+    if (data.containsKey('resultUri')) {
+      context.handle(
+        _resultUriMeta,
+        resultUri.isAcceptableOrUnknown(data['resultUri']!, _resultUriMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_resultUriMeta);
+    }
+    if (data.containsKey('resultPath')) {
+      context.handle(
+        _resultPathMeta,
+        resultPath.isAcceptableOrUnknown(data['resultPath']!, _resultPathMeta),
+      );
+    }
+    if (data.containsKey('resultFileName')) {
+      context.handle(
+        _resultFileNameMeta,
+        resultFileName.isAcceptableOrUnknown(
+          data['resultFileName']!,
+          _resultFileNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_resultFileNameMeta);
+    }
+    if (data.containsKey('resultMimeType')) {
+      context.handle(
+        _resultMimeTypeMeta,
+        resultMimeType.isAcceptableOrUnknown(
+          data['resultMimeType']!,
+          _resultMimeTypeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('resultSizeBytes')) {
+      context.handle(
+        _resultSizeBytesMeta,
+        resultSizeBytes.isAcceptableOrUnknown(
+          data['resultSizeBytes']!,
+          _resultSizeBytesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('actionsJson')) {
+      context.handle(
+        _actionsJsonMeta,
+        actionsJson.isAcceptableOrUnknown(
+          data['actionsJson']!,
+          _actionsJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('createdAt')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['createdAt']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  BatchResultRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BatchResultRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      jobId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}jobId'],
+      )!,
+      sourceEntryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sourceEntryId'],
+      ),
+      sourceUri: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sourceUri'],
+      )!,
+      sourcePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sourcePath'],
+      )!,
+      sourceDirectory: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sourceDirectory'],
+      )!,
+      sourceName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sourceName'],
+      )!,
+      resultUri: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}resultUri'],
+      )!,
+      resultPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}resultPath'],
+      )!,
+      resultFileName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}resultFileName'],
+      )!,
+      resultMimeType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}resultMimeType'],
+      )!,
+      resultSizeBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}resultSizeBytes'],
+      )!,
+      actionsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}actionsJson'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}createdAt'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+    );
+  }
+
+  @override
+  $BatchResultRowsTable createAlias(String alias) {
+    return $BatchResultRowsTable(attachedDatabase, alias);
+  }
+}
+
+class BatchResultRow extends DataClass implements Insertable<BatchResultRow> {
+  /// `${jobId}-${index}`, stable for one item of one job.
+  final String id;
+  final String jobId;
+
+  /// Aves entry id of the source at run time (informational, ids churn).
+  final int? sourceEntryId;
+  final String sourceUri;
+
+  /// Absolute path of the source file, empty when the entry has no storage path.
+  final String sourcePath;
+
+  /// Absolute directory the result is offered to be moved back to.
+  final String sourceDirectory;
+  final String sourceName;
+  final String resultUri;
+  final String resultPath;
+  final String resultFileName;
+  final String resultMimeType;
+  final int resultSizeBytes;
+
+  /// The action chain that produced the result, as profile JSON.
+  final String actionsJson;
+  final int createdAt;
+
+  /// `pending`, `applied` or `discarded`.
+  final String status;
+  const BatchResultRow({
+    required this.id,
+    required this.jobId,
+    this.sourceEntryId,
+    required this.sourceUri,
+    required this.sourcePath,
+    required this.sourceDirectory,
+    required this.sourceName,
+    required this.resultUri,
+    required this.resultPath,
+    required this.resultFileName,
+    required this.resultMimeType,
+    required this.resultSizeBytes,
+    required this.actionsJson,
+    required this.createdAt,
+    required this.status,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['jobId'] = Variable<String>(jobId);
+    if (!nullToAbsent || sourceEntryId != null) {
+      map['sourceEntryId'] = Variable<int>(sourceEntryId);
+    }
+    map['sourceUri'] = Variable<String>(sourceUri);
+    map['sourcePath'] = Variable<String>(sourcePath);
+    map['sourceDirectory'] = Variable<String>(sourceDirectory);
+    map['sourceName'] = Variable<String>(sourceName);
+    map['resultUri'] = Variable<String>(resultUri);
+    map['resultPath'] = Variable<String>(resultPath);
+    map['resultFileName'] = Variable<String>(resultFileName);
+    map['resultMimeType'] = Variable<String>(resultMimeType);
+    map['resultSizeBytes'] = Variable<int>(resultSizeBytes);
+    map['actionsJson'] = Variable<String>(actionsJson);
+    map['createdAt'] = Variable<int>(createdAt);
+    map['status'] = Variable<String>(status);
+    return map;
+  }
+
+  BatchResultRowsCompanion toCompanion(bool nullToAbsent) {
+    return BatchResultRowsCompanion(
+      id: Value(id),
+      jobId: Value(jobId),
+      sourceEntryId: sourceEntryId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceEntryId),
+      sourceUri: Value(sourceUri),
+      sourcePath: Value(sourcePath),
+      sourceDirectory: Value(sourceDirectory),
+      sourceName: Value(sourceName),
+      resultUri: Value(resultUri),
+      resultPath: Value(resultPath),
+      resultFileName: Value(resultFileName),
+      resultMimeType: Value(resultMimeType),
+      resultSizeBytes: Value(resultSizeBytes),
+      actionsJson: Value(actionsJson),
+      createdAt: Value(createdAt),
+      status: Value(status),
+    );
+  }
+
+  factory BatchResultRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BatchResultRow(
+      id: serializer.fromJson<String>(json['id']),
+      jobId: serializer.fromJson<String>(json['jobId']),
+      sourceEntryId: serializer.fromJson<int?>(json['sourceEntryId']),
+      sourceUri: serializer.fromJson<String>(json['sourceUri']),
+      sourcePath: serializer.fromJson<String>(json['sourcePath']),
+      sourceDirectory: serializer.fromJson<String>(json['sourceDirectory']),
+      sourceName: serializer.fromJson<String>(json['sourceName']),
+      resultUri: serializer.fromJson<String>(json['resultUri']),
+      resultPath: serializer.fromJson<String>(json['resultPath']),
+      resultFileName: serializer.fromJson<String>(json['resultFileName']),
+      resultMimeType: serializer.fromJson<String>(json['resultMimeType']),
+      resultSizeBytes: serializer.fromJson<int>(json['resultSizeBytes']),
+      actionsJson: serializer.fromJson<String>(json['actionsJson']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      status: serializer.fromJson<String>(json['status']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'jobId': serializer.toJson<String>(jobId),
+      'sourceEntryId': serializer.toJson<int?>(sourceEntryId),
+      'sourceUri': serializer.toJson<String>(sourceUri),
+      'sourcePath': serializer.toJson<String>(sourcePath),
+      'sourceDirectory': serializer.toJson<String>(sourceDirectory),
+      'sourceName': serializer.toJson<String>(sourceName),
+      'resultUri': serializer.toJson<String>(resultUri),
+      'resultPath': serializer.toJson<String>(resultPath),
+      'resultFileName': serializer.toJson<String>(resultFileName),
+      'resultMimeType': serializer.toJson<String>(resultMimeType),
+      'resultSizeBytes': serializer.toJson<int>(resultSizeBytes),
+      'actionsJson': serializer.toJson<String>(actionsJson),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'status': serializer.toJson<String>(status),
+    };
+  }
+
+  BatchResultRow copyWith({
+    String? id,
+    String? jobId,
+    Value<int?> sourceEntryId = const Value.absent(),
+    String? sourceUri,
+    String? sourcePath,
+    String? sourceDirectory,
+    String? sourceName,
+    String? resultUri,
+    String? resultPath,
+    String? resultFileName,
+    String? resultMimeType,
+    int? resultSizeBytes,
+    String? actionsJson,
+    int? createdAt,
+    String? status,
+  }) => BatchResultRow(
+    id: id ?? this.id,
+    jobId: jobId ?? this.jobId,
+    sourceEntryId: sourceEntryId.present
+        ? sourceEntryId.value
+        : this.sourceEntryId,
+    sourceUri: sourceUri ?? this.sourceUri,
+    sourcePath: sourcePath ?? this.sourcePath,
+    sourceDirectory: sourceDirectory ?? this.sourceDirectory,
+    sourceName: sourceName ?? this.sourceName,
+    resultUri: resultUri ?? this.resultUri,
+    resultPath: resultPath ?? this.resultPath,
+    resultFileName: resultFileName ?? this.resultFileName,
+    resultMimeType: resultMimeType ?? this.resultMimeType,
+    resultSizeBytes: resultSizeBytes ?? this.resultSizeBytes,
+    actionsJson: actionsJson ?? this.actionsJson,
+    createdAt: createdAt ?? this.createdAt,
+    status: status ?? this.status,
+  );
+  BatchResultRow copyWithCompanion(BatchResultRowsCompanion data) {
+    return BatchResultRow(
+      id: data.id.present ? data.id.value : this.id,
+      jobId: data.jobId.present ? data.jobId.value : this.jobId,
+      sourceEntryId: data.sourceEntryId.present
+          ? data.sourceEntryId.value
+          : this.sourceEntryId,
+      sourceUri: data.sourceUri.present ? data.sourceUri.value : this.sourceUri,
+      sourcePath: data.sourcePath.present
+          ? data.sourcePath.value
+          : this.sourcePath,
+      sourceDirectory: data.sourceDirectory.present
+          ? data.sourceDirectory.value
+          : this.sourceDirectory,
+      sourceName: data.sourceName.present
+          ? data.sourceName.value
+          : this.sourceName,
+      resultUri: data.resultUri.present ? data.resultUri.value : this.resultUri,
+      resultPath: data.resultPath.present
+          ? data.resultPath.value
+          : this.resultPath,
+      resultFileName: data.resultFileName.present
+          ? data.resultFileName.value
+          : this.resultFileName,
+      resultMimeType: data.resultMimeType.present
+          ? data.resultMimeType.value
+          : this.resultMimeType,
+      resultSizeBytes: data.resultSizeBytes.present
+          ? data.resultSizeBytes.value
+          : this.resultSizeBytes,
+      actionsJson: data.actionsJson.present
+          ? data.actionsJson.value
+          : this.actionsJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      status: data.status.present ? data.status.value : this.status,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BatchResultRow(')
+          ..write('id: $id, ')
+          ..write('jobId: $jobId, ')
+          ..write('sourceEntryId: $sourceEntryId, ')
+          ..write('sourceUri: $sourceUri, ')
+          ..write('sourcePath: $sourcePath, ')
+          ..write('sourceDirectory: $sourceDirectory, ')
+          ..write('sourceName: $sourceName, ')
+          ..write('resultUri: $resultUri, ')
+          ..write('resultPath: $resultPath, ')
+          ..write('resultFileName: $resultFileName, ')
+          ..write('resultMimeType: $resultMimeType, ')
+          ..write('resultSizeBytes: $resultSizeBytes, ')
+          ..write('actionsJson: $actionsJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('status: $status')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    jobId,
+    sourceEntryId,
+    sourceUri,
+    sourcePath,
+    sourceDirectory,
+    sourceName,
+    resultUri,
+    resultPath,
+    resultFileName,
+    resultMimeType,
+    resultSizeBytes,
+    actionsJson,
+    createdAt,
+    status,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BatchResultRow &&
+          other.id == this.id &&
+          other.jobId == this.jobId &&
+          other.sourceEntryId == this.sourceEntryId &&
+          other.sourceUri == this.sourceUri &&
+          other.sourcePath == this.sourcePath &&
+          other.sourceDirectory == this.sourceDirectory &&
+          other.sourceName == this.sourceName &&
+          other.resultUri == this.resultUri &&
+          other.resultPath == this.resultPath &&
+          other.resultFileName == this.resultFileName &&
+          other.resultMimeType == this.resultMimeType &&
+          other.resultSizeBytes == this.resultSizeBytes &&
+          other.actionsJson == this.actionsJson &&
+          other.createdAt == this.createdAt &&
+          other.status == this.status);
+}
+
+class BatchResultRowsCompanion extends UpdateCompanion<BatchResultRow> {
+  final Value<String> id;
+  final Value<String> jobId;
+  final Value<int?> sourceEntryId;
+  final Value<String> sourceUri;
+  final Value<String> sourcePath;
+  final Value<String> sourceDirectory;
+  final Value<String> sourceName;
+  final Value<String> resultUri;
+  final Value<String> resultPath;
+  final Value<String> resultFileName;
+  final Value<String> resultMimeType;
+  final Value<int> resultSizeBytes;
+  final Value<String> actionsJson;
+  final Value<int> createdAt;
+  final Value<String> status;
+  final Value<int> rowid;
+  const BatchResultRowsCompanion({
+    this.id = const Value.absent(),
+    this.jobId = const Value.absent(),
+    this.sourceEntryId = const Value.absent(),
+    this.sourceUri = const Value.absent(),
+    this.sourcePath = const Value.absent(),
+    this.sourceDirectory = const Value.absent(),
+    this.sourceName = const Value.absent(),
+    this.resultUri = const Value.absent(),
+    this.resultPath = const Value.absent(),
+    this.resultFileName = const Value.absent(),
+    this.resultMimeType = const Value.absent(),
+    this.resultSizeBytes = const Value.absent(),
+    this.actionsJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.status = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BatchResultRowsCompanion.insert({
+    required String id,
+    required String jobId,
+    this.sourceEntryId = const Value.absent(),
+    required String sourceUri,
+    this.sourcePath = const Value.absent(),
+    this.sourceDirectory = const Value.absent(),
+    required String sourceName,
+    required String resultUri,
+    this.resultPath = const Value.absent(),
+    required String resultFileName,
+    this.resultMimeType = const Value.absent(),
+    this.resultSizeBytes = const Value.absent(),
+    this.actionsJson = const Value.absent(),
+    required int createdAt,
+    this.status = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       jobId = Value(jobId),
+       sourceUri = Value(sourceUri),
+       sourceName = Value(sourceName),
+       resultUri = Value(resultUri),
+       resultFileName = Value(resultFileName),
+       createdAt = Value(createdAt);
+  static Insertable<BatchResultRow> custom({
+    Expression<String>? id,
+    Expression<String>? jobId,
+    Expression<int>? sourceEntryId,
+    Expression<String>? sourceUri,
+    Expression<String>? sourcePath,
+    Expression<String>? sourceDirectory,
+    Expression<String>? sourceName,
+    Expression<String>? resultUri,
+    Expression<String>? resultPath,
+    Expression<String>? resultFileName,
+    Expression<String>? resultMimeType,
+    Expression<int>? resultSizeBytes,
+    Expression<String>? actionsJson,
+    Expression<int>? createdAt,
+    Expression<String>? status,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (jobId != null) 'jobId': jobId,
+      if (sourceEntryId != null) 'sourceEntryId': sourceEntryId,
+      if (sourceUri != null) 'sourceUri': sourceUri,
+      if (sourcePath != null) 'sourcePath': sourcePath,
+      if (sourceDirectory != null) 'sourceDirectory': sourceDirectory,
+      if (sourceName != null) 'sourceName': sourceName,
+      if (resultUri != null) 'resultUri': resultUri,
+      if (resultPath != null) 'resultPath': resultPath,
+      if (resultFileName != null) 'resultFileName': resultFileName,
+      if (resultMimeType != null) 'resultMimeType': resultMimeType,
+      if (resultSizeBytes != null) 'resultSizeBytes': resultSizeBytes,
+      if (actionsJson != null) 'actionsJson': actionsJson,
+      if (createdAt != null) 'createdAt': createdAt,
+      if (status != null) 'status': status,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BatchResultRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? jobId,
+    Value<int?>? sourceEntryId,
+    Value<String>? sourceUri,
+    Value<String>? sourcePath,
+    Value<String>? sourceDirectory,
+    Value<String>? sourceName,
+    Value<String>? resultUri,
+    Value<String>? resultPath,
+    Value<String>? resultFileName,
+    Value<String>? resultMimeType,
+    Value<int>? resultSizeBytes,
+    Value<String>? actionsJson,
+    Value<int>? createdAt,
+    Value<String>? status,
+    Value<int>? rowid,
+  }) {
+    return BatchResultRowsCompanion(
+      id: id ?? this.id,
+      jobId: jobId ?? this.jobId,
+      sourceEntryId: sourceEntryId ?? this.sourceEntryId,
+      sourceUri: sourceUri ?? this.sourceUri,
+      sourcePath: sourcePath ?? this.sourcePath,
+      sourceDirectory: sourceDirectory ?? this.sourceDirectory,
+      sourceName: sourceName ?? this.sourceName,
+      resultUri: resultUri ?? this.resultUri,
+      resultPath: resultPath ?? this.resultPath,
+      resultFileName: resultFileName ?? this.resultFileName,
+      resultMimeType: resultMimeType ?? this.resultMimeType,
+      resultSizeBytes: resultSizeBytes ?? this.resultSizeBytes,
+      actionsJson: actionsJson ?? this.actionsJson,
+      createdAt: createdAt ?? this.createdAt,
+      status: status ?? this.status,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (jobId.present) {
+      map['jobId'] = Variable<String>(jobId.value);
+    }
+    if (sourceEntryId.present) {
+      map['sourceEntryId'] = Variable<int>(sourceEntryId.value);
+    }
+    if (sourceUri.present) {
+      map['sourceUri'] = Variable<String>(sourceUri.value);
+    }
+    if (sourcePath.present) {
+      map['sourcePath'] = Variable<String>(sourcePath.value);
+    }
+    if (sourceDirectory.present) {
+      map['sourceDirectory'] = Variable<String>(sourceDirectory.value);
+    }
+    if (sourceName.present) {
+      map['sourceName'] = Variable<String>(sourceName.value);
+    }
+    if (resultUri.present) {
+      map['resultUri'] = Variable<String>(resultUri.value);
+    }
+    if (resultPath.present) {
+      map['resultPath'] = Variable<String>(resultPath.value);
+    }
+    if (resultFileName.present) {
+      map['resultFileName'] = Variable<String>(resultFileName.value);
+    }
+    if (resultMimeType.present) {
+      map['resultMimeType'] = Variable<String>(resultMimeType.value);
+    }
+    if (resultSizeBytes.present) {
+      map['resultSizeBytes'] = Variable<int>(resultSizeBytes.value);
+    }
+    if (actionsJson.present) {
+      map['actionsJson'] = Variable<String>(actionsJson.value);
+    }
+    if (createdAt.present) {
+      map['createdAt'] = Variable<int>(createdAt.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BatchResultRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('jobId: $jobId, ')
+          ..write('sourceEntryId: $sourceEntryId, ')
+          ..write('sourceUri: $sourceUri, ')
+          ..write('sourcePath: $sourcePath, ')
+          ..write('sourceDirectory: $sourceDirectory, ')
+          ..write('sourceName: $sourceName, ')
+          ..write('resultUri: $resultUri, ')
+          ..write('resultPath: $resultPath, ')
+          ..write('resultFileName: $resultFileName, ')
+          ..write('resultMimeType: $resultMimeType, ')
+          ..write('resultSizeBytes: $resultSizeBytes, ')
+          ..write('actionsJson: $actionsJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('status: $status, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $BatchProfileRowsTable extends BatchProfileRows
+    with TableInfo<$BatchProfileRowsTable, BatchProfileRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BatchProfileRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _actionsJsonMeta = const VerificationMeta(
+    'actionsJson',
+  );
+  @override
+  late final GeneratedColumn<String> actionsJson = GeneratedColumn<String>(
+    'actionsJson',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('batch'),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sortOrder',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _isActiveMeta = const VerificationMeta(
+    'isActive',
+  );
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+    'isActive',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("isActive" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'createdAt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updatedAt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    actionsJson,
+    kind,
+    sortOrder,
+    isActive,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'batch_profiles';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BatchProfileRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('actionsJson')) {
+      context.handle(
+        _actionsJsonMeta,
+        actionsJson.isAcceptableOrUnknown(
+          data['actionsJson']!,
+          _actionsJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    }
+    if (data.containsKey('sortOrder')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sortOrder']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('isActive')) {
+      context.handle(
+        _isActiveMeta,
+        isActive.isAcceptableOrUnknown(data['isActive']!, _isActiveMeta),
+      );
+    }
+    if (data.containsKey('createdAt')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['createdAt']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updatedAt')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updatedAt']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  BatchProfileRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BatchProfileRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      actionsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}actionsJson'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sortOrder'],
+      )!,
+      isActive: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}isActive'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}createdAt'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updatedAt'],
+      )!,
+    );
+  }
+
+  @override
+  $BatchProfileRowsTable createAlias(String alias) {
+    return $BatchProfileRowsTable(attachedDatabase, alias);
+  }
+}
+
+class BatchProfileRow extends DataClass implements Insertable<BatchProfileRow> {
+  final String id;
+  final String name;
+  final String actionsJson;
+
+  /// `batch` or `share`.
+  final String kind;
+  final int sortOrder;
+  final bool isActive;
+  final int createdAt;
+  final int updatedAt;
+  const BatchProfileRow({
+    required this.id,
+    required this.name,
+    required this.actionsJson,
+    required this.kind,
+    required this.sortOrder,
+    required this.isActive,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['actionsJson'] = Variable<String>(actionsJson);
+    map['kind'] = Variable<String>(kind);
+    map['sortOrder'] = Variable<int>(sortOrder);
+    map['isActive'] = Variable<bool>(isActive);
+    map['createdAt'] = Variable<int>(createdAt);
+    map['updatedAt'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  BatchProfileRowsCompanion toCompanion(bool nullToAbsent) {
+    return BatchProfileRowsCompanion(
+      id: Value(id),
+      name: Value(name),
+      actionsJson: Value(actionsJson),
+      kind: Value(kind),
+      sortOrder: Value(sortOrder),
+      isActive: Value(isActive),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory BatchProfileRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BatchProfileRow(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      actionsJson: serializer.fromJson<String>(json['actionsJson']),
+      kind: serializer.fromJson<String>(json['kind']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'actionsJson': serializer.toJson<String>(actionsJson),
+      'kind': serializer.toJson<String>(kind),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'isActive': serializer.toJson<bool>(isActive),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  BatchProfileRow copyWith({
+    String? id,
+    String? name,
+    String? actionsJson,
+    String? kind,
+    int? sortOrder,
+    bool? isActive,
+    int? createdAt,
+    int? updatedAt,
+  }) => BatchProfileRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    actionsJson: actionsJson ?? this.actionsJson,
+    kind: kind ?? this.kind,
+    sortOrder: sortOrder ?? this.sortOrder,
+    isActive: isActive ?? this.isActive,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  BatchProfileRow copyWithCompanion(BatchProfileRowsCompanion data) {
+    return BatchProfileRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      actionsJson: data.actionsJson.present
+          ? data.actionsJson.value
+          : this.actionsJson,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BatchProfileRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('actionsJson: $actionsJson, ')
+          ..write('kind: $kind, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('isActive: $isActive, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    actionsJson,
+    kind,
+    sortOrder,
+    isActive,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BatchProfileRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.actionsJson == this.actionsJson &&
+          other.kind == this.kind &&
+          other.sortOrder == this.sortOrder &&
+          other.isActive == this.isActive &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class BatchProfileRowsCompanion extends UpdateCompanion<BatchProfileRow> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<String> actionsJson;
+  final Value<String> kind;
+  final Value<int> sortOrder;
+  final Value<bool> isActive;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const BatchProfileRowsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.actionsJson = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BatchProfileRowsCompanion.insert({
+    required String id,
+    required String name,
+    this.actionsJson = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.isActive = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<BatchProfileRow> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? actionsJson,
+    Expression<String>? kind,
+    Expression<int>? sortOrder,
+    Expression<bool>? isActive,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (actionsJson != null) 'actionsJson': actionsJson,
+      if (kind != null) 'kind': kind,
+      if (sortOrder != null) 'sortOrder': sortOrder,
+      if (isActive != null) 'isActive': isActive,
+      if (createdAt != null) 'createdAt': createdAt,
+      if (updatedAt != null) 'updatedAt': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BatchProfileRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String>? actionsJson,
+    Value<String>? kind,
+    Value<int>? sortOrder,
+    Value<bool>? isActive,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return BatchProfileRowsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      actionsJson: actionsJson ?? this.actionsJson,
+      kind: kind ?? this.kind,
+      sortOrder: sortOrder ?? this.sortOrder,
+      isActive: isActive ?? this.isActive,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (actionsJson.present) {
+      map['actionsJson'] = Variable<String>(actionsJson.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (sortOrder.present) {
+      map['sortOrder'] = Variable<int>(sortOrder.value);
+    }
+    if (isActive.present) {
+      map['isActive'] = Variable<bool>(isActive.value);
+    }
+    if (createdAt.present) {
+      map['createdAt'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updatedAt'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BatchProfileRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('actionsJson: $actionsJson, ')
+          ..write('kind: $kind, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('isActive: $isActive, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -9448,6 +10838,12 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $RefraEditSessionRowsTable(this);
   late final $RefraEditOutputRowsTable refraEditOutputRows =
       $RefraEditOutputRowsTable(this);
+  late final $BatchResultRowsTable batchResultRows = $BatchResultRowsTable(
+    this,
+  );
+  late final $BatchProfileRowsTable batchProfileRows = $BatchProfileRowsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -9475,6 +10871,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     groupedWallpaperHistoryRows,
     refraEditSessionRows,
     refraEditOutputRows,
+    batchResultRows,
+    batchProfileRows,
   ];
 }
 
@@ -14560,6 +15958,685 @@ typedef $$RefraEditOutputRowsTableProcessedTableManager =
       RefraEditOutputRow,
       PrefetchHooks Function()
     >;
+typedef $$BatchResultRowsTableCreateCompanionBuilder =
+    BatchResultRowsCompanion Function({
+      required String id,
+      required String jobId,
+      Value<int?> sourceEntryId,
+      required String sourceUri,
+      Value<String> sourcePath,
+      Value<String> sourceDirectory,
+      required String sourceName,
+      required String resultUri,
+      Value<String> resultPath,
+      required String resultFileName,
+      Value<String> resultMimeType,
+      Value<int> resultSizeBytes,
+      Value<String> actionsJson,
+      required int createdAt,
+      Value<String> status,
+      Value<int> rowid,
+    });
+typedef $$BatchResultRowsTableUpdateCompanionBuilder =
+    BatchResultRowsCompanion Function({
+      Value<String> id,
+      Value<String> jobId,
+      Value<int?> sourceEntryId,
+      Value<String> sourceUri,
+      Value<String> sourcePath,
+      Value<String> sourceDirectory,
+      Value<String> sourceName,
+      Value<String> resultUri,
+      Value<String> resultPath,
+      Value<String> resultFileName,
+      Value<String> resultMimeType,
+      Value<int> resultSizeBytes,
+      Value<String> actionsJson,
+      Value<int> createdAt,
+      Value<String> status,
+      Value<int> rowid,
+    });
+
+class $$BatchResultRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $BatchResultRowsTable> {
+  $$BatchResultRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get jobId => $composableBuilder(
+    column: $table.jobId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sourceEntryId => $composableBuilder(
+    column: $table.sourceEntryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceUri => $composableBuilder(
+    column: $table.sourceUri,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourcePath => $composableBuilder(
+    column: $table.sourcePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceDirectory => $composableBuilder(
+    column: $table.sourceDirectory,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceName => $composableBuilder(
+    column: $table.sourceName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get resultUri => $composableBuilder(
+    column: $table.resultUri,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get resultPath => $composableBuilder(
+    column: $table.resultPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get resultFileName => $composableBuilder(
+    column: $table.resultFileName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get resultMimeType => $composableBuilder(
+    column: $table.resultMimeType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get resultSizeBytes => $composableBuilder(
+    column: $table.resultSizeBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get actionsJson => $composableBuilder(
+    column: $table.actionsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BatchResultRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $BatchResultRowsTable> {
+  $$BatchResultRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get jobId => $composableBuilder(
+    column: $table.jobId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sourceEntryId => $composableBuilder(
+    column: $table.sourceEntryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceUri => $composableBuilder(
+    column: $table.sourceUri,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourcePath => $composableBuilder(
+    column: $table.sourcePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceDirectory => $composableBuilder(
+    column: $table.sourceDirectory,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceName => $composableBuilder(
+    column: $table.sourceName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get resultUri => $composableBuilder(
+    column: $table.resultUri,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get resultPath => $composableBuilder(
+    column: $table.resultPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get resultFileName => $composableBuilder(
+    column: $table.resultFileName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get resultMimeType => $composableBuilder(
+    column: $table.resultMimeType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get resultSizeBytes => $composableBuilder(
+    column: $table.resultSizeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get actionsJson => $composableBuilder(
+    column: $table.actionsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BatchResultRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BatchResultRowsTable> {
+  $$BatchResultRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get jobId =>
+      $composableBuilder(column: $table.jobId, builder: (column) => column);
+
+  GeneratedColumn<int> get sourceEntryId => $composableBuilder(
+    column: $table.sourceEntryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceUri =>
+      $composableBuilder(column: $table.sourceUri, builder: (column) => column);
+
+  GeneratedColumn<String> get sourcePath => $composableBuilder(
+    column: $table.sourcePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceDirectory => $composableBuilder(
+    column: $table.sourceDirectory,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceName => $composableBuilder(
+    column: $table.sourceName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get resultUri =>
+      $composableBuilder(column: $table.resultUri, builder: (column) => column);
+
+  GeneratedColumn<String> get resultPath => $composableBuilder(
+    column: $table.resultPath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get resultFileName => $composableBuilder(
+    column: $table.resultFileName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get resultMimeType => $composableBuilder(
+    column: $table.resultMimeType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get resultSizeBytes => $composableBuilder(
+    column: $table.resultSizeBytes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get actionsJson => $composableBuilder(
+    column: $table.actionsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+}
+
+class $$BatchResultRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BatchResultRowsTable,
+          BatchResultRow,
+          $$BatchResultRowsTableFilterComposer,
+          $$BatchResultRowsTableOrderingComposer,
+          $$BatchResultRowsTableAnnotationComposer,
+          $$BatchResultRowsTableCreateCompanionBuilder,
+          $$BatchResultRowsTableUpdateCompanionBuilder,
+          (
+            BatchResultRow,
+            BaseReferences<
+              _$AppDatabase,
+              $BatchResultRowsTable,
+              BatchResultRow
+            >,
+          ),
+          BatchResultRow,
+          PrefetchHooks Function()
+        > {
+  $$BatchResultRowsTableTableManager(
+    _$AppDatabase db,
+    $BatchResultRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BatchResultRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BatchResultRowsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BatchResultRowsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> jobId = const Value.absent(),
+                Value<int?> sourceEntryId = const Value.absent(),
+                Value<String> sourceUri = const Value.absent(),
+                Value<String> sourcePath = const Value.absent(),
+                Value<String> sourceDirectory = const Value.absent(),
+                Value<String> sourceName = const Value.absent(),
+                Value<String> resultUri = const Value.absent(),
+                Value<String> resultPath = const Value.absent(),
+                Value<String> resultFileName = const Value.absent(),
+                Value<String> resultMimeType = const Value.absent(),
+                Value<int> resultSizeBytes = const Value.absent(),
+                Value<String> actionsJson = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BatchResultRowsCompanion(
+                id: id,
+                jobId: jobId,
+                sourceEntryId: sourceEntryId,
+                sourceUri: sourceUri,
+                sourcePath: sourcePath,
+                sourceDirectory: sourceDirectory,
+                sourceName: sourceName,
+                resultUri: resultUri,
+                resultPath: resultPath,
+                resultFileName: resultFileName,
+                resultMimeType: resultMimeType,
+                resultSizeBytes: resultSizeBytes,
+                actionsJson: actionsJson,
+                createdAt: createdAt,
+                status: status,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String jobId,
+                Value<int?> sourceEntryId = const Value.absent(),
+                required String sourceUri,
+                Value<String> sourcePath = const Value.absent(),
+                Value<String> sourceDirectory = const Value.absent(),
+                required String sourceName,
+                required String resultUri,
+                Value<String> resultPath = const Value.absent(),
+                required String resultFileName,
+                Value<String> resultMimeType = const Value.absent(),
+                Value<int> resultSizeBytes = const Value.absent(),
+                Value<String> actionsJson = const Value.absent(),
+                required int createdAt,
+                Value<String> status = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BatchResultRowsCompanion.insert(
+                id: id,
+                jobId: jobId,
+                sourceEntryId: sourceEntryId,
+                sourceUri: sourceUri,
+                sourcePath: sourcePath,
+                sourceDirectory: sourceDirectory,
+                sourceName: sourceName,
+                resultUri: resultUri,
+                resultPath: resultPath,
+                resultFileName: resultFileName,
+                resultMimeType: resultMimeType,
+                resultSizeBytes: resultSizeBytes,
+                actionsJson: actionsJson,
+                createdAt: createdAt,
+                status: status,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BatchResultRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BatchResultRowsTable,
+      BatchResultRow,
+      $$BatchResultRowsTableFilterComposer,
+      $$BatchResultRowsTableOrderingComposer,
+      $$BatchResultRowsTableAnnotationComposer,
+      $$BatchResultRowsTableCreateCompanionBuilder,
+      $$BatchResultRowsTableUpdateCompanionBuilder,
+      (
+        BatchResultRow,
+        BaseReferences<_$AppDatabase, $BatchResultRowsTable, BatchResultRow>,
+      ),
+      BatchResultRow,
+      PrefetchHooks Function()
+    >;
+typedef $$BatchProfileRowsTableCreateCompanionBuilder =
+    BatchProfileRowsCompanion Function({
+      required String id,
+      required String name,
+      Value<String> actionsJson,
+      Value<String> kind,
+      Value<int> sortOrder,
+      Value<bool> isActive,
+      required int createdAt,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$BatchProfileRowsTableUpdateCompanionBuilder =
+    BatchProfileRowsCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<String> actionsJson,
+      Value<String> kind,
+      Value<int> sortOrder,
+      Value<bool> isActive,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$BatchProfileRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $BatchProfileRowsTable> {
+  $$BatchProfileRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get actionsJson => $composableBuilder(
+    column: $table.actionsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BatchProfileRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $BatchProfileRowsTable> {
+  $$BatchProfileRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get actionsJson => $composableBuilder(
+    column: $table.actionsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BatchProfileRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BatchProfileRowsTable> {
+  $$BatchProfileRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get actionsJson => $composableBuilder(
+    column: $table.actionsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$BatchProfileRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BatchProfileRowsTable,
+          BatchProfileRow,
+          $$BatchProfileRowsTableFilterComposer,
+          $$BatchProfileRowsTableOrderingComposer,
+          $$BatchProfileRowsTableAnnotationComposer,
+          $$BatchProfileRowsTableCreateCompanionBuilder,
+          $$BatchProfileRowsTableUpdateCompanionBuilder,
+          (
+            BatchProfileRow,
+            BaseReferences<
+              _$AppDatabase,
+              $BatchProfileRowsTable,
+              BatchProfileRow
+            >,
+          ),
+          BatchProfileRow,
+          PrefetchHooks Function()
+        > {
+  $$BatchProfileRowsTableTableManager(
+    _$AppDatabase db,
+    $BatchProfileRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BatchProfileRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BatchProfileRowsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BatchProfileRowsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> actionsJson = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BatchProfileRowsCompanion(
+                id: id,
+                name: name,
+                actionsJson: actionsJson,
+                kind: kind,
+                sortOrder: sortOrder,
+                isActive: isActive,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                Value<String> actionsJson = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
+                required int createdAt,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => BatchProfileRowsCompanion.insert(
+                id: id,
+                name: name,
+                actionsJson: actionsJson,
+                kind: kind,
+                sortOrder: sortOrder,
+                isActive: isActive,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BatchProfileRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BatchProfileRowsTable,
+      BatchProfileRow,
+      $$BatchProfileRowsTableFilterComposer,
+      $$BatchProfileRowsTableOrderingComposer,
+      $$BatchProfileRowsTableAnnotationComposer,
+      $$BatchProfileRowsTableCreateCompanionBuilder,
+      $$BatchProfileRowsTableUpdateCompanionBuilder,
+      (
+        BatchProfileRow,
+        BaseReferences<_$AppDatabase, $BatchProfileRowsTable, BatchProfileRow>,
+      ),
+      BatchProfileRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -14618,4 +16695,8 @@ class $AppDatabaseManager {
       $$RefraEditSessionRowsTableTableManager(_db, _db.refraEditSessionRows);
   $$RefraEditOutputRowsTableTableManager get refraEditOutputRows =>
       $$RefraEditOutputRowsTableTableManager(_db, _db.refraEditOutputRows);
+  $$BatchResultRowsTableTableManager get batchResultRows =>
+      $$BatchResultRowsTableTableManager(_db, _db.batchResultRows);
+  $$BatchProfileRowsTableTableManager get batchProfileRows =>
+      $$BatchProfileRowsTableTableManager(_db, _db.batchProfileRows);
 }

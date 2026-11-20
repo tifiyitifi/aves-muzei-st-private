@@ -41,8 +41,22 @@ data class BatchJob(
     val output: BatchOutputSpec,
 )
 
+/**
+ * One file the job wrote, described from its MediaStore row.
+ *
+ * The Dart side records the result without a second lookup, so the fields are
+ * read back right after the write rather than assumed from the name pattern.
+ */
+data class BatchOutputFile(
+    val uri: String,
+    val path: String,
+    val displayName: String,
+    val sizeBytes: Long,
+    val mimeType: String,
+)
+
 object BatchJobParser {
-    const val DEFAULT_RELATIVE_PATH = "Pictures/aves_batch"
+    const val DEFAULT_RELATIVE_PATH = "Pictures/aves_batch_results"
 
     fun parse(arguments: Any?): BatchJob? {
         val args = arguments as? Map<*, *> ?: return null

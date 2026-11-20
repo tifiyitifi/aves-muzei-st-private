@@ -72,5 +72,6 @@ List<String> knownIssues(BuildContext context) {
     l10n.aboutKnownIssues4,
     l10n.aboutKnownIssues5,
     l10n.aboutKnownIssues6,
+    l10n.aboutKnownIssues7,
   ];
 }

@@ -1,4 +1,5 @@
 import 'package:aves/features/batch_ops/model/batch_action.dart';
+import 'package:aves/features/batch_ops/model/batch_paths.dart';
 import 'package:flutter/foundation.dart';
 
 /// One source image in a job.
@@ -26,11 +27,11 @@ class BatchItem {
 
 /// Where the processed images go and how they are named.
 ///
-/// The default is the fork's batch folder. Copy-share will later pass its own
-/// folder without changing the engine.
+/// The default is the fork's batch results folder. Copy-share will later pass its
+/// own folder without changing the engine.
 @immutable
 class BatchOutput {
-  static const String defaultRelativePath = 'Pictures/aves_batch';
+  static const String defaultRelativePath = batchResultsRelativeRoot;
 
   final String relativePath;
   final String namePattern;
@@ -104,6 +105,13 @@ class BatchEvent {
   final int? failed;
   final bool cancelled;
 
+  /// Result file facts carried by `itemDone`, read back from the MediaStore row
+  /// the job just wrote, so a result is recorded without a second lookup.
+  final String? path;
+  final String? name;
+  final int? size;
+  final String? mimeType;
+
   const new({
     required this.type,
     this.jobId,
@@ -115,6 +123,10 @@ class BatchEvent {
     this.done,
     this.failed,
     this.cancelled = false,
+    this.path,
+    this.name,
+    this.size,
+    this.mimeType,
   });
 
   static BatchEvent? tryFromMap(Map<Object?, Object?> map) {
@@ -132,6 +144,10 @@ class BatchEvent {
       done: asInt(map['done']),
       failed: asInt(map['failed']),
       cancelled: map['cancelled'] == true,
+      path: map['path'] as String?,
+      name: map['name'] as String?,
+      size: asInt(map['size']),
+      mimeType: map['mimeType'] as String?,
     );
   }
 }

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Local privacy gate: a merge that commits by itself never runs pre-commit, so
+# its staged result is checked here too.
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+sh scripts/run-local-privacy-gate.sh

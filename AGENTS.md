@@ -178,9 +178,22 @@ Fork releases are produced from the **`release`** branch: pushing it triggers `b
 - Release procedure: bump `X.Y.Z` in `pubspec.yaml` → add a `## ...[vX.Y.Z]` section to `CHANGELOG.md` → commit (hook enabled) → update `release` from `muzei-dev` → push `release`.
 - The upstream `release.yml` is guarded to run only in `deckerst/aves`; the fork never uses it.
 
+## Local privacy gate
+
+The repository is shared and may be published; the machine it is built on is not. A real local path, a personal media title or a signing file must never reach a tracked file, a commit message, a release note or an issue.
+
+- `scripts/check-local-paths.ps1` reads what git is about to publish: a drive path, a UNC share, a home directory, a local data file (`.ai_tmp/` except the tracked `_common/`, `key.properties`, `local.properties`, databases, APKs, logs) and any term in the gitignored `.ai_tmp/local_text/deny-list.txt`. Documented stand-in roots (`C:\work\library`, `C:/tmp/a.png`, ...) and the upstream maintainer's documented home are accepted; everything else after a drive letter is local.
+- The tracked hooks run it: `.githooks/pre-commit` checks the staged change before the version bump, `commit-msg` checks the message, `pre-merge-commit` covers a merge that commits by itself, and `pre-push` checks the exact push range (the backstop for `--no-verify`). `core.hooksPath` must be `.githooks` (one-time `git config core.hooksPath .githooks`).
+- Commit the hook scripts with mode `100755` (`git add --chmod=+x .githooks/commit-msg .githooks/pre-merge-commit .githooks/pre-push scripts/run-local-privacy-gate.sh`): Windows git runs a hook regardless, but a Unix clone does not.
+- `scripts/setup-local-privacy-gate.ps1` scaffolds the deny list from the tracked example on first run and adds the machine account name. The filled-in list is local and gitignored; never commit it.
+- `scripts/test-local-privacy-gate.ps1` runs the cases against throwaway repositories. Re-run it after changing the checker, and `scripts/check-local-paths.ps1 -All` to audit the tracked tree (an already-committed path is a warning, not a failure).
+- The gate fails open when PowerShell is missing, does not read binary content (it warns instead), is not run by CI, and a `--no-verify` commit skips the commit-side hooks. The manual rule still applies: use stand-ins (`C:\work\library`, `a.mp4`, `book-a`), never the real path or title.
+- Do not add a short term to the deny list: it is a case-insensitive substring, so a name inside an ordinary word blocks every edit to that file.
+
 ## AI session conventions
 
 - Reply in the user's language (Chinese / English / mixed).
+- Never write a real local path or media title into a tracked file, commit message or issue; the local privacy gate checks commits and pushes, but stand-ins are the first line of defense.
 - Keep the working tree **uncommitted** during a session so `git status` / `git diff` show exactly what the AI changed.
 - Commit only on an explicit user request, on the working branch (never `main`), with an English conventional-commit message. Never push to `upstream`.
 - Write every temporary artifact (commit messages, draft notes, generated lists) under `.ai_tmp/commit_info/` — the gitignored scratch space. Never create them at the repo root, and never `git add` them: `commit_msg.txt` once slipped into a commit that way.

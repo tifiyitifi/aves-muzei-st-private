@@ -5,6 +5,10 @@ set -e
 
 cd "$(git rev-parse --show-toplevel)"
 
+# Local privacy gate: block real local paths and private terms. It runs before
+# the build-number bump so a failing check leaves version.properties untouched.
+sh scripts/run-local-privacy-gate.sh
+
 file="android/version.properties"
 [ -f "$file" ] || exit 0
 

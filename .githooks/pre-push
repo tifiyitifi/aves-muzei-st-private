@@ -1,0 +1,21 @@
+#!/bin/sh
+# Local privacy gate: check the exact commits about to leave this machine.
+# This is the backstop for a commit made with --no-verify.
+
+status=0
+while read local_ref local_sha remote_ref remote_sha; do
+  [ -z "$local_sha" ] && continue
+  case "$local_sha" in
+    *[!0]*) ;;
+    *) continue ;;
+  esac
+  case "$remote_sha" in
+    *[!0]*)
+      sh scripts/run-local-privacy-gate.sh -Pushed -Range "$remote_sha..$local_sha" || status=1
+      ;;
+    *)
+      sh scripts/run-local-privacy-gate.sh -Pushed || status=1
+      ;;
+  esac
+done
+exit $status

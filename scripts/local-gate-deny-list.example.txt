@@ -1,0 +1,15 @@
+# Private terms that the local privacy gate must reject.
+#
+# One term per line, matched case-insensitively as a substring of every added
+# line, file name and commit message. Lines starting with # are ignored.
+#
+# Copy this file to .ai_tmp/local_text/deny-list.txt (the setup script does that
+# on first run) and add the real names that must never be published: account
+# and folder names, media titles, collection names, download-site titles, and
+# anything else that identifies this machine or its owner.
+#
+# Keep terms long enough to be unambiguous. A short name can be a substring of
+# an ordinary word in a translation or a source identifier, and then every edit
+# to that file is blocked. Never commit the filled-in list: .ai_tmp/ is
+# gitignored, and this example file is the only version that belongs in the
+# repository.

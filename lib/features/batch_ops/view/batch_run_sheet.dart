@@ -12,6 +12,7 @@ import 'package:aves/features/batch_ops/services/batch_share_service.dart';
 import 'package:aves/features/batch_ops/view/batch_action_editor.dart';
 import 'package:aves/features/batch_ops/view/batch_progress_dialog.dart';
 import 'package:aves/features/batch_ops/view/batch_results_page.dart';
+import 'package:aves/features/batch_ops/view/batch_share_done_snack_bar.dart';
 import 'package:aves/features/batch_ops/view/batch_tool_catalog.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -22,7 +23,7 @@ import 'package:aves/services/common/services.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:collection/collection.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 /// Entry point for the collection/viewer batch and copy & share actions.
@@ -73,17 +74,15 @@ Future<void> startBatch(BuildContext context, Set<AvesEntry> entries, {BatchProf
     final navigator = Navigator.maybeOf(context);
     final source = context.read<CollectionSource>();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(l10n.batchShareReady(done)),
-        action: SnackBarAction(
-          label: l10n.batchViewResults,
-          onPressed: () => navigator?.push(
-            MaterialPageRoute(
-              settings: const RouteSettings(name: CollectionPage.routeName),
-              builder: (_) => CollectionPage(
-                source: source,
-                filters: {StoredAlbumFilter(batchShareService.directory, null)},
-              ),
+      batchShareDoneSnackBar(
+        context,
+        done,
+        onView: () => navigator?.push(
+          MaterialPageRoute(
+            settings: const RouteSettings(name: CollectionPage.routeName),
+            builder: (_) => CollectionPage(
+              source: source,
+              filters: {StoredAlbumFilter(batchShareService.directory, null)},
             ),
           ),
         ),

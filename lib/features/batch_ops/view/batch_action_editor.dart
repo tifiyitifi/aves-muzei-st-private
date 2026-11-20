@@ -2,7 +2,7 @@ import 'package:aves/features/batch_ops/model/batch_action.dart';
 import 'package:aves/features/batch_ops/view/batch_tool_catalog.dart';
 import 'package:aves/l10n/l10n.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 /// Filter names exposed by the built-in editor (`ImageFilterTypes`).

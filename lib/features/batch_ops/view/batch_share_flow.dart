@@ -5,7 +5,7 @@ import 'package:aves/features/batch_ops/view/batch_share_intro_dialog.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/props.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Entry point for the copy & share action.
 ///

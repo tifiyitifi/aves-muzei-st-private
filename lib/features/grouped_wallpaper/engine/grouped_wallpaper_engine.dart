@@ -220,12 +220,54 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       );
     }
     final displayed = await platform.displayedSlot();
-    final selection = selectDisplayedSlot(state: state, displayed: displayed);
-    final slot = selection.slot;
+    var selection = selectDisplayedSlot(state: state, displayed: displayed);
+    var photo = selection.slot == null ? null : store.slotEffectPhotoOf(selection.slot!, lock: selection.lockScreen);
+    // The renderer can still name a slot whose frame the cache has already
+    // evicted, for example between a bake and the reload that adopts it. The
+    // baked current is the photo the step produced, so describe it instead of
+    // the empty placeholder.
+    if (photo == null && state.currentSlot != null) {
+      final current = state.currentSlot!;
+      final currentPhoto = store.slotEffectPhotoOf(current, lock: false);
+      if (currentPhoto != null) {
+        selection = (state: state, slot: current, lockScreen: false);
+        photo = currentPhoto;
+      }
+    }
     return GroupedWallpaperDisplayedFrame(
       state: selection.state,
-      photoPath: slot == null ? null : store.slotEffectPhotoOf(slot, lock: selection.lockScreen)?.path,
+      photoPath: photo?.path,
       lockScreen: selection.lockScreen,
+      surface: WallpaperSurface.home,
+    );
+  }
+
+  /// The frame the last bake wrote, ignoring what the renderer is drawing.
+  ///
+  /// A step that falls back to a bake writes the new state and asks the renderer
+  /// to reload it, but the reload is asynchronous: reading the displayed slot
+  /// right away would describe the frame the step just replaced. The page uses
+  /// this after a bake so it names the photo the step produced, and reads
+  /// [readDisplayedFrame] again on resume, when the renderer has caught up.
+  @override
+  Future<GroupedWallpaperDisplayedFrame?> readBakedFrame({WallpaperSurface surface = WallpaperSurface.home}) async {
+    final store = _store;
+    final state = await store?.readState();
+    if (store == null || state == null) return null;
+    if (surface.isLock) {
+      final lock = state.lock;
+      return GroupedWallpaperDisplayedFrame(
+        state: state,
+        photoPath: lock == null ? null : store.lockPhotoOf(lock)?.path,
+        lockScreen: true,
+        surface: WallpaperSurface.lock,
+      );
+    }
+    final slot = state.currentSlot;
+    return GroupedWallpaperDisplayedFrame(
+      state: state,
+      photoPath: slot == null ? null : store.slotEffectPhotoOf(slot, lock: false)?.path,
+      lockScreen: false,
       surface: WallpaperSurface.home,
     );
   }

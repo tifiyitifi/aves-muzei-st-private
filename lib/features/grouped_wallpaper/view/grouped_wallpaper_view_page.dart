@@ -219,13 +219,16 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     unawaited(AvesApp.showSystemUI(visible));
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool baked = false}) async {
     // One snapshot, because `current` may name another slot than the frame the
     // renderer painted (it promotes on its own, and a reload keeps the slot it
     // had): the entry, the title, the aspect ratio and the pixels below must all
     // describe the photo on screen. The snapshot also carries whether that
     // surface draws the lock effect image.
-    final frame = await wallpaperEngineLink.readDisplayedFrame(surface: _surface);
+    //
+    // After a bake the renderer has not adopted the new state yet, so its drawn
+    // slot is the frame the step just replaced; read the baked current instead.
+    final frame = baked ? await wallpaperEngineLink.readBakedFrame(surface: _surface) : await wallpaperEngineLink.readDisplayedFrame(surface: _surface);
     final state = frame?.state;
     // The decoy is not a queue slot: its single frame carries the metadata.
     final lock = _surface.isLock ? state?.lock : null;
@@ -346,7 +349,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
       } else {
         await wallpaperEngineLink.nextArtwork();
       }
-      await _load();
+      await _load(baked: true);
     } finally {
       if (mounted) setState(() => _pending = null);
     }
@@ -371,7 +374,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     });
     try {
       await wallpaperEngineLink.switchGroup(delta);
-      await _load();
+      await _load(baked: true);
     } finally {
       if (mounted) {
         setState(() {

@@ -12,6 +12,10 @@ behaviour also updates `rules.md`; a task that changes a judgement adds a
       `displayedSlot` channel now carries the renderer's generation and the drawn
       slot's metadata; the view page resolves the frame from that snapshot and
       never maps the id across generations.
+- [x] **A step that baked reads the baked frame** (`DISP-8`, `DISP-9`, R1c). The
+      view page reads `readBakedFrame` after a bake, and `readDisplayedFrame`
+      falls back to the baked current when the drawn slot's file is gone
+      (`decisions/0004`).
 - [ ] **Previous-wallpaper flash** (`SWITCH-1`, R7). Capture the device log for a
       few home transitions, record the mechanism in `recurrences.md`, and decide
       whether an engine-warmth mitigation is worth it (`decisions/0002`).

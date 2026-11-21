@@ -970,9 +970,16 @@ not just the id. A slot id is only valid inside the generation that produced it:
 a later bake recycles ids, so resolving one against a newer `state.json` names
 another photo. This is the "1→2 works, 3→4 does not, reopen is fine" drift
 (`recurrences.md` R1b, `decisions/0001`). The app builds the slot from the
-snapshot and never maps the id against a state from another generation. The
-renderer's `locked` status is legacy: an upgraded install can still read it, and
-it navigates exactly like `ready`.
+snapshot and never maps the id against a state from another generation.
+
+A step reads the source its path produced: a promotion reads the renderer
+snapshot (it draws the promoted slot); a bake reads the baked current
+(`readBakedFrame`), because the renderer has not adopted the new state yet and
+its old frame may already be evicted. Reading the snapshot after a bake is what
+left the page on the old photo or the empty placeholder while the desktop
+changed (`recurrences.md` R1c, `decisions/0004`). The renderer's `locked` status
+is legacy: an upgraded install can still read it, and it navigates exactly like
+`ready`.
 
 The service asks the app for a frame when it starts and when the app attaches, so
 the wallpaper gets its first photo without a background worker; if the app is not

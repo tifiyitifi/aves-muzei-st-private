@@ -984,6 +984,37 @@ void main() {
 
       expect(displayed.currentSlot?.entryId, state.nextSlot?.entryId);
     });
+
+    test('after a bake, describes the baked current, not the renderer behind it', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final state = (await store.readState())!;
+      // The renderer still draws a neighbour and has not adopted this state.
+      platform.displayedSlotValue = state.next;
+      platform.displayedGenerationValue = state.generation - 1;
+
+      final frame = (await engine.readBakedFrame())!;
+
+      expect(frame.state.current, state.current);
+      expect(frame.photoPath, store.slotEffectPhotoOf(state.currentSlot!, lock: false)!.path);
+    });
+
+    test('a drawn frame whose file was evicted falls back to the baked current', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final state = (await store.readState())!;
+      // The renderer names a slot but its frame is gone from the cache; the page
+      // must show the baked current instead of the empty placeholder.
+      platform.displayedSlotValue = state.next;
+      platform.displayedEntryIdValue = state.nextSlot!.entryId;
+      platform.displayedUriValue = state.nextSlot!.uri;
+      platform.displayedPhotoValue = 'frames/missing/photo.webp';
+      platform.displayedGenerationValue = state.generation;
+
+      final frame = (await engine.readDisplayedFrame())!;
+
+      expect(frame.photoPath, store.slotEffectPhotoOf(state.currentSlot!, lock: false)!.path);
+    });
   });
 
   group('disabled', () {

@@ -40,6 +40,14 @@ abstract interface class WallpaperEngineConnection {
   /// describe the same frame, with the home or lock effect the renderer applied.
   Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame({WallpaperSurface surface});
 
+  /// The frame the last bake wrote, ignoring what the renderer is drawing.
+  ///
+  /// A step that had to bake writes the new state and asks the renderer to
+  /// reload it, but the reload is asynchronous: the displayed slot can still be
+  /// the frame the step replaced. The page uses this right after a bake, then
+  /// reads [readDisplayedFrame] again on resume when the renderer has caught up.
+  Future<GroupedWallpaperDisplayedFrame?> readBakedFrame({WallpaperSurface surface});
+
   /// Absolute path of the image one surface draws, or null when there is none.
   ///
   /// The home surface returns the sharp base; the lock surface returns the final
@@ -238,6 +246,9 @@ class WallpaperEngineLink {
   Future<GroupedWallpaperState?> readDisplayedState({WallpaperSurface surface = WallpaperSurface.home}) async => await _connection?.readDisplayedState(surface: surface);
 
   Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame({WallpaperSurface surface = WallpaperSurface.home}) async => await _connection?.readDisplayedFrame(surface: surface);
+
+  /// The frame the last bake wrote, ignoring the renderer's asynchronous reload.
+  Future<GroupedWallpaperDisplayedFrame?> readBakedFrame({WallpaperSurface surface = WallpaperSurface.home}) async => await _connection?.readBakedFrame(surface: surface);
 
   Future<String?> currentPhotoPath({WallpaperSurface surface = WallpaperSurface.home}) async => await _connection?.currentPhotoPath(surface: surface);
 

@@ -62,6 +62,18 @@ for the drawn id. It does **not** resolve the id against a newer `state.json`,
 because an id is only valid in its generation. When no renderer runs, the baked
 `current` is the fallback.
 
+A step picks the source by the path it took, not by the same call:
+
+- a **promotion** reads the snapshot, because the renderer is ahead of
+  `state.json` and draws the promoted slot;
+- a **bake** reads the baked current, because the step just wrote it and the
+  renderer reloads asynchronously.
+
+Reading the snapshot right after a bake describes the frame the step replaced,
+and the cache may already have evicted its file. `readDisplayedFrame` also falls
+back to the baked current when the drawn slot has no file, so a stale id never
+turns into the empty placeholder.
+
 ## Reload and retention
 
 A reload only drops frames the new state no longer names. The slot on screen and

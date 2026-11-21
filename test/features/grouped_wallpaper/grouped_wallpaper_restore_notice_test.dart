@@ -130,6 +130,9 @@ class _FakeConnection implements WallpaperEngineConnection {
   Future<GroupedWallpaperDisplayedFrame?> readDisplayedFrame({WallpaperSurface surface = WallpaperSurface.home}) async => null;
 
   @override
+  Future<GroupedWallpaperDisplayedFrame?> readBakedFrame({WallpaperSurface surface = WallpaperSurface.home}) async => null;
+
+  @override
   Future<String?> currentPhotoPath({WallpaperSurface surface = WallpaperSurface.home}) async => null;
 
   @override

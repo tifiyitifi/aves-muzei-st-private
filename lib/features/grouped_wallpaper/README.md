@@ -961,10 +961,18 @@ case where the native placeholder is unavoidable.
 
 The slot the renderer is actually drawing is not in `state.json`: a promotion
 from a tap or the bar moves it before Dart writes. The app asks the live renderer
-(`GroupedWallpaperRenderBus.displayedSlot()`), so the view page and the
+(`GroupedWallpaperRenderBus.displayedSnapshot()`), so the view page and the
 bar describe the frame on screen immediately, without waiting for the reload that
-would rewrite the state. The renderer's `locked` status is legacy: an upgraded
-install can still read it, and it navigates exactly like `ready`.
+would rewrite the state.
+
+The snapshot carries the renderer's own generation and the drawn slot's metadata,
+not just the id. A slot id is only valid inside the generation that produced it:
+a later bake recycles ids, so resolving one against a newer `state.json` names
+another photo. This is the "1→2 works, 3→4 does not, reopen is fine" drift
+(`recurrences.md` R1b, `decisions/0001`). The app builds the slot from the
+snapshot and never maps the id against a state from another generation. The
+renderer's `locked` status is legacy: an upgraded install can still read it, and
+it navigates exactly like `ready`.
 
 The service asks the app for a frame when it starts and when the app attaches, so
 the wallpaper gets its first photo without a background worker; if the app is not

@@ -196,7 +196,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// `state.json` is what Dart baked; the renderer may have promoted a slot on
   /// its own, or kept drawing one a reload no longer calls current. Reading
   /// `current` alone therefore describes a photo the user may not be looking at,
-  /// which is what made the view page differ from the wallpaper. A
+  /// which is what made the view page differ from the wallpaper.
+  ///
+  /// A slot id is only valid inside the generation that produced it, so the
+  /// renderer's snapshot wins over resolving the id against this state. A
   /// missing or pruned slot falls back to the state: a stale answer beats none.
   ///
   /// [surface] picks which picture is described. The decoy lock frame is not a
@@ -217,17 +220,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       );
     }
     final displayed = await platform.displayedSlot();
-    // A slot the state no longer queues was pruned by a reload: the baked
-    // current is the best answer left, and its home effect is what it draws. A
-    // renderer drawing the decoy says nothing about the home surface.
-    final drawn = displayed != null && !displayed.surface.isLock && state.slotById(displayed.slot) != null ? displayed : null;
-    final current = drawn?.slot ?? state.current;
-    final lockScreen = drawn?.lock ?? false;
-    final slot = state.slotById(current);
+    final selection = selectDisplayedSlot(state: state, displayed: displayed);
+    final slot = selection.slot;
     return GroupedWallpaperDisplayedFrame(
-      state: current == state.current ? state : state.copyWith(current: current),
-      photoPath: slot == null ? null : store.slotEffectPhotoOf(slot, lock: lockScreen)?.path,
-      lockScreen: lockScreen,
+      state: selection.state,
+      photoPath: slot == null ? null : store.slotEffectPhotoOf(slot, lock: selection.lockScreen)?.path,
+      lockScreen: selection.lockScreen,
       surface: WallpaperSurface.home,
     );
   }

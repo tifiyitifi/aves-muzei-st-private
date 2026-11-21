@@ -620,6 +620,16 @@ class GroupedWallpaperRenderer(
     fun displayedSlotId(): Int = displayed
 
     /**
+     * The slot on screen and the state it belongs to, read as one snapshot.
+     *
+     * A slot id is only valid inside the generation that produced it: the app
+     * must not resolve it against a `state.json` written by a newer generation.
+     * Both are written under [advanceLock], so reading them together is the only
+     * coherent answer.
+     */
+    fun displayedSnapshot(): Pair<Int, GroupedWallpaperFileState?> = synchronized(advanceLock) { displayed to state }
+
+    /**
      * Draws [target] and records the step.
      *
      * [back] tells which side is left empty: the frame on screen becomes the

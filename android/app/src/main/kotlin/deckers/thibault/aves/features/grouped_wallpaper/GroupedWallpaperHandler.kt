@@ -330,15 +330,37 @@ class GroupedWallpaperHandler(
      * effect the renderer applied for that surface.
      */
     private fun displayedSlot(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        // The renderer is the authority for the frame on screen, and its slot id
+        // must travel with the state that produced it: a later bake can recycle the
+        // id for another photo, so resolving it against a newer `state.json`
+        // describes the wrong frame. The disk state is only the fallback for a
+        // service with no engine attached.
+        val snapshot = GroupedLiveWallpaperService.displayedSnapshot
+        val disk = GroupedWallpaperStateFile.read(context)
+        val state = snapshot?.second ?: disk
+        val id = snapshot?.first?.takeIf { it >= 0 } ?: GroupedLiveWallpaperService.displayedSlot
         // A split group draws the decoy on the lock screen: it is not a queue
         // slot, so the app is told which surface it is looking at instead.
         val splitLock = GroupedLiveWallpaperService.lockScreenVisible &&
-            GroupedWallpaperStateFile.read(context)?.let { it.lock != null || it.lockRangeId.isNotEmpty() } == true
+            state?.let { it.lock != null || it.lockRangeId.isNotEmpty() } == true
+        val slot = if (splitLock) null else state?.slot(id)
         result.success(
             mapOf(
-                "slot" to if (splitLock) -1 else GroupedLiveWallpaperService.displayedSlot,
+                "slot" to if (splitLock) -1 else id,
                 "lock" to GroupedLiveWallpaperService.lockScreenVisible,
                 "surface" to if (splitLock) "lock" else "home",
+                // The generation the slot id belongs to. `C1`: never resolve the
+                // id against another generation's state.
+                "generation" to (state?.generation ?: -1),
+                "entryId" to slot?.entryId,
+                "uri" to slot?.uri,
+                "title" to slot?.title,
+                "photo" to slot?.photo,
+                "effectHome" to slot?.effectHome,
+                "effectLock" to slot?.effectLock,
+                "width" to slot?.width,
+                "height" to slot?.height,
+                "quarterTurns" to slot?.quarterTurns,
             ),
         )
     }

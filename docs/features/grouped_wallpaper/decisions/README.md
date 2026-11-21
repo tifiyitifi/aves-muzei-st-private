@@ -1,0 +1,10 @@
+# Decision records
+
+Append-only. A decision keeps its text when it is reversed; it gains a
+`Superseded by` line and the new record explains why.
+
+| Record | Decision |
+| --- | --- |
+| [0001](0001-a-slot-id-is-only-valid-in-its-generation.md) | A slot id is only valid inside the generation that produced it |
+| [0002](0002-the-previous-wallpaper-flash-is-the-system.md) | The previous-wallpaper flash belongs to the system, not the app |
+| [0003](0003-the-slice-readme-stays-the-mechanism-doc.md) | The slice README stays the mechanism doc until the register is stable |

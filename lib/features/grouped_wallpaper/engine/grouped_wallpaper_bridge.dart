@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_lock_surface_status.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_capability.dart';
@@ -57,9 +58,13 @@ abstract interface class GroupedWallpaperPlatform {
   /// slot on its own and a reload keeps drawing the slot it had, so the two can
   /// disagree. Only the engine knows which frame is on screen, and `lock` tells
   /// whether that frame is the lock effect image. [surface] distinguishes a home
-  /// slot from the split group's single decoy frame. Returns null when no engine
-  /// is running.
-  Future<({int slot, bool lock, WallpaperSurface surface})?> displayedSlot();
+  /// slot from the split group's single decoy frame.
+  ///
+  /// The snapshot also carries the renderer's generation and the drawn slot's
+  /// metadata: a slot id is only valid inside its generation, so resolving it
+  /// against a newer `state.json` names another photo. Returns null when no
+  /// engine is running.
+  Future<GroupedDisplayedSlot?> displayedSlot();
 
   /// Whether the system lock screen draws this app's service.
   Future<GroupedWallpaperLockSurfaceStatus> lockSurfaceStatus();
@@ -166,14 +171,28 @@ class GroupedWallpaperBridge implements GroupedWallpaperPlatform {
   }
 
   @override
-  Future<({int slot, bool lock, WallpaperSurface surface})?> displayedSlot() async {
+  Future<GroupedDisplayedSlot?> displayedSlot() async {
     final raw = await _invoke<Map<Object?, Object?>>('displayedSlot');
     if (raw == null) return null;
     final surface = WallpaperSurface.parse(raw['surface'] as String?);
-    final slot = _number(raw['slot']);
+    final slot = _number(raw['slot'])?.toInt() ?? -1;
     // The decoy frame is not a queue slot, so it reports no slot id.
-    if (slot == null || slot < 0) return surface.isLock ? (slot: -1, lock: true, surface: surface) : null;
-    return (slot: slot.toInt(), lock: raw['lock'] == true, surface: surface);
+    if (slot < 0 && !surface.isLock) return null;
+    return GroupedDisplayedSlot(
+      slot: slot,
+      lock: raw['lock'] == true,
+      surface: surface,
+      generation: _number(raw['generation'])?.toInt() ?? -1,
+      entryId: _number(raw['entryId'])?.toInt() ?? -1,
+      uri: raw['uri'] as String? ?? '',
+      title: raw['title'] as String? ?? '',
+      photo: raw['photo'] as String? ?? '',
+      effectHome: raw['effectHome'] as String? ?? '',
+      effectLock: raw['effectLock'] as String? ?? '',
+      width: _number(raw['width'])?.toInt() ?? 0,
+      height: _number(raw['height'])?.toInt() ?? 0,
+      quarterTurns: _number(raw['quarterTurns'])?.toInt() ?? 0,
+    );
   }
 
   @override

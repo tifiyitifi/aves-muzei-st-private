@@ -32,6 +32,19 @@ data class GroupedWallpaperSlotFile(
     val effectHome: String = "",
     /** Baked lock effect; empty means the sharp [photo] is used. */
     val effectLock: String = "",
+    /**
+     * The application URI of the photo.
+     *
+     * Only the app's displayed-slot snapshot needs it: the view page resolves the
+     * entry from this slot when the renderer draws a generation the on-disk
+     * `state.json` no longer matches.
+     */
+    val uri: String = "",
+    /** Original photo width and height, for the view page's aspect. */
+    val width: Int = 0,
+    val height: Int = 0,
+    /** Quarter turns the bake applied, so the view page can offer "unrotate". */
+    val quarterTurns: Int = 0,
 ) {
     /** The file this slot draws on a surface, falling back to the sharp photo. */
     fun photoFor(lockScreen: Boolean): String {
@@ -332,6 +345,10 @@ object GroupedWallpaperStateFile {
                         title = raw.optString("title", ""),
                         effectHome = raw.optString("effectHome", ""),
                         effectLock = raw.optString("effectLock", ""),
+                        uri = raw.optString("uri", ""),
+                        width = raw.optInt("width", 0),
+                        height = raw.optInt("height", 0),
+                        quarterTurns = raw.optInt("quarterTurns", 0),
                     ),
                 );
             }

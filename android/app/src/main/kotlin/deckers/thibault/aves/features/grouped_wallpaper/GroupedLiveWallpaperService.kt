@@ -188,6 +188,17 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             get() = GroupedWallpaperRenderBus.displayedSlot().takeIf { it >= 0 } ?: instance?.displayedSlotId ?: -1
 
         /**
+         * The drawn slot and the renderer's state, read as one snapshot.
+         *
+         * A slot id is only valid inside the generation that produced it, so the
+         * app must pair it with the state the renderer holds rather than resolving
+         * it against a `state.json` a later bake has written. Null means no real
+         * engine is attached.
+         */
+        val displayedSnapshot: Pair<Int, GroupedWallpaperFileState?>?
+            get() = GroupedWallpaperRenderBus.displayedSnapshot()
+
+        /**
          * Whether the real engine is drawing the lock screen, so the effect image
          * on screen is `lock.png` rather than `home.png`.
          *
@@ -311,7 +322,10 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
         // The wallpaper is going away: whatever the engines report on their way
         // out must not bring the bar back.
         if (destroying) return
-        val state = GroupedWallpaperStateFile.read(this)
+        // The renderer owns the frame on screen; its state and slot id travel
+        // together so the bar never resolves an id against a newer state (`C1`).
+        val snapshot = displayedSnapshot
+        val state = snapshot?.second ?: GroupedWallpaperStateFile.read(this)
         // Off means no bar at all, and no foreground service either: the user
         // turned the notification off, so posting a hidden one would still keep
         // the process in the foreground against that choice.
@@ -323,7 +337,7 @@ class GroupedLiveWallpaperService : GLWallpaperService() {
             return
         }
         val splitLock = GroupedLiveWallpaperService.lockScreenVisible && (state.lock != null || state.lockRangeId.isNotEmpty())
-        val displayed = displayedSlot
+        val displayed = snapshot?.first?.takeIf { it >= 0 } ?: displayedSlot
         // The lock screen describes the decoy. Showing the home title there would
         // leak what the private group is playing, which is the whole point of the
         // split surface.

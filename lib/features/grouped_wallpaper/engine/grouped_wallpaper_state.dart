@@ -1119,3 +1119,98 @@ class GroupedWallpaperDisplayedFrame {
 
   const new({required this.state, this.photoPath, this.lockScreen = false, this.surface = WallpaperSurface.home});
 }
+
+/// The slot the native renderer is drawing, with the metadata of the state that
+/// produced its id.
+///
+/// A slot id is only valid inside its generation: a later bake can recycle the
+/// same id for another photo. The renderer sends the slot's own metadata, so the
+/// app never has to resolve the id against a `state.json` written by another
+/// generation (`recurrences.md` C1).
+@immutable
+class GroupedDisplayedSlot extends Equatable {
+  final int slot;
+  final bool lock;
+  final WallpaperSurface surface;
+
+  /// The renderer's `state.json` generation, or `-1` when it has no state.
+  final int generation;
+
+  /// The drawn slot's metadata; `entryId < 0` when the native side sent none.
+  final int entryId;
+  final String uri;
+  final String title;
+  final String photo;
+  final String effectHome;
+  final String effectLock;
+  final int width;
+  final int height;
+  final int quarterTurns;
+
+  const new({
+    required this.slot,
+    this.lock = false,
+    this.surface = WallpaperSurface.home,
+    this.generation = -1,
+    this.entryId = -1,
+    this.uri = '',
+    this.title = '',
+    this.photo = '',
+    this.effectHome = '',
+    this.effectLock = '',
+    this.width = 0,
+    this.height = 0,
+    this.quarterTurns = 0,
+  });
+
+  bool get hasSlot => slot >= 0;
+
+  /// Whether the renderer sent the drawn slot's metadata as well as its id.
+  bool get hasSnapshot => hasSlot && entryId >= 0 && photo.isNotEmpty;
+
+  /// The drawn slot as a state slot, or null when only the id came back.
+  GroupedWallpaperSlot? toSlot() => hasSnapshot
+      ? GroupedWallpaperSlot(
+          id: slot,
+          entryId: entryId,
+          uri: uri,
+          title: title,
+          photo: photo,
+          effectHome: effectHome,
+          effectLock: effectLock,
+          width: width,
+          height: height,
+          quarterTurns: quarterTurns,
+        )
+      : null;
+
+  @override
+  List<Object?> get props => [slot, lock, surface, generation, entryId, uri, title, photo, effectHome, effectLock, width, height, quarterTurns];
+}
+
+/// The state and slot a drawn frame describes.
+///
+/// The renderer's snapshot wins over resolving the id against [state]: the id is
+/// only meaningful in the generation that produced it. When the native side sent
+/// nothing (no engine runs), the baked `current` is the answer, and a pruned id
+/// falls back to it too. A split lock reports no queue slot.
+({GroupedWallpaperState state, GroupedWallpaperSlot? slot, bool lockScreen}) selectDisplayedSlot({
+  required GroupedWallpaperState state,
+  required GroupedDisplayedSlot? displayed,
+}) {
+  if (displayed == null) return (state: state, slot: state.currentSlot, lockScreen: false);
+  // A caller asking for the home surface while the split decoy is on screen
+  // cannot describe the lock photo: the baked current is the best answer left.
+  if (displayed.surface.isLock) return (state: state, slot: state.currentSlot, lockScreen: false);
+  final drawn = displayed.toSlot();
+  if (drawn != null) {
+    final slots = [
+      ...state.slots.where((slot) => slot.id != drawn.id),
+      drawn,
+    ];
+    return (state: state.copyWith(current: drawn.id, slots: slots), slot: drawn, lockScreen: displayed.lock);
+  }
+  final queued = state.slotById(displayed.slot);
+  if (queued == null) return (state: state, slot: state.currentSlot, lockScreen: false);
+  return (state: state.copyWith(current: queued.id), slot: queued, lockScreen: displayed.lock);
+}

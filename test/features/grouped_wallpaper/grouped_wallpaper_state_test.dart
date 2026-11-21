@@ -5,6 +5,7 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_history_limit.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_transition.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// `GroupedWallpaperState`: the `state.json` contract, the slot queue, the
@@ -407,5 +408,69 @@ void main() {
     const runtime = GroupedWallpaperRuntime(generation: 3, current: 1, next: 2, refillRequested: true);
     expect(GroupedWallpaperRuntime.tryFromJsonMap(runtime.toJsonMap()), runtime);
     expect(GroupedWallpaperRuntime.tryFromJsonMap({'current': 1}), isNull);
+  });
+
+  test('a slot id is resolved in the renderer generation, not the newer file', () {
+    // The renderer draws generation 3's slot 1 (entry 8). A later bake wrote
+    // generation 4, where id 1 names entry 99. Resolving the id against the file
+    // would describe the wrong photo; the renderer's snapshot must win (`C1`).
+    final newer = state.copyWith(
+      generation: state.generation + 1,
+      slots: [
+        state.slots[0],
+        const GroupedWallpaperSlot(id: 1, entryId: 99, uri: 'content://media/99', title: 'IMG_99', photo: 'slots/1/other.png', width: 1080, height: 2400),
+        state.slots[2],
+      ],
+    );
+    const displayed = GroupedDisplayedSlot(
+      slot: 1,
+      generation: 3,
+      entryId: 8,
+      uri: 'content://media/8',
+      title: 'IMG_8',
+      photo: 'slots/1/photo.png',
+      width: 1080,
+      height: 2400,
+    );
+
+    final selection = selectDisplayedSlot(state: newer, displayed: displayed);
+
+    expect(selection.slot?.entryId, 8);
+    expect(selection.state.currentSlot?.entryId, 8);
+    expect(selection.state.current, 1);
+  });
+
+  test('consecutive steps keep describing the drawn slot', () {
+    // Two steps, each with the snapshot of the generation it was promoted in.
+    // Even when a newer file has recycled both ids, every step describes its own
+    // photo (the "1→2 works, 3→4 does not" regression).
+    final newer = state.copyWith(
+      generation: state.generation + 1,
+      slots: [
+        const GroupedWallpaperSlot(id: 0, entryId: 97, uri: 'content://media/97', title: 'IMG_97', photo: 'slots/0/other.png', width: 1080, height: 2400),
+        const GroupedWallpaperSlot(id: 1, entryId: 98, uri: 'content://media/98', title: 'IMG_98', photo: 'slots/1/other.png', width: 1080, height: 2400),
+        const GroupedWallpaperSlot(id: 2, entryId: 99, uri: 'content://media/99', title: 'IMG_99', photo: 'slots/2/other.png', width: 1080, height: 2400),
+      ],
+    );
+    const first = GroupedDisplayedSlot(slot: 1, generation: 3, entryId: 8, uri: 'content://media/8', title: 'IMG_8', photo: 'slots/1/photo.png');
+    const second = GroupedDisplayedSlot(slot: 2, generation: 3, entryId: 9, uri: 'content://media/9', title: 'IMG_9', photo: 'slots/2/photo.png');
+
+    final one = selectDisplayedSlot(state: newer, displayed: first);
+    final two = selectDisplayedSlot(state: newer, displayed: second);
+
+    expect(one.slot?.entryId, 8);
+    expect(two.slot?.entryId, 9);
+  });
+
+  test('no engine falls back to the baked current', () {
+    final selection = selectDisplayedSlot(state: state, displayed: null);
+    expect(selection.slot?.entryId, state.currentSlot?.entryId);
+  });
+
+  test('a home request while the split decoy is drawn falls back to the current', () {
+    const displayed = GroupedDisplayedSlot(slot: -1, lock: true, surface: WallpaperSurface.lock);
+    final selection = selectDisplayedSlot(state: state, displayed: displayed);
+    expect(selection.slot?.entryId, state.currentSlot?.entryId);
+    expect(selection.lockScreen, isFalse);
   });
 }

@@ -50,6 +50,15 @@ object GroupedWallpaperRenderBus {
      */
     fun displayedSlot(): Int = rendererRef?.get()?.displayedSlotId() ?: -1
 
+    /**
+     * The slot on screen and the renderer's state, read together.
+     *
+     * The app needs the generation too: a slot id alone names another photo when
+     * the on-disk `state.json` has moved on. Null means no real engine is
+     * attached, so the app falls back to the baked current.
+     */
+    fun displayedSnapshot(): Pair<Int, GroupedWallpaperFileState?>? = rendererRef?.get()?.displayedSnapshot()
+
     /** Re-reads `state.json` on the renderer's loader thread. */
     fun reload() {
         rendererRef?.get()?.requestReload()

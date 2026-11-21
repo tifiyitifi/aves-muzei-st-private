@@ -175,7 +175,7 @@ From the comment in `pubspec.yaml`, in order: bump `version:` in `pubspec.yaml`,
 Fork releases are produced from the **`release`** branch: pushing it triggers `build-custom-apk.yml`, whose `release` job auto-tags `v<X.Y.Z>`, extracts the matching `CHANGELOG.md` section (`scripts/extract_log.py`), and publishes a GitHub Release with the signed `custom` APK and `SHA256SUMS.txt`.
 
 - A release is created **only when `X.Y.Z` is bumped** — the tag check is idempotent, so ordinary pushes to `release` only build.
-- `versionCode` must increase per release for Android to upgrade. That bump happens on a **normal commit** (`.githooks/pre-commit`). AI commits skip the hook, so ensure every release includes a normal version-bump commit.
+- `versionCode` must increase per release for Android to upgrade. That bump happens on every commit (`.githooks/pre-commit`), so a release must include one.
 - Release procedure: bump `X.Y.Z` in `pubspec.yaml` → add a `## ...[vX.Y.Z]` section to `CHANGELOG.md` → commit (hook enabled) → update `release` from `muzei-dev` → push `release`.
 - The upstream `release.yml` is guarded to run only in `deckerst/aves`; the fork never uses it.
 
@@ -195,11 +195,8 @@ The repository is shared and may be published; the machine it is built on is not
 
 - Reply in the user's language (Chinese / English / mixed).
 - Never write a real local path or media title into a tracked file, commit message or issue; the local privacy gate checks commits and pushes, but stand-ins are the first line of defense.
-- Keep the working tree **uncommitted** during a session so `git status` / `git diff` show exactly what the AI changed.
-- Commit only on an explicit user request, on the working branch (never `main`), with an English conventional-commit message. Never push to `upstream`.
 - Write every temporary artifact (commit messages, draft notes, generated lists) under `.ai_tmp/commit_info/` — the gitignored scratch space. Never create them at the repo root, and never `git add` them: `commit_msg.txt` once slipped into a commit that way.
 - Never commit a flavor swap (`scripts/apply_flavor_*` output) or generated `lib/l10ngen/`.
-- Because `.githooks/pre-commit` auto-bumps `android/version.properties`, exclude that file from AI-authored commits.
 - No placeholders, partial code, or `// TODO: implement later`; every change must compile and pass `./flutterw analyze` + `./flutterw test`.
 - Comments explain the "Why"/design intent, not the "What"; concise English.
 

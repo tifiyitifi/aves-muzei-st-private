@@ -87,3 +87,4 @@ This repository may be published; the machine it is built on is not.
 | Feature | Status | Directory |
 | --- | --- | --- |
 | Batch processing | in progress | [`batch-processing/`](features/batch-processing/README.md) |
+| Grouped wallpaper | in progress | [`grouped_wallpaper/`](features/grouped_wallpaper/README.md) |

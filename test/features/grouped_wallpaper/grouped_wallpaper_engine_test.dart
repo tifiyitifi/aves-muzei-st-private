@@ -964,6 +964,26 @@ void main() {
       expect(frame.state.currentSlot, state.currentSlot);
       expect(frame.photoPath, store.slotEffectPhotoOf(state.currentSlot!, lock: true)!.path);
     });
+
+    test("describes the drawn slot's own metadata, not the state at that id", () async {
+      serve(entries(12));
+      await engine.prepare();
+      final state = (await store.readState())!;
+      // The renderer draws `current`, but the snapshot it sends is the next
+      // slot's, as if a newer bake had recycled the id. The snapshot must win:
+      // resolving the id against the state would describe the wrong photo.
+      platform.displayedSlotValue = state.current;
+      platform.displayedEntryIdValue = state.nextSlot!.entryId;
+      platform.displayedUriValue = state.nextSlot!.uri;
+      platform.displayedPhotoValue = state.nextSlot!.photo;
+      platform.displayedWidthValue = state.nextSlot!.width;
+      platform.displayedHeightValue = state.nextSlot!.height;
+      platform.displayedGenerationValue = state.generation - 1;
+
+      final displayed = (await engine.readDisplayedState())!;
+
+      expect(displayed.currentSlot?.entryId, state.nextSlot?.entryId);
+    });
   });
 
   group('disabled', () {
@@ -1401,6 +1421,28 @@ void main() {
     expect(state.currentSlot?.entryId, first.nextSlot?.entryId);
     // An explicit step restarts the countdown, exactly like the baked path.
     expect(platform.restartedSeconds, isNotEmpty);
+  });
+
+  test('a promotion is described before the refill', () async {
+    serve(entries(12));
+    await engine.prepare();
+    final first = (await store.readState())!;
+    platform.promotable = true;
+    platform.onPromote = () => store.runtimeFile.writeAsString(
+      '{"generation":${first.generation},"current":${first.next},"next":-1,"refillRequested":true}',
+    );
+    // The renderer draws the neighbour and reports it in the same snapshot.
+    platform.displayedSlotValue = first.next;
+    platform.displayedEntryIdValue = first.nextSlot!.entryId;
+    platform.displayedUriValue = first.nextSlot!.uri;
+    platform.displayedPhotoValue = first.nextSlot!.photo;
+    platform.displayedGenerationValue = first.generation;
+
+    expect(await engine.promotePhoto(previous: false), isTrue);
+    final displayed = (await engine.readDisplayedState())!;
+
+    // The page can name the photo at once: it does not wait for the refill.
+    expect(displayed.currentSlot?.entryId, first.nextSlot?.entryId);
   });
 
   test('a promotion the renderer refuses leaves the frame alone', () async {
@@ -1980,11 +2022,43 @@ class _FakePlatform implements GroupedWallpaperPlatform {
   /// The surface the engine reports; a split group's decoy reports lock.
   WallpaperSurface surfaceValue = WallpaperSurface.home;
 
+  /// The renderer's generation. A snapshot that names a slot from another
+  /// generation must still win over the on-disk state (`C1`).
+  int displayedGenerationValue = -1;
+
+  /// The drawn slot's metadata; `entryId < 0` mirrors an older native build
+  /// that only sent the id.
+  int displayedEntryIdValue = -1;
+  String displayedUriValue = '';
+  String displayedTitleValue = '';
+  String displayedPhotoValue = '';
+  String displayedEffectHomeValue = '';
+  String displayedEffectLockValue = '';
+  int displayedWidthValue = 0;
+  int displayedHeightValue = 0;
+  int displayedQuarterTurnsValue = 0;
+
   /// The lock screen's owner, as the platform would report it.
   GroupedWallpaperLockSurfaceStatus lockSurface = GroupedWallpaperLockSurfaceStatus.unknown;
 
   @override
-  Future<({int slot, bool lock, WallpaperSurface surface})?> displayedSlot() async => displayedSlotValue == null ? null : (slot: displayedSlotValue!, lock: lockScreenValue, surface: surfaceValue);
+  Future<GroupedDisplayedSlot?> displayedSlot() async => displayedSlotValue == null
+      ? null
+      : GroupedDisplayedSlot(
+          slot: displayedSlotValue!,
+          lock: lockScreenValue,
+          surface: surfaceValue,
+          generation: displayedGenerationValue,
+          entryId: displayedEntryIdValue,
+          uri: displayedUriValue,
+          title: displayedTitleValue,
+          photo: displayedPhotoValue,
+          effectHome: displayedEffectHomeValue,
+          effectLock: displayedEffectLockValue,
+          width: displayedWidthValue,
+          height: displayedHeightValue,
+          quarterTurns: displayedQuarterTurnsValue,
+        );
 
   @override
   Future<GroupedWallpaperLockSurfaceStatus> lockSurfaceStatus() async => lockSurface;

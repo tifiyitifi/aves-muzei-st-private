@@ -38,6 +38,7 @@ class BatchRunController extends ChangeNotifier {
   List<BatchAction> _actions = const [];
   BatchOutput _output = const BatchOutput();
   Future<void> _recordQueue = Future.value();
+  final Completer<void> _settled = Completer<void>();
 
   BatchRunState get state => _state;
   int get total => _total;
@@ -53,6 +54,14 @@ class BatchRunController extends ChangeNotifier {
   /// caller that navigates to the results page must await this first.
   Future<void> get recordsSettled => _recordQueue;
 
+  /// Completes when the job reached a terminal state.
+  ///
+  /// [run] returns as soon as the stream is subscribed, so its future says
+  /// nothing about the native job. A caller that is about to dispose the
+  /// controller must await this instead: unsubscribing early leaves files on
+  /// disk with no result row to act on.
+  Future<void> get settled => _settled.future;
+
   Future<void> run({
     required Iterable<AvesEntry> entries,
     required List<BatchAction> actions,
@@ -64,6 +73,7 @@ class BatchRunController extends ChangeNotifier {
     if (images.isEmpty) {
       _state = BatchRunState.failed;
       _error = 'no-image';
+      _completeSettled();
       notifyListeners();
       return;
     }
@@ -86,18 +96,26 @@ class BatchRunController extends ChangeNotifier {
     _state = BatchRunState.running;
     notifyListeners();
 
-    _subscription = service.run(job).listen(
-      _onEvent,
-      onError: (Object error, StackTrace stack) {
-        batchLog.e('batch job ${job.jobId} failed', error, stack);
-        _error = error.toString();
-        _finish(BatchRunState.failed);
-      },
-      onDone: () {
-        if (_state == BatchRunState.running) _finish(BatchRunState.done);
-      },
-      cancelOnError: true,
-    );
+    try {
+      _subscription = service.run(job).listen(
+        _onEvent,
+        onError: (Object error, StackTrace stack) {
+          batchLog.e('batch job ${job.jobId} failed', error, stack);
+          _error = error.toString();
+          _finish(BatchRunState.failed);
+        },
+        onDone: () {
+          if (_state == BatchRunState.running) _finish(BatchRunState.done);
+        },
+        cancelOnError: true,
+      );
+    } catch (error, stack) {
+      // A channel that refuses the request never emits, so the stream alone
+      // cannot settle the run.
+      batchLog.e('batch job ${job.jobId} could not start', error, stack);
+      _error = error.toString();
+      _finish(BatchRunState.failed);
+    }
   }
 
   void cancel() {
@@ -164,11 +182,19 @@ class BatchRunController extends ChangeNotifier {
   void _finish(BatchRunState state) {
     if (_state != BatchRunState.running) return;
     _state = state;
+    _completeSettled();
     notifyListeners();
+  }
+
+  void _completeSettled() {
+    if (!_settled.isCompleted) _settled.complete();
   }
 
   @override
   void dispose() {
+    // A disposed controller still has to release an awaiting caller: the job may
+    // have been abandoned rather than finished.
+    _completeSettled();
     unawaited(_subscription?.cancel());
     super.dispose();
   }

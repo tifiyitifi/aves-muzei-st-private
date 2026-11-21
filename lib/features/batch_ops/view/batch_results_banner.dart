@@ -58,11 +58,14 @@ class _BatchResultsBannerSliverState extends State<BatchResultsBannerSliver> {
 
     setState(() => _busy = true);
     try {
-      final replaced = await widget.service.replaceWithSource(targets);
+      final outcome = await widget.service.replaceWithSource(targets);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(replaced > 0 ? l10n.batchResultsReplaced(replaced) : l10n.batchResultsActionFailed)),
-      );
+      final message = outcome.replaced == 0
+          ? l10n.batchResultsActionFailed
+          : outcome.cleanupPending > 0
+              ? l10n.batchResultsReplacedWithCleanupPending(outcome.replaced, outcome.cleanupPending)
+              : l10n.batchResultsReplaced(outcome.replaced);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       await _load();
     } finally {
       if (mounted) setState(() => _busy = false);

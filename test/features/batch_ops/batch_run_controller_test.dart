@@ -89,6 +89,59 @@ void main() {
     expect(controller.error, isNull);
     expect(controller.done, 1);
   });
+
+  test('settled only completes on the terminal event', () async {
+    await controller.run(entries: {_entry(1, 'IMG_0001.jpg')}, actions: [BatchActions.rotate()]);
+    var settled = false;
+    final waiting = controller.settled.then((_) => settled = true);
+
+    // `run` returns before the job does, so anything short of the terminal event
+    // must not release a caller that is about to dispose the controller.
+    await pumpEventQueue();
+    expect(settled, isFalse);
+
+    service.emit(const BatchEvent(type: BatchEventType.jobDone, done: 1));
+    await waiting;
+    expect(settled, isTrue);
+  });
+
+  test('settled completes after a stream error', () async {
+    await controller.run(entries: {_entry(1, 'IMG_0001.jpg')}, actions: [BatchActions.rotate()]);
+
+    service.emitError(StateError('channel closed'));
+
+    await controller.settled;
+    expect(controller.state, BatchRunState.failed);
+    expect(controller.error, contains('channel closed'));
+  });
+
+  test('settled completes when nothing can run', () async {
+    // A video-only selection never subscribes, so the terminal state has to be
+    // reported by the failure path itself.
+    await controller.run(entries: {_entry(2, 'clip.mp4', mimeType: 'video/mp4')}, actions: [BatchActions.rotate()]);
+
+    await controller.settled;
+    expect(controller.state, BatchRunState.failed);
+    expect(controller.error, 'no-image');
+  });
+
+  test('waiting for settled still delivers the last record', () async {
+    final hold = Completer<void>();
+    recorder.hold = hold;
+    await controller.run(entries: {_entry(1, 'IMG_0001.jpg')}, actions: [BatchActions.rotate()]);
+
+    service
+      ..emit(const BatchEvent(type: BatchEventType.itemDone, index: 0, entryId: 1, uri: 'content://media/10', name: 'IMG_0001.jpg'))
+      ..emit(const BatchEvent(type: BatchEventType.jobDone, done: 1));
+
+    // The native side can report the terminal event before the recorder has
+    // written the last row: the caller must keep waiting for the queue.
+    await controller.settled;
+    expect(recorder.recorded, isEmpty);
+    hold.complete();
+    await controller.recordsSettled;
+    expect(recorder.recorded, hasLength(1));
+  });
 }
 
 AvesEntry _entry(int id, String name, {String mimeType = 'image/jpeg'}) {
@@ -126,7 +179,18 @@ class _FakeBatchService extends Fake implements BatchService {
 
   void emit(BatchEvent event) => _events.add(event);
 
-  Future<void> close() => _events.close();
+  void emitError(Object error) => _events.addError(error);
+
+  Future<void> close() async {
+    // A single-subscription controller only finishes once a listener consumes
+    // the done event. A run that never subscribed (no usable image) would leave
+    // this future pending forever.
+    if (!_events.hasListener) {
+      unawaited(_events.close());
+      return;
+    }
+    await _events.close();
+  }
 
   @override
   Future<void> cancel(String jobId) async {}
@@ -139,10 +203,14 @@ class _FakeRecorder extends Fake implements BatchResultRecorder {
   int failures = 0;
   int attempts = 0;
 
+  /// Blocks the recorder so a test can observe the queue before it drains.
+  Completer<void>? hold;
+
   @override
   Future<void> record(BatchRecordedItem item) async {
     attempts++;
     if (attempts <= failures) throw StateError('recorder unavailable');
+    if (hold != null) await hold!.future;
     recorded.add(item);
   }
 }

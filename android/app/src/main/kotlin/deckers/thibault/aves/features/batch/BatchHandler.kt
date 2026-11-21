@@ -46,8 +46,8 @@ class BatchHandler(private val context: Context) : MethodChannel.MethodCallHandl
             result.error("replaceWithResult-args", "missing arguments", null)
             return
         }
-        val replaced = BatchResultFiles.replace(context, sourceUri, resultUri)
-        result.success(replaced)
+        val outcome = BatchResultFiles.replace(context, sourceUri, resultUri)
+        result.success(outcome)
     }
 
     private fun deleteResult(call: MethodCall, result: MethodChannel.Result) {

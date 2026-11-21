@@ -64,7 +64,9 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
     await widget.service.pruneMissingResults();
     final store = await widget.service.store();
     final results = await store.getResults();
-    final entries = results.isEmpty ? <AvesEntry>{} : await localMediaDb.loadEntriesByUris(results.map((result) => result.resultUri).toSet());
+    final entries = results.isEmpty
+        ? <AvesEntry>{}
+        : await localMediaDb.loadEntriesByUris(results.map((result) => result.resultUri).toSet());
     if (!mounted) return;
     setState(() {
       _results = results;
@@ -102,11 +104,14 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
 
     setState(() => _busy = true);
     try {
-      final replaced = await widget.service.replaceWithSource(targets);
+      final outcome = await widget.service.replaceWithSource(targets);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(replaced > 0 ? l10n.batchResultsReplaced(replaced) : l10n.batchResultsActionFailed)),
-      );
+      final message = outcome.replaced == 0
+          ? l10n.batchResultsActionFailed
+          : outcome.cleanupPending > 0
+              ? l10n.batchResultsReplacedWithCleanupPending(outcome.replaced, outcome.cleanupPending)
+              : l10n.batchResultsReplaced(outcome.replaced);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       _selection.browse();
       await _load();
     } finally {
@@ -190,7 +195,8 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
                   enabled: results != null && results.isNotEmpty && selected.length < results.length,
                   child: _menuRow(Icons.select_all, l10n.menuActionSelectAll),
                 ),
-                if (selecting) PopupMenuItem(value: _ResultsAction.selectNone, child: _menuRow(Icons.deselect, l10n.menuActionSelectNone)),
+                if (selecting)
+                  PopupMenuItem(value: _ResultsAction.selectNone, child: _menuRow(Icons.deselect, l10n.menuActionSelectNone)),
                 const PopupMenuDivider(),
                 PopupMenuItem(
                   value: _ResultsAction.replace,
@@ -202,7 +208,8 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
                   enabled: _targets.any((result) => result.canMoveBack),
                   child: _menuRow(Icons.drive_file_move_outline, l10n.batchResultsMoveBack),
                 ),
-                if (selecting) PopupMenuItem(value: _ResultsAction.keep, child: _menuRow(Icons.visibility_outlined, l10n.batchResultsNotNow)),
+                if (selecting)
+                  PopupMenuItem(value: _ResultsAction.keep, child: _menuRow(Icons.visibility_outlined, l10n.batchResultsNotNow)),
               ],
             ),
         ],
@@ -237,7 +244,9 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
         borderRadius: BorderRadius.circular(6),
         child: SizedBox.square(
           dimension: extent,
-          child: entry != null ? ThumbnailImage(entry: entry, extent: extent, devicePixelRatio: MediaQuery.devicePixelRatioOf(context)) : Icon(Icons.broken_image_outlined, color: theme.colorScheme.onSurfaceVariant),
+          child: entry != null
+              ? ThumbnailImage(entry: entry, extent: extent, devicePixelRatio: MediaQuery.devicePixelRatioOf(context))
+              : Icon(Icons.broken_image_outlined, color: theme.colorScheme.onSurfaceVariant),
         ),
       ),
       title: Text(result.resultFileName, maxLines: 1, overflow: TextOverflow.ellipsis),

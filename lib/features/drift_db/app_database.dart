@@ -87,39 +87,39 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (m) async {
-      await m.createAll();
-      await _createIndexes();
-    },
-    onUpgrade: (m, from, to) async {
-      // Forward-only, per-version migration chain (iris-style).
-      if (from < 2) await MigrationV2(this).run(m);
-      if (from < 3) await MigrationV3(this).run(m);
-      if (from < 4) await MigrationV4(this).run(m);
-      if (from < 5) await MigrationV5(this).run(m);
-      if (from < 6) await MigrationV6(this).run(m);
-      if (from < 7) await MigrationV7(this).run(m);
-      if (from < 8) await MigrationV8(this).run(m);
-      if (from < 9) await MigrationV9(this).run(m);
-      if (from < 10) await MigrationV10(this).run(m);
-      if (from < 11) await MigrationV11(this).run(m);
-      if (from < 12) await MigrationV12(this).run(m);
-      if (from < 13) await MigrationV13(this).run(m);
-      if (from < 14) await MigrationV14(this).run(m);
-      if (from < 15) await MigrationV15(this).run(m);
-      if (from < 16) await MigrationV16(this).run(m);
-      if (from < 17) await MigrationV17(this).run(m);
-      if (from < 18) await MigrationV18(this).run(m);
-    },
-    beforeOpen: (details) async {
-      // The main isolate and the analysis background isolate each open
-      // their own connection to the same file, so enable WAL and a busy
-      // timeout to tolerate concurrent readers/writers.
-      await customStatement('PRAGMA journal_mode = WAL');
-      await customStatement('PRAGMA busy_timeout = 30000');
-      await customStatement('PRAGMA foreign_keys = OFF');
-    },
-  );
+        onCreate: (m) async {
+          await m.createAll();
+          await _createIndexes();
+        },
+        onUpgrade: (m, from, to) async {
+          // Forward-only, per-version migration chain (iris-style).
+          if (from < 2) await MigrationV2(this).run(m);
+          if (from < 3) await MigrationV3(this).run(m);
+          if (from < 4) await MigrationV4(this).run(m);
+          if (from < 5) await MigrationV5(this).run(m);
+          if (from < 6) await MigrationV6(this).run(m);
+          if (from < 7) await MigrationV7(this).run(m);
+          if (from < 8) await MigrationV8(this).run(m);
+          if (from < 9) await MigrationV9(this).run(m);
+          if (from < 10) await MigrationV10(this).run(m);
+          if (from < 11) await MigrationV11(this).run(m);
+          if (from < 12) await MigrationV12(this).run(m);
+          if (from < 13) await MigrationV13(this).run(m);
+          if (from < 14) await MigrationV14(this).run(m);
+          if (from < 15) await MigrationV15(this).run(m);
+          if (from < 16) await MigrationV16(this).run(m);
+          if (from < 17) await MigrationV17(this).run(m);
+          if (from < 18) await MigrationV18(this).run(m);
+        },
+        beforeOpen: (details) async {
+          // The main isolate and the analysis background isolate each open
+          // their own connection to the same file, so enable WAL and a busy
+          // timeout to tolerate concurrent readers/writers.
+          await customStatement('PRAGMA journal_mode = WAL');
+          await customStatement('PRAGMA busy_timeout = 30000');
+          await customStatement('PRAGMA foreign_keys = OFF');
+        },
+      );
 
   /// Fresh installs must converge on the same index set as upgraded databases.
   ///

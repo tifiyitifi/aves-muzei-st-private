@@ -63,10 +63,10 @@ class PagedDiscoverer {
     LocalMediaDb? database,
     Future<void> Function(AvesEntry entry)? catalogEntry,
     this.streamIdleTimeout = importStreamIdleTimeout,
-  }) : mediaStore = mediaStore ?? mediaStoreService,
-       mediaFetch = mediaFetch ?? mediaFetchService,
-       database = database ?? localMediaDb,
-       catalogEntry = catalogEntry ?? ((entry) => _defaultCatalogEntry(database ?? localMediaDb, entry));
+  })  : mediaStore = mediaStore ?? mediaStoreService,
+        mediaFetch = mediaFetch ?? mediaFetchService,
+        database = database ?? localMediaDb,
+        catalogEntry = catalogEntry ?? ((entry) => _defaultCatalogEntry(database ?? localMediaDb, entry));
 
   /// Inline catalog for steady-state changes, mirroring the legacy
   /// `refreshUris -> analyze` path: fresh rows arrive tagged and dated instead
@@ -328,14 +328,16 @@ class PagedDiscoverer {
       for (final entry in await database.loadEntriesByContentIds(byContentId.keys.map((key) => key.id).toSet()))
         if (entry.contentId != null) (id: entry.contentId!, mimeType: entry.sourceMimeType): entry,
     };
-    final knownByUri = uriOnly.isEmpty
-        ? <String, AvesEntry>{}
-        : {
-            for (final entry in await database.loadEntriesByUris(uriOnly.keys.toSet()))
-              // Only rows this import owns: a vault row can carry the same URI
-              // and must not be overwritten with a media-store one.
-              if (entry.origin == EntryOrigins.mediaStoreContent) entry.uri: entry,
-          };
+    // Every incoming URI is looked up, not only the id-less ones: a replacement
+    // can rewrite a known file in another format, and the
+    // `(contentId, sourceMimeType)` key would then miss it and insert a second
+    // row for the same file (the unique index accepts both mime types).
+    final knownByUri = <String, AvesEntry>{
+      for (final entry in await database.loadEntriesByUris(byUri.keys.toSet()))
+        // Only rows this import owns: a vault row can carry the same URI
+        // and must not be overwritten with a media-store one.
+        if (entry.origin == EntryOrigins.mediaStoreContent) entry.uri: entry,
+    };
 
     final toInsert = <AvesEntry>{};
     var written = 0;
@@ -345,7 +347,10 @@ class PagedDiscoverer {
         toInsert.add(entry);
         return;
       }
-      if ((entry.dateModifiedMillis ?? 0) <= (knownEntry.dateModifiedMillis ?? 0)) return;
+      final newer = (entry.dateModifiedMillis ?? 0) > (knownEntry.dateModifiedMillis ?? 0);
+      // A format change is a real change even when the provider did not bump
+      // the modification date.
+      if (!newer && entry.sourceMimeType == knownEntry.sourceMimeType) return;
       // Matching by URI is a fallback for a provider that reports no id, not a
       // reason to forget the id the row already had.
       entry.contentId ??= _usableContentId(knownEntry.contentId);
@@ -356,7 +361,7 @@ class PagedDiscoverer {
     }
 
     for (final kv in byContentId.entries) {
-      await upsert(kv.value, knownByContentId[kv.key]);
+      await upsert(kv.value, knownByUri[kv.value.uri] ?? knownByContentId[kv.key]);
     }
     for (final kv in uriOnly.entries) {
       await upsert(kv.value, knownByUri[kv.key]);
@@ -425,7 +430,9 @@ class PagedDiscoverer {
     // is still the same row: match it by URI before inserting a duplicate.
     existing ??= await _mediaStoreRowByUri(uri);
     if (existing != null) {
-      if ((entry.dateModifiedMillis ?? 0) <= (existing.dateModifiedMillis ?? 0) && existing.path == entry.path) return false;
+      final newer = (entry.dateModifiedMillis ?? 0) > (existing.dateModifiedMillis ?? 0);
+      // A format change counts even without a newer modification date.
+      if (!newer && existing.path == entry.path && existing.sourceMimeType == entry.sourceMimeType) return false;
       // Matching by URI is a fallback for a provider that reports no id, not a
       // reason to forget the id the row already had.
       entry.contentId ??= _usableContentId(existing.contentId);

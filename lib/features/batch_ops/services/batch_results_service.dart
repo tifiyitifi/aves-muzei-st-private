@@ -171,20 +171,31 @@ class BatchResultsService implements BatchResultRecorder {
 
   /// Overwrites each source with its recorded result.
   ///
-  /// Returns how many sources were replaced. A result whose replacement failed
-  /// stays pending, so the user can retry or move it back instead. Write access
+  /// Returns how many sources were replaced and how many results still need
+  /// cleanup. A result whose replacement failed stays pending, so the user can
+  /// retry or move it back instead. A source whose bytes changed but whose
+  /// result file could not be cleaned up is counted as replaced and also as
+  /// pending cleanup: the row stays so the leftover can be retried. Write access
   /// to the sources is requested once, before the first write.
-  Future<int> replaceWithSource(Iterable<BatchResult> results) async {
+  Future<({int replaced, int cleanupPending})> replaceWithSource(Iterable<BatchResult> results) async {
     final targets = results.where((result) => result.canReplaceSource).toList(growable: false);
-    if (targets.isEmpty) return 0;
+    if (targets.isEmpty) return (replaced: 0, cleanupPending: 0);
     await _requestWriteAccess(targets);
 
     final resultStore = await store();
     var replaced = 0;
+    var cleanupPending = 0;
     for (final result in targets) {
-      final ok = await native.replaceWithResult(sourceUri: result.sourceUri, resultUri: result.resultUri);
-      if (!ok) continue;
+      final outcome = await native.replaceWithResult(sourceUri: result.sourceUri, resultUri: result.resultUri);
+      if (outcome == BatchReplaceOutcome.failed) continue;
       replaced++;
+      final cleanupFailed = outcome == BatchReplaceOutcome.replacedCleanupFailed;
+      if (cleanupFailed) {
+        // The bytes are already in place. Keeping the row is what lets the user
+        // retry the cleanup instead of losing track of the leftover file.
+        batchLog.w('replaced ${result.sourceUri} but failed to clean up ${result.resultUri}');
+        cleanupPending++;
+      }
       try {
         await _refreshSource(result);
       } catch (error, stack) {
@@ -193,10 +204,11 @@ class BatchResultsService implements BatchResultRecorder {
         batchLog.w('failed to refresh source ${result.sourceUri} after replacement', error, stack);
         continue;
       }
+      if (cleanupFailed) continue;
       await resultStore.deleteResults([result.id]);
     }
     if (replaced > 0) unawaited(reloadPagedSummaries());
-    return replaced;
+    return (replaced: replaced, cleanupPending: cleanupPending);
   }
 
   /// Asks for write access to every source at once.

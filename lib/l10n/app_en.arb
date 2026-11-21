@@ -2891,6 +2891,18 @@
       }
     }
   },
+  "batchResultsReplacedWithCleanupPending": "{replaced, plural, =1{Replaced {replaced} original} other{Replaced {replaced} originals}}; {pending, plural, =1{{pending} result still needs cleanup} other{{pending} results still need cleanup}}",
+  "@batchResultsReplacedWithCleanupPending": {
+    "description": "The source bytes are already replaced, but the result files could not all be cleaned up.",
+    "placeholders": {
+      "replaced": {
+        "type": "int"
+      },
+      "pending": {
+        "type": "int"
+      }
+    }
+  },
   "batchResultsActionFailed": "Nothing was changed.",
   "batchResultsSource": "From {directory}",
   "@batchResultsSource": {

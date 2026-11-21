@@ -170,9 +170,10 @@ void main() {
     await record();
     final row = (await (await service.store()).getResults()).single;
 
-    final replaced = await service.replaceWithSource([row]);
+    final outcome = await service.replaceWithSource([row]);
 
-    expect(replaced, 1);
+    expect(outcome.replaced, 1);
+    expect(outcome.cleanupPending, 0);
     expect(native.requestedAccess, [_sourceUri], reason: 'write access is requested before the first write');
     expect(native.replaced.single.key, _sourceUri);
     expect(native.replaced.single.value, 'content://media/200');
@@ -185,7 +186,9 @@ void main() {
     final row = (await (await service.store()).getResults()).single;
     native.replaceSucceeds = false;
 
-    expect(await service.replaceWithSource([row]), 0);
+    final outcome = await service.replaceWithSource([row]);
+    expect(outcome.replaced, 0);
+    expect(outcome.cleanupPending, 0);
     expect(await (await service.store()).getResults(), hasLength(1));
   });
 
@@ -197,7 +200,22 @@ void main() {
 
     // The source bytes were replaced; an unreadable row must not turn that into
     // a lost result with no action left to take.
-    expect(await service.replaceWithSource([row]), 1);
+    final outcome = await service.replaceWithSource([row]);
+    expect(outcome.replaced, 1);
+    expect(await (await service.store()).getResults(), hasLength(1));
+  });
+
+  test('a replacement whose cleanup fails still counts as replaced', () async {
+    store.entries['content://media/200'] = _entry(200, 'content://media/200', '$_resultsDir/1.jpg');
+    await record();
+    final row = (await (await service.store()).getResults()).single;
+    native.cleanupFails = true;
+
+    // The bytes are already in the source, so the run is not a failure. The row
+    // survives because its leftover file is what still needs attention.
+    final outcome = await service.replaceWithSource([row]);
+    expect(outcome.replaced, 1);
+    expect(outcome.cleanupPending, 1);
     expect(await (await service.store()).getResults(), hasLength(1));
   });
 
@@ -415,6 +433,7 @@ class _FakeBatchService extends Fake implements BatchService {
   final List<String> deleted = [];
   final List<String> requestedAccess = [];
   bool replaceSucceeds = true;
+  bool cleanupFails = false;
   bool deleteSucceeds = true;
 
   @override
@@ -424,9 +443,10 @@ class _FakeBatchService extends Fake implements BatchService {
   Future<void> cancel(String jobId) async {}
 
   @override
-  Future<bool> replaceWithResult({required String sourceUri, required String resultUri}) async {
+  Future<BatchReplaceOutcome> replaceWithResult({required String sourceUri, required String resultUri}) async {
     replaced.add(MapEntry(sourceUri, resultUri));
-    return replaceSucceeds;
+    if (!replaceSucceeds) return BatchReplaceOutcome.failed;
+    return cleanupFails ? BatchReplaceOutcome.replacedCleanupFailed : BatchReplaceOutcome.replaced;
   }
 
   @override

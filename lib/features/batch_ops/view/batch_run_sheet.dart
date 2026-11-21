@@ -58,16 +58,16 @@ Future<void> startBatch(BuildContext context, Set<AvesEntry> entries, {BatchProf
   if (share) await batchShareService.pruneExpired();
 
   final controller = BatchRunController();
-  final running = controller.run(entries: images, actions: actions, output: output);
+  unawaited(controller.run(entries: images, actions: actions, output: output));
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
     builder: (context) => BatchProgressDialog(controller: controller),
   );
-  // The system back gesture can dismiss a dialog that is not barrier-dismissible.
-  // Keep listening until the native job and its records are done: disposing the
-  // controller early would leave files on disk with no result row to act on.
-  await running;
+  // The dialog can go away while the native job is still writing. Wait for a
+  // terminal state and the pending records before disposing: the controller is
+  // the only listener that turns `itemDone` into a result row.
+  await controller.settled;
   await controller.recordsSettled;
   final done = controller.done;
   controller.dispose();
@@ -249,10 +249,7 @@ class _BatchRunSheetState extends State<BatchRunSheet> {
                     hint: Text(l10n.batchProfilePickerHint),
                     items: [
                       for (final profile in profiles)
-                        DropdownMenuItem(
-                          value: profile.id,
-                          child: Text(_profileName(profile), overflow: TextOverflow.ellipsis),
-                        ),
+                        DropdownMenuItem(value: profile.id, child: Text(_profileName(profile), overflow: TextOverflow.ellipsis)),
                     ],
                     onChanged: (id) {
                       final profile = profiles.firstWhereOrNull((profile) => profile.id == id);
@@ -299,7 +296,8 @@ class _BatchRunSheetState extends State<BatchRunSheet> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(l10n.batchRunSelectedCount(widget.entryCount)),
-                    if (_enabledActions.isEmpty) Text(l10n.batchRunNothingSelected, style: Theme.of(context).textTheme.bodySmall),
+                    if (_enabledActions.isEmpty)
+                      Text(l10n.batchRunNothingSelected, style: Theme.of(context).textTheme.bodySmall),
                   ],
                 ),
               ),

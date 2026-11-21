@@ -361,7 +361,6 @@ class GroupedWallpaperStateStore {
         groupedWallpaperLog.w('failed to list ${dir.path} for temporary files', error, stack);
       }
     }
-
     await sweep(tmpDir);
     await sweep(root);
     await sweep(framesDir, recursive: true);

@@ -20,19 +20,32 @@ import java.io.File
 object BatchResultFiles {
 
     /**
+     * Outcomes of [replace], mirrored by `BatchReplaceOutcome` on the Dart side.
+     *
+     * The write and the cleanup are separate facts: once the source bytes are
+     * replaced the change cannot be undone, so a failed cleanup must not be
+     * reported as "nothing happened".
+     */
+    object Outcome {
+        const val FAILED = "failed"
+        const val REPLACED = "replaced"
+        const val REPLACED_CLEANUP_FAILED = "replacedCleanupFailed"
+    }
+
+    /**
      * Overwrites [sourceUri] with the bytes of [resultUri].
      *
      * The write goes through [overrideImageStreaming], which keeps the source
      * row's date columns and restores the original bytes if the write fails. When
-     * the result uses another format, the source row takes the result's name and
-     * MIME type so the file never claims an extension its bytes do not have. The
-     * result file is consumed on success.
+     * the result uses another name or format, the source row takes the result's
+     * name and MIME type so the file never claims an extension its bytes do not
+     * have. The result file is consumed on success.
      */
-    suspend fun replace(context: Context, sourceUri: String, resultUri: String): Boolean {
+    suspend fun replace(context: Context, sourceUri: String, resultUri: String): String {
         val source = sourceUri.toUri()
         val result = resultUri.toUri()
         val resolver = context.contentResolver
-        val resultInfo = query(resolver, result) ?: return false
+        val resultInfo = query(resolver, result) ?: return Outcome.FAILED
         val sourceInfo = query(resolver, source)
 
         val staging = File.createTempFile("batch-replace-", ".tmp", context.cacheDir)
@@ -40,10 +53,19 @@ object BatchResultFiles {
             runCatching {
                 val input = resolver.openInputStream(result) ?: return@runCatching false
                 input.use {
-                    // `fd` is a raw descriptor owned by the caller. Wrap it only
-                    // to duplicate it, then close our copy and leave the caller's
-                    // descriptor alone; closing both used to close one fd twice.
-                    val dup = ParcelFileDescriptor.fromFd(fd).dup()
+                    // `fd` is a raw descriptor owned by `overrideImageStreaming`,
+                    // which closes it after this callback. `fromFd` transfers
+                    // ownership to the wrapper, so take it back with `detachFd`
+                    // (which does not close it) and write through an independent
+                    // duplicate. Closing the wrapper instead would close the
+                    // caller's descriptor, and leaving it attached would close it
+                    // a second time when the wrapper is finalized.
+                    val wrapper = ParcelFileDescriptor.fromFd(fd)
+                    val dup = try {
+                        wrapper.dup()
+                    } finally {
+                        wrapper.detachFd()
+                    }
                     ParcelFileDescriptor.AutoCloseOutputStream(dup).use { output ->
                         it.copyTo(output)
                         output.flush()
@@ -53,9 +75,9 @@ object BatchResultFiles {
                 true
             }.getOrDefault(false)
         }
-        if (!replaced) return false
+        if (!replaced) return Outcome.FAILED
 
-        val renamed = if (resultInfo.displayName != sourceInfo?.displayName) {
+        val renamed = if (resultInfo.displayName != sourceInfo?.displayName || resultInfo.mimeType != sourceInfo?.mimeType) {
             runCatching {
                 resolver.update(
                     source,
@@ -73,11 +95,10 @@ object BatchResultFiles {
         }
 
         // The result was consumed; a copy in the recycle bin would only be noise.
-        // Both steps must report success: a row is deleted on the Dart side only
-        // when the file was really consumed, so a failed rename or delete keeps
-        // the result actionable instead of leaving an orphan file or a stale name.
+        // A failed delete leaves a file the row can still point at, so it is
+        // retried instead of silently losing track of it.
         val consumed = runCatching { resolver.delete(result, null, null) > 0 }.getOrDefault(false)
-        return renamed && consumed
+        return if (renamed && consumed) Outcome.REPLACED else Outcome.REPLACED_CLEANUP_FAILED
     }
 
     /** Deletes a result file permanently. */

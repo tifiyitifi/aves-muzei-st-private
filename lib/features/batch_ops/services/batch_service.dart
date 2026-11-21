@@ -3,6 +3,20 @@ import 'package:aves/features/batch_ops/model/batch_job.dart';
 import 'package:aves/services/common/channel.dart';
 import 'package:flutter/services.dart';
 
+/// What a replace request did to its source.
+enum BatchReplaceOutcome {
+  /// The source bytes were not replaced; the result is untouched.
+  failed,
+
+  /// The source was replaced and the result file was consumed.
+  replaced,
+
+  /// The source was replaced, but the result file could not be renamed or
+  /// deleted afterwards. The result row must survive so the leftover can be
+  /// retried.
+  replacedCleanupFailed,
+}
+
 /// Starts one native batch job and streams its per-item events.
 class BatchService {
   static final _stream = AvesStreamsChannel('deckers.thibault/aves/batch_stream');
@@ -35,18 +49,23 @@ class BatchService {
   /// Overwrites [sourceUri] with the bytes of [resultUri].
   ///
   /// Native keeps the source row's date columns and renames the file when the
-  /// result uses another format; the result file is consumed. Returns whether the
-  /// replacement happened.
-  Future<bool> replaceWithResult({required String sourceUri, required String resultUri}) async {
+  /// result uses another name or format. The result file is consumed when
+  /// possible; [BatchReplaceOutcome.replacedCleanupFailed] still means the
+  /// source changed, only the leftover could not be cleaned up.
+  Future<BatchReplaceOutcome> replaceWithResult({required String sourceUri, required String resultUri}) async {
     try {
-      final replaced = await _platform.invokeMethod<bool>('replaceWithResult', <String, Object?>{
+      final outcome = await _platform.invokeMethod<String>('replaceWithResult', <String, Object?>{
         'sourceUri': sourceUri,
         'resultUri': resultUri,
       });
-      return replaced == true;
+      return switch (outcome) {
+        'replaced' => BatchReplaceOutcome.replaced,
+        'replacedCleanupFailed' => BatchReplaceOutcome.replacedCleanupFailed,
+        _ => BatchReplaceOutcome.failed,
+      };
     } on PlatformException catch (error, stack) {
       batchLog.w('failed to replace $sourceUri with $resultUri', error, stack);
-      return false;
+      return BatchReplaceOutcome.failed;
     }
   }
 

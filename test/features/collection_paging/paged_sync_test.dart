@@ -136,6 +136,24 @@ void main() {
       expect(rows.map((row) => row.sourceMimeType).toSet(), {'image/jpeg', 'video/mp4'});
     });
 
+    test('updates a known row when the reported mime type changes', () async {
+      // A batch replacement can rewrite the same file in another format. The
+      // MediaStore keeps the id and URI, so the `(contentId, sourceMimeType)`
+      // key changes and used to leave the old row behind while a second one was
+      // inserted for the same file.
+      final stored = entry(1);
+      await driftDb.insertEntries({stored});
+      final converted = entry(1).copyWith(path: '/album/1.png', sourceMimeType: 'image/png');
+      final store = _ScriptedMediaStore()..entries = {converted};
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+
+      expect(await discoverer.importAll(onProgress: (_) {}), 1);
+      expect(await driftDb.countEntries(), 1);
+      final row = (await driftDb.loadEntriesByUris({stored.uri})).single;
+      expect(row.sourceMimeType, 'image/png');
+      expect(row.path, '/album/1.png');
+    });
+
     test('signals the first batch before the rest is written', () async {
       final store = _ScriptedMediaStore()..entries = {for (var id = 1; id <= 10; id++) entry(id)};
       final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);

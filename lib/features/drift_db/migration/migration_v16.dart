@@ -53,29 +53,25 @@ class MigrationV16 {
   /// Keeps the lowest id of each media-store identity and moves everything that
   /// referenced the dropped rows over to it.
   Future<void> _mergeDuplicateContentIds() async {
-    final groups = await db
-        .customSelect(
-          'SELECT contentId, sourceMimeType, MIN(id) AS keepId FROM entry '
-          'WHERE contentId IS NOT NULL AND sourceMimeType IS NOT NULL AND origin = ? '
-          'GROUP BY contentId, sourceMimeType HAVING COUNT(*) > 1',
-          variables: [Variable.withInt(EntryOrigins.mediaStoreContent)],
-        )
-        .get();
+    final groups = await db.customSelect(
+      'SELECT contentId, sourceMimeType, MIN(id) AS keepId FROM entry '
+      'WHERE contentId IS NOT NULL AND sourceMimeType IS NOT NULL AND origin = ? '
+      'GROUP BY contentId, sourceMimeType HAVING COUNT(*) > 1',
+      variables: [Variable.withInt(EntryOrigins.mediaStoreContent)],
+    ).get();
     for (final group in groups) {
       final contentId = group.data['contentId'] as int;
       final mimeType = group.data['sourceMimeType'] as String;
       final keepId = group.data['keepId'] as int;
-      final droppedRows = await db
-          .customSelect(
-            'SELECT id FROM entry WHERE contentId = ? AND sourceMimeType = ? AND origin = ? AND id != ?',
-            variables: [
-              Variable.withInt(contentId),
-              Variable.withString(mimeType),
-              Variable.withInt(EntryOrigins.mediaStoreContent),
-              Variable.withInt(keepId),
-            ],
-          )
-          .get();
+      final droppedRows = await db.customSelect(
+        'SELECT id FROM entry WHERE contentId = ? AND sourceMimeType = ? AND origin = ? AND id != ?',
+        variables: [
+          Variable.withInt(contentId),
+          Variable.withString(mimeType),
+          Variable.withInt(EntryOrigins.mediaStoreContent),
+          Variable.withInt(keepId),
+        ],
+      ).get();
       final droppedIds = [for (final row in droppedRows) row.data['id'] as int];
       if (droppedIds.isEmpty) continue;
       for (final id in droppedIds) {

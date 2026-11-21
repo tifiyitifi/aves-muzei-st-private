@@ -56,7 +56,7 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: the album page no longer reads "no albums" on a paged library when no media-set view had loaded the album list yet
 - Collection: an `OR` filter swallowed the filters ANDed after it in paged queries
 - Batch processing: a failed rename keeps both the old and the new result instead of deleting the only copy
-- Batch processing: system back cannot dismiss the progress dialog while a job is still writing, and a failed write keeps the result row
+- Batch processing: closing the progress dialog no longer drops results still being written, and a replace that cannot clean up its result file is reported instead of looking like nothing happened
 - Database: an image and a video sharing a MediaStore number are kept as two rows instead of being merged
 
 ## <a id="v1.15.5"></a>[v1.15.5] - 2026-10-02

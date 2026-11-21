@@ -111,7 +111,7 @@ Rules for the Dart reader:
 | Method | Arguments | Returns | Notes |
 | --- | --- | --- | --- |
 | `cancel` | `jobId` | `null` | adds the id to the cancelled set; the executor skips the remaining items |
-| `replaceWithResult` | `sourceUri`, `resultUri` | `bool` | overwrites the source in place, consumes the result |
+| `replaceWithResult` | `sourceUri`, `resultUri` | `String` | overwrites the source in place, consumes the result |
 | `requestWriteAccess` | `uris`, `mimeTypes` | `bool` | one system request for the batch; a denial is not an error |
 | `deleteResult` | `resultUri` | `bool` | permanent delete, bypasses the recycle-bin setting; used for a consumed result, a superseded result and an expired share copy |
 
@@ -120,11 +120,25 @@ Rules for the Dart reader:
 1. Query the result file's display name and MIME type from the MediaStore.
 2. Write the result bytes into the source through `overrideImageStreaming`, which
    keeps the source's date columns and restores the original on failure.
-3. If the display name differs, update the source row's name and MIME type.
+3. If the display name or the MIME type differs, update the source row.
 4. Delete the result file.
-5. Return `true` only if the write succeeded.
 
-A `false` return leaves the result row pending (`APP-2`).
+The return value is a String, mirrored by `BatchReplaceOutcome` on the Dart side:
+
+| Value | Meaning | Dart handling |
+| --- | --- | --- |
+| `failed` | the source bytes were not replaced | the result row stays pending (`APP-2`) |
+| `replaced` | the source was replaced and the result consumed | the row is deleted |
+| `replacedCleanupFailed` | the source was replaced, but renaming or deleting the result file failed | the replacement counts, the row stays so the leftover can be retried |
+
+The write and the cleanup are distinct facts: the bytes in the source cannot be
+undone, so a cleanup failure is not reported as "nothing was changed". The Dart
+side reports it separately (`batchResultsReplacedWithCleanupPending`).
+
+Confirming the write is separate from confirming the cleanup is what keeps a
+consumed result from losing its row: a `false`-for-everything return would make a
+successful replacement look like a failed one and offer a retry that can no
+longer do anything.
 
 ### `requestWriteAccess`
 

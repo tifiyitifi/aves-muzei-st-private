@@ -677,8 +677,8 @@ The bar only exists while this service is the wallpaper the system is showing:
   a leftover.
 
 Tapping the body opens the immersive view of the photo on screen, exactly like
-the view gesture: the app puts the group page (`/wallpaper_groups`, on
-the playing group) below the view, so backing out lands on the wallpaper page.
+the view gesture: the view is the app's root route, so backing out leaves to the
+desktop and 「Open wallpaper groups」 pushes the playing group's page from it.
 The expanded first button only switches the button set. The screen broadcasts
 (`ACTION_SCREEN_OFF`, `ACTION_SCREEN_ON`, `ACTION_USER_PRESENT`) switch the layout
 family and the home/lock effect image together, and return the button set to the
@@ -811,11 +811,12 @@ bar re-posts once when the wait starts and once when it ends.
 A double tap opens an immersive view of the current photo, modelled on
 Muzei's artwork screen: pan and zoom, chrome visible on open and toggled by a
 tap, the group number · name · count at the bottom left, and a floating control
-pad instead of buttons in the bar. A wallpaper gesture has no Activity, so the
-view is pushed over the playing group's page, itself over the app's home page:
-back walks view → group page → home instead of closing the app, and the group
-page starts on the group being played. Opened from the group page, 「Open
-wallpaper groups」 pops back to it.
+pad instead of buttons in the bar. A wallpaper gesture or a notification has no
+Activity, so the view is the app's root route: back leaves to the desktop (the
+app's double-back setting decides whether the first press warns), and 「Open
+wallpaper groups」 pushes the playing group's page over the view, so a return
+from that page lands on the photo again. Opened from the group page, the same
+action pops back to it instead of stacking a second copy.
 
 The pad is a full 3×3 box with a visible grip on its left edge. Its nine slots
 are fixed positions, so the historical staircase stays put:
@@ -877,9 +878,11 @@ while the group switch is locked, when only one group is enabled, and while a
 step is in flight. A group change always bakes, so it is the one case that
 always shows 「Switching groups」 with the target's number and name.
 
-The page below the view is the `/wallpaper_groups` route itself — the page is a
-navigation destination of its own, so it needs no shared shell. The
-notification's body opens the same view, so both entry points land identically.
+The group page is a child of the view when a gesture or notification opened it:
+the view is the root route and pushes `/wallpaper_groups` (or the shared range
+shell) on 「Open wallpaper groups」. The page is a navigation destination of its
+own, so it needs no shared shell. The notification's body opens the same view as
+a gesture, so both entry points land identically.
 
 The home/lock switch is always listed: for a split group it switches which
 surface the page describes, and for a group without a split it is greyed with

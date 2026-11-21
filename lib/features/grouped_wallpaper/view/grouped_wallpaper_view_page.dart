@@ -44,6 +44,8 @@ import 'package:aves/services/common/services.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/aves_app.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
+import 'package:aves/widgets/common/behaviour/pop/double_back.dart';
+import 'package:aves/widgets/common/behaviour/pop/scope.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:aves/widgets/navigation/nav_item.dart';
 import 'package:aves/widgets/viewer/action/entry_action_delegate.dart';
@@ -64,14 +66,21 @@ import 'package:provider/provider.dart';
 /// steps the photos and the groups and deletes what is on screen, and the menu
 /// can manage everything the group page's menu can do without a draft (effects,
 /// gestures, the lock, turning the wallpaper off).
+///
+/// A wallpaper gesture or a notification makes this page the app's root, so
+/// backing out leaves to the desktop (through the app's double-back setting).
+/// The group page is a child pushed by "open wallpaper group", so a return from
+/// it lands here again.
 class GroupedWallpaperViewPage extends StatefulWidget {
   static const routeName = '/grouped_wallpaper/view';
 
   /// Whether the playing group's page is already below this view.
   ///
-  /// A wallpaper gesture pushes the view over the playing group's page, and the
-  /// group page's menu opens the view from itself, so "open wallpaper group" is
-  /// a back instead of a replacement.
+  /// The two entry points differ in which page is the source of what is on
+  /// screen. A gesture or a notification opens the view as the root route: back
+  /// leaves to the desktop, and "open wallpaper group" pushes the group page
+  /// over the view. The group page's own menu opens the view from itself, so
+  /// there back is what returns to the group page.
   final bool groupPageBelow;
 
   const new({super.key, this.groupPageBelow = false});
@@ -488,35 +497,36 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     if (mounted) unawaited(_loadPadConfig());
   }
 
+  /// Opens the playing group's page over this view.
+  ///
+  /// The view is the root of its gesture/notification flow, so the group page is
+  /// a child: backing out of it returns here instead of leaving the app. The
+  /// page reloads on return because the group page can switch the playing group
+  /// or step its photo.
+  Future<void> _pushGroupPage() async {
+    final sharedEntry = groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared;
+    if (sharedEntry) visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
+    await _pushImmersive(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: sharedEntry ? VisibleRangePage.routeName : GroupedWallpaperPage.routeName),
+        builder: (_) => sharedEntry
+            ? const VisibleRangeShellPage(selectCurrentWallpaperGroup: true)
+            : const GroupedWallpaperPage(selectCurrent: true),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
   Future<void> _onAction(_ViewAction action) async {
     switch (action) {
       case _ViewAction.openGroups:
-        final navigator = Navigator.of(context);
-        if (widget.groupPageBelow) {
-          // The group page is the "source" of what is on screen and is already
-          // below this view, so going back is what the user means.
-          navigator.pop();
-        } else if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared) {
-          // The shared entry hosts both pages: switch it and push the shell so
-          // the bar highlights the entry the user lands on.
-          _setSystemUiVisible(true);
-          visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
-          await navigator.pushReplacement(
-            MaterialPageRoute(
-              settings: const RouteSettings(name: VisibleRangePage.routeName),
-              builder: (_) => const VisibleRangeShellPage(selectCurrentWallpaperGroup: true),
-            ),
-          );
-        } else {
-          // Defensive: a view without its group page below replaces itself, so
-          // back from the group page never returns to a stale artwork.
-          _setSystemUiVisible(true);
-          await navigator.pushReplacement(
-            MaterialPageRoute(
-              settings: const RouteSettings(name: GroupedWallpaperPage.routeName),
-              builder: (_) => const GroupedWallpaperPage(),
-            ),
-          );
+        switch (groupedWallpaperViewGroupNavigation(groupPageBelow: widget.groupPageBelow)) {
+          case GroupedWallpaperViewGroupNavigation.back:
+            // The group page is the "source" of what is on screen and is already
+            // below this view, so going back is what the user means.
+            Navigator.of(context).pop();
+          case GroupedWallpaperViewGroupNavigation.pushGroupPage:
+            await _pushGroupPage();
         }
       case _ViewAction.openInGallery:
         await _openInGallery();
@@ -1011,7 +1021,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
       }
     }
 
-    return Scaffold(
+    final page = Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
@@ -1134,6 +1144,10 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
         ],
       ),
     );
+    // A gesture/notification view is the app's root: back leaves to the desktop,
+    // and the app's double-back setting decides whether the first press warns or
+    // exits. A view opened from the group page keeps its default pop back to it.
+    return widget.groupPageBelow ? page : AvesPopScope(handlers: [doubleBackPopHandler], child: page);
   }
 
   static const _spinner = SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2));

@@ -574,8 +574,8 @@ object GroupedWallpaperNotification {
 
     /**
      * Opens the immersive view of the photo on screen, like the view gesture
-     * does: the app puts the playing group's page below the view, so back
-     * walks to the wallpaper page instead of closing the app.
+     * does: the view is the app's root route, so back leaves to the desktop and
+     * the group page is pushed from the view rather than sitting below it.
      */
     private fun contentIntent(context: Context): PendingIntent = PendingIntent.getActivity(
         context,

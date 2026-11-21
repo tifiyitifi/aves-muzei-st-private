@@ -115,9 +115,13 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
   /// The gesture comes from a live wallpaper, so the intent is a cold start with
   /// no page below it; keeping the home page underneath makes back return to the
   /// app instead of closing it.
+  ///
+  /// The grouped wallpaper view is deliberately not listed here: it is the root
+  /// of its own gesture flow, so back leaves to the desktop (through the app's
+  /// double-back handler) and its group page is pushed from it rather than
+  /// sitting below it.
   static const wallpaperOverlayRoutes = {
     MuzeiWallpaperPage.routeName,
-    GroupedWallpaperViewPage.routeName,
   };
 
   @override
@@ -424,24 +428,6 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           );
           final topRoute = await _getRedirectRoute(appMode);
           unawaited(navigator.pushAndRemoveUntil(baseRoute, (route) => false));
-          // The grouped view is opened from the wallpaper, so backing out lands
-          // on the group page showing the playing group, with its own bottom-bar
-          // entry highlighted. With a separate entry that page is its own
-          // destination; the shared entry hosts it behind the range route.
-          if (_intentOverlayRouteName == GroupedWallpaperViewPage.routeName) {
-            final sharedEntry = groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared;
-            if (sharedEntry) visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
-            unawaited(
-              navigator.push(
-                await _getRedirectRoute(
-                  appMode,
-                  overrideRouteName: sharedEntry ? VisibleRangePage.routeName : GroupedWallpaperPage.routeName,
-                  useIntentFilters: false,
-                  selectCurrentWallpaperGroup: true,
-                ),
-              ),
-            );
-          }
           unawaited(navigator.push(topRoute));
         } else {
           unawaited(
@@ -687,8 +673,10 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
           return buildRoute((context) => GroupedWallpaperPage(selectCurrent: true, promptUnlock: promptUnlock));
         }
       case GroupedWallpaperViewPage.routeName:
-        // A gesture always pushes the playing group's page below the view.
-        return buildRoute((context) => const GroupedWallpaperViewPage(groupPageBelow: true));
+        // A gesture or notification opens the view as the root route, so back
+        // leaves to the desktop. The group page is pushed from the view's own
+        // "Open wallpaper groups" action instead of sitting below it.
+        return buildRoute((context) => const GroupedWallpaperViewPage());
       case GroupedWallpaperHistoryPage.routeName:
         // Opened from the notification bar's "used" button, which is a cold-start
         // route: without this case it would fall through to the collection page.

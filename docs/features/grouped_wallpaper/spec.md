@@ -85,3 +85,13 @@ draws its first frame. This is outside the app; the feature documents it and
 may only reduce how often the engine is killed.
 
 Rules: `SWITCH-1`.
+
+### FR-9 — A gesture-opened view is the root of its flow
+
+WHEN a wallpaper gesture or a notification opens the view, THE SYSTEM SHALL make
+it the app's root route, so backing out leaves to the desktop through the
+double-back setting; 「Open wallpaper groups」 SHALL push the playing group's page
+over it, and backing out of that page SHALL land on the view again. A view opened
+from the group page SHALL keep that page below it and pop back to it.
+
+Rules: `NAV-1`, `NAV-2`.

@@ -71,3 +71,10 @@ it `superseded by <ID>` and leave the coverage that used to hold it.
 | ID | Case | Evidence | Behaviour | Why | Coverage |
 | --- | --- | --- | --- | --- | --- |
 | SWITCH-1 | The system rebinds the wallpaper | The engine was destroyed and the system kept the replaced wallpaper | WHEN the system rebinds, THE SYSTEM MAY draw the previous wallpaper until the new engine draws; the app SHALL document this and SHALL NOT claim to remove it | system `WallpaperManagerService` keeps the previous component; observed on MIUI after the engine was killed | `M` |
+
+## Navigation
+
+| ID | Case | Evidence | Behaviour | Why | Coverage |
+| --- | --- | --- | --- | --- | --- |
+| NAV-1 | A gesture or notification opens the view | The view is the entry page of a cold-start intent | WHEN a gesture or notification opens the view, THE SYSTEM SHALL make it the app's root route and SHALL leave to the desktop on back, honouring the double-back setting | a gesture comes from the desktop; returning there is where the user came from | `M` |
+| NAV-2 | The view asks for the group page | The group page is or is not below the view | WHEN the view is the root of its flow, 「Open wallpaper groups」 SHALL push the group page over it; WHEN the group page is already below, it SHALL pop back to it | a gesture-opened view has no page below it, while the group page's menu opens the view from itself | `F:grouped_wallpaper_view_actions_test#a gesture- or notification-opened view pushes the group page`; `F:grouped_wallpaper_view_actions_test#a view opened from the group page goes back` |

@@ -96,9 +96,10 @@ class GroupedWallpaperPage extends StatefulWidget {
 
   /// Whether the page opens on the group the wallpaper is playing.
   ///
-  /// A wallpaper gesture opens the view page over the playing group's page, so
-  /// that page must show what the view is showing rather than the last group the
-  /// user browsed. The bottom-bar destination keeps the browsing session instead.
+  /// A gesture or the notification opens the view, and 「Open wallpaper groups」
+  /// pushes this page from it, so the page must show what the view is showing
+  /// rather than the last group the user browsed. The bottom-bar destination
+  /// keeps the browsing session instead.
   final bool selectCurrent;
 
   /// Whether the page asks for the group PIN as soon as it opens.

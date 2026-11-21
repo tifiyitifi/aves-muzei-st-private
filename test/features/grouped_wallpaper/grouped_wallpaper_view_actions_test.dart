@@ -116,4 +116,20 @@ void main() {
       );
     });
   });
+
+  group('open wallpaper groups', () {
+    test('a view opened from the group page goes back', () {
+      expect(
+        groupedWallpaperViewGroupNavigation(groupPageBelow: true),
+        GroupedWallpaperViewGroupNavigation.back,
+      );
+    });
+
+    test('a gesture- or notification-opened view pushes the group page', () {
+      expect(
+        groupedWallpaperViewGroupNavigation(groupPageBelow: false),
+        GroupedWallpaperViewGroupNavigation.pushGroupPage,
+      );
+    });
+  });
 }

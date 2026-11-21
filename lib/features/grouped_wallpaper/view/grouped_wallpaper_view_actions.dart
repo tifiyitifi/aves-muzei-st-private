@@ -30,3 +30,21 @@ bool groupedWallpaperCanStepGroup(GroupedWallpaperState state, {required bool lo
       delta: 1,
     ) !=
     null;
+
+/// Where the view page's "Open wallpaper groups" action leads.
+enum GroupedWallpaperViewGroupNavigation {
+  /// Pop back to the group page already below the view.
+  back,
+
+  /// Push the group page over the view.
+  pushGroupPage,
+}
+
+/// Decides how "Open wallpaper groups" reaches the group page.
+///
+/// The view has two entry points. Opened from the group page's menu, that page is
+/// already below it, so going back is what the user means. Opened by a wallpaper
+/// gesture or a notification, the view is the root route and the group page is a
+/// detail pushed over it, so returning from the group page lands here again.
+GroupedWallpaperViewGroupNavigation groupedWallpaperViewGroupNavigation({required bool groupPageBelow}) =>
+    groupPageBelow ? GroupedWallpaperViewGroupNavigation.back : GroupedWallpaperViewGroupNavigation.pushGroupPage;

@@ -36,6 +36,7 @@ Which file holds which rule family:
 | `test/features/grouped_wallpaper/wallpaper_capability_test.dart` or `model/wallpaper_capability_test.dart` | supporting cases for `SIZE-2` |
 | `test/features/grouped_wallpaper/grouped_wallpaper_engine_test.dart` (`displayed slot` group) | the display rules |
 | `test/features/grouped_wallpaper/grouped_wallpaper_state_test.dart` | the pure display selection, if it is moved there |
+| `test/features/grouped_wallpaper/grouped_wallpaper_view_actions_test.dart` | `NAV-2` (push versus pop) |
 
 Database tests need a full native sqlite3 on a Windows host; see `AGENTS.md`
 (`AVES_SQLITE3_DLL`). The Microsoft `winsqlite3.dll` is not a substitute.
@@ -97,6 +98,12 @@ No host fixture can prove these; `rules.md` marks them `M` or `native`.
   both steps must land.
 - **R2** — return to the home screen after the wallpaper was hidden; it must show
   the photo, never the grey placeholder.
+- **`NAV-1` / `NAV-2`** — double-tap the wallpaper to open the view, then press
+  back: it must land on the launcher's home screen (with the configured warning
+  when "back twice to exit" is on). From the view, 「Open wallpaper groups」 must
+  push the playing group's page; back must return to the view, and the view's
+  back must then leave to the desktop. Open the view from the group page's menu:
+  back must return to the group page.
 
 ## 6. Gates before a commit
 

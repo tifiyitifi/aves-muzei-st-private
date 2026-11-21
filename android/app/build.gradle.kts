@@ -195,6 +195,13 @@ android {
             "x86" to 3,
             "x86_64" to 4
         )
+        // `--target-platform` narrows the bundled native libraries without creating an ABI-split
+        // output, so an output filter alone would miss the offset for those builds.
+        val targetPlatformAbi = mapOf(
+            "android-arm" to "armeabi-v7a",
+            "android-arm64" to "arm64-v8a",
+            "android-x64" to "x86_64"
+        )[project.findProperty("target-platform") as String?]
 
         applicationVariants.all {
             println("Application variant applicationId=$applicationId name=$name")
@@ -203,7 +210,7 @@ android {
             resValue("string", "search_provider", "${applicationId}.search_provider")
 
             outputs.forEach { output ->
-                val abi = output.filters.find { it.filterType == "ABI" }?.identifier
+                val abi = output.filters.find { it.filterType == "ABI" }?.identifier ?: targetPlatformAbi
                 val baseAbiVersionCode = abiCodes[abi]
                 if (baseAbiVersionCode != null) {
                     val versionCodeOverride = versionCode * 100 + baseAbiVersionCode

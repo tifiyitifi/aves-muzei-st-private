@@ -117,6 +117,25 @@ void main() {
       expect(await driftDb.countEntries(), 5);
     });
 
+    test('keeps an image and a video that share a content id', () async {
+      // MediaStore numbers its collections independently: id 501 can name both
+      // a photo and a clip. Deduplicating on the bare id used to drop one of
+      // them before the database ever saw it.
+      final image = entry(1, contentId: 501);
+      final video = entry(2, contentId: 501).copyWith(
+        uri: 'content://media/external/video/media/501',
+        path: '/album/2.mp4',
+        sourceMimeType: 'video/mp4',
+      );
+      final store = _ScriptedMediaStore()..entries = {image, video};
+      final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);
+
+      expect(await discoverer.importAll(onProgress: (_) {}), 2);
+      expect(await driftDb.countEntries(), 2);
+      final rows = await driftDb.loadEntriesByUris({image.uri, video.uri});
+      expect(rows.map((row) => row.sourceMimeType).toSet(), {'image/jpeg', 'video/mp4'});
+    });
+
     test('signals the first batch before the rest is written', () async {
       final store = _ScriptedMediaStore()..entries = {for (var id = 1; id <= 10; id++) entry(id)};
       final discoverer = PagedDiscoverer(mediaStore: store, database: driftDb);

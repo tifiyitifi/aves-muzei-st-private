@@ -6,7 +6,8 @@ import 'package:aves/widgets/explorer/explorer_page.dart';
 import 'package:aves/widgets/filter_grids/albums_page.dart';
 import 'package:aves/widgets/filter_grids/countries_page.dart';
 import 'package:aves/widgets/filter_grids/tags_page.dart';
-import 'package:aves_model/aves_model.dart';import 'package:flutter_test/flutter_test.dart';
+import 'package:aves_model/aves_model.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../common.dart';
@@ -77,6 +78,16 @@ void main() {
 
     expect(settings.drawerPageBookmarks, const [AlbumListPage.routeName, ExplorerPage.routeName]);
     expect(marker(await SharedPreferences.getInstance()), isTrue);
+  });
+
+  test('the marker is internal to the settings key space', () async {
+    await DrawerPageSeed().markConfigured();
+
+    expect(settings.export(), isNot(contains(SettingKeys.drawerPagesInitializedKey)));
+
+    await settings.reset(includeInternalKeys: false);
+
+    expect(marker(await SharedPreferences.getInstance()), isTrue, reason: 'import/reset must not resurrect the backfill');
   });
 
   test('the marking is idempotent', () async {

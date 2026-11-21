@@ -116,9 +116,10 @@ class GroupedWallpaperStateStore {
 
   /// How long a lock request stays meaningful.
   ///
-  /// The bar shows a pending lock for 30 seconds, so a request from far longer
-  /// ago belongs to a tap the user has already seen fail.
-  static const Duration lockRequestMaxAge = Duration(minutes: 10);
+  /// This matches the notification's pending-lock window: after it the bar no
+  /// longer shows a lock, so adopting a request would silently lock a group
+  /// the user has already seen fail.
+  static const Duration lockRequestMaxAge = Duration(seconds: 30);
 
   /// Drops the request once the lock is persisted.
   Future<void> clearLockRequest() => _deleteQuietly(lockRequestFile);
@@ -360,6 +361,7 @@ class GroupedWallpaperStateStore {
         groupedWallpaperLog.w('failed to list ${dir.path} for temporary files', error, stack);
       }
     }
+
     await sweep(tmpDir);
     await sweep(root);
     await sweep(framesDir, recursive: true);

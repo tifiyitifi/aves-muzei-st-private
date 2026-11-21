@@ -40,6 +40,8 @@ class MetaSettingsSeeder {
     SettingKeys.platformLongPressTimeoutMillisKey,
     // debug
     SettingKeys.debugShowViewerTilesKey,
+    // fork one-time gates, not user settings
+    SettingKeys.drawerPagesInitializedKey,
   };
 
   final SettingsStore legacy;
@@ -61,11 +63,7 @@ class MetaSettingsSeeder {
     final existing = meta.getKeys();
     // the gate lives in the legacy store's SharedPreferences but is not a
     // setting: never copy it into the metadata store
-    final keys = legacy
-        .getKeys()
-        .where((key) => !_skippedInternalKeys.contains(key))
-        .where((key) => key != SettingsEngineGate.key && !existing.contains(key))
-        .toList();
+    final keys = legacy.getKeys().where((key) => !_skippedInternalKeys.contains(key)).where((key) => key != SettingsEngineGate.key && !existing.contains(key)).toList();
     var copied = 0;
     for (final key in keys) {
       final value = legacy.get(key);

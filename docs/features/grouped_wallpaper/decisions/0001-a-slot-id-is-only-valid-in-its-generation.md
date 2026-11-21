@@ -26,8 +26,13 @@ returns:
   height, quarter turns).
 
 Dart builds the slot from that snapshot and injects it for the drawn id. It never
-resolves the id against a `state.json` written by another generation. When no
+resolves an id from another generation against the current `state.json`. When no
 renderer runs, the baked `current` is the fallback.
+
+Exception: an older native snapshot can lack the slot metadata. In that case the
+last resort is `slotById(displayed.slot)` on the current state; a pruned id falls
+back to `current`. This is a compatibility path for an incomplete snapshot, not
+a general id lookup, and it must not be used when metadata is available.
 
 ## Alternatives rejected
 

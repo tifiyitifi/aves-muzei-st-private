@@ -25,6 +25,10 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: long press opens an immersive artwork view, and the artwork can be panned to its uncropped edges even at 1x
 - Muzei wallpaper: auto-advance ordering (always in order / new photos then random / always random) on its own page
 - Session restore: a plain launch reopens the last top-level page and its media-set filters after the process was killed in the background
+- Batch processing: copy & share a selection, with reusable action profiles, a temporary output folder and a retention period
+- Batch processing: each result remembers its source and actions, so it can replace the original or be moved back later
+- Navigation drawer: the page list is editable, with the fork's visible range and wallpaper pages as options
+- Grouped wallpaper: the wallpaper groups page is reachable from the drawer, and the artwork view can open the photo's album and locate it in the gallery
 
 ### Changed
 
@@ -42,6 +46,8 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: resetting the My photos filters asks for confirmation, with a "don't ask again" option and matching switches in Settings → Advanced
 - Muzei wallpaper: deleting a photo from the viewer opened by "touch to view" advances in My photos mode, and asks only for a single picture (original or copy, with different wording); the normal gallery viewer is unchanged
 - Muzei wallpaper: double tap and three-finger actions belong to the desktop wallpaper only, and the gesture label now reads "Open to view"
+- Grouped wallpaper: double tap opens the immersive artwork view and a three-finger tap moves to the next photo
+- Grouped wallpaper: after a step that bakes a new frame, the view reads the baked frame instead of a stale one
 
 ### Fixed
 
@@ -49,6 +55,9 @@ All notable changes to this project will be documented in this file.
 - Muzei wallpaper: editing the inactive source no longer rebakes or advances the wallpaper, and a single picture no longer inherits the My photos filters
 - Muzei wallpaper: the album page no longer reads "no albums" on a paged library when no media-set view had loaded the album list yet
 - Collection: an `OR` filter swallowed the filters ANDed after it in paged queries
+- Batch processing: a failed rename keeps both the old and the new result instead of deleting the only copy
+- Batch processing: system back cannot dismiss the progress dialog while a job is still writing, and a failed write keeps the result row
+- Database: an image and a video sharing a MediaStore number are kept as two rows instead of being merged
 
 ## <a id="v1.15.5"></a>[v1.15.5] - 2026-10-02
 

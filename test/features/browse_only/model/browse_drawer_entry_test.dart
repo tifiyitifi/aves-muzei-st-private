@@ -1,4 +1,5 @@
 import 'package:aves/features/browse_only/model/browse_drawer_entry.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/trash.dart';
@@ -41,7 +42,13 @@ void main() {
     expect(browseDrawerEntryEnabled(browsing: true, route: CollectionPage.routeName, filters: {MimeFilter.video}), isFalse);
     expect(browseDrawerEntryEnabled(browsing: true, route: CollectionPage.routeName, filters: {FavouriteFilter.instance}), isFalse);
     expect(browseDrawerEntryEnabled(browsing: true, route: CollectionPage.routeName, filters: {TrashFilter.instance}), isFalse);
-    for (final route in [CountryListPage.routeName, PlaceListPage.routeName, TagListPage.routeName, SearchPage.routeName]) {
+    for (final route in [
+      CountryListPage.routeName,
+      PlaceListPage.routeName,
+      TagListPage.routeName,
+      SearchPage.routeName,
+      GroupedWallpaperPage.routeName,
+    ]) {
       expect(browseDrawerEntryEnabled(browsing: true, route: route), isFalse, reason: route);
     }
   });

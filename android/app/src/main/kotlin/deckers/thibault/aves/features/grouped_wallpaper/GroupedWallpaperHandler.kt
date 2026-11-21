@@ -365,7 +365,8 @@ class GroupedWallpaperHandler(
         )
     }
 
-    private fun stateRoot(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {        result.success(GroupedWallpaperStateFile.ensureRoot(context).absolutePath)
+    private fun stateRoot(@Suppress("unused_parameter") call: MethodCall, result: MethodChannel.Result) {
+        result.success(GroupedWallpaperStateFile.ensureRoot(context).absolutePath)
     }
 
     /**

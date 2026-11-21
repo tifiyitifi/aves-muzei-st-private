@@ -4,10 +4,11 @@ Date: 2026-11-21
 
 ## Context
 
-A double tap or a three-finger tap on the grouped wallpaper opens the view page
-through a cold-start intent (`GroupedWallpaperAppBridge.requestView`). The
-notification body opens the same route. A gesture has no Activity of its own, so
-the app has to decide what the user returns to.
+The view gesture (double tap by default; three-finger tap opens the next photo)
+on the grouped wallpaper opens the view page through a cold-start intent
+(`GroupedWallpaperAppBridge.requestView`). The notification body opens the same
+route. A gesture has no Activity of its own, so the app has to decide what the
+user returns to.
 
 The same view is also opened from the group page's menu, where the group page is
 already the page the user came from.

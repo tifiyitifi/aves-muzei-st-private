@@ -120,7 +120,14 @@ class BatchResultsService implements BatchResultRecorder {
       }
       final oldExtension = _extensionOf(old.resultFileName);
       final parkedName = '$base$batchResultSupersededSuffix${oldExtension.isEmpty ? '' : '.$oldExtension'}';
-      final parked = await _rename(entry, parkedName) ?? entry;
+      final parked = await _rename(entry, parkedName);
+      if (parked == null) {
+        // Without the rename the old file still owns the plain name. Deleting
+        // it here would lose the only copy of that version, so both files and
+        // both rows stay for the next run to reconcile.
+        batchLog.w('failed to park superseded result ${entry.uri}; keeping both files');
+        continue;
+      }
       final deleted = await native.deleteResult(parked.uri);
       if (!deleted) {
         batchLog.w('failed to delete superseded result ${parked.uri}');
@@ -178,7 +185,14 @@ class BatchResultsService implements BatchResultRecorder {
       final ok = await native.replaceWithResult(sourceUri: result.sourceUri, resultUri: result.resultUri);
       if (!ok) continue;
       replaced++;
-      await _refreshSource(result);
+      try {
+        await _refreshSource(result);
+      } catch (error, stack) {
+        // The bytes are already replaced. Keep the row so the user can retry or
+        // move the result back instead of losing track of what was consumed.
+        batchLog.w('failed to refresh source ${result.sourceUri} after replacement', error, stack);
+        continue;
+      }
       await resultStore.deleteResults([result.id]);
     }
     if (replaced > 0) unawaited(reloadPagedSummaries());

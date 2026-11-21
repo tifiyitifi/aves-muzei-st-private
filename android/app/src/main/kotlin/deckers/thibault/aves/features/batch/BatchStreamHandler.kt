@@ -40,6 +40,13 @@ class BatchStreamHandler(private val context: Context, private val arguments: An
         }
     }
 
+    override fun onCancel(arguments: Any?) {
+        // A Dart subscription can be cancelled without the job reaching its
+        // own endOfStream; release the id here too so it cannot leak.
+        endOfStream()
+        super.onCancel(arguments)
+    }
+
     override fun endOfStream() {
         jobId?.let(cancelledJobs::remove)
         super.endOfStream()

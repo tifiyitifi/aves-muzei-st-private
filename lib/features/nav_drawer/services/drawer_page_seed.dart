@@ -30,8 +30,18 @@ class DrawerPageSeed {
         if (stored != null) {
           final next = withLegacyVisibleRange(stored);
           if (!listEquals(next, stored)) {
+            // Wait for the list before writing the marker. The store write is
+            // asynchronous (a database put in v2); a failed or interrupted
+            // backfill must be retried on the next launch instead of being
+            // recorded as done.
+            final written = await settings.store.setStringList(SettingKeys.drawerPageBookmarksKey, next);
+            if (!written) {
+              navDrawerLog.w('failed to backfill the drawer page list; will retry');
+              return;
+            }
+            settings.notifyKeyChange(SettingKeys.drawerPageBookmarksKey, stored, next, recordRecent: false);
+            settings.notifyListeners();
             navDrawerLog.i('backfilled the visible-range drawer entry');
-            settings.drawerPageBookmarks = next;
           }
         }
       }

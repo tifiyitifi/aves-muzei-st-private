@@ -350,7 +350,7 @@ object GroupedWallpaperStateFile {
                         height = raw.optInt("height", 0),
                         quarterTurns = raw.optInt("quarterTurns", 0),
                     ),
-                );
+                )
             }
         }
         val gestures = json.optJSONObject("gestures")

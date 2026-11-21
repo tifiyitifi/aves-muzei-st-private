@@ -63,10 +63,10 @@ class PagedDiscoverer {
     LocalMediaDb? database,
     Future<void> Function(AvesEntry entry)? catalogEntry,
     this.streamIdleTimeout = importStreamIdleTimeout,
-  })  : mediaStore = mediaStore ?? mediaStoreService,
-        mediaFetch = mediaFetch ?? mediaFetchService,
-        database = database ?? localMediaDb,
-        catalogEntry = catalogEntry ?? ((entry) => _defaultCatalogEntry(database ?? localMediaDb, entry));
+  }) : mediaStore = mediaStore ?? mediaStoreService,
+       mediaFetch = mediaFetch ?? mediaFetchService,
+       database = database ?? localMediaDb,
+       catalogEntry = catalogEntry ?? ((entry) => _defaultCatalogEntry(database ?? localMediaDb, entry));
 
   /// Inline catalog for steady-state changes, mirroring the legacy
   /// `refreshUris -> analyze` path: fresh rows arrive tagged and dated instead
@@ -310,18 +310,23 @@ class PagedDiscoverer {
       entry.contentId = _usableContentId(entry.contentId);
       byUri.update(entry.uri, (v) => _merge(v, entry), ifAbsent: () => entry);
     }
-    final byContentId = <int, AvesEntry>{};
+    // MediaStore numbers its image and video collections independently, so the
+    // bare id is an identity only within one collection. The mime type keeps a
+    // same-numbered image and video as two files.
+    final byContentId = <({int id, String mimeType}), AvesEntry>{};
     final uriOnly = <String, AvesEntry>{};
     for (final entry in byUri.values) {
       final contentId = entry.contentId;
       if (contentId != null) {
-        byContentId.update(contentId, (v) => _newest(v, entry), ifAbsent: () => entry);
+        final key = (id: contentId, mimeType: entry.sourceMimeType);
+        byContentId.update(key, (v) => _newest(v, entry), ifAbsent: () => entry);
       } else {
         uriOnly[entry.uri] = entry;
       }
     }
-    final knownByContentId = {
-      for (final entry in await database.loadEntriesByContentIds(byContentId.keys.toSet())) entry.contentId: entry,
+    final knownByContentId = <({int id, String mimeType}), AvesEntry>{
+      for (final entry in await database.loadEntriesByContentIds(byContentId.keys.map((key) => key.id).toSet()))
+        if (entry.contentId != null) (id: entry.contentId!, mimeType: entry.sourceMimeType): entry,
     };
     final knownByUri = uriOnly.isEmpty
         ? <String, AvesEntry>{}
@@ -415,7 +420,7 @@ class PagedDiscoverer {
     final contentId = _usableContentId(entry.contentId);
     entry.contentId = contentId;
     entry.origin = EntryOrigins.mediaStoreContent;
-    var existing = contentId == null ? null : (await database.loadEntriesByContentIds({contentId})).firstOrNull;
+    var existing = contentId == null ? null : (await database.loadEntriesByContentIds({contentId})).where((row) => row.sourceMimeType == entry.sourceMimeType).firstOrNull;
     // A row stored without a content id (or before the provider reported one)
     // is still the same row: match it by URI before inserting a duplicate.
     existing ??= await _mediaStoreRowByUri(uri);

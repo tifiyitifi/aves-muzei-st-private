@@ -40,12 +40,14 @@ object BatchResultFiles {
             runCatching {
                 val input = resolver.openInputStream(result) ?: return@runCatching false
                 input.use {
-                    ParcelFileDescriptor.fromFd(fd).use { dup ->
-                        ParcelFileDescriptor.AutoCloseOutputStream(dup).use { output ->
-                            it.copyTo(output)
-                            output.flush()
-                            output.fd.sync()
-                        }
+                    // `fd` is a raw descriptor owned by the caller. Wrap it only
+                    // to duplicate it, then close our copy and leave the caller's
+                    // descriptor alone; closing both used to close one fd twice.
+                    val dup = ParcelFileDescriptor.fromFd(fd).dup()
+                    ParcelFileDescriptor.AutoCloseOutputStream(dup).use { output ->
+                        it.copyTo(output)
+                        output.flush()
+                        output.fd.sync()
                     }
                 }
                 true
@@ -53,7 +55,7 @@ object BatchResultFiles {
         }
         if (!replaced) return false
 
-        if (resultInfo.displayName != sourceInfo?.displayName) {
+        val renamed = if (resultInfo.displayName != sourceInfo?.displayName) {
             runCatching {
                 resolver.update(
                     source,
@@ -64,12 +66,18 @@ object BatchResultFiles {
                     null,
                     null,
                 )
-            }
+                true
+            }.getOrDefault(false)
+        } else {
+            true
         }
 
         // The result was consumed; a copy in the recycle bin would only be noise.
-        runCatching { resolver.delete(result, null, null) }
-        return true
+        // Both steps must report success: a row is deleted on the Dart side only
+        // when the file was really consumed, so a failed rename or delete keeps
+        // the result actionable instead of leaving an orphan file or a stale name.
+        val consumed = runCatching { resolver.delete(result, null, null) > 0 }.getOrDefault(false)
+        return renamed && consumed
     }
 
     /** Deletes a result file permanently. */

@@ -16,7 +16,7 @@ void main() {
     final db = AppDatabase(
       NativeDatabase.memory(
         setup: (raw) {
-          raw.execute('CREATE TABLE entry (id INTEGER NOT NULL PRIMARY KEY, contentId INTEGER, uri TEXT, path TEXT, origin INTEGER, stackTileId INTEGER)');
+          raw.execute('CREATE TABLE entry (id INTEGER NOT NULL PRIMARY KEY, contentId INTEGER, uri TEXT, path TEXT, origin INTEGER, stackTileId INTEGER, sourceMimeType TEXT)');
           raw.execute('CREATE TABLE dateTaken (id INTEGER NOT NULL PRIMARY KEY, dateMillis INTEGER)');
           raw.execute('CREATE TABLE metadata (id INTEGER NOT NULL PRIMARY KEY, mimeType TEXT, rating INTEGER)');
           raw.execute('CREATE TABLE address (id INTEGER NOT NULL PRIMARY KEY, addressLine TEXT)');
@@ -29,13 +29,13 @@ void main() {
           // same content id (a different origin, so a different identity) and a
           // row with no content id.
           raw.execute(
-            'INSERT INTO entry (id, contentId, uri, path, origin) VALUES '
-            "(10, 501, 'content://media/external/images/media/501', '/a/1.jpg', ${EntryOrigins.mediaStoreContent}), "
-            "(11, 501, 'content://media/external/images/media/501', '/a/1.jpg', ${EntryOrigins.mediaStoreContent}), "
-            "(12, 501, 'content://media/external_primary/images/media/501', '/a/1.jpg', ${EntryOrigins.mediaStoreContent}), "
-            '(13, 502, NULL, NULL, ${EntryOrigins.mediaStoreContent}), '
-            "(14, 502, 'file:///vault/1.jpg', '/vault/1.jpg', ${EntryOrigins.vault}), "
-            '(15, NULL, NULL, NULL, ${EntryOrigins.mediaStoreContent})',
+            'INSERT INTO entry (id, contentId, uri, path, origin, sourceMimeType) VALUES '
+            "(10, 501, 'content://media/external/images/media/501', '/a/1.jpg', ${EntryOrigins.mediaStoreContent}, 'image/jpeg'), "
+            "(11, 501, 'content://media/external/images/media/501', '/a/1.jpg', ${EntryOrigins.mediaStoreContent}, 'image/jpeg'), "
+            "(12, 501, 'content://media/external_primary/images/media/501', '/a/1.jpg', ${EntryOrigins.mediaStoreContent}, 'image/jpeg'), "
+            "(13, 502, NULL, NULL, ${EntryOrigins.mediaStoreContent}, 'image/jpeg'), "
+            "(14, 502, 'file:///vault/1.jpg', '/vault/1.jpg', ${EntryOrigins.vault}, 'image/jpeg'), "
+            '(15, NULL, NULL, NULL, ${EntryOrigins.mediaStoreContent}, NULL)',
           );
           raw.execute('UPDATE entry SET stackTileId = 12 WHERE id = 15');
 
@@ -70,11 +70,11 @@ void main() {
     expect((await db.customSelect('SELECT id FROM dateTaken WHERE id != 10').get()), isEmpty);
   });
 
-  test('the media store identity is unique after the upgrade', () async {
+  test('the media store identity is unique within a collection after the upgrade', () async {
     final db = AppDatabase(
       NativeDatabase.memory(
         setup: (raw) {
-          raw.execute('CREATE TABLE entry (id INTEGER NOT NULL PRIMARY KEY, contentId INTEGER, uri TEXT, path TEXT, origin INTEGER, stackTileId INTEGER)');
+          raw.execute('CREATE TABLE entry (id INTEGER NOT NULL PRIMARY KEY, contentId INTEGER, uri TEXT, path TEXT, origin INTEGER, stackTileId INTEGER, sourceMimeType TEXT)');
           raw.execute('PRAGMA user_version = 15');
         },
       ),
@@ -83,14 +83,22 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     await db.customStatement(
-      'INSERT INTO entry (id, contentId, origin) VALUES (1, 501, ${EntryOrigins.mediaStoreContent})',
+      "INSERT INTO entry (id, contentId, origin, sourceMimeType) VALUES (1, 501, ${EntryOrigins.mediaStoreContent}, 'image/jpeg')",
     );
 
     // A second report of the same file is rejected by the index, and the writer
     // turns that into a no-op insert instead of a second row.
     expect(
-      () => db.customStatement('INSERT INTO entry (id, contentId, origin) VALUES (2, 501, ${EntryOrigins.mediaStoreContent})'),
+      () => db.customStatement("INSERT INTO entry (id, contentId, origin, sourceMimeType) VALUES (2, 501, ${EntryOrigins.mediaStoreContent}, 'image/jpeg')"),
       throwsA(predicate((error) => error.toString().contains('UNIQUE'))),
     );
+
+    // Images and videos number their rows independently, so the same number in
+    // the other collection is a different file and must survive.
+    await db.customStatement(
+      "INSERT INTO entry (id, contentId, origin, sourceMimeType) VALUES (3, 501, ${EntryOrigins.mediaStoreContent}, 'video/mp4')",
+    );
+    final rows = await db.customSelect('SELECT id FROM entry ORDER BY id').get();
+    expect([for (final row in rows) row.data['id']], [1, 3]);
   });
 }

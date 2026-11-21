@@ -5,7 +5,10 @@ import 'package:material_ui/material_ui.dart';
 /// Live progress for one batch job.
 ///
 /// The dialog owns no controller: the caller creates and disposes it, so closing
-/// the dialog can never cancel a job that the native side is still writing.
+/// the dialog can never cancel a job that the native side is still writing. The
+/// pop guard keeps a system back gesture from hiding progress while that job
+/// runs; the cancel button is the way out, and it stops the job on the native
+/// side before the close button appears.
 class BatchProgressDialog extends StatelessWidget {
   final BatchRunController controller;
 
@@ -14,46 +17,41 @@ class BatchProgressDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return AlertDialog(
-      title: Text(l10n.batchProgressTitle),
-      content: ListenableBuilder(
-        listenable: controller,
-        builder: (context, child) {
-          final total = controller.total;
-          final processed = controller.done + controller.failed;
-          final summary = switch (controller.state) {
-            BatchRunState.done => l10n.batchDoneSummary(controller.done, total),
-            BatchRunState.cancelled => l10n.batchCancelledSummary(controller.done, total),
-            _ => l10n.batchProgressSummary(controller.done, total, controller.failed),
-          };
-          return Column(
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, child) => PopScope(
+        canPop: !controller.isRunning,
+        child: AlertDialog(
+          title: Text(l10n.batchProgressTitle),
+          content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              LinearProgressIndicator(value: total > 0 ? processed / total : null),
+              LinearProgressIndicator(value: controller.total > 0 ? (controller.done + controller.failed) / controller.total : null),
               const SizedBox(height: 12),
-              Text(summary),
+              Text(
+                switch (controller.state) {
+                  BatchRunState.done => l10n.batchDoneSummary(controller.done, controller.total),
+                  BatchRunState.cancelled => l10n.batchCancelledSummary(controller.done, controller.total),
+                  _ => l10n.batchProgressSummary(controller.done, controller.total, controller.failed),
+                },
+              ),
             ],
-          );
-        },
-      ),
-      actions: [
-        ListenableBuilder(
-          listenable: controller,
-          builder: (context, child) {
-            if (controller.isRunning) {
-              return TextButton(
+          ),
+          actions: [
+            if (controller.isRunning)
+              TextButton(
                 onPressed: controller.cancel,
                 child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
-              );
-            }
-            return TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(MaterialLocalizations.of(context).closeButtonLabel),
-            );
-          },
+              )
+            else
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(MaterialLocalizations.of(context).closeButtonLabel),
+              ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

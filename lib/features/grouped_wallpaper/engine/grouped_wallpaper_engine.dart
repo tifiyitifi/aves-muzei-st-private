@@ -110,15 +110,15 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     int Function()? now,
     bool Function()? groupSwitchLocked,
     this.prewarm = true,
-  })  : frameBaker = frameBaker ?? NativeFrameBaker(platform),
-        planStore = planStore ?? SavedGroupedWallpaperPlanStore(),
-        entrySource = entrySource ?? GroupedWallpaperDbEntrySource(),
-        nameResolver = nameResolver ?? resolveGroupedWallpaperName,
-        link = link ?? wallpaperEngineLink,
-        history = history ?? DbGroupedWallpaperHistoryRecorder(),
-        now = now ?? (() => DateTime.now().millisecondsSinceEpoch),
-        _groupSwitchLocked = groupSwitchLocked ?? (() => wallpaperLockService.groupSwitchLocked),
-        _targetSize = targetSize ?? platform.wallpaperSize;
+  }) : frameBaker = frameBaker ?? NativeFrameBaker(platform),
+       planStore = planStore ?? SavedGroupedWallpaperPlanStore(),
+       entrySource = entrySource ?? GroupedWallpaperDbEntrySource(),
+       nameResolver = nameResolver ?? resolveGroupedWallpaperName,
+       link = link ?? wallpaperEngineLink,
+       history = history ?? DbGroupedWallpaperHistoryRecorder(),
+       now = now ?? (() => DateTime.now().millisecondsSinceEpoch),
+       _groupSwitchLocked = groupSwitchLocked ?? (() => wallpaperLockService.groupSwitchLocked),
+       _targetSize = targetSize ?? platform.wallpaperSize;
 
   bool get isAttached => _store != null;
 
@@ -646,7 +646,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// that completed in between cannot move the lock to another group.
   ///
   /// @return whether a request was waiting.
-  Future<bool> _adoptLockRequest() async {    final store = _store;
+  Future<bool> _adoptLockRequest() async {
+    final store = _store;
     if (store == null) return false;
     final groupId = await store.readLockRequest();
     if (groupId == null) return false;
@@ -1041,8 +1042,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             // The walk belongs to the group that is playing: a record left over
             // from the group the user switched away from can never be shown by
             // this range, and keeping it would make "previous" a dead button.
-            ...(previous?.recent ?? const <GroupedWallpaperRecentEntry>[])
-                .where((candidate) => candidate.entryId != entry.id && candidate.groupId == plan.group.id),
+            ...(previous?.recent ?? const <GroupedWallpaperRecentEntry>[]).where((candidate) => candidate.entryId != entry.id && candidate.groupId == plan.group.id),
           ].take(GroupedWallpaperState.maxRecent).toList(growable: false)
         : previous?.recent ?? const <GroupedWallpaperRecentEntry>[];
     return GroupedWallpaperLockFrame(
@@ -1110,7 +1110,6 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       return GroupedWallpaperSyncResult.unchanged;
     });
   }
-
 
   /// Steps the wallpaper through the usage history by [delta].
   ///
@@ -1242,7 +1241,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     // The queue is starting over: the frame baked for the old one is no longer
     // the step this group will take.
     _prewarmed = null;
-    final base = previous?.copyWith(
+    final base =
+        previous?.copyWith(
           status: GroupedWallpaperStatus.ready,
           current: -1,
           previous: -1,
@@ -1437,6 +1437,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       if (id != null && !usedIds.contains(id)) return id;
       return _nextSlotId(usedIds);
     }
+
     var pickCursor = state.cursor;
     var newestEntryId = state.newestEntryId;
 
@@ -1673,24 +1674,24 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
 
   /// Every file the state may draw, for the frame cache's eviction.
   static Set<String> _framePaths(GroupedWallpaperState state) => {
-        for (final slot in state.slots) ..._slotPaths(slot),
-        if (state.lock != null) state.lock!.photo,
-      };
+    for (final slot in state.slots) ..._slotPaths(slot),
+    if (state.lock != null) state.lock!.photo,
+  };
 
   static Set<String> _slotPaths(GroupedWallpaperSlot slot) => {
-        slot.photo,
-        if (slot.effectHome.isNotEmpty) slot.effectHome,
-        if (slot.effectLock.isNotEmpty) slot.effectLock,
-      };
+    slot.photo,
+    if (slot.effectHome.isNotEmpty) slot.effectHome,
+    if (slot.effectLock.isNotEmpty) slot.effectLock,
+  };
 
   /// [_framePaths] plus the prewarmed frame, which no slot references yet.
   ///
   /// Without this the eviction would treat the frame baked ahead of the queue as
   /// garbage and delete it before the step that needs it.
   Set<String> _keepPaths(GroupedWallpaperState state) => {
-        ..._framePaths(state),
-        if (_prewarmed != null) ..._slotPaths(_prewarmed!),
-      };
+    ..._framePaths(state),
+    if (_prewarmed != null) ..._slotPaths(_prewarmed!),
+  };
 
   /// How many frames the cache keeps, so stepping back stays instant.
   ///
@@ -1759,10 +1760,10 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       effectLockPath: store.frameFile(entry.id, key, GroupedWallpaperStateStore.slotEffectLockFileName).path,
     );
     String effectPathOf(GroupedFrameEffect effect) => switch (effect) {
-          GroupedFrameEffect.none => '',
-          GroupedFrameEffect.home => store.framePath(entry.id, key, GroupedWallpaperStateStore.slotEffectHomeFileName),
-          GroupedFrameEffect.lock => store.framePath(entry.id, key, GroupedWallpaperStateStore.slotEffectLockFileName),
-        };
+      GroupedFrameEffect.none => '',
+      GroupedFrameEffect.home => store.framePath(entry.id, key, GroupedWallpaperStateStore.slotEffectHomeFileName),
+      GroupedFrameEffect.lock => store.framePath(entry.id, key, GroupedWallpaperStateStore.slotEffectLockFileName),
+    };
     final photo = store.framePath(entry.id, key, GroupedWallpaperStateStore.framePhotoFileName);
     if (photo.isEmpty) throw GroupedWallpaperBakeException('the frame of entry ${entry.id} was not written');
     // An identity effect is the sharp frame: leaving the path empty makes the
@@ -1932,7 +1933,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     final wide = capability.bakesWide;
     // Logged on change only: the launcher reports its step on every frame, and
     // the capability is re-read on every sync.
-    final line = 'capability host=${capability.host.name} launcher=${capability.launcherPackage} '
+    final line =
+        'capability host=${capability.host.name} launcher=${capability.launcherPackage} '
         'span=${capability.scrollSpan} step=${capability.scrollStep} moved=${capability.scrollOffsetMoved} wide=$wide';
     if (line != _lastCapabilityLog) {
       _lastCapabilityLog = line;
@@ -2028,7 +2030,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   Future<GroupedWallpaperSyncResult> _recordEmptyGroup(GroupedWallpaperStateStore store, GroupedWallpaperPlan plan, GroupedWallpaperState? previous) async {
     final recorded = previous != null && previous.groupId == plan.group.id && previous.status == GroupedWallpaperStatus.emptyGroup && previous.count == 0;
     if (!recorded) {
-      final next = previous?.copyWith(
+      final next =
+          previous?.copyWith(
             version: GroupedWallpaperState.currentVersion,
             generation: previous.generation + 1,
             status: GroupedWallpaperStatus.emptyGroup,
@@ -2162,8 +2165,8 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
   /// Resolved on write so the native side never has to know an `@arbKey` or the
   /// app language: the bar keeps working while the app is not running.
   List<GroupedWallpaperGroup> _groupSnapshot(GroupedWallpaperPlan plan) => [
-        for (final group in plan.groups) GroupedWallpaperGroup(id: group.id, number: group.number, name: _resolveName(group)),
-      ];
+    for (final group in plan.groups) GroupedWallpaperGroup(id: group.id, number: group.number, name: _resolveName(group)),
+  ];
 
   Future<Size> _resolveTargetSize() async {
     final requested = await _targetSize();

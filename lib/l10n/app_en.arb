@@ -2901,6 +2901,21 @@
     }
   },
   "batchResultsUnknownSource": "Source folder unknown",
+  "batchResultsSubtitle": "{source} · {status} · {date}",
+  "@batchResultsSubtitle": {
+    "description": "Where a result came from, its state, and when it was written.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "batchResultsStatusPending": "waiting",
   "batchResultsStatusApplied": "applied",
   "batchResultsStatusDiscarded": "discarded",

@@ -1,3 +1,4 @@
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -41,6 +42,11 @@ bool browseDrawerEntryEnabled({
     case VisibleRangePage.routeName:
       // The range narrows catalogued browsing, and the browser does not consult
       // it: opening the page mid-import would edit a condition nothing applies.
+      return false;
+    case GroupedWallpaperPage.routeName:
+      // Groups are assembled from catalogued entries; mid-import the page would
+      // show a partial library. Unlike the Muzei source page this one is not
+      // served by the browser.
       return false;
     default:
       return false;

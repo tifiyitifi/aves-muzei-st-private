@@ -31,18 +31,11 @@ if (-not (Test-Path -LiteralPath $denyFile)) {
 }
 
 # The account name is the most likely word to survive a pasted path that lost
-# its drive letter. Keep it in the local list, not in this script.
-if ((Test-Path -LiteralPath $denyFile) -and $env:USERNAME -and $env:USERNAME.Length -ge 3) {
-    $present = $false
-    foreach ($line in (Get-Content -LiteralPath $denyFile -Encoding UTF8)) {
-        if ($line.Trim() -eq $env:USERNAME) { $present = $true; break }
-    }
-    if (-not $present) {
-        Add-Content -LiteralPath $denyFile -Value "" -Encoding UTF8
-        Add-Content -LiteralPath $denyFile -Value "# Machine account (added automatically; remove if it is a common word)" -Encoding UTF8
-        Add-Content -LiteralPath $denyFile -Value $env:USERNAME -Encoding UTF8
-        Write-Host "updated: $denyFile (machine account added)"
-    }
+# its drive letter, but deny-list terms are case-insensitive substrings: a short
+# or common account name would block ordinary words in every edited file. Leave
+# the choice (and the wording) to the user instead of writing it automatically.
+if ((Test-Path -LiteralPath $denyFile) -and $env:USERNAME) {
+    Write-Host "note: add your machine account to $denyFile only if it is not a common word (deny-list terms are case-insensitive substrings)"
 }
 
 $hooks = git -C $root config --get core.hooksPath 2>$null

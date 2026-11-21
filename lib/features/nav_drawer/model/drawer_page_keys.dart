@@ -1,8 +1,12 @@
+import 'package:aves_model/aves_model.dart';
+
 /// `SharedPreferences` key owned by the navigation-drawer pages slice.
 ///
 /// It lives outside both settings stores (like the settings-engine gate), so the
 /// one-time backfill survives a switch between the legacy (v1) and metadata (v2)
-/// engines, and an export/import of the settings does not resurrect it.
+/// engines, and an export/import of the settings does not resurrect it. The key
+/// is registered as internal in [SettingKeys] so export/import/reset and the
+/// v1 -> v2 seeder leave it alone.
 abstract final class DrawerPageKeys {
   /// Whether a stored drawer page list has already been checked for the legacy
   /// fixed visible-range entry.
@@ -12,5 +16,5 @@ abstract final class DrawerPageKeys {
   /// flag makes the backfill a one-time event: once e.g. the editor has saved the
   /// user's own removals, the missing entry is a decision, not an un-migrated
   /// list.
-  static const String forkPagesInitialized = 'nav_drawer.fork_pages_initialized';
+  static const String forkPagesInitialized = SettingKeys.drawerPagesInitializedKey;
 }

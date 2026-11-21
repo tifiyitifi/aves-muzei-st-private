@@ -57,13 +57,16 @@ class _BatchResultsBannerSliverState extends State<BatchResultsBannerSliver> {
     if (confirmed != true || !mounted) return;
 
     setState(() => _busy = true);
-    final replaced = await widget.service.replaceWithSource(targets);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(replaced > 0 ? l10n.batchResultsReplaced(replaced) : l10n.batchResultsActionFailed)),
-    );
-    await _load();
+    try {
+      final replaced = await widget.service.replaceWithSource(targets);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(replaced > 0 ? l10n.batchResultsReplaced(replaced) : l10n.batchResultsActionFailed)),
+      );
+      await _load();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _moveBack() async {
@@ -84,13 +87,16 @@ class _BatchResultsBannerSliverState extends State<BatchResultsBannerSliver> {
     if (confirmed != true || !mounted) return;
 
     setState(() => _busy = true);
-    final moved = await widget.service.moveBack(targets);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(moved > 0 ? l10n.batchResultsMoved(moved) : l10n.batchResultsActionFailed)),
-    );
-    await _load();
+    try {
+      final moved = await widget.service.moveBack(targets);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(moved > 0 ? l10n.batchResultsMoved(moved) : l10n.batchResultsActionFailed)),
+      );
+      await _load();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _manage() async {

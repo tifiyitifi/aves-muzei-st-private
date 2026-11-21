@@ -14,6 +14,8 @@ class SettingKeys {
     recentTagsKey,
     // debug
     debugShowViewerTilesKey,
+    // fork one-time gate, kept out of the settings key space
+    drawerPagesInitializedKey,
   };
 
   static const _widgetKeyPrefix = 'widget_';
@@ -65,6 +67,11 @@ class SettingKeys {
   static const drawerTypeBookmarksKey = 'drawer_type_bookmarks';
   static const drawerAlbumBookmarksKey = 'drawer_album_bookmarks';
   static const drawerPageBookmarksKey = 'drawer_page_bookmarks';
+
+  /// One-time backfill gate owned by the navigation-drawer pages slice. It lives
+  /// in `SharedPreferences` outside both settings stores, so it must not be
+  /// exported, imported, reset or seeded like a user setting.
+  static const drawerPagesInitializedKey = 'nav_drawer.fork_pages_initialized';
   static const bottomNavigationActionsKey = 'bottom_navigation_actions';
 
   // collection

@@ -45,6 +45,7 @@ void main() {
   late _FakeEntryStore store;
   late _FakeMediaEdit mediaEdit;
   late _FakeBatchService native;
+  late _FakeMediaFetch fetch;
   late BatchResultsService service;
 
   setUp(() async {
@@ -59,12 +60,13 @@ void main() {
     store = _FakeEntryStore();
     mediaEdit = _FakeMediaEdit(store);
     native = _FakeBatchService();
+    fetch = _FakeMediaFetch(store);
     service = BatchResultsService(
       provider: provider,
       native: native,
       mediaEdit: mediaEdit,
       db: mediaDb,
-      fetch: _FakeMediaFetch(store),
+      fetch: fetch,
       batchSettingsOverride: batchSettings,
     );
 
@@ -187,6 +189,18 @@ void main() {
     expect(await (await service.store()).getResults(), hasLength(1));
   });
 
+  test('a source that cannot be refreshed keeps the result row', () async {
+    store.entries['content://media/200'] = _entry(200, 'content://media/200', '$_resultsDir/1.jpg');
+    await record();
+    final row = (await (await service.store()).getResults()).single;
+    fetch.failing = true;
+
+    // The source bytes were replaced; an unreadable row must not turn that into
+    // a lost result with no action left to take.
+    expect(await service.replaceWithSource([row]), 1);
+    expect(await (await service.store()).getResults(), hasLength(1));
+  });
+
   test('moving back uses the source folder and renames on conflict', () async {
     store.entries['content://media/200'] = _entry(200, 'content://media/200', '$_resultsDir/1.jpg');
     await record();
@@ -218,6 +232,22 @@ void main() {
 
     expect(await service.pruneMissingResults(), 0);
     expect(await (await service.store()).getResults(), hasLength(1));
+  });
+
+  test('leaves both files when the superseded result cannot be parked', () async {
+    store.entries['content://media/200'] = _entry(200, 'content://media/200', '$_resultsDir/1.jpg');
+    await record(resultUri: 'content://media/200', resultName: '1.jpg');
+
+    mediaEdit.renameSucceeds = false;
+    store.entries['content://media/201'] = _entry(201, 'content://media/201', '$_resultsDir/1 (1).jpg');
+    await record(resultUri: 'content://media/201', resultPath: '$_resultsDir/1 (1).jpg', resultName: '1 (1).jpg', index: 1);
+
+    // Parking never happened, so nothing may be deleted: the old result keeps
+    // its plain name and the new one stays under the suffixed name.
+    final paths = store.entries.values.map((entry) => entry.path).toList(growable: false);
+    expect(paths, containsAll(['$_resultsDir/1.jpg', '$_resultsDir/1 (1).jpg']));
+    expect(native.deleted, isEmpty);
+    expect(await (await service.store()).getResults(), hasLength(2));
   });
 
   test('leaves both files when the superseded result cannot be deleted', () async {
@@ -281,11 +311,15 @@ class _FakeEntryStore {
 
 class _FakeMediaFetch extends Fake implements MediaFetchService {
   final _FakeEntryStore store;
+  bool failing = false;
 
   new(this.store);
 
   @override
-  Future<AvesEntry?> getEntry(String uri, String? mimeType, {bool allowUnsized = false}) async => store.entries[uri];
+  Future<AvesEntry?> getEntry(String uri, String? mimeType, {bool allowUnsized = false}) async {
+    if (failing) throw StateError('media store unavailable');
+    return store.entries[uri];
+  }
 }
 
 class _FakeMediaEdit extends Fake implements MediaEditService {
@@ -296,6 +330,7 @@ class _FakeMediaEdit extends Fake implements MediaEditService {
   final List<MapEntry<AvesEntry, String>> renames = [];
   final List<Map<String, Iterable<AvesEntry>>> moves = [];
   NameConflictStrategy? lastConflict;
+  bool renameSucceeds = true;
 
   @override
   String get newOpId => 'op';
@@ -328,6 +363,10 @@ class _FakeMediaEdit extends Fake implements MediaEditService {
   Stream<MoveOpEvent> rename({String? opId, required Map<AvesEntry, String> entriesToNewName}) async* {
     for (final entry in entriesToNewName.entries) {
       renames.add(MapEntry(entry.key, entry.value));
+      if (!renameSucceeds) {
+        yield MoveOpEvent(success: false, skipped: false, uri: entry.key.uri, newFields: const {}, deleted: false);
+        continue;
+      }
       final newUri = store.nextUri();
       final directory = entry.key.directory ?? _resultsDir;
       final renamed = entry.key.copyWith(uri: newUri, path: '$directory/${entry.value}');

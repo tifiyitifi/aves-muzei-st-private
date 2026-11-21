@@ -82,6 +82,22 @@ class _NavigationDrawerEditorPageState extends State<NavigationDrawerEditorPage>
     });
   }
 
+  /// Saves the edited lists and only then marks the one-time backfill as seen.
+  ///
+  /// The list write is asynchronous in v2; marking first would let a failed
+  /// write look like a deliberate removal that the backfill must not undo.
+  Future<void> _persistPages() async {
+    settings.drawerTypeBookmarks = _typeItems.where(_visibleTypes.contains).toList();
+    settings.drawerAlbumBookmarks = _albumItems;
+    final pages = _pageItems.where(_visiblePages.contains).toList();
+    final previous = settings.getStringList(SettingKeys.drawerPageBookmarksKey);
+    final written = await settings.store.setStringList(SettingKeys.drawerPageBookmarksKey, pages);
+    if (!written) return;
+    settings.notifyKeyChange(SettingKeys.drawerPageBookmarksKey, previous, pages, recordRecent: false);
+    settings.notifyListeners();
+    await drawerPageSeed.markConfigured();
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -124,12 +140,9 @@ class _NavigationDrawerEditorPageState extends State<NavigationDrawerEditorPage>
         ),
         body: PopScope(
           onPopInvokedWithResult: (didPop, result) {
-            settings.drawerTypeBookmarks = _typeItems.where(_visibleTypes.contains).toList();
-            settings.drawerAlbumBookmarks = _albumItems;
-            settings.drawerPageBookmarks = _pageItems.where(_visiblePages.contains).toList();
             // The user has now seen the editable list: a page left out of it is a
             // decision, so the one-time visible-range backfill must not undo it.
-            unawaited(drawerPageSeed.markConfigured());
+            unawaited(_persistPages());
           },
           child: SafeArea(
             bottom: false,

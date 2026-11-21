@@ -64,9 +64,7 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
     await widget.service.pruneMissingResults();
     final store = await widget.service.store();
     final results = await store.getResults();
-    final entries = results.isEmpty
-        ? <AvesEntry>{}
-        : await localMediaDb.loadEntriesByUris(results.map((result) => result.resultUri).toSet());
+    final entries = results.isEmpty ? <AvesEntry>{} : await localMediaDb.loadEntriesByUris(results.map((result) => result.resultUri).toSet());
     if (!mounted) return;
     setState(() {
       _results = results;
@@ -103,14 +101,17 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
     if (!await _confirm(l10n.batchResultsReplaceConfirmTitle, l10n.batchResultsReplaceConfirmBody(targets.length))) return;
 
     setState(() => _busy = true);
-    final replaced = await widget.service.replaceWithSource(targets);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(replaced > 0 ? l10n.batchResultsReplaced(replaced) : l10n.batchResultsActionFailed)),
-    );
-    _selection.browse();
-    await _load();
+    try {
+      final replaced = await widget.service.replaceWithSource(targets);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(replaced > 0 ? l10n.batchResultsReplaced(replaced) : l10n.batchResultsActionFailed)),
+      );
+      _selection.browse();
+      await _load();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _moveBack() async {
@@ -120,14 +121,17 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
     if (!await _confirm(l10n.batchResultsMoveBackConfirmTitle, l10n.batchResultsMoveBackConfirmBody(targets.length))) return;
 
     setState(() => _busy = true);
-    final moved = await widget.service.moveBack(targets);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(moved > 0 ? l10n.batchResultsMoved(moved) : l10n.batchResultsActionFailed)),
-    );
-    _selection.browse();
-    await _load();
+    try {
+      final moved = await widget.service.moveBack(targets);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(moved > 0 ? l10n.batchResultsMoved(moved) : l10n.batchResultsActionFailed)),
+      );
+      _selection.browse();
+      await _load();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<bool> _confirm(String title, String body) async {
@@ -186,8 +190,7 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
                   enabled: results != null && results.isNotEmpty && selected.length < results.length,
                   child: _menuRow(Icons.select_all, l10n.menuActionSelectAll),
                 ),
-                if (selecting)
-                  PopupMenuItem(value: _ResultsAction.selectNone, child: _menuRow(Icons.deselect, l10n.menuActionSelectNone)),
+                if (selecting) PopupMenuItem(value: _ResultsAction.selectNone, child: _menuRow(Icons.deselect, l10n.menuActionSelectNone)),
                 const PopupMenuDivider(),
                 PopupMenuItem(
                   value: _ResultsAction.replace,
@@ -199,8 +202,7 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
                   enabled: _targets.any((result) => result.canMoveBack),
                   child: _menuRow(Icons.drive_file_move_outline, l10n.batchResultsMoveBack),
                 ),
-                if (selecting)
-                  PopupMenuItem(value: _ResultsAction.keep, child: _menuRow(Icons.visibility_outlined, l10n.batchResultsNotNow)),
+                if (selecting) PopupMenuItem(value: _ResultsAction.keep, child: _menuRow(Icons.visibility_outlined, l10n.batchResultsNotNow)),
               ],
             ),
         ],
@@ -235,13 +237,11 @@ class _BatchResultsPageState extends State<BatchResultsPage> {
         borderRadius: BorderRadius.circular(6),
         child: SizedBox.square(
           dimension: extent,
-          child: entry != null
-              ? ThumbnailImage(entry: entry, extent: extent, devicePixelRatio: MediaQuery.devicePixelRatioOf(context))
-              : Icon(Icons.broken_image_outlined, color: theme.colorScheme.onSurfaceVariant),
+          child: entry != null ? ThumbnailImage(entry: entry, extent: extent, devicePixelRatio: MediaQuery.devicePixelRatioOf(context)) : Icon(Icons.broken_image_outlined, color: theme.colorScheme.onSurfaceVariant),
         ),
       ),
       title: Text(result.resultFileName, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text('$source · ${_statusLabel(context, result.status)} · $createdAt', maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(l10n.batchResultsSubtitle(source, _statusLabel(context, result.status), createdAt), maxLines: 1, overflow: TextOverflow.ellipsis),
       selected: selected,
       trailing: _selection.isSelecting ? Checkbox(value: selected, onChanged: (_) => _selection.toggleSelection(result)) : null,
       onTap: () => _selection.isSelecting ? _selection.toggleSelection(result) : unawaited(_openEntry(result)),

@@ -95,3 +95,13 @@ over it, and backing out of that page SHALL land on the view again. A view opene
 from the group page SHALL keep that page below it and pop back to it.
 
 Rules: `NAV-1`, `NAV-2`.
+
+### FR-10 — The view hands the photo to the gallery
+
+WHEN the user opens the photo from the view, THE SYSTEM SHALL offer the viewer,
+the photo's own album and the group's whole media set. The album destination
+SHALL be the stored album the photo belongs to, never a path condition, and both
+gallery destinations SHALL reveal the photo in the list instead of starting at
+its top.
+
+Rules: `DEST-1`, `DEST-2`, `DEST-3`.

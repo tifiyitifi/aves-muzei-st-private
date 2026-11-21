@@ -11,3 +11,4 @@ Append-only. A decision keeps its text when it is reversed; it gains a
 | [0004](0004-a-step-that-baked-reads-the-baked-frame.md) | A step that baked reads the baked frame, not the renderer's stale slot |
 | [0005](0005-the-flash-is-a-launcher-cache-refreshed-by-a-re-apply.md) | The flash is a launcher cache refreshed by a re-apply, not the renderer |
 | [0006](0006-the-gesture-view-is-the-root-of-its-flow.md) | A gesture-opened view is the root of its flow, so back leaves to the desktop |
+| [0007](0007-the-album-destination-is-a-stored-album.md) | The album destination is the photo's stored album, not a path condition |

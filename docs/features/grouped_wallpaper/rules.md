@@ -78,3 +78,11 @@ it `superseded by <ID>` and leave the coverage that used to hold it.
 | --- | --- | --- | --- | --- | --- |
 | NAV-1 | A gesture or notification opens the view | The view is the entry page of a cold-start intent | WHEN a gesture or notification opens the view, THE SYSTEM SHALL make it the app's root route and SHALL leave to the desktop on back, honouring the double-back setting | a gesture comes from the desktop; returning there is where the user came from | `M` |
 | NAV-2 | The view asks for the group page | The group page is or is not below the view | WHEN the view is the root of its flow, 「Open wallpaper groups」 SHALL push the group page over it; WHEN the group page is already below, it SHALL pop back to it | a gesture-opened view has no page below it, while the group page's menu opens the view from itself | `F:grouped_wallpaper_view_actions_test#a gesture- or notification-opened view pushes the group page`; `F:grouped_wallpaper_view_actions_test#a view opened from the group page goes back` |
+
+## Destinations
+
+| ID | Case | Evidence | Behaviour | Why | Coverage |
+| --- | --- | --- | --- | --- | --- |
+| DEST-1 | The photo is opened in the viewer | The menu names the viewer, not the album it used to name | WHEN 「Open in viewer」 is chosen, THE SYSTEM SHALL open the app's viewer on the photo on screen | the old label said album while the action already opened the viewer | `M` |
+| DEST-2 | The photo's album is opened | The group's conditions are path filters | WHEN 「Open in album」 is chosen, THE SYSTEM SHALL open the stored album that contains the photo, SHALL NOT use a path condition, and SHALL reveal the photo in it | a path condition covers a folder tree, while the album is the one shelf the photo is filed under | `F:grouped_wallpaper_view_actions_test#the album target is the photo's stored album and locates it`; `F:grouped_wallpaper_view_actions_test#the album target needs a directory` |
+| DEST-3 | The whole group is opened | The view shows one photo of the group | WHEN 「View whole group」 is chosen, THE SYSTEM SHALL open the group's media set and SHALL reveal the photo on screen in it | the user came from that photo, not from the top of the list | `F:grouped_wallpaper_view_actions_test#the whole group target is the group media set and locates the photo` |

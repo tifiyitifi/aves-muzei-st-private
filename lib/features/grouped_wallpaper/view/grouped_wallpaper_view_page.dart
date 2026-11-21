@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:aves/app_mode.dart';
+import 'package:aves/features/collection_paging/lens/scope_registry.dart';
 import 'package:aves/features/collection_paging/view/viewer_delete_policy.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
@@ -12,7 +13,6 @@ import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_pad_config.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_view_group_target.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_group.dart';
-import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_empty_notice.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
@@ -38,8 +38,7 @@ import 'package:aves/features/muzei_wallpaper/view/wallpaper_artwork_panel.dart'
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/extensions/multipage.dart';
 import 'package:aves/model/entry/extensions/props.dart';
-import 'package:aves/model/filters/filters.dart';
-import 'package:aves/model/filters/mime.dart';
+import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/aves_app.dart';
@@ -47,7 +46,6 @@ import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/common/behaviour/pop/double_back.dart';
 import 'package:aves/widgets/common/behaviour/pop/scope.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
-import 'package:aves/widgets/navigation/nav_item.dart';
 import 'package:aves/widgets/viewer/action/entry_action_delegate.dart';
 import 'package:aves/widgets/viewer/entry_viewer_page.dart';
 import 'package:aves_model/aves_model.dart';
@@ -91,7 +89,8 @@ class GroupedWallpaperViewPage extends StatefulWidget {
 
 enum _ViewAction {
   openGroups,
-  openInGallery,
+  openInViewer,
+  openInAlbum,
   viewWholeGroup,
   share,
   history,
@@ -406,7 +405,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
 
   /// Opens the entry in the real viewer, where the user can share, inspect and
   /// zoom it with the gallery's own chrome.
-  Future<void> _openInGallery() async {
+  Future<void> _openInViewer() async {
     final entry = _entry;
     if (entry == null) {
       _showMissing();
@@ -420,6 +419,27 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     );
   }
 
+  /// Opens the album the photo belongs to, with the photo located in the list.
+  ///
+  /// The destination is the stored album, not the group's path condition: the
+  /// album is the one shelf the photo is filed under, while a condition covers a
+  /// whole folder tree.
+  Future<void> _openInAlbum() async {
+    final entry = _entry;
+    final album = entry?.directory;
+    if (entry == null || album == null) {
+      _showMissing();
+      return;
+    }
+    final source = context.read<CollectionSource>();
+    final target = groupedWallpaperAlbumTarget(entry, albumDisplayName: source.getStoredAlbumDisplayName(context, album));
+    if (target == null) {
+      _showMissing();
+      return;
+    }
+    await _openGallery(target);
+  }
+
   /// Opens the whole group's media set, not just this photo.
   ///
   /// The range is the group's own, so this is what the wallpaper may draw from;
@@ -430,11 +450,27 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     if (groupId == null || groupId.isEmpty || groupId == wallpaperGroupNoneId) return;
     final range = await wallpaperGroupController.groupRange(groupId, surface: _surface);
     if (!mounted) return;
-    final mediaSet = wallpaperMediaSetFilter(range);
-    _setSystemUiVisible(true);
-    await AvesNavItem(route: CollectionPage.routeName, filters: <CollectionFilter>{mediaSet ?? MimeFilter.image}).goTo(context, topLevel: false);
-    if (!mounted) return;
-    _setSystemUiVisible(false);
+    await _openGallery(groupedWallpaperWholeGroupTarget(range, entry: _entry));
+  }
+
+  /// Pushes a gallery collection, revealing [GroupedWallpaperGalleryTarget.locateUri].
+  ///
+  /// The reveal is the gallery's own `highlightTest`, so the list scrolls to the
+  /// photo and marks it wherever the user came from.
+  Future<void> _openGallery(GroupedWallpaperGalleryTarget target) async {
+    final source = context.read<CollectionSource>();
+    scopeRegistry.prewarm(source: source, filters: target.filters);
+    final locateUri = target.locateUri;
+    await _pushImmersive(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: CollectionPage.routeName),
+        builder: (_) => CollectionPage(
+          source: source,
+          filters: target.filters,
+          highlightTest: locateUri == null ? null : (entry) => entry.uri == locateUri,
+        ),
+      ),
+    );
   }
 
   /// Hands the photo to another app through the system chooser.
@@ -528,8 +564,10 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
           case GroupedWallpaperViewGroupNavigation.pushGroupPage:
             await _pushGroupPage();
         }
-      case _ViewAction.openInGallery:
-        await _openInGallery();
+      case _ViewAction.openInViewer:
+        await _openInViewer();
+      case _ViewAction.openInAlbum:
+        await _openInAlbum();
       case _ViewAction.viewWholeGroup:
         await _openWholeGroup();
       case _ViewAction.share:
@@ -864,9 +902,14 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
             child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
           ),
           PopupMenuItem(
-            value: _ViewAction.openInGallery,
+            value: _ViewAction.openInViewer,
             enabled: entry != null,
-            child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInGallery),
+            child: _menuRow(AIcons.image, l10n.groupedWallpaperViewOpenInViewer),
+          ),
+          PopupMenuItem(
+            value: _ViewAction.openInAlbum,
+            enabled: entry?.directory != null,
+            child: _menuRow(AIcons.album, l10n.groupedWallpaperViewOpenInAlbum),
           ),
           if (canOpenGroup)
             PopupMenuItem(
@@ -958,7 +1001,14 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
           return _padButton(
             tooltip: label,
             icon: groupedWallpaperPadActionIcon(action),
-            onPressed: entry != null ? () => unawaited(_onAction(_ViewAction.openInGallery)) : null,
+            onPressed: entry != null ? () => unawaited(_onAction(_ViewAction.openInViewer)) : null,
+            pending: false,
+          );
+        case GroupedWallpaperPadAction.openInAlbum:
+          return _padButton(
+            tooltip: label,
+            icon: groupedWallpaperPadActionIcon(action),
+            onPressed: entry?.directory != null ? () => unawaited(_onAction(_ViewAction.openInAlbum)) : null,
             pending: false,
           );
         case GroupedWallpaperPadAction.viewWholeGroup:
@@ -1114,7 +1164,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
                   title: title.isEmpty ? null : title,
                   status: status,
                   subtitle: subtitle,
-                  onViewArtwork: () => unawaited(_openInGallery()),
+                  onViewArtwork: () => unawaited(_openInViewer()),
                   onOpenWith: () => unawaited(_openWith()),
                   actions: _padConfig.usesBottomBar
                       ? <Widget>[

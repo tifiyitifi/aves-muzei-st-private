@@ -891,24 +891,39 @@ controls act on the decoy and are enabled as soon as the group has a lock range,
 so the first step bakes the frame the page was never able to show before.
 
 The menu is the group page's menu without the draft: open the groups, the
-gallery, the whole group, share, usage history, auto-advance, effects, gestures,
-the home/lock switch, the notification switch, **turn off grouped wallpaper** and
-the **group lock**, plus About. Effects bind to the group aggregate rather than
-the page's range controller, because effects are written straight through and
-never wait for "save changes". The gallery range switch is deliberately absent:
-this page is about the wallpaper, and the range switch lives where the range is
-managed.
+viewer, the photo's album, the whole group, share, usage history, auto-advance,
+effects, gestures, the home/lock switch, the notification switch, **turn off
+grouped wallpaper** and the **group lock**, plus About. Effects bind to the group
+aggregate rather than the page's range controller, because effects are written
+straight through and never wait for "save changes". The gallery range switch is
+deliberately absent: this page is about the wallpaper, and the range switch lives
+where the range is managed.
+
+The three ways into the gallery differ in what the user is handed:
+
+- **Viewer** — the app's own viewer on the photo, where sharing, inspection and
+  zoom live.
+- **Album** — the stored album that contains the photo, not the group's path
+  condition: a condition covers a folder tree, while the album is the one shelf
+  the photo is filed under. The album opens with the photo revealed.
+- **Whole group** — the group's media set on the surface the page describes. It
+  also opens with the photo revealed, because the user came from it, not from the
+  top of the list.
+
+The reveal is `CollectionPage`'s existing locate behaviour (`highlightTest`), so
+the list scrolls to the photo and marks it. Both destinations are pushed over the
+view, so back returns to the photo.
 
 **The menu is ordered by reach, not by section.** The popup opens beside the
 pad, which rests in the middle-to-lower part of a one-handed screen, so its
 entries nearest the centre are the easiest to hit and its ends are the hardest.
 Frequency therefore descends outwards: the set-up-once entries (gestures, pad
 buttons, auto-advance, the notification switch) sit at the far top; the actions
-the page exists for (effects, usage history, open in gallery, the whole group,
-share) straddle the centre; opening the group page drops below them, because the
-back button and the page underneath already do that; and the deliberate entries
-(the group lock, turn off grouped wallpaper) sink to the bottom, with About
-last. Do not re-sort it alphabetically or by section name.
+the page exists for (effects, usage history, open in viewer, open in album, the
+whole group, share) straddle the centre; opening the group page drops below them,
+because the back button and the page underneath already do that; and the
+deliberate entries (the group lock, turn off grouped wallpaper) sink to the
+bottom, with About last. Do not re-sort it alphabetically or by section name.
 
 **Delete** is the pad's bottom button and the viewer's own delete action
 (recycling bin, confirmations, progress report, source refresh), with a policy

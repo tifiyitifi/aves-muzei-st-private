@@ -27,6 +27,7 @@ IconData groupedWallpaperPadActionIcon(GroupedWallpaperPadAction action) => swit
   GroupedWallpaperPadAction.disableWallpaper => AIcons.wallpaperStopped,
   GroupedWallpaperPadAction.toggleLock => AIcons.locked,
   GroupedWallpaperPadAction.about => AIcons.info,
+  GroupedWallpaperPadAction.openInAlbum => AIcons.album,
 };
 
 String groupedWallpaperPadActionLabel(BuildContext context, GroupedWallpaperPadAction action) {
@@ -39,7 +40,8 @@ String groupedWallpaperPadActionLabel(BuildContext context, GroupedWallpaperPadA
     GroupedWallpaperPadAction.previousGroup => l10n.wallpaperGroupPreviousGroup,
     GroupedWallpaperPadAction.delete => l10n.groupedWallpaperViewDelete,
     GroupedWallpaperPadAction.openGroups => l10n.groupedWallpaperViewOpenGroups,
-    GroupedWallpaperPadAction.openInGallery => l10n.groupedWallpaperViewOpenInGallery,
+    GroupedWallpaperPadAction.openInGallery => l10n.groupedWallpaperViewOpenInViewer,
+    GroupedWallpaperPadAction.openInAlbum => l10n.groupedWallpaperViewOpenInAlbum,
     GroupedWallpaperPadAction.viewWholeGroup => l10n.groupedWallpaperViewWholeGroup,
     GroupedWallpaperPadAction.share => l10n.groupedWallpaperViewShare,
     GroupedWallpaperPadAction.history => l10n.wallpaperGroupHistoryTitle,

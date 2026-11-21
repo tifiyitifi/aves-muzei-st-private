@@ -1,10 +1,25 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_actions.dart';
+import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/entry/origins.dart';
+import 'package:aves/model/filters/container/set_and.dart';
+import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/model/filters/mime.dart';
+import 'package:aves/model/filters/path.dart';
+import 'package:aves/services/common/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
 /// The view's previous/next controls must be greyed out exactly when the engine
 /// would refuse to move, so a tap is never a silent no-op.
 void main() {
+  setUpAll(() {
+    getIt.registerLazySingleton<p.Context>(() => p.Context(style: p.Style.posix));
+  });
+
+  tearDownAll(getIt.reset);
+
   const currentEntry = 7;
 
   GroupedWallpaperState state({
@@ -130,6 +145,72 @@ void main() {
         groupedWallpaperViewGroupNavigation(groupPageBelow: false),
         GroupedWallpaperViewGroupNavigation.pushGroupPage,
       );
+    });
+  });
+
+  group('open in gallery', () {
+    AvesEntry photo({String? path = '/storage/emulated/0/DCIM/Camera/IMG_1.jpg'}) => AvesEntry(
+      id: 1,
+      uri: 'content://media/1',
+      path: path,
+      contentId: 1,
+      pageId: null,
+      sourceMimeType: 'image/jpeg',
+      width: 300,
+      height: 100,
+      sourceRotationDegrees: 0,
+      sizeBytes: 1,
+      sourceTitle: 'IMG_1',
+      dateAddedSecs: 1,
+      dateModifiedMillis: 2,
+      sourceDateTakenMillis: 3,
+      durationMillis: 0,
+      trashed: false,
+      origin: EntryOrigins.mediaStoreContent,
+    );
+
+    // A path condition covers a folder tree, while the photo's album is the one
+    // shelf it is filed under: the album destination must not be a path filter.
+    test("the album target is the photo's stored album and locates it", () {
+      final entry = photo();
+      final target = groupedWallpaperAlbumTarget(entry, albumDisplayName: 'Camera')!;
+
+      expect(target.filters, hasLength(1));
+      final filter = target.filters.single;
+      expect(filter, isA<StoredAlbumFilter>());
+      expect(filter, isNot(isA<PathFilter>()));
+      expect((filter as StoredAlbumFilter).album, '/storage/emulated/0/DCIM/Camera');
+      expect(filter.displayName, 'Camera');
+      expect(target.locateUri, entry.uri);
+    });
+
+    test('the album target needs a directory', () {
+      expect(groupedWallpaperAlbumTarget(photo(path: null), albumDisplayName: null), isNull);
+      expect(groupedWallpaperAlbumTarget(null, albumDisplayName: null), isNull);
+    });
+
+    test('the whole group target is the group media set and locates the photo', () {
+      final entry = photo();
+      final range = VisibleRange(
+        id: 'g.range',
+        scope: VisibleRangeScope.wallpaper,
+        ownerId: 'g',
+        baseFilters: {PathFilter('/pictures')},
+      );
+      final target = groupedWallpaperWholeGroupTarget(range, entry: entry);
+
+      expect(target.filters, hasLength(1));
+      final filter = target.filters.single;
+      expect(filter, isA<SetAndFilter>());
+      expect((filter as SetAndFilter).innerFilters, containsAll({MimeFilter.image, PathFilter('/pictures')}));
+      expect(target.locateUri, entry.uri);
+    });
+
+    test('an unresolved photo locates nothing in the whole group', () {
+      final target = groupedWallpaperWholeGroupTarget(null, entry: null);
+
+      expect(target.filters, {MimeFilter.image});
+      expect(target.locateUri, isNull);
     });
   });
 }

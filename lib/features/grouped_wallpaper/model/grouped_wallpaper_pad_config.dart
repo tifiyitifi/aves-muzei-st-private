@@ -15,6 +15,9 @@ enum GroupedWallpaperPadAction {
   previousGroup,
   delete,
   openGroups,
+
+  /// Opens the viewer. The stored name predates the label: renaming a member
+  /// would silently empty every saved pad, so it keeps its original name.
   openInGallery,
   viewWholeGroup,
   share,
@@ -26,7 +29,12 @@ enum GroupedWallpaperPadAction {
   toggleNotification,
   disableWallpaper,
   toggleLock,
-  about;
+  about,
+
+  /// Opens the album that contains the photo on screen.
+  ///
+  /// Appended at the end so every stored pad keeps its positions.
+  openInAlbum;
 
   static GroupedWallpaperPadAction? tryParse(Object? value) {
     for (final action in values) {

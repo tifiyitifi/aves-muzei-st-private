@@ -1,5 +1,11 @@
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_view_group_target.dart';
+import 'package:aves/features/grouped_wallpaper/model/wallpaper_media_set.dart';
+import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/model/entry/entry.dart';
+import 'package:aves/model/filters/covered/stored_album.dart';
+import 'package:aves/model/filters/filters.dart';
+import 'package:aves/model/filters/mime.dart';
 
 /// Whether the "previous photo" control would do anything.
 ///
@@ -48,3 +54,34 @@ enum GroupedWallpaperViewGroupNavigation {
 /// detail pushed over it, so returning from the group page lands here again.
 GroupedWallpaperViewGroupNavigation groupedWallpaperViewGroupNavigation({required bool groupPageBelow}) =>
     groupPageBelow ? GroupedWallpaperViewGroupNavigation.back : GroupedWallpaperViewGroupNavigation.pushGroupPage;
+
+/// A gallery view the view page hands the photo on screen to.
+///
+/// [filters] is the scope the collection page opens, and [locateUri] is the entry
+/// it reveals there. The reveal is the app's existing locate behaviour, so the
+/// user lands on the photo they were just looking at instead of the list's top.
+typedef GroupedWallpaperGalleryTarget = ({Set<CollectionFilter> filters, String? locateUri});
+
+/// The album the photo on screen belongs to, for the「open in album」action.
+///
+/// This is the stored album, not the group's path condition: a condition covers
+/// a folder tree, while the album is the one shelf the photo is filed under. Null
+/// when the entry or its directory is unknown, because there is nothing to open.
+GroupedWallpaperGalleryTarget? groupedWallpaperAlbumTarget(AvesEntry? entry, {required String? albumDisplayName}) {
+  final album = entry?.directory;
+  if (entry == null || album == null || album.isEmpty) return null;
+  return (
+    filters: {StoredAlbumFilter(album, albumDisplayName)},
+    locateUri: entry.uri,
+  );
+}
+
+/// The group's whole media set, on the surface the view is describing.
+///
+/// The range is the group's own, so this is what the wallpaper may draw from; the
+/// collection page still joins the gallery's visible range, because browsing says
+/// so everywhere else too.
+GroupedWallpaperGalleryTarget groupedWallpaperWholeGroupTarget(VisibleRange? range, {required AvesEntry? entry}) => (
+  filters: {wallpaperMediaSetFilter(range) ?? MimeFilter.image},
+  locateUri: entry?.uri,
+);

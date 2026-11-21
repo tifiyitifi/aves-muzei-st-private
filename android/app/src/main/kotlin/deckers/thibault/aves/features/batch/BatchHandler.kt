@@ -35,7 +35,11 @@ class BatchHandler(private val context: Context) : MethodChannel.MethodCallHandl
             return
         }
         Log.i(LOG_TAG, "cancelling batch job $jobId")
-        BatchStreamHandler.cancelledJobs.add(jobId)
+        // Only a running job can be cancelled; a late request must not leave an
+        // id behind that a reused id would inherit.
+        if (BatchStreamHandler.activeJobs.contains(jobId)) {
+            BatchStreamHandler.cancelledJobs.add(jobId)
+        }
         result.success(null)
     }
 

@@ -154,7 +154,10 @@ class RefraBakeRunner(private val context: Context) {
         val decoded = decodeWithFactory(uri)
         if (decoded != null) return applyExifOrientation(uri, decoded)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            return decodeWithImageDecoder(uri)
+            // `ImageDecoder` does not apply the EXIF orientation on its own. The
+            // result's EXIF is later rewritten to NORMAL, so skipping this step
+            // would bake the source's rotation into the wrong pixels for good.
+            return decodeWithImageDecoder(uri)?.let { applyExifOrientation(uri, it) }
         }
         return null
     }
@@ -287,7 +290,10 @@ class RefraBakeRunner(private val context: Context) {
         val base = sourceName.substringBeforeLast('.', sourceName).ifBlank { "batch" }
         val date = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val name = pattern.replace("{name}", base).replace("{date}", date).ifBlank { base }
-        return if (name.contains('.')) name else "$name.${format.fileExtension}"
+        // A dot anywhere is not an extension: `2024.05.vacation` used to be left
+        // without one. Only a known image extension at the end counts.
+        val lower = name.lowercase(Locale.US)
+        return if (KNOWN_EXTENSIONS.any { lower.endsWith(".$it") }) name else "$name.${format.fileExtension}"
     }
 
     /**
@@ -299,26 +305,32 @@ class RefraBakeRunner(private val context: Context) {
         var path = ""
         var size = 0L
         var mime = ""
-        runCatching {
-            context.contentResolver.query(
-                uri,
-                arrayOf(
-                    MediaStore.MediaColumns.DISPLAY_NAME,
-                    MediaStore.MediaColumns.DATA,
-                    MediaStore.MediaColumns.SIZE,
-                    MediaStore.MediaColumns.MIME_TYPE,
-                ),
-                null,
-                null,
-                null,
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    name = cursor.getString(0) ?: name
-                    path = cursor.getString(1) ?: ""
-                    size = if (cursor.isNull(2)) 0L else cursor.getLong(2)
-                    mime = cursor.getString(3) ?: ""
+        // The row exists before the provider has filled SIZE/DATA. Read it back a
+        // few times so a fresh result is not recorded as a 0-byte, pathless file.
+        for (attempt in 0 until DESCRIBE_ATTEMPTS) {
+            runCatching {
+                context.contentResolver.query(
+                    uri,
+                    arrayOf(
+                        MediaStore.MediaColumns.DISPLAY_NAME,
+                        MediaStore.MediaColumns.DATA,
+                        MediaStore.MediaColumns.SIZE,
+                        MediaStore.MediaColumns.MIME_TYPE,
+                    ),
+                    null,
+                    null,
+                    null,
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        name = cursor.getString(0) ?: name
+                        path = cursor.getString(1) ?: ""
+                        size = if (cursor.isNull(2)) 0L else cursor.getLong(2)
+                        mime = cursor.getString(3) ?: ""
+                    }
                 }
             }
+            if (path.isNotEmpty() && size > 0) break
+            if (attempt < DESCRIBE_ATTEMPTS - 1) Thread.sleep(DESCRIBE_RETRY_MILLIS)
         }
         return BatchOutputFile(
             uri = uri.toString(),
@@ -347,5 +359,13 @@ class RefraBakeRunner(private val context: Context) {
                 null,
             )
         }
+    }
+
+    companion object {
+        private const val DESCRIBE_ATTEMPTS = 3
+        private const val DESCRIBE_RETRY_MILLIS = 50L
+
+        /** Extensions a result name may already end with, so none is appended twice. */
+        private val KNOWN_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "heic", "heif", "avif", "jxl", "bmp", "gif", "tif", "tiff", "dng")
     }
 }

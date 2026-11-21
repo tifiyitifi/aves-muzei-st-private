@@ -62,6 +62,11 @@ Future<bool> renameAlbumDirectoryInstantly(
     album: plan.album,
     destination: plan.destination,
   );
+  if (!rowsMoved) {
+    // The folder moved but the rows did not. Re-read the paths instead of
+    // leaving the album state on a directory that no longer exists.
+    await pagedDiscoverer.syncIfChanged();
+  }
   if (context.mounted) {
     delegate.showFeedback(
       context,

@@ -60,6 +60,7 @@ Future<bool> renameStoredAlbumFromDatabase(
 
   final source = context.read<CollectionSource>();
   var movedAny = false;
+  var movedTotal = 0;
 
   if (scope.entryCount > 0) {
     final feed = AlbumContentsEntryFeed(
@@ -81,12 +82,15 @@ Future<bool> renameStoredAlbumFromDatabase(
         entriesByDestination: {plan.destination: batch.toSet()},
         // The legacy cleanup runs once, after every entry moved.
         cleanupEmptySourceDirectories: false,
+        onMoveOutcome: (moved) => movedTotal += moved,
       );
       if (!completed) {
         // A refused batch would fail identically on the next one: stop instead
         // of asking for the same permission once per batch.
         run.cancel();
-      } else {
+      } else if (movedTotal > 0) {
+        // `completed` is also true when every item failed; only an actual move
+        // may point the album at the destination.
         movedAny = true;
       }
     });

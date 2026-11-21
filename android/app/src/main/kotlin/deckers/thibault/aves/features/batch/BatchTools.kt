@@ -55,8 +55,11 @@ private object RefraFilterTool : BatchTool {
     override val id = "refra.filter"
 
     override fun apply(pipeline: BatchPipeline, settings: Map<String, Any?>) {
-        val name = settings["name"] as? String ?: return
-        val type = ImageFilterTypes.values().firstOrNull { it.name.equals(name, ignoreCase = true) } ?: return
+        // A known tool with an unknown setting must fail the item, not silently
+        // produce an image without the requested adjustment.
+        val name = settings["name"] as? String ?: throw IllegalArgumentException("filter tool needs a name")
+        val type = ImageFilterTypes.values().firstOrNull { it.name.equals(name, ignoreCase = true) }
+            ?: throw IllegalArgumentException("unknown filter name=$name")
         if (type == ImageFilterTypes.Original) return
         val intensity = (settings["intensity"] as? Number)?.toFloat() ?: 1f
         pipeline.adjustments.add(AdjustmentCodec.filterAdjustment(type.createImageFilter(), intensity))
@@ -67,8 +70,9 @@ private object RefraAdjustTool : BatchTool {
     override val id = "refra.adjust"
 
     override fun apply(pipeline: BatchPipeline, settings: Map<String, Any?>) {
-        val name = settings["name"] as? String ?: return
-        val type = VariableFilterTypes.values().firstOrNull { it.name.equals(name, ignoreCase = true) } ?: return
+        val name = settings["name"] as? String ?: throw IllegalArgumentException("adjust tool needs a name")
+        val type = VariableFilterTypes.values().firstOrNull { it.name.equals(name, ignoreCase = true) }
+            ?: throw IllegalArgumentException("unknown adjust name=$name")
         val value = (settings["value"] as? Number)?.toFloat() ?: type.createDefaultFilter().value
         pipeline.adjustments.add(type.createFilter(value))
     }
@@ -95,8 +99,9 @@ private object RefraCropTool : BatchTool {
     override val id = "refra.crop"
 
     override fun apply(pipeline: BatchPipeline, settings: Map<String, Any?>) {
-        val rect = (settings["rect"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() } ?: return
-        if (rect.size != 4) return
+        val rect = (settings["rect"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() }
+            ?: throw IllegalArgumentException("crop tool needs a rect")
+        if (rect.size != 4) throw IllegalArgumentException("crop rect needs 4 coordinates, got ${rect.size}")
         pipeline.adjustments.add(Crop(RectF(rect[0], rect[1], rect[2], rect[3])))
     }
 }

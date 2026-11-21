@@ -7,12 +7,16 @@ import 'package:aves/features/refra_edit/db/refra_edit_store.dart';
 import 'package:aves/features/refra_edit/log.dart';
 import 'package:aves/features/refra_edit/model/refra_edit_paths.dart';
 import 'package:aves/features/refra_edit/model/refra_edit_session.dart';
+import 'package:aves/model/db/db.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
+import 'package:aves/services/app_service.dart';
 import 'package:aves/services/common/channel.dart';
 import 'package:aves/services/common/image_op_events.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves/services/media/enums.dart';
+import 'package:aves/services/media/media_edit_service.dart';
+import 'package:aves/services/media/media_fetch_service.dart';
 import 'package:collection/collection.dart';
 
 /// A record and the media entry it resolves to, for thumbnails and the viewer.
@@ -33,9 +37,20 @@ class RefraEditService {
 
   final AppDatabaseProvider? provider;
 
-  const new({this.provider});
+  /// Seams for tests: production callers omit them and use the process-wide
+  /// services, while a fixture can drive the flow against an in-memory database.
+  final MediaEditService? mediaEdit;
+  final MediaFetchService? fetch;
+  final LocalMediaDb? database;
+  final AppService? app;
+
+  const new({this.provider, this.mediaEdit, this.fetch, this.database, this.app});
 
   AppDatabaseProvider get _provider => provider ?? getIt<AppDatabaseProvider>();
+  MediaEditService get _mediaEdit => mediaEdit ?? mediaEditService;
+  MediaFetchService get _fetch => fetch ?? mediaFetchService;
+  LocalMediaDb get _db => database ?? localMediaDb;
+  AppService get _app => app ?? appService;
 
   Future<RefraEditStore> _store() async => RefraEditStore(await _provider.open());
 
@@ -65,8 +80,8 @@ class RefraEditService {
     final stagingDir = await stagingDirectory();
 
     MoveOpEvent? copied;
-    await for (final event in mediaEditService.move(
-      opId: mediaEditService.newOpId,
+    await for (final event in _mediaEdit.move(
+      opId: _mediaEdit.newOpId,
       entriesByDestination: {
         stagingDir: [source],
       },
@@ -124,7 +139,7 @@ class RefraEditService {
   /// that produced nothing drops its copy instead of leaving it behind.
   Future<bool> openBuiltIn(RefraEditSession session) async {
     final before = await _folderUris();
-    final result = await appService.refraEdit(session.stagedUri, refraEditStagingRelativeRoot);
+    final result = await _app.refraEdit(session.stagedUri, refraEditStagingRelativeRoot);
     await _recordNewOutputs(session, before, RefraEditOutputKind.builtIn);
     final error = result['error'] as String?;
     if (error != null) {
@@ -142,7 +157,7 @@ class RefraEditService {
   /// A cancelled run that produced nothing drops its copy instead of leaving it behind.
   Future<bool> openExternal(RefraEditSession session) async {
     final before = await _folderUris();
-    final fields = await appService.edit(session.stagedUri, session.sourceMimeType);
+    final fields = await _app.edit(session.stagedUri, session.sourceMimeType);
     await _recordNewOutputs(session, before, RefraEditOutputKind.external);
     if (fields['error'] != null) {
       await _dropUneditedCopy(session);
@@ -186,6 +201,21 @@ class RefraEditService {
       for (final output in outputs)
         if (seen.add(_outputKey(output))) output,
     ];
+  }
+
+  /// The outputs a move/copy back may act on.
+  ///
+  /// A staged copy that sits next to an edited output is the unedited duplicate
+  /// the session started with. Moving it back would let a "replace" conflict
+  /// write that duplicate over the original, so it is only offered when it is
+  /// the session's sole output (the editor overwrote it in place).
+  Future<List<RefraEditOutput>> transferableOutputs(RefraEditSession session) async {
+    return transferableOf(await refreshOutputs(session));
+  }
+
+  static List<RefraEditOutput> transferableOf(List<RefraEditOutput> outputs) {
+    final edited = outputs.where((output) => output.kind != RefraEditOutputKind.staged).toList(growable: false);
+    return edited.isNotEmpty ? edited : outputs;
   }
 
   static String _outputKey(RefraEditOutput output) => refraEditFileKey(
@@ -266,20 +296,20 @@ class RefraEditService {
   /// Adds the rows of [uris] to Aves' database when they are missing. Returns true on any insert.
   Future<bool> _ensureEntries(Set<String> uris) async {
     if (uris.isEmpty) return false;
-    final known = (await localMediaDb.loadEntriesByUris(uris)).where((entry) => entry.origin == EntryOrigins.mediaStoreContent).map((entry) => entry.uri).toSet();
+    final known = (await _db.loadEntriesByUris(uris)).where((entry) => entry.origin == EntryOrigins.mediaStoreContent).map((entry) => entry.uri).toSet();
     final missing = uris.difference(known);
     if (missing.isEmpty) return false;
     for (final uri in missing) {
       try {
-        final entry = await mediaFetchService.getEntry(uri, null);
+        final entry = await _fetch.getEntry(uri, null);
         if (entry == null) {
           refraEditLog.w('no media entry for $uri');
           continue;
         }
         entry
           ..origin = EntryOrigins.mediaStoreContent
-          ..id = localMediaDb.nextId;
-        await localMediaDb.insertEntries({entry});
+          ..id = _db.nextId;
+        await _db.insertEntries({entry});
       } catch (error, stack) {
         refraEditLog.w('failed to record $uri in the media database', error, stack);
       }
@@ -325,7 +355,7 @@ class RefraEditService {
     if (await _ensureEntries(uris)) {
       unawaited(reloadPagedSummaries());
     }
-    final entries = await localMediaDb.loadEntriesByUris(uris);
+    final entries = await _db.loadEntriesByUris(uris);
     final byUri = {for (final entry in entries) entry.uri: entry};
     return [
       for (final record in records) (record: record, entry: byUri[record.uri]),
@@ -334,29 +364,40 @@ class RefraEditService {
 
   /// Deletes the files behind [records] and forgets their rows.
   ///
-  /// Sessions whose last file is gone are dropped with them; a session that still holds other
-  /// results survives. Returns true when every file was deleted.
+  /// The delete is committed per file: a file that could not be removed keeps
+  /// its row so the user can retry, while the files that did go away lose
+  /// theirs. A single failure used to abort every row, leaving deleted files
+  /// listed and never pruned. Sessions whose last file is gone are dropped with
+  /// them. Returns true when every file was deleted.
   Future<bool> deleteRecords(Iterable<RefraEditRecord> records) async {
     final list = records.toList(growable: false);
     if (list.isEmpty) return false;
-    final entries = await localMediaDb.loadEntriesByUris(list.map((record) => record.uri).toSet());
+    final entries = await _db.loadEntriesByUris(list.map((record) => record.uri).toSet());
+    final deleted = <RefraEditRecord>[];
+    final removedIds = <int>{};
     if (entries.isNotEmpty) {
-      var success = true;
-      await for (final event in mediaEditService.delete(
-        opId: mediaEditService.newOpId,
+      final idByUri = {for (final entry in entries) entry.uri: entry.id};
+      await for (final event in _mediaEdit.delete(
+        opId: _mediaEdit.newOpId,
         entries: entries,
       )) {
-        if (!event.success) success = false;
+        if (!event.success) continue;
+        final record = list.firstWhereOrNull((item) => item.uri == event.uri);
+        if (record == null) continue;
+        deleted.add(record);
+        final id = idByUri[event.uri];
+        if (id != null) removedIds.add(id);
       }
-      if (!success) return false;
-      await localMediaDb.removeIds(entries.map((entry) => entry.id).toSet());
+      if (removedIds.isNotEmpty) {
+        await _db.removeIds(removedIds);
+      }
     }
 
     final store = await _store();
-    await store.deleteOutputs(list.expand((record) => record.rowIds));
+    await store.deleteOutputs(deleted.expand((record) => record.rowIds));
     await store.deleteSessionsWithoutOutputs();
     unawaited(reloadPagedSummaries());
-    return true;
+    return list.every(deleted.contains);
   }
 
   /// Deletes every recorded file and forgets every session.
@@ -376,7 +417,7 @@ class RefraEditService {
   /// Compared on the full name: writing `IMG_1.jpg` over `IMG_1.png` is not a conflict.
   Future<Set<String>> conflictingNames(String directory, Iterable<String> fileNames) async {
     if (directory.isEmpty) return {};
-    final existing = await localMediaDb.loadEntries(directory: directory);
+    final existing = await _db.loadEntries(directory: directory);
     final names = existing.map(_entryFileName).whereType<String>().toSet();
     return fileNames.where(names.contains).toSet();
   }
@@ -400,10 +441,12 @@ class RefraEditService {
     if (destination.isEmpty || isRefraEditStagingPath(destination)) return false;
 
     final all = await refreshOutputs(session);
-    final chosen = outputKeys == null ? all : all.where((output) => outputKeys.contains(_outputKey(output))).toList(growable: false);
+    final chosen = outputKeys == null
+        ? transferableOf(all)
+        : all.where((output) => outputKeys.contains(_outputKey(output))).toList(growable: false);
     if (chosen.isEmpty) return false;
 
-    final entries = await localMediaDb.loadEntriesByUris(chosen.map((output) => output.uri).toSet());
+    final entries = await _db.loadEntriesByUris(chosen.map((output) => output.uri).toSet());
     final distinct = <String, AvesEntry>{};
     for (final entry in entries) {
       distinct.putIfAbsent(_entryKey(entry), () => entry);
@@ -412,8 +455,8 @@ class RefraEditService {
     if (distinct.isEmpty || !distinct.values.every((entry) => isRefraEditStagingPath(entry.directory ?? ''))) return false;
 
     final processed = <MoveOpEvent>[];
-    await for (final event in mediaEditService.move(
-      opId: mediaEditService.newOpId,
+    await for (final event in _mediaEdit.move(
+      opId: _mediaEdit.newOpId,
       entriesByDestination: {destination: distinct.values.toSet()},
       copy: copy,
       nameConflictStrategy: nameConflictStrategy,
@@ -427,6 +470,26 @@ class RefraEditService {
 
     final store = await _store();
     if (copy) {
+      // The copies landed elsewhere; the records must follow them. Otherwise the
+      // records page keeps pointing at the staging file and the user can copy
+      // the same output again, leaving unrecorded duplicates in the source
+      // folder.
+      final outputs = await store.getOutputs(session.id);
+      for (final op in successOps) {
+        final newUri = op.newFields['uri'] as String?;
+        if (newUri == null) continue;
+        final newPath = (op.newFields['path'] as String?) ?? '';
+        final newSize = (op.newFields['sizeBytes'] as num?)?.toInt();
+        for (final output in outputs.where((output) => output.uri == op.uri)) {
+          await store.updateOutputLocation(
+            output.id,
+            uri: newUri,
+            path: newPath,
+            fileName: newPath.isNotEmpty ? pContext.basename(newPath) : output.fileName,
+            sizeBytes: newSize ?? output.sizeBytes,
+          );
+        }
+      }
       await store.setSessionStatus(session.id, RefraEditSessionStatus.copied);
     } else {
       final movedKeys = successOps
@@ -463,7 +526,7 @@ class RefraEditService {
       if (newUri == null) continue;
       AvesEntry? entry;
       try {
-        entry = await mediaFetchService.getEntry(newUri, null);
+        entry = await _fetch.getEntry(newUri, null);
       } catch (error, stack) {
         refraEditLog.w('failed to read the transferred entry $newUri', error, stack);
       }
@@ -477,37 +540,49 @@ class RefraEditService {
       }
       entry
         ..origin = EntryOrigins.mediaStoreContent
-        ..id = localMediaDb.nextId;
+        ..id = _db.nextId;
       inserts.add(entry);
       if (!copy && source != null) removals.add(source.id);
     }
     for (final update in updates.entries) {
-      await localMediaDb.updateEntry(update.key, update.value);
+      await _db.updateEntry(update.key, update.value);
     }
     if (inserts.isNotEmpty) {
-      await localMediaDb.insertEntries(inserts);
+      await _db.insertEntries(inserts);
     }
     if (removals.isNotEmpty) {
-      await localMediaDb.removeIds(removals);
+      await _db.removeIds(removals);
     }
   }
 
   /// Deletes the staged copies of [session] and forgets the session.
+  ///
+  /// Successful deletes are committed even when another file cannot be removed;
+  /// the leftover keeps its row and its session so a retry can still find them.
   Future<bool> discard(RefraEditSession session) async {
     final outputs = await refreshOutputs(session);
-    final entries = await localMediaDb.loadEntriesByUris(outputs.map((o) => o.uri).toSet());
+    final entries = await _db.loadEntriesByUris(outputs.map((o) => o.uri).toSet());
+    var allDeleted = true;
     if (entries.isNotEmpty) {
-      var success = true;
-      await for (final event in mediaEditService.delete(
-        opId: mediaEditService.newOpId,
+      final deletedIds = <int>{};
+      await for (final event in _mediaEdit.delete(
+        opId: _mediaEdit.newOpId,
         entries: entries,
       )) {
-        if (!event.success) success = false;
+        if (!event.success) {
+          allDeleted = false;
+          continue;
+        }
+        final entry = entries.firstWhereOrNull((entry) => entry.uri == event.uri);
+        if (entry != null) deletedIds.add(entry.id);
       }
-      if (!success) return false;
-      await localMediaDb.removeIds(entries.map((entry) => entry.id).toSet());
+      if (deletedIds.isNotEmpty) {
+        await _db.removeIds(deletedIds);
+      }
+      if (!allDeleted) return false;
     }
     final store = await _store();
+    await store.deleteOutputs(outputs.map((o) => o.id));
     await store.deleteSession(session.id);
     unawaited(reloadPagedSummaries());
     return true;
@@ -527,7 +602,7 @@ class RefraEditService {
         await store.deleteSession(session.id);
         continue;
       }
-      final entries = await localMediaDb.loadEntriesByUris(outputs.map((o) => o.uri).toSet());
+      final entries = await _db.loadEntriesByUris(outputs.map((o) => o.uri).toSet());
       if (entries.isEmpty) {
         await store.deleteSession(session.id);
       }

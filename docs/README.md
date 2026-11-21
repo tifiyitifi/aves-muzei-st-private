@@ -67,8 +67,12 @@ What a shipped feature must have is `spec.md`, `rules.md` and `decisions/`.
 - `-:<reason>` — deliberately unfalsified, with the reason it cannot be tested
   on the host.
 
-`scripts/check-batch-rules.ps1` resolves every `F:` token and every
-`decisions/` link in the batch register. Run it after editing a register.
+`scripts/check-feature-rules.ps1 -Feature <name>` resolves every `F:` token and
+every `decisions/` link in one register. The per-feature wrappers keep the older
+invocation shape: `check-batch-rules.ps1`, `check-grouped-wallpaper-rules.ps1`,
+`check-nav-drawer-rules.ps1`, `check-media-ops-rules.ps1`,
+`check-album-contents-rules.ps1`, `check-refra-edit-rules.ps1`. Run the matching
+one after editing a register.
 
 ## Privacy
 
@@ -89,3 +93,6 @@ This repository may be published; the machine it is built on is not.
 | Batch processing | in progress | [`batch-processing/`](features/batch-processing/README.md) |
 | Grouped wallpaper | in progress | [`grouped_wallpaper/`](features/grouped_wallpaper/README.md) |
 | Navigation drawer pages | in progress | [`nav_drawer/`](features/nav_drawer/README.md) |
+| Media operations | in progress | [`media_ops/`](features/media_ops/README.md) |
+| Album contents transfer | in progress | [`album_contents_transfer/`](features/album_contents_transfer/README.md) |
+| ReFra edit | in progress | [`refra_edit/`](features/refra_edit/README.md) |

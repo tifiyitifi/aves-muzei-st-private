@@ -205,6 +205,9 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
     // removes folders the user explicitly opted into) disable this legacy sweep.
     bool cleanupEmptySourceDirectories = true,
     VoidCallback? onSuccess,
+    // Lets a caller tell "completed" from "every item failed": the return value
+    // is true in both cases, because the user already saw the per-item report.
+    ValueChanged<int>? onMoveOutcome,
   }) async {
     if (moveType == MoveType.move) {
       // skip moving entries to their directory
@@ -324,6 +327,7 @@ mixin EntryStorageMixin on FeedbackMixin, PermissionAwareMixin, SizeAwareMixin, 
           destinationAlbums: destinationAlbums,
           movedOps: movedOps,
         );
+        onMoveOutcome?.call(movedOps.length);
 
         // delete (when trying to move to bin obsolete entries)
         final deletedOps = successOps.where((op) => op.deleted).toSet();

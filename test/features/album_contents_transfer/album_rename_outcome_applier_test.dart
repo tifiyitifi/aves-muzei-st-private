@@ -34,7 +34,7 @@ void main() {
     ]);
   });
 
-  test('a failed row rewrite still carries the album state over', () async {
+  test('a failed row rewrite does not carry the album state over', () async {
     final events = <String>[];
     final database = _FakeDb(onRename: (_, _) async => throw StateError('database busy'));
     final source = _FakeSource(onApply: (sourceAlbum, destinationAlbum) async {
@@ -49,13 +49,11 @@ void main() {
       reloadSummaries: () async => events.add('reload'),
     );
 
-    // The files moved, so the album must not point at a folder whose rows never
-    // arrived: the state follows, and a later scan re-reads the paths.
+    // The rows still name the old folder, so pointing cover, pins and bookmarks
+    // at the new one would leave the album attached to files that are not
+    // there. A later scan re-reads the paths instead.
     expect(rowsMoved, isFalse);
-    expect(events, [
-      'state $album -> $destination',
-      'reload',
-    ]);
+    expect(events, ['reload']);
   });
 }
 

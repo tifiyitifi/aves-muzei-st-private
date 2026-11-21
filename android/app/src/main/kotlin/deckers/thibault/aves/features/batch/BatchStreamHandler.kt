@@ -26,30 +26,39 @@ class BatchStreamHandler(private val context: Context, private val arguments: An
             endOfStream()
             return
         }
+        // Register before the launch body runs, so a cancel arriving right after
+        // the subscription is not lost to a race.
+        jobId?.let(activeJobs::add)
         ioScope.launch {
-            safeSuspend(
-                function = {
-                    BatchExecutor(
-                        context = context,
-                        job = job,
-                        isCancelled = { cancelledJobs.contains(job.jobId) },
-                        emit = { event -> success(event) },
-                    ).run()
-                },
-            )
+            try {
+                safeSuspend(
+                    function = {
+                        BatchExecutor(
+                            context = context,
+                            job = job,
+                            isCancelled = { cancelledJobs.contains(job.jobId) },
+                            emit = { event -> success(event) },
+                        ).run()
+                    },
+                )
+            } finally {
+                // The job is over: its id no longer means anything, so a late
+                // cancel or a stale subscription cannot restart it.
+                jobId?.let {
+                    activeJobs.remove(it)
+                    cancelledJobs.remove(it)
+                }
+            }
         }
     }
 
     override fun onCancel(arguments: Any?) {
-        // A Dart subscription can be cancelled without the job reaching its
-        // own endOfStream; release the id here too so it cannot leak.
-        endOfStream()
+        // Closing the subscription does not stop a job that is already writing.
+        // Mark it cancelled so the executor stops before the next item; only a
+        // job that really ended clears its id. Clearing it here used to revoke a
+        // cancellation that had just been requested.
+        jobId?.let { if (activeJobs.contains(it)) cancelledJobs.add(it) }
         super.onCancel(arguments)
-    }
-
-    override fun endOfStream() {
-        jobId?.let(cancelledJobs::remove)
-        super.endOfStream()
     }
 
     companion object {
@@ -58,5 +67,8 @@ class BatchStreamHandler(private val context: Context, private val arguments: An
 
         /** Job ids whose remaining items must be skipped. */
         val cancelledJobs: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+        /** Job ids a stream handler is still running; cancel may only target these. */
+        val activeJobs: MutableSet<String> = ConcurrentHashMap.newKeySet()
     }
 }

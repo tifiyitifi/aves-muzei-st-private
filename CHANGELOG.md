@@ -57,6 +57,12 @@ All notable changes to this project will be documented in this file.
 - Collection: an `OR` filter swallowed the filters ANDed after it in paged queries
 - Batch processing: a failed rename keeps both the old and the new result instead of deleting the only copy
 - Batch processing: closing the progress dialog no longer drops results still being written, and a replace that cannot clean up its result file is reported instead of looking like nothing happened
+- Batch processing: a result decoded through the platform fallback keeps its EXIF orientation, and a cancelled run stops instead of continuing after the progress stream closes
+- Batch processing: a result name containing a dot keeps its image extension, and an unknown tool setting fails the item instead of silently producing an unadjusted copy
+- ReFra edit: moving a result back no longer replaces the original with the unedited staging copy, and a copied result updates its record instead of pointing at the old staging file
+- ReFra edit: deleting several results commits the files that were removed and keeps the rest pending for a retry
+- Media operations: a fallback that cannot read the source fails instead of writing an empty file and deleting the source, and a file rename clears its stale Media Store row
+- Album contents: renaming a stored album no longer moves its album state when the row rewrite or the batched move changed nothing
 - Database: an image and a video sharing a MediaStore number are kept as two rows instead of being merged
 
 ## <a id="v1.15.5"></a>[v1.15.5] - 2026-10-02

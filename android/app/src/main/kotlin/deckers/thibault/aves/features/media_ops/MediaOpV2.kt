@@ -264,22 +264,29 @@ class MediaOpV2(
             fileCount += 1
             result["strategy"] = STRATEGY_FILE
             if (!copy && !sourceFile.exists()) {
-                releaseSourceRow(sourceUri, mimeType)
+                releaseSourceRow(sourceUri, sourcePath, mimeType)
             }
             return if (toBin) binFields(targetFile.path) else queueScan(targetFile.path, mimeType, result)
         }
 
-        // SAF: always copy, then delete the source when moving
+        // SAF: always copy, then delete the source when moving. The source stream
+        // is opened before the target exists: a null stream (pending file,
+        // revoked grant) used to create an empty target and then delete the
+        // source, losing the bytes.
         safCount += 1
         result["strategy"] = STRATEGY_SAF
-        val targetPath = provider.createSingle(
-            context = context,
-            mimeType = mimeType,
-            targetDir = effectiveTargetDir,
-            targetNameWithoutExtension = targetNameWithoutExtension,
-            defaultExtension = sourceExtension,
-        ) { output ->
-            StorageUtils.openInputStream(context, sourceUri)?.use { input -> input.copyTo(output) }
+        val sourceStream = StorageUtils.openInputStream(context, sourceUri)
+            ?: throw Exception("failed to open source uri=$sourceUri")
+        val targetPath = sourceStream.use { input ->
+            provider.createSingle(
+                context = context,
+                mimeType = mimeType,
+                targetDir = effectiveTargetDir,
+                targetNameWithoutExtension = targetNameWithoutExtension,
+                defaultExtension = sourceExtension,
+            ) { output ->
+                input.copyTo(output)
+            }
         }
         if (!copy) {
             try {
@@ -342,7 +349,7 @@ class MediaOpV2(
             }
             fileCount += 1
             result["strategy"] = STRATEGY_FILE
-            releaseSourceRow(sourceUri, mimeType)
+            releaseSourceRow(sourceUri, oldFile.path, mimeType)
             return queueScan(newFile.path, mimeType, result)
         }
 
@@ -353,7 +360,7 @@ class MediaOpV2(
         }
         safCount += 1
         result["strategy"] = STRATEGY_SAF
-        releaseSourceRow(sourceUri, mimeType)
+        releaseSourceRow(sourceUri, oldFile.path, mimeType)
         return queueScan(File(dir, document.name).path, mimeType, result)
     }
 
@@ -413,13 +420,20 @@ class MediaOpV2(
      * gone. Failing to clear the row is not fatal: the next media scan prunes it,
      * so this never raises.
      */
-    private fun releaseSourceRow(sourceUri: Uri, mimeType: String) {
+    private fun releaseSourceRow(sourceUri: Uri, sourcePath: String, mimeType: String) {
         if (!StorageUtils.isMediaStoreContentUri(sourceUri)) return
         try {
-            context.contentResolver.delete(StorageUtils.getMediaStoreScopedStorageSafeUri(sourceUri, mimeType), null, null)
+            if (context.contentResolver.delete(StorageUtils.getMediaStoreScopedStorageSafeUri(sourceUri, mimeType), null, null) > 0) return
         } catch (ex: Exception) {
             Log.w(LOG_TAG, "failed to clear the stale row for uri=$sourceUri", ex)
         }
+        // Deleting the row needs write access to it, which is exactly what the
+        // file fallback could not get. Scanning the vanished old path clears the
+        // row without that permission, like the v1 rename did.
+        if (sourcePath.isEmpty()) return
+        runCatching {
+            MediaStoreImageProvider.scanObsoletePath(context, sourceUri, sourcePath, mimeType)
+        }.onFailure { Log.w(LOG_TAG, "failed to scan obsolete path=$sourcePath", it) }
     }
 
     private fun binFields(trashPath: String): FieldMap = hashMapOf(
@@ -486,7 +500,11 @@ class MediaOpV2(
                 Log.w(LOG_TAG, "failed to clear pending flag for uri=$queryUri", ex)
             }
         }
-        return if (renamed == UpdateResult.UNSUPPORTED || fallbackRenamed == UpdateResult.UNSUPPORTED) UpdateResult.UNSUPPORTED else UpdateResult.REFUSED
+        // Only a provider that refuses the column in both shapes means the fast
+        // path is unavailable. A `REFUSED` fallback is a permission problem for
+        // this entry, not a reason to disable the Media Store path for the rest
+        // of the batch.
+        return if (renamed == UpdateResult.UNSUPPORTED && fallbackRenamed == UpdateResult.UNSUPPORTED) UpdateResult.UNSUPPORTED else UpdateResult.REFUSED
     }
 
     private fun updateContent(uri: Uri, values: ContentValues, remaining: List<AvesEntry>): UpdateResult {

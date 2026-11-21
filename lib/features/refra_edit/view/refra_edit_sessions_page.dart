@@ -197,7 +197,9 @@ class _SessionTileState extends State<_SessionTile> {
   Future<void> _transfer({required bool copy}) async {
     final l10n = context.l10n;
     final session = widget.session;
-    final outputs = _outputs ?? await refraEditService.refreshOutputs(session);
+    // Only edited outputs are offered: the unedited staged copy would otherwise
+    // let "replace" write it over the original.
+    final outputs = await refraEditService.transferableOutputs(session);
     final conflicts = await _conflictingNames(session, outputs);
     var strategy = NameConflictStrategy.rename;
     if (conflicts.isNotEmpty) {

@@ -16,6 +16,10 @@ const _log = AreaKeyLog('log.album_contents_transfer');
 /// Answers whether the rows followed the folder. The files have moved either
 /// way, so a rewrite failure is logged rather than thrown: a later scan or
 /// library sync re-reads the paths and the library converges on its own.
+///
+/// The album state is moved only when the rows did: pointing cover, pins and
+/// bookmarks at a new directory while the rows still name the old one leaves
+/// the album tile attached to files that are no longer there.
 Future<bool> applyInstantAlbumRename({
   required CollectionSource source,
   required String album,
@@ -31,7 +35,9 @@ Future<bool> applyInstantAlbumRename({
     _log.e('failed to move rows after renaming $album', error, stack);
   }
 
-  await source.applyStoredAlbumRename(album, destination);
+  if (rowsMoved) {
+    await source.applyStoredAlbumRename(album, destination);
+  }
   // The album list and its counts come from the summaries, which reload only
   // on a lens resolve: without this the page keeps the old name until re-entry.
   await (reloadSummaries ?? reloadPagedSummaries)();

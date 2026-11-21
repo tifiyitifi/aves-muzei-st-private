@@ -1,6 +1,7 @@
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_nav.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_open.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
@@ -92,6 +93,30 @@ void main() {
     expect(groupedWallpaperNavModeFrom('nope'), defaultGroupedWallpaperNavMode);
     expect(groupedWallpaperNavModeFrom(null), defaultGroupedWallpaperNavMode);
     expect(groupedWallpaperNavModeFrom('shared'), GroupedWallpaperNavMode.shared);
+  });
+
+  group('open the wallpaper groups', () {
+    test('the shared entry on screen only flips its sub-page', () {
+      // Opening a second copy would leave two entries showing the same page.
+      expect(
+        groupedWallpaperOpen(mode: GroupedWallpaperNavMode.shared, sharedEntryOnTop: true),
+        GroupedWallpaperOpen.flipSharedEntry,
+      );
+    });
+
+    test('a shared entry the user is not on is opened on the wallpaper page', () {
+      expect(
+        groupedWallpaperOpen(mode: GroupedWallpaperNavMode.shared, sharedEntryOnTop: false),
+        GroupedWallpaperOpen.openSharedEntry,
+      );
+    });
+
+    test('a separate entry opens the wallpaper page itself', () {
+      for (final mode in [GroupedWallpaperNavMode.separateLeft, GroupedWallpaperNavMode.separateRight]) {
+        expect(groupedWallpaperOpen(mode: mode, sharedEntryOnTop: false), GroupedWallpaperOpen.openWallpaperPage);
+        expect(groupedWallpaperOpen(mode: mode, sharedEntryOnTop: true), GroupedWallpaperOpen.openWallpaperPage);
+      }
+    });
   });
 
   group('close target', () {

@@ -37,6 +37,7 @@ Which file holds which rule family:
 | `test/features/grouped_wallpaper/grouped_wallpaper_engine_test.dart` (`displayed slot` group) | the display rules |
 | `test/features/grouped_wallpaper/grouped_wallpaper_state_test.dart` | the pure display selection, if it is moved there |
 | `test/features/grouped_wallpaper/grouped_wallpaper_view_actions_test.dart` | `NAV-2` (push versus pop), `DEST-2`, `DEST-3` |
+| `test/features/grouped_wallpaper/grouped_wallpaper_nav_test.dart` | `NAV-3` (the drawer entry's shared/separate destination) |
 
 Database tests need a full native sqlite3 on a Windows host; see `AGENTS.md`
 (`AVES_SQLITE3_DLL`). The Microsoft `winsqlite3.dll` is not a substitute.
@@ -104,6 +105,11 @@ No host fixture can prove these; `rules.md` marks them `M` or `native`.
   push the playing group's page; back must return to the view, and the view's
   back must then leave to the desktop. Open the view from the group page's menu:
   back must return to the group page.
+- **`NAV-3`** — add the wallpaper-groups entry to the drawer in Settings ›
+  Navigation › Drawer › Pages. In a separate navigation mode its tap opens the
+  group page, and back returns to the page the user came from. In the shared
+  mode it opens the single range entry on the wallpaper page, and tapping it
+  again must not stack a second copy.
 - **`DEST-1`** — from the view's menu, 「Open in viewer」 must open the app's
   viewer on the photo. 「Open in album」 must open the album that contains it (not
   a path condition) with the photo scrolled into view and marked; 「View whole

@@ -105,3 +105,12 @@ gallery destinations SHALL reveal the photo in the list instead of starting at
 its top.
 
 Rules: `DEST-1`, `DEST-2`, `DEST-3`.
+
+### FR-11 — The drawer opens the wallpaper page the range opens
+
+WHEN the user opens the wallpaper groups from the drawer, THE SYSTEM SHALL open
+the same destination as the visible range's「Open wallpaper groups」action: the
+page itself in a separate navigation mode, and the single range entry on the
+wallpaper page in the shared mode.
+
+Rules: `NAV-3`.

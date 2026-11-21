@@ -884,6 +884,12 @@ shell) on 「Open wallpaper groups」. The page is a navigation destination of i
 own, so it needs no shared shell. The notification's body opens the same view as
 a gesture, so both entry points land identically.
 
+Every other entry point — the visible range's menu, the drawer's optional
+wallpaper-groups entry and the TV rail — calls one opener,
+`openGroupedWallpaperGroups`. It opens the page as a destination of its own, and
+in the shared mode it opens the single range entry on the wallpaper page instead
+of a second copy of the same page.
+
 The home/lock switch is always listed: for a split group it switches which
 surface the page describes, and for a group without a split it is greyed with
 「This group has no lock screen setup」 instead of disappearing. Its previous/next

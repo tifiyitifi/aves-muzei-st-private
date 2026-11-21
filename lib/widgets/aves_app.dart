@@ -10,6 +10,7 @@ import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_resto
 import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_target_source.dart';
 import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
+import 'package:aves/features/nav_drawer/services/drawer_page_seed.dart';
 import 'package:aves/features/session_restore/session_restore_collection_state.dart';
 import 'package:aves/features/session_restore/session_restore_route_observer.dart';
 import 'package:aves/features/session_restore/session_restore_snapshot.dart';
@@ -538,6 +539,9 @@ class _AvesAppState extends State<AvesApp> with WidgetsBindingObserver {
       // flags must be in memory before the first frame.
       _timed('wallpaper locks', wallpaperLockService.init),
     ]);
+    // The drawer pages became editable, and a list saved before that lacks the
+    // visible-range tile it used to get for free. One-time, marker-guarded.
+    await _timed('drawer pages', () => drawerPageSeed.runIfNeeded(useTvLayout: settings.useTvLayout));
     // The pin sheet and the write-back list reach the wallpaper groups through
     // this source. The groups themselves load on first use, so assigning the
     // source adds nothing to the first-frame path.

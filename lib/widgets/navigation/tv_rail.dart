@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:math';
 
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_open.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/container/dynamic_album.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
@@ -257,7 +260,9 @@ class _TvRailState extends State<TvRail> {
       label: DrawerPageTitle(route: routeName),
       isHome: homeRoute != CollectionPage.routeName && routeName == homeRoute,
       isSelected: context.currentRouteName == routeName,
-      onSelection: () => _goTo(routeName),
+      // The rail reaches the wallpaper groups the way the drawer and the visible
+      // range's menu do, so the shared navigation mode cannot open a duplicate.
+      onSelection: routeName == GroupedWallpaperPage.routeName ? () => unawaited(openGroupedWallpaperGroups(context)) : () => _goTo(routeName),
     );
   }
 

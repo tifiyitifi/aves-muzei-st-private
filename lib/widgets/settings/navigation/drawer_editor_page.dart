@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:aves/features/nav_drawer/model/drawer_page_routes.dart';
+import 'package:aves/features/nav_drawer/services/drawer_page_seed.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
@@ -70,7 +74,7 @@ class _NavigationDrawerEditorPageState extends State<NavigationDrawerEditorPage>
     final userPageLinks = settings.drawerPageBookmarks;
     _visiblePages.addAll(userPageLinks);
     _pageItems.addAll(userPageLinks);
-    _pageItems.addAll(NavigationDrawerEditorPage.pageOptions.where((v) => !userPageLinks.contains(v)));
+    _pageItems.addAll(drawerPageOptions(NavigationDrawerEditorPage.pageOptions).where((v) => !userPageLinks.contains(v)));
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // delayed as `context` should not be used within `initState`
@@ -123,6 +127,9 @@ class _NavigationDrawerEditorPageState extends State<NavigationDrawerEditorPage>
             settings.drawerTypeBookmarks = _typeItems.where(_visibleTypes.contains).toList();
             settings.drawerAlbumBookmarks = _albumItems;
             settings.drawerPageBookmarks = _pageItems.where(_visiblePages.contains).toList();
+            // The user has now seen the editable list: a page left out of it is a
+            // decision, so the one-time visible-range backfill must not undo it.
+            unawaited(drawerPageSeed.markConfigured());
           },
           child: SafeArea(
             bottom: false,

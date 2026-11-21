@@ -1,9 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/app_mode.dart';
-import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
-import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
-import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_open.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/services/visible_range_candidate_stats.dart';
@@ -13,7 +11,6 @@ import 'package:aves/features/visible_range/view/visible_range_about_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_action_delegate.dart';
 import 'package:aves/features/visible_range/view/visible_range_active_footer.dart';
 import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
-import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/features/visible_range/view/visible_range_section_key.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_lock_dialog.dart';
@@ -34,7 +31,6 @@ import 'package:aves/widgets/common/tile_extent_controller.dart';
 import 'package:aves/widgets/filter_grids/common/app_bar.dart';
 import 'package:aves/widgets/filter_grids/common/filter_grid_page.dart';
 import 'package:aves/widgets/filter_grids/common/section_keys.dart';
-import 'package:aves/widgets/navigation/nav_item.dart';
 import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
@@ -779,20 +775,14 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   /// Opens the wallpaper groups.
   ///
-  /// In the shared mode the two pages are peers behind one entry, so the menu
-  /// flips that entry instead of navigating: the bar keeps a single highlighted
-  /// destination. With a separate entry it uses [AvesNavItem.goTo] with
-  /// `topLevel`, like a bar tap does: the wallpaper page is a destination of its
-  /// own, not a sub-page of the range editor, so it replaces the stack and the
-  /// bar highlights its entry. The page's session then keeps that entry until the
-  /// user closes the page.
+  /// The drawer's wallpaper-groups entry opens through the same helper, so the
+  /// shared mode (one entry hosts both pages) behaves the same whichever entry
+  /// point the user takes. In the shared mode the page is already on screen, so
+  /// the call only flips the entry; with a separate entry it replaces the stack
+  /// like a bar destination, and the page's close action lands on the range page.
   Future<void> _openWallpaperGroups() async {
     if (!mounted) return;
-    if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared) {
-      visibleRangeDestination.value = VisibleRangeDestination.wallpaper;
-      return;
-    }
-    await const AvesNavItem(route: GroupedWallpaperPage.routeName).goTo(context, topLevel: true);
+    await openGroupedWallpaperGroups(context);
   }
 
   Future<void> _pickOrder() async {

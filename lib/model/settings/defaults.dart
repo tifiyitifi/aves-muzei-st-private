@@ -42,10 +42,18 @@ class SettingsDefaults {
     null,
     RecentlyAddedFilter.instance,
   ];
+
+  /// The drawer page entries a fresh install starts with.
+  ///
+  /// The visible range is one of them: it used to be a fixed tile, so hiding it
+  /// by default would take away an entry the user already has. The other fork
+  /// pages stay out: the live wallpaper and the wallpaper groups are opt-in
+  /// destinations for the drawer.
   static const drawerPageBookmarks = [
     AlbumListPage.routeName,
     CountryListPage.routeName,
     TagListPage.routeName,
+    VisibleRangePage.routeName,
     ExplorerPage.routeName,
   ];
   /// The four destinations a fresh install starts with.

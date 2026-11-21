@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:aves/features/browse_only/model/browse_drawer_entry.dart';
 import 'package:aves/features/collection_paging/view/collection_view_hooks.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
-import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
-import 'package:aves/features/visible_range/view/visible_range_page.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_open.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
+import 'package:aves/features/nav_drawer/model/drawer_page_routes.dart';
 import 'package:aves/model/filters/container/album_group.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/filters/trash.dart';
@@ -388,15 +391,20 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
   }
 
   List<Widget> _buildPageLinks(BuildContext context, bool browsing) {
-    final pageBookmarks = settings.drawerPageBookmarks;
     final source = context.read<CollectionSource>();
     final itemCountFormatter = settings.avesLocale.decimalNumberFormat();
-    // The wallpaper page owns the controller that opened the picker; opening it
-    // again from inside the picker would create a second writer for the same
-    // state files.
+    // Picking a photo already owns the wallpaper state; the fork pages are left
+    // out of the drawer instead of opening a second writer for it.
     final picking = CollectionViewHooksScope.maybeOf(context)?.isPicking ?? false;
+    final pages = drawerPageEntries(settings.drawerPageBookmarks, picking: picking);
 
     Widget tileFor(String route) {
+      // The wallpaper groups are a destination of their own, but they are reached
+      // the way the visible range's menu reaches them: in the shared navigation
+      // mode both pages live behind the range entry, so pushing the route
+      // directly would duplicate the page that entry hosts.
+      if (route == GroupedWallpaperPage.routeName) return _wallpaperGroupsTile(context, browsing);
+
       Widget? trailing;
       switch (route) {
         case AlbumListPage.routeName:
@@ -430,39 +438,28 @@ class _AppDrawerState extends State<AppDrawer> with WidgetsBindingObserver {
       );
     }
 
-    // The live-wallpaper and visible-range pages are fixed entries, independent
-    // of the editable page bookmarks, and sit before Explorer as the fork's own
-    // destinations.
-    final tiles = <Widget>[];
-    var wallpaperInserted = false;
-    for (final route in pageBookmarks) {
-      if (!wallpaperInserted && route == ExplorerPage.routeName) {
-        if (!picking) tiles.add(_visibleRangeTile(browsing));
-        if (!picking) tiles.add(_wallpaperTile(browsing));
-        wallpaperInserted = true;
-      }
-      tiles.add(tileFor(route));
-    }
-    if (!wallpaperInserted && !picking) {
-      tiles.add(_visibleRangeTile(browsing));
-      tiles.add(_wallpaperTile(browsing));
-    }
-
+    final tiles = pages.map(tileFor).toList();
+    // A user who hides every page gets no empty section, and a pick that hides
+    // every remaining fork page gets no stray divider.
+    if (tiles.isEmpty) return const [];
     return [const Divider(), ...tiles];
   }
 
-  Widget _visibleRangeTile(bool browsing) => PageNavTile(
-    key: const Key('drawer-page-/visible_range'),
-    navItem: const AvesNavItem(route: VisibleRangePage.routeName),
-    enabled: browseDrawerEntryEnabled(browsing: browsing, route: VisibleRangePage.routeName),
-  );
-
-  Widget _wallpaperTile(bool browsing) => PageNavTile(
-    // key is expected by test driver
-    key: const Key('drawer-page-/muzei_wallpaper'),
-    navItem: const AvesNavItem(route: MuzeiWallpaperPage.routeName),
-    enabled: browseDrawerEntryEnabled(browsing: browsing, route: MuzeiWallpaperPage.routeName),
-  );
+  Widget _wallpaperGroupsTile(BuildContext context, bool browsing) {
+    const route = GroupedWallpaperPage.routeName;
+    return ListTile(
+      // key is expected by test driver
+      key: const Key('drawer-page-$route'),
+      enabled: browseDrawerEntryEnabled(browsing: browsing, route: route),
+      leading: const DrawerPageIcon(route: route),
+      title: const DrawerPageTitle(route: route),
+      selected: context.currentRouteName == route,
+      onTap: () {
+        Navigator.maybeOf(context)?.pop();
+        unawaited(openGroupedWallpaperGroups(context));
+      },
+    );
+  }
 
   Widget binTile(BuildContext context, {bool enabled = true}) {
     final source = context.read<CollectionSource>();

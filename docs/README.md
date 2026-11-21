@@ -88,3 +88,4 @@ This repository may be published; the machine it is built on is not.
 | --- | --- | --- |
 | Batch processing | in progress | [`batch-processing/`](features/batch-processing/README.md) |
 | Grouped wallpaper | in progress | [`grouped_wallpaper/`](features/grouped_wallpaper/README.md) |
+| Navigation drawer pages | in progress | [`nav_drawer/`](features/nav_drawer/README.md) |

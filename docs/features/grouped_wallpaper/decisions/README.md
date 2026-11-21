@@ -9,3 +9,4 @@ Append-only. A decision keeps its text when it is reversed; it gains a
 | [0002](0002-the-previous-wallpaper-flash-is-the-system.md) | The previous-wallpaper flash belongs to the system, not the app |
 | [0003](0003-the-slice-readme-stays-the-mechanism-doc.md) | The slice README stays the mechanism doc until the register is stable |
 | [0004](0004-a-step-that-baked-reads-the-baked-frame.md) | A step that baked reads the baked frame, not the renderer's stale slot |
+| [0005](0005-the-flash-is-a-launcher-cache-refreshed-by-a-re-apply.md) | The flash is a launcher cache refreshed by a re-apply, not the renderer |

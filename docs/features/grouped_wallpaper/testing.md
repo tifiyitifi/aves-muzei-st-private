@@ -87,6 +87,10 @@ No host fixture can prove these; `rules.md` marks them `M` or `native`.
 - **R7 / `SWITCH-1`** — leave any app to the home screen and watch the
   transition. Record whether the previous Muzei wallpaper appears first, and
   whether the log shows `engine.destroy` / `engine.create` around each return.
+- **R7b / `SWITCH-1`** — after a package replace (`PACKAGE_UPDATE_FINISHED` in
+  `dumpsys wallpaper`), swipe home: the launcher's cached frame comes back.
+  Set the current group as wallpaper once (`SET_LIVE`), change the photo, and
+  swipe home again; it must show the live photo.
 - **R5** — update the app, or force-stop it, then confirm the in-app restore
   strip and the one-tap notification (on an OEM that resets the wallpaper).
 - **R3** — tap the wallpaper quickly twice while the next slot is still baking;

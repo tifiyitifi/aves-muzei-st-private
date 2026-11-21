@@ -16,9 +16,16 @@ behaviour also updates `rules.md`; a task that changes a judgement adds a
       view page reads `readBakedFrame` after a bake, and `readDisplayedFrame`
       falls back to the baked current when the drawn slot's file is gone
       (`decisions/0004`).
-- [ ] **Previous-wallpaper flash** (`SWITCH-1`, R7). Capture the device log for a
-      few home transitions, record the mechanism in `recurrences.md`, and decide
-      whether an engine-warmth mitigation is worth it (`decisions/0002`).
+- [x] **Previous-wallpaper flash** (`SWITCH-1`, R7/R7b). Device capture shows
+      the launcher's cached transition frame, not the renderer: the flashed
+      photo is absent from the texture map and the frame cache, and a chooser
+      set (`SET_LIVE`) removes the flash while a silent rebind
+      (`PACKAGE_UPDATE_FINISHED`) brings it back (`decisions/0005`).
+- [ ] **One-tap re-apply after a package replace** (`SWITCH-1`, R7b). When the
+      wallpaper is still ours but the package replace rebound it silently, offer
+      a notification/in-app notice that opens the live wallpaper chooser once
+      per version. The app cannot bind the component itself
+      (`SET_WALLPAPER_COMPONENT` is not granted).
 - [ ] **Device checklist** (`testing.md` §5) for `SWITCH-1`, R5, R3 and R2.
 - [ ] **Migrate the slice README** (`lib/features/grouped_wallpaper/README.md`)
       into `design.md` once the register is stable; keep one home per sentence

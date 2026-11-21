@@ -2825,6 +2825,7 @@
   "aboutKnownIssues5": "Batch processing covers colour filters, brightness/contrast/saturation and other adjustments, rotate/flip/crop, resize, format conversion and the filename footer. Markup, cut-out and RAW development are not available in batch.",
   "aboutKnownIssues6": "RAW files are skipped by batch processing; only standard image formats (JPEG/PNG/WebP/HEIF) are processed.",
   "aboutKnownIssues7": "Batch results are not a backup: replacing an original overwrites it with the processed copy. Move a result back to its source folder when the original should stay.",
+  "aboutKnownIssues8": "On some OEM launchers (MIUI observed), after the app is updated, swiping up to the home screen can briefly show the wallpaper that was set before the grouped one. The launcher keeps a cached transition frame that a silent rebind does not refresh, so changing photos does not update it either. Setting the current group as wallpaper once refreshes that frame; afterwards photos follow the live wallpaper. This is the launcher's cache, not the grouped renderer.",
   "batchRunSheetOutputFolder": "Results go to {path}",
   "@batchRunSheetOutputFolder": {
     "placeholders": {

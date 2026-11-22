@@ -45,6 +45,8 @@ Out of scope:
 2. `rules.md` — the case register; every row names the test that holds it.
 3. `recurrences.md` — the complaints that return and the couplings behind them.
    Read this before changing a rule: several fixes have already failed here.
+4. `docs/features/wallpaper/` — the shared state contract, interval catalog,
+   locks and headless refill this feature uses.
 4. `design.md` — the two-file state model and the invariants.
 5. `decisions/` — why the judgement calls went the way they did.
 6. `testing.md` — the gates a change has to pass.

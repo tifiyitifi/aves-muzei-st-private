@@ -73,9 +73,10 @@ invocation shape: `check-batch-rules.ps1`, `check-grouped-wallpaper-rules.ps1`,
 `check-nav-drawer-rules.ps1`, `check-media-ops-rules.ps1`,
 `check-album-contents-rules.ps1`, `check-refra-edit-rules.ps1`,
 `check-meta-settings-rules.ps1`, `check-visible-range-rules.ps1`,
-`check-collection-paging-rules.ps1`. Run the matching one after editing a
-register. Tokens are backticked, and the checker reads the backticked segments,
-so a test name may itself contain `;`.
+`check-collection-paging-rules.ps1`, `check-wallpaper-rules.ps1`,
+`check-drift-db-rules.ps1`. Run the matching one after editing a register.
+Tokens are backticked, and the checker reads the backticked segments, so a test
+name may itself contain `;`.
 
 ## Privacy
 
@@ -107,17 +108,17 @@ that owns its behaviour, so the gap stays visible instead of being omitted.
 | `refra_edit` | in progress | [`refra_edit/`](features/refra_edit/README.md) |
 | `visible_range` | in progress | [`visible_range/`](features/visible_range/README.md) |
 | `browse_only` | in progress | `-` documented next; its paging rules live under `collection_paging/` |
-| `drift_db` | in progress | `-` infrastructure; the schema and migration discipline live in `AGENTS.md`, a `contracts/` doc is planned |
+| `drift_db` | in progress | [`drift_db/`](features/drift_db/README.md) |
 | `known_issues` | in progress | `-` a settings page over the accepted-limitations list; documented next |
-| `live_wallpaper_refill` | in progress | `-` part of the wallpaper family; narrated in `lib/features/muzei_wallpaper/README.md` |
+| `live_wallpaper_refill` | in progress | [`wallpaper/`](features/wallpaper/README.md) |
 | `logging` | in progress | `-` infrastructure; the fork logging rule lives in `AGENTS.md` |
-| `muzei_wallpaper` | in progress | `-` the slice README is the mechanism doc; the wallpaper family register is planned |
+| `muzei_wallpaper` | in progress | [`wallpaper/`](features/wallpaper/README.md) |
 | `search_filters` | in progress | `-` documented next |
 | `selection_xor` | in progress | `-` the normative text is `AGENTS.md` §Selection; a register is planned |
 | `session_restore` | in progress | `-` narrated in `lib/features/muzei_wallpaper/README.md` §Session restore |
 | `stacking` | in progress | `-` documented next |
-| `wallpaper_auto_advance` | in progress | `-` shared by both wallpapers; the family register is planned |
-| `wallpaper_lock` | in progress | `-` part of the wallpaper family |
+| `wallpaper_auto_advance` | in progress | [`wallpaper/`](features/wallpaper/README.md) |
+| `wallpaper_lock` | in progress | [`wallpaper/`](features/wallpaper/README.md) |
 
 A slice documented as `-` still has to keep its tests named as behaviour
 sentences. The next maintenance pass gives it a directory; until then its rules

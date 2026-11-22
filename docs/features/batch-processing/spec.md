@@ -48,14 +48,20 @@ Rules: `RUN-3`, `RUN-7`, `RUN-8`.
 WHEN one item fails, THE SYSTEM SHALL report it and SHALL continue with the next
 item.
 
-Rules: `RUN-5`.
+WHEN a tool receives a setting this build does not recognise, THE SYSTEM SHALL
+fail that item instead of producing an image without the requested adjustment.
+
+Rules: `RUN-5`, `RUN-12`.
 
 ### FR-5 — Cancellation keeps what is already written
 
 WHEN a run is cancelled, THE SYSTEM SHALL keep every result already written and
 SHALL report the remaining items as failed or cancelled.
 
-Rules: `RUN-4`.
+WHEN the progress stream closes, THE SYSTEM SHALL mark the running job cancelled
+and SHALL clear its id only when the job really ends.
+
+Rules: `RUN-4`, `RUN-11`.
 
 ### FR-6 — Every finished item becomes a record
 
@@ -63,7 +69,13 @@ WHEN the native side reports a finished item, THE SYSTEM SHALL record its
 source, the name, path, size and MIME type the MediaStore assigned, and the
 action chain that produced it.
 
-Rules: `REC-1`, `REC-3`, `REC-5`.
+WHEN the assigned row has not filled `SIZE` and `DATA` yet, THE SYSTEM SHALL
+retry the read-back before recording a zero-byte or pathless result.
+
+WHEN a result name already ends with a known image extension, THE SYSTEM SHALL
+not append a second one; a dot elsewhere in the name is not an extension.
+
+Rules: `REC-1`, `REC-3`, `REC-5`, `REC-10`, `REC-11`.
 
 ### FR-7 — Only the results folder is recorded
 
@@ -77,7 +89,11 @@ Rules: `REC-4`, `CLS-4`.
 WHEN a result is written, THE SYSTEM SHALL copy the source's capture time,
 camera and location metadata onto it.
 
-Rules: `RUN-9`, `APP-3` (a later replacement must preserve them).
+WHEN the decoded bitmap comes from the platform decoder fallback, THE SYSTEM
+SHALL apply the source's EXIF orientation before the result's EXIF is rewritten
+to `NORMAL`.
+
+Rules: `RUN-9`, `RUN-10`, `APP-3` (a later replacement must preserve them).
 
 ### FR-9 — A repeat run keeps one pending result by default
 

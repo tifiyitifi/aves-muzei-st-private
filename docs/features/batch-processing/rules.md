@@ -33,6 +33,9 @@ it `superseded by <ID>` and leave the coverage that used to hold it.
 | RUN-7 | Tool id contract | The spec carries the native id | WHEN a job is built, THE SYSTEM SHALL send each tool's native id rather than its Dart enum name | `0bd4476aa`: the id is the only contract with `BatchToolRegistry` | `F:batch_action_test#tool spec uses the native tool id` |
 | RUN-8 | Footer default | Empty footer text means the file name | WHEN the footer has no text, THE SYSTEM SHALL draw the final file name | `0bd4476aa` | `F:batch_action_test#footer defaults to the automatic file name` |
 | RUN-9 | Result metadata | A result keeps the source's capture metadata | WHEN a result is written, THE SYSTEM SHALL copy the source's capture time, camera and location onto it | `3c827fe54`: a re-encode has no EXIF of its own | `-:native bake runner, no host fixture` |
+| RUN-10 | Decoder fallback orientation | The platform decoder returns an unrotated bitmap | WHEN the bitmap comes from the platform decoder fallback, THE SYSTEM SHALL apply the source's EXIF orientation before the result's EXIF is rewritten to `NORMAL` | `d60af1332`: skipping it bakes the rotation into the wrong pixels for good | `-:native RefraBakeRunner, no host fixture` |
+| RUN-11 | Stream close cancels | The progress subscription closes while the job writes | WHEN the progress stream closes, THE SYSTEM SHALL mark the running job cancelled, and SHALL clear the id only when the job ends | `d60af1332`: closing used to revoke a cancellation that had just been requested | `-:native BatchStreamHandler, no host fixture` |
+| RUN-12 | Unknown tool setting | A known tool receives an unknown setting | WHEN a tool receives a setting this build does not recognise, THE SYSTEM SHALL fail the item instead of producing an unadjusted image | `d60af1332`: a silent default hides a broken profile | `-:native BatchTools, no host fixture` |
 
 ## Recording
 
@@ -47,6 +50,8 @@ it `superseded by <ID>` and leave the coverage that used to hold it.
 | REC-7 | Listing order | The page lists newest first | WHEN results are listed, THE SYSTEM SHALL order them newest first | `3c827fe54`: the most recent run is the one the user is looking for | `F:batch_result_store_test#lists results newest first` |
 | REC-8 | Location follows the file | A rename rewrites the row | WHEN a result is renamed, THE SYSTEM SHALL rewrite its URI, path, name, MIME and size | `3c827fe54`: a rename gives the file a new MediaStore id | `F:batch_result_store_test#rewrites where a result lives` |
 | REC-9 | Row deletion | Rows are removed by id | WHEN a result is applied or gone, THE SYSTEM SHALL delete its row | `3c827fe54`: a tombstone would still render and still count | `F:batch_result_store_test#deletes rows by id` |
+| REC-10 | Name extension | A template produces a name with a dot in it | WHEN a result name already ends with a known image extension, THE SYSTEM SHALL not append another; a dot elsewhere is not an extension | `d60af1332`: `2024.05.vacation` used to be saved without one | `-:native RefraBakeRunner, no host fixture` |
+| REC-11 | Read-back retry | The assigned row is fresh | WHEN `SIZE` or `DATA` is not filled yet, THE SYSTEM SHALL retry the read-back before recording the result | `d60af1332`: a fresh result used to be stored as 0 bytes and pathless | `-:native RefraBakeRunner, no host fixture` |
 
 ## Repeat runs
 

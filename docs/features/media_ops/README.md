@@ -37,7 +37,8 @@ Out of scope:
 
 1. `spec.md` — what the feature must do.
 2. `rules.md` — the case register; every row names its evidence.
-3. `decisions/` — why the fallback order is what it is.
+3. `contracts/media-op-outcome.md` — the event keys and values shared with Kotlin.
+4. `decisions/` — why the fallback order is what it is.
 4. `testing.md` — gates, fixtures and the device checks.
 
 ## Code map

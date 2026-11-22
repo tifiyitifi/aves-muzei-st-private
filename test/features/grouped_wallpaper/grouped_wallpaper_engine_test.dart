@@ -430,6 +430,43 @@ void main() {
       expect((await store.readState())!.ordering, GroupedWallpaperOrdering.inOrder);
     });
 
+    test('the new-photo marker is seeded from the group before the first pick', () async {
+      serve(entries(5));
+
+      await engine.prepare();
+
+      expect(entrySource.markerSeeds, [50]);
+      expect(entrySource.firstPickNewestEntryId, 50);
+      expect((await store.readState())!.newestEntryId, 50);
+    });
+
+    test('a same-group restart keeps the seeded marker', () async {
+      serve(entries(5));
+      await engine.prepare();
+      final before = (await store.readState())!;
+      entrySource.newest = 40;
+      // The current photo left the range: the walk starts over in this group.
+      entrySource.entries = [for (final item in entrySource.entries) if (item.id != before.currentSlot!.entryId) item];
+
+      await engine.prepare();
+
+      expect(entrySource.markerSeeds, [50]);
+      expect((await store.readState())!.newestEntryId, before.newestEntryId);
+    });
+
+    test('switching group seeds a fresh marker from the new group', () async {
+      serve(entries(5));
+      await engine.prepare();
+      entrySource.newest = 40;
+      const nextGroup = WallpaperGroup(id: 'group.2', number: 2, name: '@wallpaperGroupDefaultPictures', current: true, updatedAt: 20);
+      planStore.switched = const GroupedWallpaperPlan(group: nextGroup);
+
+      await engine.switchGroup(1);
+
+      expect(entrySource.markerSeeds, [50, 40]);
+      expect((await store.readState())!.groupId, 'group.2');
+    });
+
     test('new photos are served before the random fallback', () async {
       serve(entries(12), fresh: [entry(60), entry(61)], newest: 50);
 
@@ -1141,6 +1178,45 @@ void main() {
     // The home queue is untouched: the decoy is not one of its slots.
     expect(state.slots.any((slot) => slot.photo == state.lock!.photo), isFalse);
     expect(historyRecorder.rows.where((row) => row.surface == WallpaperSurface.lock), hasLength(1));
+  });
+
+  test('the decoy seeds its new-photo marker from the lock range', () async {
+    final homeRange = VisibleRange(id: wallpaperGroupRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    final lockRange = VisibleRange(id: wallpaperGroupLockRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.1'), updatedAt: 1);
+    planStore.plan = GroupedWallpaperPlan(
+      group: dcimGroup.copyWith(separateLockRange: true),
+      range: homeRange,
+      lockRange: lockRange,
+    );
+    serve(entries(5));
+    // Above every entry id, so the marker and the picked photo cannot coincide.
+    entrySource.newest = 70;
+
+    await engine.prepare();
+
+    final state = (await store.readState())!;
+    expect(entrySource.markerSeeds, [70, 70]);
+    expect(state.newestEntryId, 70);
+    expect(state.lock!.newestEntryId, 70);
+  });
+
+  test('the decoy re-seeds its marker when its range changes', () async {
+    final homeRange = VisibleRange(id: wallpaperGroupRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    final firstLockRange = VisibleRange(id: wallpaperGroupLockRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.1'), updatedAt: 1);
+    planStore.plan = GroupedWallpaperPlan(group: dcimGroup.copyWith(separateLockRange: true), range: homeRange, lockRange: firstLockRange);
+    serve(entries(5));
+    entrySource.newest = 70;
+    await engine.prepare();
+
+    entrySource.newest = 80;
+    final secondLockRange = VisibleRange(id: 'group.1.lock.2', scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.1'), updatedAt: 2);
+    planStore.plan = GroupedWallpaperPlan(group: dcimGroup.copyWith(separateLockRange: true), range: homeRange, lockRange: secondLockRange);
+
+    await engine.prepare();
+
+    final state = (await store.readState())!;
+    expect(entrySource.markerSeeds, [70, 70, 80]);
+    expect(state.lock!.newestEntryId, 80);
   });
 
   test('a split bake upgrades a v6 state so the native side reads the decoy', () async {
@@ -2399,11 +2475,20 @@ class _FakeEntrySource implements GroupedWallpaperEntrySource {
   GroupedWallpaperOrdering? lastOrdering;
   int? lastNewestEntryId;
 
+  /// The high-water the engine asked for before each surface started picking.
+  final List<int> markerSeeds = [];
+
+  /// Marker the engine passed to the very first pick.
+  int? firstPickNewestEntryId;
+
   @override
   Future<int> count(VisibleRange? range) async => range != null && wallpaperGroupIdOfLockOwner(range.ownerId) != null ? lockTotal ?? total : total;
 
   @override
-  Future<int> newPhotoMarker(VisibleRange? range) async => newest;
+  Future<int> newPhotoMarker(VisibleRange? range) async {
+    markerSeeds.add(newest);
+    return newest;
+  }
 
   @override
   Future<GroupedWallpaperPick> pick(
@@ -2417,6 +2502,7 @@ class _FakeEntrySource implements GroupedWallpaperEntrySource {
     lastRange = range;
     lastOrdering = ordering;
     lastNewestEntryId = newestEntryId;
+    firstPickNewestEntryId ??= newestEntryId;
 
     bool usable(AvesEntry entry) => !entry.isMissingAtPath && !excludeEntryIds.contains(entry.id);
 

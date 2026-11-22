@@ -114,3 +114,13 @@ page itself in a separate navigation mode, and the single range entry on the
 wallpaper page in the shared mode.
 
 Rules: `NAV-3`.
+
+### FR-12 — The new-photo marker is seeded when a surface starts
+
+WHEN a group (or its split lock range) starts playing or moves to a different
+range, THE SYSTEM SHALL seed the new-photo marker from that source's id
+high-water before the first pick, so "new" means added after setup rather than
+not yet shown. WHEN the same group starts its walk over, THE SYSTEM SHALL keep
+the marker it already has.
+
+Rules: `ORD-1`, `ORD-2`, `ORD-3`, `ORD-4`, `ORD-5`.

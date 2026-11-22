@@ -72,6 +72,16 @@ it `superseded by <ID>` and leave the coverage that used to hold it.
 | --- | --- | --- | --- | --- | --- |
 | SWITCH-1 | The system rebinds the wallpaper | The engine was destroyed and the system kept the replaced wallpaper | WHEN the system rebinds, THE SYSTEM MAY draw the previous wallpaper until the new engine draws; the app SHALL document this and SHALL NOT claim to remove it | system `WallpaperManagerService` keeps the previous component; observed on MIUI after the engine was killed | `M` |
 
+## Ordering
+
+| ID | Case | Evidence | Behaviour | Why | Coverage |
+| --- | --- | --- | --- | --- | --- |
+| ORD-1 | A group starts its first walk | No state for the group exists yet | WHEN a group starts playing, THE SYSTEM SHALL seed the new-photo marker from the group's id high-water before the first pick | starting at zero made the whole library look new and play in id order | `F:grouped_wallpaper_engine_test#the new-photo marker is seeded from the group before the first pick` |
+| ORD-2 | The same group starts over | The current photo left the range | WHEN the same group restarts its walk, THE SYSTEM SHALL keep the marker instead of re-seeding it | a fresh marker would swallow new photos still queued for this group | `F:grouped_wallpaper_engine_test#a same-group restart keeps the seeded marker` |
+| ORD-3 | The playing group changes | The plan now names another group | WHEN a different group starts playing, THE SYSTEM SHALL seed a fresh marker from that group | "new" is relative to when the group started playing | `F:grouped_wallpaper_engine_test#switching group seeds a fresh marker from the new group` |
+| ORD-4 | A split lock surface starts | The decoy has no frame yet | WHEN the decoy starts picking, THE SYSTEM SHALL seed its marker from the lock range and persist it on the frame | the decoy is its own source and must not walk the whole range in id order | `F:grouped_wallpaper_engine_test#the decoy seeds its new-photo marker from the lock range` |
+| ORD-5 | The lock range changes | The split surface points at another range | WHEN the lock range changes, THE SYSTEM SHALL re-seed the decoy's marker from the new range | the previous range's high-water says nothing about the new source | `F:grouped_wallpaper_engine_test#the decoy re-seeds its marker when its range changes` |
+
 ## Navigation
 
 | ID | Case | Evidence | Behaviour | Why | Coverage |

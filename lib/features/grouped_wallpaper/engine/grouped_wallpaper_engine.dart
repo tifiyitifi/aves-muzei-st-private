@@ -921,7 +921,12 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       }
 
       // A new photo: either time passed, or the photo on the decoy left the
-      // range (a hidden filter, a locked vault).
+      // range (a hidden filter, a locked vault). The decoy is its own source, so
+      // its "new" marker is seeded when it starts or moves to another range.
+      var markerSeed = current?.newestEntryId ?? 0;
+      if (current == null || rangeChanged || markerSeed <= 0) {
+        markerSeed = await entrySource.newPhotoMarker(lockRange);
+      }
       final excluded = <int>{
         if (current != null) current.entryId,
         for (final entry in current?.recent ?? const <GroupedWallpaperRecentEntry>[]) entry.entryId,
@@ -932,7 +937,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
           ordering: plan.ordering,
           cursor: current?.cursor ?? 0,
           attempt: attempt,
-          newestEntryId: current?.newestEntryId ?? 0,
+          newestEntryId: markerSeed,
           excludeEntryIds: excluded,
         );
         final entry = pick.entry;
@@ -945,7 +950,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             surface,
             previous: current,
             cursor: pick.offset >= 0 ? pick.offset + 1 : (current?.cursor ?? 0),
-            newestEntryId: math.max(current?.newestEntryId ?? 0, entry.id),
+            newestEntryId: math.max(markerSeed, entry.id),
             promote: true,
           );
           await _writeLock(store, plan, state, frame);
@@ -1243,7 +1248,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     // The queue is starting over: the frame baked for the old one is no longer
     // the step this group will take.
     _prewarmed = null;
-    final base = previous?.copyWith(
+    var base = previous?.copyWith(
           status: GroupedWallpaperStatus.ready,
           current: -1,
           previous: -1,
@@ -1260,6 +1265,14 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
         );
     if (total <= 0) {
       return await _settle(store, plan, base, total: total, surface: surface, scrollEffect: scrollEffect, newPhoto: false, navigated: false);
+    }
+    // Muzei seeds "new" at source setup: it means added after this group started
+    // playing, not "not shown yet". Re-seed on a group change or an old state
+    // without a marker; a same-group restart keeps it so queued new photos are
+    // not swallowed by a fresh walk.
+    if (!sameGroup || base.newestEntryId <= 0) {
+      final marker = await entrySource.newPhotoMarker(plan.range);
+      if (marker > 0) base = base.copyWith(newestEntryId: marker);
     }
     // [exclude] holds the entry that just failed to resolve: picking it again
     // would loop between "the photo is gone" and "start over".

@@ -118,6 +118,7 @@
   `browse_only.*` keys.
 - WHEN a browse preference cannot be read, THE SYSTEM SHALL keep the built-in
   default.
+- WHEN either browse view opens, THE SYSTEM SHALL load the persisted sort.
 - WHEN the browse sort changes, THE SYSTEM SHALL leave the collection's own sort
   settings untouched.
 

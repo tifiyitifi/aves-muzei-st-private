@@ -17,6 +17,7 @@ failures, timeouts, empty pages, colliding ids and a stalled cursor).
 | `services/browse_album_loader_test.dart` | folder scoping, whole-folder read, failure/resume, notifications |
 | `browse_media_grid_test.dart` | the widget: headers scroll with rows, the drag handle lands on a month |
 | `view/browse_bottom_bar_test.dart` | the widget: user order, appended destination, greyed entries, view switching |
+| `services/browse_prefs_test.dart` | the sort preferences: defaults, persisted values, an unknown value, the no-op guard, the separate keys and the read-once behaviour |
 
 The widget tests stub `Settings` (the grid reads the tile extent) and pin the
 locale.
@@ -38,14 +39,14 @@ These need the real MediaStore, the app shell or layout:
 
 ## Debt
 
-- `BrowsePrefs` has no host test (defaults, read fallback, the no-op guard, the
-  four keys).
 - `openBrowseOnlyViewer` bounds, the ±250 window and `listenToSource: false` are
   untested.
 - The page chrome (title derivation, spinner, error bar, preview strip) and the
   sort menus are layout.
 - The handoff wiring in `CollectionPage` (clear both singletons on `ready`) has no
   test.
+- The two page entry points' `browsePrefs.init()` call is not widget-tested; the
+  store itself is.
 
 `tasks.md` tracks these; they are not claimed by a rule.
 

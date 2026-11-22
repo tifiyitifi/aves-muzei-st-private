@@ -154,10 +154,23 @@ class _BrowseAlbumTile extends StatelessWidget {
 
 /// The album list as its own page, for the drawer's album entry while the
 /// browser is the collection surface.
-class BrowseOnlyAlbumsPage extends StatelessWidget {
+class BrowseOnlyAlbumsPage extends StatefulWidget {
   static const routeName = '/browse-only/albums';
 
   const new({super.key});
+
+  @override
+  State<BrowseOnlyAlbumsPage> createState() => _BrowseOnlyAlbumsPageState();
+}
+
+class _BrowseOnlyAlbumsPageState extends State<BrowseOnlyAlbumsPage> {
+  @override
+  void initState() {
+    super.initState();
+    // The album grid reads the persisted sort as soon as it builds; the entry
+    // order must not depend on whether the timeline happened to be opened first.
+    unawaited(browsePrefs.init());
+  }
 
   @override
   Widget build(BuildContext context) {

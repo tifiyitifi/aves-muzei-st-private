@@ -98,5 +98,9 @@ One row per case the feature has to get right. Coverage tokens are defined in
 
 | ID | Case | Behaviour | Why | Coverage |
 | --- | --- | --- | --- | --- |
-| PRF-1 | Persisted sort | WHEN a browse sort is picked, THE SYSTEM SHALL persist it under its own key | the browser's sort must not move the collection's | `-:BrowsePrefs has no host test yet (see tasks.md)` |
-| PRF-2 | Read fallback | WHEN a preference cannot be read, THE SYSTEM SHALL keep the default | a corrupt value must not break the page | `-:BrowsePrefs has no host test yet (see tasks.md)` |
+| PRF-1 | Persisted sort | WHEN a browse sort is picked, THE SYSTEM SHALL persist it under its own keys | the browser's sort must not move the collection's | `F:browse_prefs_test#persists a picked media sort under its own keys`; `F:browse_prefs_test#persists a picked album sort under its own keys` |
+| PRF-2 | Separate namespace | WHEN a sort is persisted, THE SYSTEM SHALL not write the collection's sort settings | the collection must come back unchanged after the handoff | `F:browse_prefs_test#persists a picked media sort under its own keys` |
+| PRF-3 | Read fallback | WHEN a preference cannot be read or holds an unknown value, THE SYSTEM SHALL keep the default | a corrupt value must not break the page | `F:browse_prefs_test#starts from the gallery defaults`; `F:browse_prefs_test#keeps the default for a value it cannot read` |
+| PRF-4 | No-op pick | WHEN the picked sort equals the current one, THE SYSTEM SHALL neither notify nor write | repicking must not churn the prefs or the grid | `F:browse_prefs_test#picking the current sort neither notifies nor writes` |
+| PRF-5 | Read once | WHEN the preferences have loaded, THE SYSTEM SHALL not read them again | a second page mount must not reset a just-picked sort | `F:browse_prefs_test#init reads once and later calls do not re-read` |
+| PRF-6 | Both entry points | WHEN either browse view opens, THE SYSTEM SHALL load the preferences | opening Albums first must not show defaults while its sort writes the same keys | `-:the call is in each page's initState; a widget test of both pages is not written (see testing.md)` |

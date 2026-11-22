@@ -6,53 +6,13 @@ import 'package:aves/model/entry/origins.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/widgets/common/basic/draggable_scrollbar/scrollbar.dart';
 import 'package:aves/widgets/common/providers/media_query_data_provider.dart';
-import 'package:aves_model/aves_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../common.dart';
-
-/// The settings the grid theme reads, without the device behind them.
-///
-/// `GridTheme` asks `settings.useTvLayout`, which asks the device whether it is
-/// a television, and the device singleton is filled from platform plugins the
-/// tests do not run. Everything else the tree reads is left at its default.
-class _SettingsWithoutDevice extends ChangeNotifier implements Settings {
-  @override
-  bool get useTvLayout => false;
-
-  @override
-  bool get showThumbnailFavourite => false;
-
-  @override
-  bool get showThumbnailHdr => false;
-
-  @override
-  ThumbnailOverlayLocationIcon get thumbnailLocationIcon => .none;
-
-  @override
-  ThumbnailOverlayTagIcon get thumbnailTagIcon => .none;
-
-  @override
-  bool get showThumbnailMotionPhoto => false;
-
-  @override
-  bool get showThumbnailRating => false;
-
-  @override
-  bool get showThumbnailRaw => false;
-
-  @override
-  bool get showThumbnailVideoDuration => false;
-
-  @override
-  bool get animate => false;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError('${invocation.memberName} on the test settings');
-}
+import 'test_settings.dart';
 
 /// A tile with no image behind it: the layout is what is under test.
 class _TestTile extends StatelessWidget {
@@ -72,7 +32,7 @@ class _TestTile extends StatelessWidget {
 /// screen is headers.
 void main() {
   late BrowseLibrary library;
-  late _SettingsWithoutDevice testSettings;
+  late BrowseTestSettings testSettings;
 
   setUpAll(() async {
     await setUpAllServices();
@@ -82,7 +42,7 @@ void main() {
 
   setUp(() async {
     await setUpServices();
-    testSettings = _SettingsWithoutDevice();
+    testSettings = BrowseTestSettings();
     addTearDown(testSettings.dispose);
     library = BrowseLibrary();
   });

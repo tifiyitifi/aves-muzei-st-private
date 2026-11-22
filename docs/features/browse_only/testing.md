@@ -18,6 +18,8 @@ failures, timeouts, empty pages, colliding ids and a stalled cursor).
 | `services/browse_album_loader_test.dart` | folder scoping, whole-folder read, failure/resume, notifications |
 | `browse_media_grid_test.dart` | the widget: headers scroll with rows, the drag handle lands on a month |
 | `view/browse_bottom_bar_test.dart` | the widget: user order, appended destination, greyed entries, view switching |
+| `view/browse_only_page_test.dart` | the chrome: the persisted sort on open, the title from the user's item and its fallback, the spinner, the first-page failure and retry, the strip's displayed count and its retry action |
+| `view/browse_timeline_preview_test.dart` | the strip: the stated count, the action at the limit, the retry after a failed page |
 | `services/browse_prefs_test.dart` | the sort preferences: defaults, persisted values, an unknown value, the no-op guard, the separate keys and the read-once behaviour |
 
 The widget tests stub `Settings` (the grid reads the tile extent) and pin the
@@ -42,12 +44,9 @@ These need the real MediaStore, the app shell or layout:
 
 - `openBrowseOnlyViewer`'s `listenToSource: false` is untested: the window
   arithmetic itself now lives in `viewer_window.dart` and is covered.
-- The page chrome (title derivation, spinner, error bar, preview strip) and the
-  sort menus are layout.
 - The handoff wiring in `CollectionPage` (clear both singletons on `ready`) has no
   test.
-- The two page entry points' `browsePrefs.init()` call is not widget-tested; the
-  store itself is.
+- The sort menus are layout; the page test drives the state, not the menu.
 
 `tasks.md` tracks these; they are not claimed by a rule.
 

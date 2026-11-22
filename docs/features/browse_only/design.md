@@ -66,6 +66,21 @@ The scroller is arithmetic over the item list (`BrowseScrollMap`): month starts
 accumulate header and row extents plus bottom padding; `monthAt` binary-searches
 and clamps; `snap` picks the nearer start. It appears only from four months.
 
+## The chrome
+
+The title names the view after the user's own navigation item (`viewFor`), falling
+back to the built-in tab name when the bar has no entry for it: the bar and the
+title cannot drift apart.
+
+The timeline has three states before it has rows: progress while the first read is
+in flight, the failure with its retry when nothing was read, and the empty library
+otherwise. The preview strip appears when the window is at its limit or its last
+page failed; its action continues past the limit or retries the failed page.
+
+The strip states the **displayed** row count (`order.length`), because hidden
+albums are read but not rendered, while the read budget itself stays on the raw
+count in `atLimit` (decision `0006`).
+
 ## The album list
 
 One aggregate read returns every folder with its count, cover and newest date; the

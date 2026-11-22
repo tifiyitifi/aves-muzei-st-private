@@ -11,6 +11,7 @@ One row per case the feature has to get right. Coverage tokens are defined in
 | NAV-2 | Never a pick surface | WHEN a pick is in progress, THE SYSTEM SHALL keep the collection grid | a pick cannot be completed in a browser that offers no selection | `-:the app-mode gate lives in collection_page.dart` |
 | NAV-3 | Handoff | WHEN the library phase reaches ready, THE SYSTEM SHALL clear the browse window and album list | the collection takes over the bottom of the app | `-:the seam is collection_page.dart; the windows' own clear is covered by WIN-11 and ORD-9` |
 | NAV-4 | Menu button | WHEN an outer scaffold owns a drawer, THE SYSTEM SHALL offer a button that opens it | the browser's own scaffold would hide the app drawer | `-:layout` |
+| NAV-5 | Title | WHEN the page renders its title, THE SYSTEM SHALL name the view after the user's navigation item that owns it, falling back to the built-in name | a second set of names would drift from the bar the user configured | `F:browse_only_page_test#the title follows the navigation item that owns the view`; `F:browse_only_page_test#a view with no navigation item of its own keeps the built-in name` |
 
 ## The paged window
 
@@ -92,8 +93,9 @@ One row per case the feature has to get right. Coverage tokens are defined in
 | UI-1 | Section header | WHEN the timeline scrolls, THE SYSTEM SHALL let the month header scroll away with its rows | a pinned header never shrinks and stacks headers on screen | `F:browse_media_grid_test#the month header scrolls away with the rows under it` |
 | UI-2 | Viewer window | WHEN a tile is tapped, THE SYSTEM SHALL open the viewer with a bounded neighbourhood | materializing the whole index would recreate the library | `F:viewer_window_test#the window is bounded on both sides`; `F:viewer_window_test#a position near the start keeps the beginning`; `F:viewer_window_test#a position near the end keeps the end` |
 | UI-5 | Out-of-range tap | WHEN the tapped position is outside the displayed order, THE SYSTEM SHALL not open the viewer | a filtered or stale order must not open whatever row now sits there | `F:viewer_window_test#a position outside the list has no window` |
-| UI-3 | Empty and failed states | WHEN a view is empty or failed, THE SYSTEM SHALL say why and offer the matching action | a blank screen is indistinguishable from a bug | `-:layout, covered by the device checks in testing.md` |
-| UI-4 | Preview strip | WHEN the limit is reached or the last page failed, THE SYSTEM SHALL show the preview strip with its action | the user must be able to pass the limit or retry | `-:layout` |
+| UI-3 | Empty and failed states | WHEN a view is empty or failed, THE SYSTEM SHALL say why and offer the matching action | a blank screen is indistinguishable from a bug | `F:browse_only_page_test#the first read shows progress and then the empty library`; `F:browse_only_page_test#a failed first read says so and retries on demand` |
+| UI-4 | Preview strip | WHEN the limit is reached or the last page failed, THE SYSTEM SHALL show the preview strip with its action | the user must be able to pass the limit or retry | `F:browse_only_page_test#a failed page turns the strip action into a retry`; `F:browse_timeline_preview_test#at the limit the action asks for more rows`; `F:browse_timeline_preview_test#after a failed page the action retries instead` |
+| UI-6 | Preview count | WHEN the strip states how many rows the timeline shows, THE SYSTEM SHALL count the displayed rows, not the rows read | hidden albums are read but not rendered, so the read count would promise tiles that are not there | `F:browse_only_page_test#the preview strip counts the rows the grid shows, not the rows read`; `F:browse_timeline_preview_test#the strip states the rows the timeline shows` |
 
 ## Preferences
 
@@ -104,4 +106,4 @@ One row per case the feature has to get right. Coverage tokens are defined in
 | PRF-3 | Read fallback | WHEN a preference cannot be read or holds an unknown value, THE SYSTEM SHALL keep the default | a corrupt value must not break the page | `F:browse_prefs_test#starts from the gallery defaults`; `F:browse_prefs_test#keeps the default for a value it cannot read` |
 | PRF-4 | No-op pick | WHEN the picked sort equals the current one, THE SYSTEM SHALL neither notify nor write | repicking must not churn the prefs or the grid | `F:browse_prefs_test#picking the current sort neither notifies nor writes` |
 | PRF-5 | Read once | WHEN the preferences have loaded, THE SYSTEM SHALL not read them again | a second page mount must not reset a just-picked sort | `F:browse_prefs_test#init reads once and later calls do not re-read` |
-| PRF-6 | Both entry points | WHEN either browse view opens, THE SYSTEM SHALL load the preferences | opening Albums first must not show defaults while its sort writes the same keys | `-:the call is in each page's initState; a widget test of both pages is not written (see testing.md)` |
+| PRF-6 | Page open | WHEN the browse page opens, THE SYSTEM SHALL load the persisted sort | opening Albums first must not show defaults while its sort writes the same keys | `F:browse_only_page_test#the page loads the persisted browse sort` |

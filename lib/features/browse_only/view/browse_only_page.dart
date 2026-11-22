@@ -6,6 +6,7 @@ import 'package:aves/features/browse_only/view/browse_albums_view.dart';
 import 'package:aves/features/browse_only/view/browse_bottom_bar.dart';
 import 'package:aves/features/browse_only/view/browse_media_grid.dart';
 import 'package:aves/features/browse_only/view/browse_sort_button.dart';
+import 'package:aves/features/browse_only/view/browse_timeline_preview.dart';
 import 'package:aves/features/collection_paging/view/browse_only_notice_bar.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/icons.dart';
@@ -31,7 +32,14 @@ import 'package:provider/provider.dart';
 class BrowseOnlyPage extends StatefulWidget {
   static const routeName = '/browse-only';
 
-  const new({super.key});
+  /// Builds one timeline tile, by default the browse surface's own thumbnail
+  /// tile.
+  ///
+  /// Same seam as [BrowseMediaGrid.tileBuilder]: a test of the page chrome does
+  /// not stand up the image pipeline just to see a title or a strip.
+  final BrowseTileBuilder? tileBuilder;
+
+  const new({super.key, this.tileBuilder});
 
   @override
   State<BrowseOnlyPage> createState() => _BrowseOnlyPageState();
@@ -130,11 +138,16 @@ class _BrowseOnlyPageState extends State<BrowseOnlyPage> {
           }
         }
         final sort = browsePrefs.mediaSort;
+        // The displayed order serves the grid and the strip's count: the strip
+        // states what the timeline shows, so it must be this list's length, not
+        // the rows the window read (hidden albums are read but not rendered).
+        final order = browseLibrary.mediaIndexes(sort: sort, reverse: browsePrefs.mediaReverse);
         final grid = BrowseMediaGrid(
           library: browseLibrary,
           key: const PageStorageKey('browse-timeline'),
-          indexes: browseLibrary.mediaIndexes(sort: sort, reverse: browsePrefs.mediaReverse),
+          indexes: order,
           sectioned: sort == BrowseMediaSort.date,
+          tileBuilder: widget.tileBuilder,
         );
         if (!_showTimelineFooter) return grid;
         // The timeline is a preview of the newest rows: the album list is whole
@@ -144,7 +157,12 @@ class _BrowseOnlyPageState extends State<BrowseOnlyPage> {
         return Column(
           children: [
             Expanded(child: grid),
-            const _BrowseTimelinePreview(),
+            BrowseTimelinePreview(
+              count: order.length,
+              failed: browseLibrary.error != null,
+              onContinue: () => unawaited(browseLibrary.loadMore(beyondPreviewLimit: true)),
+              onRetry: () => unawaited(browseLibrary.retry()),
+            ),
           ],
         );
       },
@@ -155,51 +173,4 @@ class _BrowseOnlyPageState extends State<BrowseOnlyPage> {
   /// own limit, or the last page failed and the rest of the rows are still out
   /// there.
   bool get _showTimelineFooter => browseLibrary.atLimit || browseLibrary.error != null;
-}
-
-/// The strip under a timeline that is a preview, pointing at the whole album
-/// list and offering the rows the preview stopped short of.
-class _BrowseTimelinePreview extends StatelessWidget {
-  const new();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = theme.colorScheme.onSecondaryContainer;
-    return Material(
-      color: theme.colorScheme.secondaryContainer,
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(16, 6, 16, 6),
-        child: Row(
-          children: [
-            Icon(AIcons.image, size: 16, color: color),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                context.l10n.browseOnlyTimelinePreview(browseLibrary.length),
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.fade,
-                style: theme.textTheme.bodySmall?.copyWith(color: color),
-              ),
-            ),
-            const SizedBox(width: 8),
-            TextButton(
-              style: TextButton.styleFrom(
-                // The strip is one line high: a default-sized button would
-                // overflow it.
-                minimumSize: Size.zero,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-                foregroundColor: color,
-              ),
-              onPressed: browseLibrary.error != null ? () => unawaited(browseLibrary.retry()) : () => unawaited(browseLibrary.loadMore(beyondPreviewLimit: true)),
-              child: Text(context.l10n.browseOnlyTimelineContinue),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

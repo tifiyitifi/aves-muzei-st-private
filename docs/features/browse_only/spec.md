@@ -87,6 +87,9 @@
 
 - WHEN the user's navigation declares at least two items, THE SYSTEM SHALL render
   them in the user's order with the user's labels.
+- WHEN the page renders its title, THE SYSTEM SHALL name the current view after the
+  user's navigation item that owns it, and SHALL fall back to the built-in name
+  when no item does.
 - WHEN the visible-range destination is not already configured, THE SYSTEM SHALL
   append it once.
 - WHEN a bar entry points at the media set or the album list, THE SYSTEM SHALL
@@ -113,6 +116,8 @@
   being imported.
 - WHEN the timeline reached its limit or its last page failed, THE SYSTEM SHALL show
   the preview strip.
+- WHEN the preview strip states how many rows the timeline shows, THE SYSTEM SHALL
+  count the displayed rows, not the rows the window read.
 
 ## Preferences
 
@@ -120,7 +125,7 @@
   `browse_only.*` keys.
 - WHEN a browse preference cannot be read, THE SYSTEM SHALL keep the built-in
   default.
-- WHEN either browse view opens, THE SYSTEM SHALL load the persisted sort.
+- WHEN the browse page opens, THE SYSTEM SHALL load the persisted sort.
 - WHEN the browse sort changes, THE SYSTEM SHALL leave the collection's own sort
   settings untouched.
 

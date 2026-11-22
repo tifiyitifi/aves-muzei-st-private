@@ -45,9 +45,9 @@ Out of scope:
 2. `rules.md` — the case register; every row names its evidence.
 3. `design.md` — the window, the index, the album list and the bar.
 4. `decisions/` — why a separate surface, why a bounded preview, why the bar is
-   the user's.
+   the user's, and why the preview counts what the grid shows.
 5. `testing.md` — the fakes, the widget tests and the device checks.
-6. `tasks.md` — known gaps, including the untested preference store.
+6. `tasks.md` — known gaps: the handoff wiring and the viewer's detached lens.
 
 ## Code map
 

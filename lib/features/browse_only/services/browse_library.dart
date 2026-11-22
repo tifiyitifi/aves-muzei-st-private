@@ -12,20 +12,6 @@ import 'package:flutter/foundation.dart';
 
 const _log = browseOnlyLog;
 
-/// One month of rows, for the media grid's sticky headers.
-class BrowseMonth {
-  final int year, month;
-
-  /// Row indexes, newest first.
-  final List<int> indexes;
-
-  const new({
-    required this.year,
-    required this.month,
-    required this.indexes,
-  });
-}
-
 /// A window of the library as browsing needs it: rows read in pages, plus the
 /// order and sections the grid renders.
 ///
@@ -81,21 +67,12 @@ class BrowseLibrary extends ChangeNotifier {
   final LinkedHashMap<int, AvesEntry> _entries = LinkedHashMap();
 
   int _version = 0;
-  List<BrowseMonth>? _months;
 
   /// Display orders, keyed by what they were computed from. A sort change or a
   /// new page invalidates them; the index itself never moves.
   List<int>? _mediaOrder;
   String _mediaOrderKey = '';
   int _mediaOrderVersion = -1;
-
-  /// The hidden-album set the month cache was built with: a preferences change
-  /// has to show immediately, and the index itself does not change.
-  String _monthsHidden = '';
-
-  /// The row version the month cache was built from, so a write path that
-  /// forgets to drop it cannot serve a stale section list.
-  int _monthsVersion = -1;
 
   bool _disposed = false;
   bool _loading = false;
@@ -236,7 +213,6 @@ class BrowseLibrary extends ChangeNotifier {
     }
     if (added == 0) return;
     _version++;
-    _months = null;
     _mediaOrder = null;
     _notify();
   }
@@ -283,25 +259,6 @@ class BrowseLibrary extends ChangeNotifier {
     return _mediaOrder = ordered;
   }
 
-  /// Positions of the video rows, in display order.
-  List<int> get videoIndexes => mediaIndexes(sort: BrowseMediaSort.date, reverse: false, videosOnly: true);
-
-  /// Month sections over [indexes], in the order they are given.
-  List<BrowseMonth> monthsOf(List<int> indexes) {
-    final months = <int, BrowseMonth>{};
-    for (final index in indexes) {
-      final date = DateTime.fromMillisecondsSinceEpoch(_rows[index].bestDateMillis);
-      final key = date.year * 100 + date.month;
-      final section = months[key];
-      if (section == null) {
-        months[key] = BrowseMonth(year: date.year, month: date.month, indexes: [index]);
-      } else {
-        section.indexes.add(index);
-      }
-    }
-    return months.values.toList(growable: false);
-  }
-
   List<int> _sorted(List<int> indexes, BrowseMediaSort sort, bool reverse) {
     final sorted = List<int>.of(indexes);
     switch (sort) {
@@ -326,21 +283,6 @@ class BrowseLibrary extends ChangeNotifier {
     return directory == null || !hidden.contains(directory);
   }
 
-  /// The media grid's month sections, newest first.
-  ///
-  /// Rows in hidden albums are left out, matching what the collection shows.
-  List<BrowseMonth> get months {
-    final hidden = _hiddenDirectories();
-    final fingerprint = hidden.join('\u0000');
-    final cached = _months;
-    if (cached != null && _monthsHidden == fingerprint && _monthsVersion == _version) return cached;
-
-    final months = monthsOf(mediaIndexes(sort: BrowseMediaSort.date, reverse: false));
-    _monthsHidden = fingerprint;
-    _monthsVersion = _version;
-    return _months = months;
-  }
-
   /// Drops the window, for the handoff back to the collection.
   ///
   /// A page still in flight is released with it: it belongs to the window that
@@ -360,7 +302,6 @@ class BrowseLibrary extends ChangeNotifier {
     _rows.clear();
     _indexByUri.clear();
     _entries.clear();
-    _months = null;
     _mediaOrder = null;
     _cursor = null;
     _hasMore = true;

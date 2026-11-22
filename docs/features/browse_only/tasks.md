@@ -9,7 +9,6 @@ register, in priority order.
 | Extract and test the viewer window bounds | `openBrowseOnlyViewer` clamps the position and slices ±250 neighbours; a pure helper would be host-testable | `UI-2` |
 | Test the handoff clear | `CollectionPage` clears both singletons when the phase reaches ready; the windows' own `clear` is tested, the wiring is not | `NAV-3` |
 | Decide whether the preview strip should count hidden rows | `atLimit` uses the raw row count, so the strip can claim more rows than the grid shows | `WIN-10` (design) |
-| Remove the unused `months`/`videoIndexes` API | no production caller; only `browse_library_test` keeps them alive | `ORD-3`, `ORD-4` |
 
 Not planned: restoring selection or editing in the browser. It is a viewing
 surface by design (`0001`).

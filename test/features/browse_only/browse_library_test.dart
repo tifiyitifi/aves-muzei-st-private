@@ -1,3 +1,4 @@
+import 'package:aves/features/browse_only/model/browse_grid_items.dart';
 import 'package:aves/features/browse_only/model/browse_row.dart';
 import 'package:aves/features/browse_only/services/browse_library.dart';
 import 'package:aves/features/browse_only/services/browse_prefs.dart';
@@ -111,8 +112,10 @@ void main() {
     settings.hiddenFilters = {StoredAlbumFilter('/hidden', null)};
     addTearDown(() => settings.hiddenFilters = previous);
 
-    final indexes = library.months.expand((month) => month.indexes).toList();
-    expect(indexes, [0]);
+    final order = library.mediaIndexes(sort: BrowseMediaSort.date, reverse: false);
+    expect(order, [0]);
+    final items = browseGridItems(library, order, columns: 2);
+    expect(items.whereType<BrowseRowItem>().expand((row) => [row.start, row.count]), [0, 1]);
   });
 
   test('narrows the index to videos without touching the database', () {
@@ -122,7 +125,7 @@ void main() {
     ]);
 
     // The media store reports the kind; browsing must not need the catalogue.
-    expect(library.videoIndexes, [0]);
+    expect(library.mediaIndexes(sort: BrowseMediaSort.date, reverse: false, videosOnly: true), [0]);
     expect(library.rowAt(0).isVideo, isTrue);
     expect(library.rowAt(1).isVideo, isFalse);
   });
@@ -134,10 +137,15 @@ void main() {
       entry(3, dateTaken: millis(2024, 1)),
     ]);
 
-    final months = library.months;
-    expect(months.map((v) => (v.year, v.month)), [(2024, 3), (2024, 1)]);
-    expect(months.first.indexes, [0, 1]);
-    expect(months.last.indexes, [2]);
+    final order = library.mediaIndexes(sort: BrowseMediaSort.date, reverse: false);
+    final items = browseGridItems(library, order, columns: 2);
+
+    expect(items.whereType<BrowseMonthItem>().map((v) => (v.year, v.month)), [(2024, 3), (2024, 1)]);
+    // The last row of a month is short: sections never bleed into each other.
+    expect(
+      items.whereType<BrowseRowItem>().map((v) => (v.start, v.count)),
+      [(0, 2), (2, 1)],
+    );
   });
 
   test('orders the timeline by date or by name, both directions', () {

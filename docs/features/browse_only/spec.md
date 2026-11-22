@@ -107,6 +107,8 @@
   most 250 neighbours on each side in display order.
 - WHEN the tapped position is outside the displayed order, THE SYSTEM SHALL not
   open the viewer.
+- WHEN the viewer is opened from the browser, THE SYSTEM SHALL hand it the
+  displayed rows in a lens that does not follow the catalogued source.
 - WHEN a tile is rendered in the browser, THE SYSTEM SHALL not make it selectable.
 - WHEN the first page is in flight and nothing is read, THE SYSTEM SHALL show
   progress.

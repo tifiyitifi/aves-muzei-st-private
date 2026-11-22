@@ -17,7 +17,8 @@ MediaStore (BrowseMediaStore.fetchPage)
   -> BrowseLibrary: List<BrowseRow> + uri -> index, cursor, token, LRU entries
   -> mediaIndexes(sort, reverse, videosOnly)   (display order, cached)
   -> BrowseMediaGrid -> browseGridItems(...)     (month header + rows of tiles)
-  -> openBrowseOnlyViewer -> CollectionLens(fixedSelection) -> viewer
+  -> browseViewerLens(source, entries)            (detached, fixedSelection)
+  -> viewer
 ```
 
 Albums:
@@ -49,6 +50,9 @@ mediaStoreService.getAlbumSummaries()
 - The index is a light `BrowseRow` list; an `AvesEntry` is materialized on demand
   with a negative synthetic id, so it can never alias a real database row in a
   viewer or a selection keyed by id.
+- The viewer gets a bounded window in a lens that does not follow the source
+  (`browseViewerLens`): its rows are the media store's, so an import event must not
+  grow, shrink or reorder the set under the user's swipe.
 
 ## Order and sections
 

@@ -12,6 +12,7 @@ failures, timeouts, empty pages, colliding ids and a stalled cursor).
 | `browse_library_test.dart` | row mapping, sort-date fallback, order, sections, hidden albums, entry cache, synthetic ids, clear |
 | `model/browse_grid_items_test.dart` | months as headers plus rows, no cross-month row, full coverage |
 | `model/viewer_window_test.dart` | the viewer's bounded neighbourhood and the out-of-range tap |
+| `model/viewer_lens_test.dart` | the viewer's lens: detached from the catalogued source, keeping its rows across add/remove events |
 | `model/browse_scroll_map_test.dart` | offsets, clamping, snapping, crumb fractions, empty list |
 | `model/browse_drawer_entry_test.dart` | the fail-closed whitelist and the organized case |
 | `browse_albums_test.dart` | the aggregate read, idempotence, hidden set, disambiguation, sorting, retry, timeout, clear race |
@@ -42,8 +43,6 @@ These need the real MediaStore, the app shell or layout:
 
 ## Debt
 
-- `openBrowseOnlyViewer`'s `listenToSource: false` is untested: the window
-  arithmetic itself now lives in `viewer_window.dart` and is covered.
 - The handoff wiring in `CollectionPage` (clear both singletons on `ready`) has no
   test.
 - The sort menus are layout; the page test drives the state, not the menu.

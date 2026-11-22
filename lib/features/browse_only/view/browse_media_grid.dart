@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/features/browse_only/model/browse_grid_items.dart';
 import 'package:aves/features/browse_only/model/browse_scroll_map.dart';
+import 'package:aves/features/browse_only/model/viewer_lens.dart';
 import 'package:aves/features/browse_only/model/viewer_window.dart';
 import 'package:aves/features/browse_only/services/browse_library.dart';
 import 'package:aves/features/browse_only/view/browse_timeline_scroller.dart';
@@ -9,7 +10,6 @@ import 'package:aves/features/collection_paging/engine/library_phase.dart';
 import 'package:aves/features/collection_paging/lens/paged_import_status.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/settings/settings.dart';
-import 'package:aves/model/source/collection_lens.dart';
 import 'package:aves/model/source/collection_source.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
@@ -333,11 +333,7 @@ void openBrowseOnlyViewer(BuildContext context, BrowseLibrary library, List<int>
   final entries = <AvesEntry>[
     for (var i = window.from; i < window.to; i++) library.entryAt(order[i]),
   ];
-  final collection = CollectionLens(
-    source: source,
-    listenToSource: false,
-    fixedSelection: entries,
-  );
+  final collection = browseViewerLens(source, entries);
   Navigator.maybeOf(context)?.push(
     MaterialPageRoute(
       settings: const RouteSettings(name: EntryViewerPage.routeName),

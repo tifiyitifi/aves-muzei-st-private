@@ -4,6 +4,7 @@ import 'package:aves/features/search_filters/model/search_assist.dart';
 import 'package:aves/features/search_filters/model/size_assist_unit.dart';
 import 'package:aves/features/search_filters/model/time_to_now.dart';
 import 'package:aves/features/search_filters/services/assist_counter.dart';
+import 'package:aves/features/search_filters/services/count_debouncer.dart';
 import 'package:aves/locale/aves_locale.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/icons.dart';
@@ -65,8 +66,12 @@ class _OtherAssistSheetState extends State<_OtherAssistSheet> {
   final _idMin = TextEditingController();
   final _idMax = TextEditingController();
 
-  Timer? _countTimer;
-  int _countToken = 0;
+  late final CountDebouncer _counter = CountDebouncer(
+    delay: const Duration(milliseconds: 300),
+    count: () => AssistCounter.count(_draft.toFilters(calendar: widget.calendar)),
+    onResult: (count) => setState(() => _count = count),
+    isAlive: () => mounted,
+  );
   int? _count;
 
   @override
@@ -78,7 +83,7 @@ class _OtherAssistSheetState extends State<_OtherAssistSheet> {
 
   @override
   void dispose() {
-    _countTimer?.cancel();
+    _counter.dispose();
     for (final controller in [_sizeMin, _sizeMax, _widthMin, _widthMax, _heightMin, _heightMax, _idMin, _idMax]) {
       controller.dispose();
     }
@@ -543,17 +548,7 @@ class _OtherAssistSheetState extends State<_OtherAssistSheet> {
     );
   }
 
-  void _scheduleCount() {
-    _countTimer?.cancel();
-    _countTimer = Timer(const Duration(milliseconds: 300), _runCount);
-  }
-
-  Future<void> _runCount() async {
-    final token = ++_countToken;
-    final count = await AssistCounter.count(_draft.toFilters(calendar: widget.calendar));
-    if (!mounted || token != _countToken) return;
-    setState(() => _count = count);
-  }
+  void _scheduleCount() => _counter.schedule();
 
   // parsing / formatting
 

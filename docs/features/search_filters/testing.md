@@ -21,6 +21,9 @@
   the byte value, a round trip returns to the same bound, the largest exact unit,
   a tiny bound surviving the formatting, and a blank bound reading as none.
 
+- `count_debouncer_test.dart` — one count after the edits settle, a stale answer
+  dropped, a disposed debouncer silent, and an answer for a closed sheet ignored.
+
 The parity fixture is the important one: a mismatch between the two engines is a
 library that changes shape when the paged engine kicks in.
 
@@ -43,7 +46,6 @@ The two sheets are layout; verify on a device:
 These are testable on the host but have no test yet; they are listed here rather
 than claimed by a rule:
 
-- The 300 ms debounce and the stale-result token in the "more filters" sheet.
 - Inverted-bound gating in the sheet.
 
 The visible-range presets reuse `RelativeTimeFilter`; their own register covers

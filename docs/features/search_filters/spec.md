@@ -78,6 +78,10 @@
   that represents it exactly, and SHALL NOT round a positive bound to zero.
 - WHEN a size field is blank, unparsable or not positive, THE SYSTEM SHALL treat
   it as no bound.
+- WHEN the draft changes repeatedly, THE SYSTEM SHALL count once after the edits
+  settle.
+- WHEN a count answers after a newer edit or a closed sheet, THE SYSTEM SHALL
+  discard it.
 - WHEN the unit menu renders, THE SYSTEM SHALL use the localized unit label.
 - WHEN the lower bound exceeds the upper, THE SYSTEM SHALL refuse to apply it.
 - WHEN the user applies the assist, THE SYSTEM SHALL union the built filters with

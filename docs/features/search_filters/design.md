@@ -74,8 +74,8 @@ factory does not gain a case.
 - The match count is advisory and describes what the grid shows: the visible
   range, hidden albums, locked vaults and the stack filter all apply, so a stack
   counts once. Any doubt (empty set, inexpressible filter, unready store) reports
-  `null` and the sheet omits the number. A 300 ms debounce and a result token keep
-  a late answer from overwriting a newer one.
+  `null` and the sheet omits the number. `CountDebouncer` coalesces edits and
+  ignores an answer that arrives after a newer draft or a closed sheet.
 
 ## Anti-patterns
 

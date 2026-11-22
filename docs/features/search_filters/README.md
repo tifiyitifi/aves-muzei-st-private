@@ -56,6 +56,7 @@ Out of scope:
 | Numeric range | `lib/features/search_filters/model/range_assist_filter.dart` |
 | Token | `lib/features/search_filters/model/time_to_now.dart` |
 | Size units | `lib/features/search_filters/model/size_assist_unit.dart` |
+| Count debouncer | `lib/features/search_filters/services/count_debouncer.dart` |
 | Count | `lib/features/search_filters/services/assist_counter.dart` |
 | Sheets and section | `lib/features/search_filters/view/` |
 | SQL | `lib/features/collection_paging/query/collection_filter_sql.dart` |

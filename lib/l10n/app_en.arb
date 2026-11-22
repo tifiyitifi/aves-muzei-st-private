@@ -107,6 +107,7 @@
   "chipActionDelete": "Delete",
   "chipActionRemove": "Remove",
   "chipActionShowCollection": "Show in Collection",
+  "chipActionShowCollectionAppend": "Append to Collection",
   "chipActionGoToAlbumPage": "Show in Albums",
   "chipActionGoToCountryPage": "Show in Countries",
   "chipActionGoToPlacePage": "Show in Places",

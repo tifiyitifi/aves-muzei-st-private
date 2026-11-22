@@ -60,6 +60,8 @@ evidence.
   as unsupported instead of picking from the wrong set.
 - WHEN the user picks filters, THE SYSTEM SHALL force the image MIME restriction
   and drop video filters.
+- WHEN the user appends albums to the source media set, THE SYSTEM SHALL keep the
+  other conditions and confirm the deduplicated union.
 
 ## Effects, framing and the preview
 

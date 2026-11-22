@@ -1,5 +1,6 @@
 import 'package:aves/app_mode.dart';
 import 'package:aves/features/collection_paging/lens/paged_collection_lens.dart';
+import 'package:aves/features/collection_paging/services/media_set_append.dart';
 import 'package:aves/features/collection_paging/stats/paged_stats_source.dart';
 import 'package:aves/model/covers.dart';
 import 'package:aves/model/entry/entry.dart';
@@ -113,6 +114,7 @@ abstract class ChipSetActionDelegate<T extends CollectionFilter> with FeedbackMi
       case .unpin:
         return isMain && (hasSelection && settings.pinnedFilters.containsAll(selectedFilters));
       case .showCollection:
+      case .showCollectionAppend:
         return appMode.canNavigate;
       case .delete:
       case .remove:
@@ -168,6 +170,7 @@ abstract class ChipSetActionDelegate<T extends CollectionFilter> with FeedbackMi
       case .lockVault:
       case .showCountryStates:
       case .showCollection:
+      case .showCollectionAppend:
         return hasSelection;
       // selecting (single filter)
       case .rename:
@@ -218,6 +221,8 @@ abstract class ChipSetActionDelegate<T extends CollectionFilter> with FeedbackMi
         browse(context);
       case .showCollection:
         _goToCollection(context);
+      case .showCollectionAppend:
+        _goToCollection(context, append: true);
       case .delete:
       case .remove:
       case .group:
@@ -310,17 +315,22 @@ abstract class ChipSetActionDelegate<T extends CollectionFilter> with FeedbackMi
     }
   }
 
-  Future<void> _goToCollection(BuildContext context) async {
-    final filters = getSelectedFilters(context);
-    if (filters.isEmpty) return;
+  Future<void> _goToCollection(BuildContext context, {bool append = false}) async {
+    final selected = getSelectedFilters(context);
+    if (selected.isEmpty) return;
 
-    final filter = filters.length > 1 ? SetOrFilter(filters) : filters.first;
+    // A plain action replaces the media set with the selection; the append
+    // action folds it into the set currently in scope. In both cases a set
+    // holds the result, so an empty base simply behaves like a replace.
+    final filters = append
+        ? mediaSetAppendFilters(context, selected)
+        : {selected.length > 1 ? SetOrFilter(selected) : selected.first};
     await Navigator.maybeOf(context)?.push(
       MaterialPageRoute(
         settings: const RouteSettings(name: CollectionPage.routeName),
         builder: (context) => CollectionPage(
           source: context.read<CollectionSource>(),
-          filters: {filter},
+          filters: filters,
         ),
       ),
     );

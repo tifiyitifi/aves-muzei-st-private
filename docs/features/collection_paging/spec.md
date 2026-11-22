@@ -122,6 +122,11 @@ evidence.
   until the import ends.
 - WHEN an action cannot be served over a paged library, THE SYSTEM SHALL report
   it instead of acting on an empty in-memory source.
+- WHEN the user appends a selection to the media set, THE SYSTEM SHALL merge it
+  with the set currently in scope, fold album conditions into one deduplicated
+  union and keep every other condition.
+- WHEN a borrowed view owns the media set, THE SYSTEM SHALL append to that set
+  instead of the app-wide slot.
 
 ## Counts
 

@@ -1,3 +1,4 @@
+import 'package:aves/features/collection_paging/services/media_set_append.dart';
 import 'package:aves/features/muzei_wallpaper/view/wallpaper_source_pick_session.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/entry/origins.dart';
@@ -169,6 +170,26 @@ void main() {
       pick.normalizeFilters({a, MimeFilter.image});
 
       expect(pick.augmentFilters({b}), {b, MimeFilter.image});
+      pick.dispose();
+    });
+
+    test('appending albums keeps the other conditions and confirms the union', () {
+      WallpaperSourcePickResult? result;
+      final pick = WallpaperSourcePickSession(
+        mode: WallpaperSourcePickMode.filters,
+        onConfirm: (value) => result = value,
+        initialFilters: {a, FavouriteFilter.instance},
+      );
+
+      final merged = mergeMediaSetFilters(pick.mediaSetFilters, {b, c});
+      final augmented = pick.augmentFilters(merged);
+
+      expect(augmented.whereType<SetOrFilter>().single.innerFilters, {a, b, c});
+      expect(augmented, contains(FavouriteFilter.instance));
+      expect(augmented, contains(MimeFilter.image));
+
+      pick.confirmFilters(augmented);
+      expect((result! as WallpaperSourcePickFiltersResult).filters, {SetOrFilter({a, b, c}), FavouriteFilter.instance});
       pick.dispose();
     });
   });

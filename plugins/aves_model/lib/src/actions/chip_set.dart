@@ -24,6 +24,7 @@ enum ChipSetAction {
   lockVault,
   showCountryStates,
   showCollection,
+  showCollectionAppend,
   // selecting (single filter)
   rename,
   setCover,
@@ -64,6 +65,7 @@ class ChipSetActions {
     .group,
     null,
     .showCollection,
+    .showCollectionAppend,
     .map,
     .slideshow,
     .stats,

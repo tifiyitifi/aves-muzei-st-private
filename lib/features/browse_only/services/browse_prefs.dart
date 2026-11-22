@@ -1,11 +1,10 @@
 import 'dart:async';
 
-import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
-import 'package:aves/features/logging/log.dart';
+import 'package:aves/features/browse_only/log.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const _log = AreaKeyLog(collectionPagingLogKey);
+const _log = browseOnlyLog;
 
 /// How the browse-only timeline orders its rows.
 enum BrowseMediaSort { date, name }

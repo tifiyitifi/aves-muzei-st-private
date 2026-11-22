@@ -1,9 +1,8 @@
-import 'package:aves/features/logging/log.dart';
-import 'package:aves/features/logging/log_keys.dart';
+import 'package:aves/features/session_restore/log.dart';
 import 'package:aves/features/session_restore/session_restore_snapshot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const _log = AreaKeyLog(LogKeys.media);
+const _log = sessionRestoreLog;
 
 /// Persists the one snapshot the next cold start may reopen.
 class SessionRestoreStore {

@@ -3,6 +3,7 @@ import 'dart:isolate';
 
 import 'package:aves/app_flavor.dart';
 import 'package:aves/features/batch_ops/log.dart';
+import 'package:aves/features/browse_only/log.dart';
 import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_engine.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
@@ -14,6 +15,7 @@ import 'package:aves/features/media_ops/engine/media_op_prefs.dart';
 import 'package:aves/features/muzei_wallpaper/log.dart';
 import 'package:aves/features/nav_drawer/log.dart';
 import 'package:aves/features/refra_edit/log.dart';
+import 'package:aves/features/session_restore/log.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/wallpaper_auto_advance/log.dart';
 import 'package:aves/features/wallpaper_lock/log.dart';
@@ -30,6 +32,7 @@ void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
   Log.init(
     debugChannels: [
       ...batchOpsDebugLogKeys,
+      ...browseOnlyDebugLogKeys,
       ...collectionPagingDebugLogKeys,
       ...mediaOpDebugLogKeys,
       ...muzeiWallpaperDebugLogKeys,
@@ -40,6 +43,7 @@ void mainCommon(AppFlavor flavor, {Map<String, Object?>? debugIntentData}) {
       ...liveWallpaperRefillDebugLogKeys,
       ...wallpaperLockDebugLogKeys,
       ...refraEditDebugLogKeys,
+      ...sessionRestoreDebugLogKeys,
     ],
   );
   const appLog = AreaKeyLog(LogKeys.app);

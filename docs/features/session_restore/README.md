@@ -52,6 +52,7 @@ Out of scope:
 | --- | --- |
 | Snapshot and validation | `lib/features/session_restore/session_restore_snapshot.dart` |
 | Store | `lib/features/session_restore/session_restore_store.dart` |
+| Log channel | `lib/features/session_restore/log.dart` |
 | Route allow-list | `lib/features/session_restore/session_restore_routes.dart` |
 | Observer | `lib/features/session_restore/session_restore_route_observer.dart` |
 | Plan | `lib/features/session_restore/session_restore_plan.dart` |

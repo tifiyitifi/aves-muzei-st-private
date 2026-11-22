@@ -57,6 +57,7 @@ Out of scope:
 | Window | `lib/features/browse_only/services/browse_library.dart` |
 | Album list and loader | `lib/features/browse_only/services/browse_albums.dart`, `browse_album_loader.dart` |
 | Preferences | `lib/features/browse_only/services/browse_prefs.dart` |
+| Log channel | `lib/features/browse_only/log.dart` |
 | Models | `lib/features/browse_only/model/` |
 | Media store contract | `lib/services/media/media_store_service.dart`, `android/app/src/main/kotlin/deckers/thibault/aves/model/provider/BrowseMediaStore.kt` |
 | Wiring | `lib/widgets/collection/collection_page.dart`, `lib/widgets/filter_grids/albums_page.dart`, `lib/widgets/navigation/drawer/app_drawer.dart` |

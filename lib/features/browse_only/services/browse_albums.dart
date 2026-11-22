@@ -1,6 +1,5 @@
+import 'package:aves/features/browse_only/log.dart';
 import 'package:aves/features/browse_only/services/browse_prefs.dart';
-import 'package:aves/features/collection_paging/engine/collection_paging_prefs.dart';
-import 'package:aves/features/logging/log.dart';
 import 'package:aves/model/entry/entry.dart';
 import 'package:aves/model/filters/covered/stored_album.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -8,7 +7,7 @@ import 'package:aves/services/common/services.dart';
 import 'package:aves/services/media/media_store_service.dart';
 import 'package:flutter/foundation.dart';
 
-const _log = AreaKeyLog(collectionPagingLogKey);
+const _log = browseOnlyLog;
 
 /// A folder as the browser lists it: what the album shows and how much of it.
 class BrowseAlbum {

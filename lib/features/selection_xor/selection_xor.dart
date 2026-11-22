@@ -52,7 +52,10 @@ extension SelectionXor<T> on Selection<T> {
     addToSelection(toSelect);
 
     // The range continues from its target, so a following range or a drag that
-    // starts here keeps working from what the user last touched.
-    moveAnchorTo(target);
+    // starts here keeps working from what the user last touched. If the flip
+    // emptied a declared mark, the selection already left selection mode and
+    // dropped its anchor; moving it back would leave a range origin with no
+    // selection behind it.
+    if (isSelecting) moveAnchorTo(target);
   }
 }

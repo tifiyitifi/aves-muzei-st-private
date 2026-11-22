@@ -32,7 +32,10 @@ class _Mark extends ChangeNotifier implements SelectionMark<int> {
   }
 
   @override
-  void clear() => unmarked.clear();
+  void clear() {
+    unmarked.clear();
+    count = 0;
+  }
 }
 
 /// An identity-based item, like an entry read from the database: the list a
@@ -144,6 +147,36 @@ void main() {
       expect(mark.unmarked, {1, 2, 3});
       expect(selection.selectedItemCount, 2);
       expect(selection.allMarked, isTrue);
+    });
+
+    test('an interval that empties the mark leaves selection mode without an anchor', () {
+      final selection = Selection<int>(toSelectableItems: null);
+      final mark = _Mark(2);
+      selection.markAll(mark);
+      selection.toggleSelection(0);
+      expect(mark.count, 1);
+
+      selection.rangeXorTo([0, 1], 1);
+
+      // Unmarking the last row browses out of the selection; a leftover anchor
+      // would let the next long press range from a page that is no longer
+      // selecting.
+      expect(mark.count, 0);
+      expect(selection.isSelecting, isFalse);
+      expect(selection.anchor, isNull);
+    });
+  });
+
+  group('unordered rows', () {
+    test('an unselectable row between the endpoints is not part of the interval', () {
+      final selection = Selection<int>(toSelectableItems: null);
+      selection.toggleSelection(0);
+
+      selection.rangeXorTo([0, 1, 3], 3);
+
+      // 2 is not in the list the gesture computed against, so it is skipped
+      // rather than reached by index arithmetic.
+      expect(selection.selectedItems, {0, 1, 3});
     });
   });
 }

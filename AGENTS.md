@@ -57,6 +57,8 @@ Every fork slice is specified, its rules are registered, and its tests are its a
 - Behaviour changes in testable layers start with a failing test (Red → Green → Refactor). A bug fix adds the regression test that reproduces it.
 - Every rule row names its evidence: `F:<test file stem>#<exact test name>`, `M` for a step only a device can verify (listed in `testing.md`), or `-:<reason>` for a behaviour the host deliberately cannot falsify. An empty or invented token fails the register check.
 - Resolve the register after editing it: `pwsh -NoProfile -File scripts/check-feature-rules.ps1 -Feature <feature>`, or the feature wrapper (`check-batch-rules.ps1`, ...). It is a doc check, not part of `flutter test`.
+- The whole tree is audited by `scripts/check-feature-docs.ps1`: every `lib/features/*` slice has an index row, a documented slice keeps `README.md`, `spec.md`, `rules.md` and a decision, an exemption carries a reason, and every documented register has a wrapper the index lists. `-All` resolves every register, `-Range a..b` the ones the range touched.
+- `.githooks/pre-push` runs `scripts/run-feature-doc-gate.sh -Range <range>` after the privacy gate: CI has no dev-branch trigger, so the hook is the only place a register is resolved before it leaves the machine.
 - When writing a rule exposes a behaviour with no test, either add the test or record why it is unfalsifiable. Do not lower the rule to match the code.
 - A rule that stops being true is superseded, never deleted: keep the row and point at the row or decision that replaced it.
 

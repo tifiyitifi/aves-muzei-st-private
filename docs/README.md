@@ -78,6 +78,13 @@ invocation shape: `check-batch-rules.ps1`, `check-grouped-wallpaper-rules.ps1`,
 Tokens are backticked, and the checker reads the backticked segments, so a test
 name may itself contain `;`.
 
+`scripts/check-feature-docs.ps1` audits this file against the tree: every slice
+has a row, a documented slice keeps `README.md`, `spec.md`, `rules.md` and at
+least one decision, an exemption names its reason, and every documented register
+has a wrapper listed below. `-All` resolves every register; `-Range a..b` only
+the features the range touched. `.githooks/pre-push` runs it through
+`scripts/run-feature-doc-gate.sh`, because CI has no dev-branch trigger.
+
 ## Privacy
 
 This repository may be published; the machine it is built on is not.

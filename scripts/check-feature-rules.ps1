@@ -96,7 +96,9 @@ foreach ($line in Get-Content -LiteralPath $rulesPath) {
             $failures.Add("row ${id}: no test file '$stem.dart'")
             continue
         }
-        $needles = @("test('$name'", "testWidgets('$name'")
+        # A behaviour name can contain an apostrophe, in which case the test is
+        # declared with double quotes; accept both spellings.
+        $needles = @("test('$name'", "testWidgets('$name'", "test(`"$name`"", "testWidgets(`"$name`"")
         $found = $false
         foreach ($file in $files) {
             $content = Get-Content -LiteralPath $file.FullName -Raw

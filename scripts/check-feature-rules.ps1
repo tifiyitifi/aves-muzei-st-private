@@ -53,7 +53,16 @@ foreach ($line in Get-Content -LiteralPath $rulesPath) {
         continue
     }
 
-    foreach ($rawToken in $coverage.Split(';')) {
+    # Tokens are backticked, and a test name may itself contain `;` (for example
+    # "... nor resolves; adopting it does"). Prefer the backticked segments so a
+    # name is never split; fall back to `;` for a register without backticks.
+    $rawTokens = if ($coverage.Contains('`')) {
+        @([regex]::Matches($coverage, '`([^`]*)`') | ForEach-Object { $_.Groups[1].Value })
+    } else {
+        $coverage.Split(';')
+    }
+
+    foreach ($rawToken in $rawTokens) {
         $token = $rawToken.Trim().Trim('`').Trim()
         if ([string]::IsNullOrEmpty($token)) { continue }
 

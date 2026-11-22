@@ -33,6 +33,33 @@ This repo is a fork, so keeping the diff against `upstream` small matters more t
 - Inside a feature slice, package by **domain/feature**, not by technical layer: no shared `tables/`, `dao/`, `models/` catch-alls. Each domain gets its own subdirectory that owns its table, queries and mapping, and exposes a small domain-typed interface. Adding a capability adds a slice, not edits spread across several shared files.
 - Track each feature's documentation in `docs/features/<feature>/` (spec, design, rule register, recurrences, decisions); start from `docs/README.md`, and update the register in the same change as the behaviour.
 
+## Feature documentation (SDD / TDD / BDD)
+
+Every fork slice is specified, its rules are registered, and its tests are its acceptance criteria. The template and the coverage-token contract live in `docs/README.md`; this section is what makes them mandatory.
+
+**SDD — the spec is the source of truth.**
+
+- A feature's requirements live in `docs/features/<feature>/spec.md` as EARS sentences: `WHEN <trigger>, THE SYSTEM SHALL <response>`. One observable behaviour per sentence.
+- `design.md` holds the mechanism (pipeline, data model, invariants, anti-patterns); it explains *how*, never replaces the *what* in `spec.md`.
+- `decisions/` is append-only: a reversed decision keeps its text and gains a `Superseded by` line. Never delete a decision to hide a reversal.
+- `README.md` carries status, scope, version facts and the code map; `tasks.md` and `recurrences.md` are optional until they have content.
+- `docs/README.md` indexes every slice. A new slice lands with its docs directory, its index row and its rule-check wrapper in the same change; a slice deliberately left undocumented is listed with an exemption reason, not omitted.
+- A behaviour change updates `spec.md` and `rules.md` in the same commit as the code. A fix that ships without a rule is invisible to the next change.
+
+**BDD — style only, no Gherkin runner.**
+
+- Flutter's `test()`/`testWidgets()` remains the executor. A test name is the behaviour sentence (`a failed row rewrite does not carry the album state over`), so the register can point at it without a translation layer.
+- `rules.md` is the case register: one row per case with an ID, the case, the behaviour (WHEN/SHALL), why it exists, and its coverage token. Rows are grouped by domain, not by file.
+- Do not add `flutter_gherkin`, `.feature` files or a second scenario runner: the register plus the test names are the BDD layer.
+
+**TDD — a rule cannot claim coverage it does not have.**
+
+- Behaviour changes in testable layers start with a failing test (Red → Green → Refactor). A bug fix adds the regression test that reproduces it.
+- Every rule row names its evidence: `F:<test file stem>#<exact test name>`, `M` for a step only a device can verify (listed in `testing.md`), or `-:<reason>` for a behaviour the host deliberately cannot falsify. An empty or invented token fails the register check.
+- Resolve the register after editing it: `pwsh -NoProfile -File scripts/check-feature-rules.ps1 -Feature <feature>`, or the feature wrapper (`check-batch-rules.ps1`, ...). It is a doc check, not part of `flutter test`.
+- When writing a rule exposes a behaviour with no test, either add the test or record why it is unfalsifiable. Do not lower the rule to match the code.
+- A rule that stops being true is superseded, never deleted: keep the row and point at the row or decision that replaced it.
+
 ## Toolchain and setup
 
 - Flutter is pinned via the `.flutter` git submodule and invoked through `./flutterw` (passsy/flutter_wrapper). The pinned version lives in `pubspec.yaml` (`flutter:` under `environment`) and `.metadata`.
@@ -158,6 +185,7 @@ New fork-only features must reuse the existing stack, not introduce a parallel o
 - Unit/widget tests live in `test/` (run with `./flutterw test`); integration driver tests live in `test_driver/` and run via `./flutterw drive` on a connected device/emulator (they are not picked up by `flutter test`).
 - Mirror the source layout: tests for `lib/features/<feature>/` live in `test/features/<feature>/` (e.g. `lib/features/logging/log.dart` → `test/features/logging/log_test.dart`); `lib/features/**` holds production code only.
 - **TDD for behaviour changes** in testable layers (`lib/model`, `lib/services` logic, `lib/utils`, filters/parsers, and `lib/features/*/model|services`): Red → Green → Refactor — write or adjust the failing test first.
+- Every rule in a feature's `rules.md` must resolve to a test name, a device step or a documented exemption; see **Feature documentation (SDD / TDD / BDD)**.
 - **Exempt:** UI widgets/layout, adapted third-party sources, platform channels (video/Google/report/Android native), and flavor/build config. For bug fixes, add a regression test that reproduces the bug first whenever feasible.
 - Tests that need platform services must call `setUpAllServices()` / `setUpServices()` from `test/common.dart`, which registers in-memory fakes (SharedPreferences, media/db/storage services). Don't hit real platform channels.
 - Database tests use an in-memory database; `test/common.dart` forces a POSIX `p.Context` so path tests behave the same on Windows.

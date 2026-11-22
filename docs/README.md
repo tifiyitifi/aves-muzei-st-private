@@ -71,8 +71,11 @@ What a shipped feature must have is `spec.md`, `rules.md` and `decisions/`.
 every `decisions/` link in one register. The per-feature wrappers keep the older
 invocation shape: `check-batch-rules.ps1`, `check-grouped-wallpaper-rules.ps1`,
 `check-nav-drawer-rules.ps1`, `check-media-ops-rules.ps1`,
-`check-album-contents-rules.ps1`, `check-refra-edit-rules.ps1`. Run the matching
-one after editing a register.
+`check-album-contents-rules.ps1`, `check-refra-edit-rules.ps1`,
+`check-meta-settings-rules.ps1`, `check-visible-range-rules.ps1`,
+`check-collection-paging-rules.ps1`. Run the matching one after editing a
+register. Tokens are backticked, and the checker reads the backticked segments,
+so a test name may itself contain `;`.
 
 ## Privacy
 
@@ -88,11 +91,34 @@ This repository may be published; the machine it is built on is not.
 
 ## Features
 
-| Feature | Status | Directory |
+Every slice under `lib/features/` is listed. A slice with its own directory is
+maintained with the code; a slice without one names the reason and the feature
+that owns its behaviour, so the gap stays visible instead of being omitted.
+
+| Slice | Status | Documentation |
 | --- | --- | --- |
-| Batch processing | in progress | [`batch-processing/`](features/batch-processing/README.md) |
-| Grouped wallpaper | in progress | [`grouped_wallpaper/`](features/grouped_wallpaper/README.md) |
-| Navigation drawer pages | in progress | [`nav_drawer/`](features/nav_drawer/README.md) |
-| Media operations | in progress | [`media_ops/`](features/media_ops/README.md) |
-| Album contents transfer | in progress | [`album_contents_transfer/`](features/album_contents_transfer/README.md) |
-| ReFra edit | in progress | [`refra_edit/`](features/refra_edit/README.md) |
+| `album_contents_transfer` | in progress | [`album_contents_transfer/`](features/album_contents_transfer/README.md) |
+| `batch_ops` | in progress | [`batch-processing/`](features/batch-processing/README.md) |
+| `collection_paging` | in progress | [`collection_paging/`](features/collection_paging/README.md) |
+| `grouped_wallpaper` | in progress | [`grouped_wallpaper/`](features/grouped_wallpaper/README.md) |
+| `media_ops` | in progress | [`media_ops/`](features/media_ops/README.md) |
+| `meta_settings` | in progress | [`meta_settings/`](features/meta_settings/README.md) |
+| `nav_drawer` | in progress | [`nav_drawer/`](features/nav_drawer/README.md) |
+| `refra_edit` | in progress | [`refra_edit/`](features/refra_edit/README.md) |
+| `visible_range` | in progress | [`visible_range/`](features/visible_range/README.md) |
+| `browse_only` | in progress | `-` documented next; its paging rules live under `collection_paging/` |
+| `drift_db` | in progress | `-` infrastructure; the schema and migration discipline live in `AGENTS.md`, a `contracts/` doc is planned |
+| `known_issues` | in progress | `-` a settings page over the accepted-limitations list; documented next |
+| `live_wallpaper_refill` | in progress | `-` part of the wallpaper family; narrated in `lib/features/muzei_wallpaper/README.md` |
+| `logging` | in progress | `-` infrastructure; the fork logging rule lives in `AGENTS.md` |
+| `muzei_wallpaper` | in progress | `-` the slice README is the mechanism doc; the wallpaper family register is planned |
+| `search_filters` | in progress | `-` documented next |
+| `selection_xor` | in progress | `-` the normative text is `AGENTS.md` §Selection; a register is planned |
+| `session_restore` | in progress | `-` narrated in `lib/features/muzei_wallpaper/README.md` §Session restore |
+| `stacking` | in progress | `-` documented next |
+| `wallpaper_auto_advance` | in progress | `-` shared by both wallpapers; the family register is planned |
+| `wallpaper_lock` | in progress | `-` part of the wallpaper family |
+
+A slice documented as `-` still has to keep its tests named as behaviour
+sentences. The next maintenance pass gives it a directory; until then its rules
+are enforced only by the tests themselves.

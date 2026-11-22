@@ -125,6 +125,23 @@ void main() {
     expect(await tiles(), {1: null});
   });
 
+  test('a developed stack lists the developed image before its raw', () async {
+    await service.insertEntries({
+      entry(1, path: '/cam/IMG_1.dng', mime: MimeTypes.dng),
+      entry(2, path: '/cam/IMG_1.jpg'),
+    });
+
+    final members = await service.loadStackMembers({2});
+
+    expect(members[2]?.map((e) => e.id), [2, 1]);
+  });
+
+  test('a lone row is not a stack', () async {
+    await service.insertEntries({entry(1, path: '/cam/IMG_1.jpg')});
+
+    expect(await service.loadStackMembers({1}), isEmpty);
+  });
+
   test('a pattern change rebuilds the keys and re-settles the tiles', () async {
     await service.insertEntries({
       entry(1, path: '/cam/20151021_072800_001.jpg'),

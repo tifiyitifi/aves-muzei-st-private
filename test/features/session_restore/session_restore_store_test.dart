@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/session_restore/session_restore_snapshot.dart';
@@ -39,6 +41,18 @@ void main() {
       expect(decoded, isNotNull);
       expect(decoded!.routeName, CollectionPage.routeName);
       expect(decoded.filters, {MimeFilter.image, FavouriteFilter.instance});
+      expect(decoded.isValid, isTrue);
+    });
+
+    test('skips a stored filter it cannot parse', () {
+      final raw = jsonEncode({
+        'route': CollectionPage.routeName,
+        'filters': ['not-a-filter', FavouriteFilter.instance.toJsonString()],
+      });
+
+      final decoded = SessionRestoreSnapshot.tryFromJsonString(raw);
+      expect(decoded, isNotNull);
+      expect(decoded!.filters, {FavouriteFilter.instance});
       expect(decoded.isValid, isTrue);
     });
 
@@ -191,6 +205,27 @@ void main() {
     test('does not persist a base saved under a page that is not pushed', () async {
       await store.save(const SessionRestoreSnapshot(routeName: CollectionPage.routeName, baseRouteName: MapPage.routeName));
       expect(await store.load(), isNull);
+    });
+  });
+
+  group('store failures', () {
+    // A platform store that cannot be opened must not fail the app start: the
+    // snapshot is a convenience, so every path reports or swallows and moves on.
+    SessionRestoreStore broken() => SessionRestoreStore(prefsProvider: () async => throw StateError('no preferences'));
+
+    test('a store that cannot read reports no snapshot', () async {
+      expect(await broken().load(), isNull);
+    });
+
+    test('a store that cannot write still completes', () async {
+      await expectLater(
+        broken().save(const SessionRestoreSnapshot(routeName: CollectionPage.routeName)),
+        completes,
+      );
+    });
+
+    test('a store that cannot clear still completes', () async {
+      await expectLater(broken().clear(), completes);
     });
   });
 }

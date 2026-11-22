@@ -74,7 +74,11 @@ invocation shape: `check-batch-rules.ps1`, `check-grouped-wallpaper-rules.ps1`,
 `check-album-contents-rules.ps1`, `check-refra-edit-rules.ps1`,
 `check-meta-settings-rules.ps1`, `check-visible-range-rules.ps1`,
 `check-collection-paging-rules.ps1`, `check-wallpaper-rules.ps1`,
-`check-drift-db-rules.ps1`. Run the matching one after editing a register.
+`check-drift-db-rules.ps1`, `check-browse-only-rules.ps1`,
+`check-search-filters-rules.ps1`, `check-session-restore-rules.ps1`,
+`check-selection-xor-rules.ps1`, `check-stacking-rules.ps1`,
+`check-known-issues-rules.ps1`, `check-logging-rules.ps1`. Run the matching one
+after editing a register.
 Tokens are backticked, and the checker reads the backticked segments, so a test
 name may itself contain `;`.
 
@@ -114,19 +118,19 @@ that owns its behaviour, so the gap stays visible instead of being omitted.
 | `nav_drawer` | in progress | [`nav_drawer/`](features/nav_drawer/README.md) |
 | `refra_edit` | in progress | [`refra_edit/`](features/refra_edit/README.md) |
 | `visible_range` | in progress | [`visible_range/`](features/visible_range/README.md) |
-| `browse_only` | in progress | `-` documented next; its paging rules live under `collection_paging/` |
+| `browse_only` | in progress | [`browse_only/`](features/browse_only/README.md) |
 | `drift_db` | in progress | [`drift_db/`](features/drift_db/README.md) |
-| `known_issues` | in progress | `-` a settings page over the accepted-limitations list; documented next |
+| `known_issues` | in progress | [`known_issues/`](features/known_issues/README.md) |
 | `live_wallpaper_refill` | in progress | [`wallpaper/`](features/wallpaper/README.md) |
-| `logging` | in progress | `-` infrastructure; the fork logging rule lives in `AGENTS.md` |
+| `logging` | in progress | [`logging/`](features/logging/README.md) |
 | `muzei_wallpaper` | in progress | [`wallpaper/`](features/wallpaper/README.md) |
-| `search_filters` | in progress | `-` documented next |
-| `selection_xor` | in progress | `-` the normative text is `AGENTS.md` §Selection; a register is planned |
-| `session_restore` | in progress | `-` narrated in `lib/features/muzei_wallpaper/README.md` §Session restore |
-| `stacking` | in progress | `-` documented next |
+| `search_filters` | in progress | [`search_filters/`](features/search_filters/README.md) |
+| `selection_xor` | in progress | [`selection_xor/`](features/selection_xor/README.md) |
+| `session_restore` | in progress | [`session_restore/`](features/session_restore/README.md) |
+| `stacking` | in progress | [`stacking/`](features/stacking/README.md) |
 | `wallpaper_auto_advance` | in progress | [`wallpaper/`](features/wallpaper/README.md) |
 | `wallpaper_lock` | in progress | [`wallpaper/`](features/wallpaper/README.md) |
 
-A slice documented as `-` still has to keep its tests named as behaviour
-sentences. The next maintenance pass gives it a directory; until then its rules
-are enforced only by the tests themselves.
+Every slice under `lib/features/` now has a documented register; a slice without a
+directory would have to name its reason here, and `scripts/check-feature-docs.ps1`
+fails when the reason is missing.

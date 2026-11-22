@@ -6,6 +6,8 @@ import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/explorer/explorer_page.dart';
 import 'package:aves/widgets/filter_grids/albums_page.dart';
+import 'package:aves/widgets/filter_grids/tags_page.dart';
+import 'package:aves/widgets/map/map_page.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -94,5 +96,28 @@ void main() {
 
     expect(observer.currentRestorableRoute, GroupedWallpaperPage.routeName);
     expect(observer.currentRestorableBaseRoute, CollectionPage.routeName);
+  });
+
+  test('a page removed from the stack can no longer be restored', () {
+    push(CollectionPage.routeName);
+    final map = push(MapPage.routeName);
+    observer.didRemove(map, null);
+
+    expect(observer.currentRestorableRoute, CollectionPage.routeName);
+  });
+
+  test('a replaced page takes the old page slot', () {
+    push(CollectionPage.routeName);
+    final map = push(MapPage.routeName);
+    observer.didReplace(newRoute: _route(TagListPage.routeName), oldRoute: map);
+
+    expect(observer.currentRestorableRoute, TagListPage.routeName);
+    expect(observer.currentRestorableBaseRoute, isNull);
+  });
+
+  test('replacing an unknown page appends the new one', () {
+    observer.didReplace(newRoute: _route(CollectionPage.routeName), oldRoute: null);
+
+    expect(observer.currentRestorableRoute, CollectionPage.routeName);
   });
 }

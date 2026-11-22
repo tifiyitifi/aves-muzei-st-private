@@ -109,5 +109,7 @@ evidence.
   settings, vaults and the lock service first.
 - WHEN a refill targets a wallpaper, THE SYSTEM SHALL dispatch by target id.
 - WHEN an unknown target or method arrives, THE SYSTEM SHALL reject it.
+- WHEN `advance` is not the literal `true`, THE SYSTEM SHALL not advance the
+  wallpaper.
 - WHEN the app starts, THE SYSTEM SHALL register the callback handle again,
   because it changes with each build.

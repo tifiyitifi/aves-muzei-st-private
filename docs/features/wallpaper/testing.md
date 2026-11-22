@@ -19,9 +19,11 @@ because the host register checker only resolves Dart test names.
 
 - State, bake, source, prefs and interval tests are host tests; the state store
   uses a temporary directory and the app's in-memory services.
-- The refill isolate has no host fixture: it needs the native worker and a real
-  Flutter engine. Its contract (`initialized` before `refill`, target dispatch)
-  is verified on a device by the checklist.
+- The refill isolate itself needs the native worker and a real Flutter engine,
+  but its dispatch is pure and covered on the host
+  (`test/features/live_wallpaper_refill/refill_entry_test.dart`): target
+  selection, strict `advance`, malformed calls and the missing callback handle.
+  The `initialized` handshake remains device-only.
 - `wallpaper_lock_service_test` injects the security service and the store, so
   the PIN rules run against fakes.
 

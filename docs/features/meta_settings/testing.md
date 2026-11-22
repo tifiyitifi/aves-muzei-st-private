@@ -22,6 +22,9 @@ covered separately).
   `flush()`.
 - `meta_settings_engine_test.dart` pins the generic write path: a toggle, a
   rejected value and an enum persisted by name.
+- `test/features/meta_settings/settings_engine_controller_test.dart` covers the
+  switch end to end: the store swap, the replay of the differing key and the
+  failed-switch path.
 - `catalog_test.dart` is the release gate for the catalog: it validates every def
   and every category's migration coverage.
 

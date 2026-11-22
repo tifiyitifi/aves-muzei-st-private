@@ -41,6 +41,30 @@ const Map<String, LiveWallpaperRefill> _refills = {
   liveWallpaperTargetGrouped: groupedWallpaperRefill,
 };
 
+/// Resolves the refill for [target].
+///
+/// The dispatch is the only part of the isolate that can be exercised without
+/// starting a Flutter engine, so it is exposed for the host test.
+@visibleForTesting
+LiveWallpaperRefill resolveLiveWallpaperRefill(Object? target, {Map<String, LiveWallpaperRefill>? refills}) {
+  final refill = (refills ?? _refills)[target];
+  if (refill == null) throw ArgumentError.value(target, 'target', 'unknown live wallpaper');
+  return refill;
+}
+
+/// Handles one `refill` call from the native worker.
+///
+/// `advance` is a strict boolean: any other value means "do not advance", which
+/// keeps a malformed call from silently changing the wallpaper.
+@visibleForTesting
+Future<bool> handleLiveWallpaperRefillCall(Object? arguments, {Map<String, LiveWallpaperRefill>? refills}) async {
+  if (arguments is! Map) throw ArgumentError.value(arguments, 'arguments', 'expected a map');
+  final refill = resolveLiveWallpaperRefill(arguments['target'], refills: refills);
+  final command = arguments['command'];
+  await refill(advance: arguments['advance'] == true, command: command is String ? command : null);
+  return true;
+}
+
 const AvesMethodChannel _channel = AvesMethodChannel(liveWallpaperRefillChannelName);
 
 /// Headless entrypoint shared by both live wallpapers.
@@ -79,15 +103,7 @@ Future<void> liveWallpaperRefillMain() async {
   _channel.setMethodCallHandler((call) async {
     switch (call.method) {
       case 'refill':
-        final arguments = call.arguments;
-        if (arguments is! Map) throw ArgumentError.value(arguments, 'arguments', 'expected a map');
-        final target = arguments['target'];
-        final advance = arguments['advance'] == true;
-        final command = arguments['command'];
-        final refill = _refills[target];
-        if (refill == null) throw ArgumentError.value(target, 'target', 'unknown live wallpaper');
-        await refill(advance: advance, command: command is String ? command : null);
-        return true;
+        return handleLiveWallpaperRefillCall(call.arguments);
       default:
         throw MissingPluginException('unsupported refill method ${call.method}');
     }

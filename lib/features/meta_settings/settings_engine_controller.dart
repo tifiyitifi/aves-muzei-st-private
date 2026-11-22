@@ -2,6 +2,7 @@ import 'package:aves/features/logging/log.dart';
 import 'package:aves/features/logging/log_keys.dart';
 import 'package:aves/features/meta_settings/model/enum/settings_engine_version.dart';
 import 'package:aves/features/meta_settings/store/settings_engine_gate.dart';
+import 'package:aves/features/meta_settings/store/settings_store_router.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:aves_model/aves_model.dart';
@@ -17,12 +18,26 @@ const _log = AreaKeyLog(LogKeys.settings);
 /// re-apply to the newly authoritative values, then notifies so `SettingsHost`
 /// swaps the surface.
 class SettingsEngineController extends ChangeNotifier {
-  SettingsEngineVersion get version => settingsStoreRouter.version;
+  /// Optional router, used by tests. Production uses the app-wide singleton so
+  /// the controller and `settings` agree on the active store.
+  final SettingsStoreRouter? _injectedRouter;
+
+  /// Optional sanitize step, used by tests: the real one reads device
+  /// capabilities that need platform channels, and the switch itself does not.
+  final Future<void> Function()? _injectedSanitize;
+
+  new({SettingsStoreRouter? router, Future<void> Function()? sanitize})
+      : _injectedRouter = router,
+        _injectedSanitize = sanitize;
+
+  SettingsStoreRouter get _router => _injectedRouter ?? settingsStoreRouter;
+
+  SettingsEngineVersion get version => _router.version;
 
   bool get isMeta => version == SettingsEngineVersion.v2;
 
   Future<void> setVersion(SettingsEngineVersion next) async {
-    final router = settingsStoreRouter;
+    final router = _router;
     if (next == router.version) return;
 
     final toMeta = next == SettingsEngineVersion.v2;
@@ -42,7 +57,7 @@ class SettingsEngineController extends ChangeNotifier {
     replayDiff(settings, before, after);
 
     settings.resetResolvedLocale();
-    await settings.sanitize();
+    await (_injectedSanitize ?? settings.sanitize)();
     settings.notifyListeners();
     notifyListeners();
   }

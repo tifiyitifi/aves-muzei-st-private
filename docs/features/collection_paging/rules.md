@@ -176,7 +176,7 @@ One row per case the feature has to get right. Coverage tokens are defined in
 | LEN-33 | Target grid | WHEN a bulk action targets entries, THE SYSTEM SHALL target the loaded rows or the selection, not a lazy walk | walking the list loads everything | `F:collection_targets_test#browsing targets the loaded rows, not a walk of the lazy list`; `F:collection_targets_test#selecting targets the selection`; `F:collection_targets_test#an in-memory collection still targets every entry` |
 | LEN-34 | Browse-only | WHEN browse-only mode is on, THE SYSTEM SHALL lock writes and bulk actions until the import ends | the library is not whole yet | `F:browse_only_mode_test#locks writes, bulk actions and aggregates while the import runs`; `F:browse_only_mode_test#unlocks as soon as the import ends` |
 | LEN-35 | Clear filters | WHEN the filter bar is cleared, THE SYSTEM SHALL empty the chips and the live query together | a stale query shows stale rows | `F:clear_filter_button_test#empties the chips and the live query` |
-| LEN-36 | Unservable action | WHEN an action cannot be served over a paged library, THE SYSTEM SHALL report it | acting on an empty source silently does nothing | `-:needs a widget context and the engine probe (see tasks.md)` |
+| LEN-36 | Unservable action | WHEN an action cannot be served over a paged library, THE SYSTEM SHALL report it | acting on an empty source silently does nothing | `F:paged_scope_guard_test#an attached summary provider means the action reads the database`; `F:paged_scope_guard_test#an unfinished import cannot be served from memory`; `F:paged_scope_guard_test#an action that cannot be served warns instead of acting on nothing` |
 
 ## Counts
 

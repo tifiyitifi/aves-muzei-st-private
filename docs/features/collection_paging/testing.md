@@ -17,6 +17,9 @@
 - Lens, sync, catalogue and summary tests use an in-memory Drift database and
   fake platform services from `test/common.dart`.
 - The view tests are `testWidgets` against the app's own tiles and page state.
+- `view/paged_scope_guard_test.dart` pumps a `MediaStoreSource` with a counting
+  media DB, so the three guard outcomes (provider, unfinished import, unsafe
+  full load) and the refusal dialog are host-tested.
 - `paged_sync_test.dart` is the largest fixture: it drives the discoverer against
   a fake `MediaStoreService` and asserts both the rows and the stored cursor.
 

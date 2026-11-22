@@ -15,6 +15,8 @@
   four rows (day 0, day 1 with a size and a width, day 3 with another, one undated
   row), where each test asserts that the SQL ids equal the in-memory predicate's
   ids, both positive and reversed.
+- `assist_counter_test.dart` — the advisory count: the empty and inexpressible
+  cases, an unready store, hidden albums, locked vaults and stacks.
 
 The parity fixture is the important one: a mismatch between the two engines is a
 library that changes shape when the paged engine kicks in.
@@ -38,8 +40,6 @@ The two sheets are layout; verify on a device:
 These are testable on the host but have no test yet; they are listed here rather
 than claimed by a rule:
 
-- `AssistCounter.count` — the null guards (empty, unexpressible, unready, error),
-  the visible-range augmentation and the hidden filters.
 - The 300 ms debounce and the stale-result token in the "more filters" sheet.
 - The size-unit conversion and the "largest exact unit" choice.
 - Inverted-bound gating in the sheet.

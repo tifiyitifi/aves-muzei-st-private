@@ -12,6 +12,7 @@ import 'package:aves/features/collection_paging/lens/paged_lists.dart';
 import 'package:aves/features/collection_paging/lens/paged_viewer_copy.dart';
 import 'package:aves/features/collection_paging/lens/skeleton_entry.dart';
 import 'package:aves/features/collection_paging/query/collection_window_predicate.dart';
+import 'package:aves/features/collection_paging/query/stack_window_filter.dart';
 import 'package:aves/features/collection_paging/selection/declared_entry_feed.dart';
 import 'package:aves/features/collection_paging/selection/entry_feed_run.dart';
 import 'package:aves/features/collection_paging/selection/selection_mark.dart';
@@ -1366,7 +1367,7 @@ class PagedCollectionLens extends CollectionLens {
     // while its tile is in the same scope, so nothing disappears when a filter
     // splits a group. A library without stacks skips the filter entirely, and the
     // calendar projection keeps every frame of its day.
-    final predicate = _stackEntries && !dayRows && await _hasStacks() ? _withStackFilter(base) : base;
+    final predicate = _stackEntries && !dayRows && await _hasStacks() ? withStackFilter(base) : base;
     final prefs = collectionPagingPrefs;
     await prefs.init();
     if (!_current(gen)) return;
@@ -1892,38 +1893,6 @@ class PagedCollectionLens extends CollectionLens {
     }
     if (_disposed || _morphed) return;
     refresh();
-  }
-
-  /// Appends the stack filter to [predicate]: a member hides only *while* its
-  /// tile is in the same scope, so it comes back when a filter or the bin takes
-  /// the tile away instead of disappearing.
-  ///
-  /// The inner query is uncorrelated and aliases the entry table `e` again so the
-  /// compiled fragments apply verbatim; SQLite materializes it as a set, which
-  /// keeps the total a scan rather than a probe per row.
-  CollectionWindowPredicate _withStackFilter(CollectionWindowPredicate predicate) {
-    final joins = [
-      if (predicate.requires.contains(WindowTable.dateTaken)) 'LEFT JOIN dateTaken dt ON dt.id = e.id',
-      if (predicate.requires.contains(WindowTable.metadata)) 'LEFT JOIN metadata m ON m.id = e.id',
-      if (predicate.requires.contains(WindowTable.address)) 'LEFT JOIN address a ON a.id = e.id',
-    ].join(' ');
-    final conditions = <String>[
-      predicate.trashedOnly ? 'e.trashed != 0' : 'e.trashed = 0',
-      for (final fragment in predicate.conjunction) fragment.sql,
-    ];
-    return CollectionWindowPredicate(
-      conjunction: [
-        ...predicate.conjunction,
-        (
-          // `NOT IN` (the ids are primary keys, so no NULL can poison it): a
-          // member shows exactly when its tile is not in this scope.
-          sql: '(e.stackTileId IS NULL OR e.stackTileId NOT IN (SELECT e.id FROM entry e ${joins.isEmpty ? '' : '$joins '}WHERE ${conditions.join(' AND ')}))',
-          variables: [for (final fragment in predicate.conjunction) ...fragment.variables],
-          requires: predicate.requires,
-        ),
-      ],
-      trashedOnly: predicate.trashedOnly,
-    );
   }
 
   /// Attaches the deep metadata of a freshly filled window, then whatever the

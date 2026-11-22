@@ -24,17 +24,33 @@ class RelativeTimeFilter extends CollectionFilter {
   List<Object?> get props => [span, reversed];
 
   new(this.span, {DateTime? now, super.reversed = false}) : cutoffMillis = (now ?? DateTime.now()).millisecondsSinceEpoch - span.millis {
-    _test = (entry) {
-      final date = entry.bestDate;
-      return date != null && date.millisecondsSinceEpoch >= cutoffMillis;
-    };
+    _test = _buildTest();
   }
+
+  /// Rebuilds the condition around an existing cutoff, used by [reverse].
+  new _anchored(this.span, {required this.cutoffMillis, required super.reversed}) {
+    _test = _buildTest();
+  }
+
+  EntryPredicate _buildTest() => (entry) {
+        final date = entry.bestDate;
+        return date != null && date.millisecondsSinceEpoch >= cutoffMillis;
+      };
 
   factory fromMap(Map<String, Object?> json) {
     final span = TimeToNow.parse(json['span'] as String?);
     if (span == null) throw const FormatException('invalid relative time span');
     return RelativeTimeFilter(span, reversed: json['reversed'] as bool? ?? false);
   }
+
+  /// Flips the condition without re-anchoring.
+  ///
+  /// The default reversal round-trips through JSON, which would re-read the
+  /// clock. A visible range uses the positive filter for browsing and its
+  /// reversal as the summary exclusion, so two anchors would stop the two sides
+  /// from partitioning the library.
+  @override
+  CollectionFilter reverse() => RelativeTimeFilter._anchored(span, cutoffMillis: cutoffMillis, reversed: !reversed);
 
   @override
   Map<String, Object?> toJsonMap() => {

@@ -29,9 +29,9 @@ JSON, take part in filter equality, and reach the SQL seam through the shared
 
 `RelativeTimeFilter` anchors `cutoffMillis` once, at construction, and persists
 only the span. Equality ignores the anchor, so a restored filter dedupes against
-the one it came from. Reversal runs through `toJsonMap`/`fromMap`, which
-re-anchors; the cutoffs of the two instances can therefore differ by wall-clock
-time, and the reversal's own cutoff is what its SQL uses.
+the one it came from. A reversal keeps that cutoff and flips only the condition:
+a visible range browses with the positive filter and excludes with its reversal,
+so two anchors would stop the two sides partitioning the library.
 
 `RangeAssistFilter` reads, per field:
 
@@ -68,11 +68,13 @@ factory does not gain a case.
 - **More filters** — six tabs: date, size, dimensions, format, content id,
   recently added. Date presets and the custom range are computed in the sheet as
   local-day epoch bounds; the size unit converts both fields so the byte value is
-  unchanged; Done is disabled while the lower bound exceeds the upper.
-- The match count is advisory: `AssistCounter.count` returns `null` for an empty
-  set, an unexpressible filter, an unready database or any throw, and the sheet
-  omits the number. A 300 ms debounce and a result token keep a late answer from
-  overwriting a newer one.
+  unchanged and takes its label from the localization; Done is disabled while the
+  lower bound exceeds the upper.
+- The match count is advisory and describes what the grid shows: the visible
+  range, hidden albums, locked vaults and the stack filter all apply, so a stack
+  counts once. Any doubt (empty set, inexpressible filter, unready store) reports
+  `null` and the sheet omits the number. A 300 ms debounce and a result token keep
+  a late answer from overwriting a newer one.
 
 ## Anti-patterns
 

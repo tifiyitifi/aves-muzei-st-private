@@ -66,6 +66,22 @@ void main() {
     expect(restored, filter);
   });
 
+  test('reversing keeps the window anchor', () {
+    final filter = lastDays(7);
+
+    final reversed = filter.reverse();
+    expect(reversed, isA<RelativeTimeFilter>());
+    expect((reversed as RelativeTimeFilter).cutoffMillis, filter.cutoffMillis);
+    expect(reversed.reversed, isTrue);
+    // The two sides must partition the library: no entry may satisfy both.
+    final inside = makeEntry(1, takenMillis: now.subtract(const Duration(days: 3)).millisecondsSinceEpoch);
+    final outside = makeEntry(2, takenMillis: now.subtract(const Duration(days: 8)).millisecondsSinceEpoch);
+    expect(filter.test(inside), isTrue);
+    expect(reversed.test(inside), isFalse);
+    expect(filter.test(outside), isFalse);
+    expect(reversed.test(outside), isTrue);
+  });
+
   test('a corrupt span is dropped instead of crashing', () {
     expect(CollectionFilter.fromJson({'type': RelativeTimeFilter.type, 'span': 'soon'}), isNull);
   });

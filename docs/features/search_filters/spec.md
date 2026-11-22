@@ -15,6 +15,7 @@
 - WHEN an entry has no best date, THE SYSTEM SHALL not match it in the window.
 - WHEN a relative filter is reversed, THE SYSTEM SHALL match the entries the
   positive test rejects, undated entries included.
+- WHEN a relative filter is reversed, THE SYSTEM SHALL keep the window's cutoff.
 - WHEN two relative filters are compared, THE SYSTEM SHALL compare span and
   reversal only, not the anchor.
 - WHEN a relative filter round-trips through JSON, THE SYSTEM SHALL persist its
@@ -73,6 +74,7 @@
   local-day window and add no new filter type.
 - WHEN the size unit changes, THE SYSTEM SHALL convert both fields so the byte
   value is unchanged.
+- WHEN the unit menu renders, THE SYSTEM SHALL use the localized unit label.
 - WHEN the lower bound exceeds the upper, THE SYSTEM SHALL refuse to apply it.
 - WHEN the user applies the assist, THE SYSTEM SHALL union the built filters with
   the typed query and add them to the collection.

@@ -26,6 +26,9 @@ and never persist it.
   filter's cutoff.
 - A corrupt token drops the filter instead of raising.
 
+**Update:** `reverse()` now keeps the cutoff; see
+[`0005`](0005-the-reversal-keeps-the-anchor.md).
+
 ## Alternatives rejected
 
 - Storing both bounds: simple to compare, but a saved filter silently becomes a

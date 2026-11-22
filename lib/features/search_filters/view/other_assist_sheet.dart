@@ -29,14 +29,20 @@ Future<SearchAssist?> showOtherAssistSheet(
 }
 
 enum _SizeUnit {
-  kb(1 << 10, 'KB'),
-  mb(1 << 20, 'MB'),
-  gb(1 << 30, 'GB');
+  kb(1 << 10),
+  mb(1 << 20),
+  gb(1 << 30);
 
   final int bytes;
-  final String label;
 
-  new(this.bytes, this.label);
+  new(this.bytes);
+
+  /// The unit symbol is localized like any other user-facing string.
+  String label(BuildContext context) => switch (this) {
+    _SizeUnit.kb => context.l10n.searchAssistSizeUnitKb,
+    _SizeUnit.mb => context.l10n.searchAssistSizeUnitMb,
+    _SizeUnit.gb => context.l10n.searchAssistSizeUnitGb,
+  };
 }
 
 class _OtherAssistSheet extends StatefulWidget {
@@ -309,7 +315,7 @@ class _OtherAssistSheetState extends State<_OtherAssistSheet> {
               value: _sizeUnit,
               onChanged: _changeSizeUnit,
               items: [
-                for (final unit in _SizeUnit.values) DropdownMenuItem(value: unit, child: Text(unit.label)),
+                for (final unit in _SizeUnit.values) DropdownMenuItem(value: unit, child: Text(unit.label(context))),
               ],
             ),
           ],

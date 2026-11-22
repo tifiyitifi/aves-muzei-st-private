@@ -24,6 +24,7 @@ token.
 | RTF-5 | JSON | WHEN a relative filter round-trips, THE SYSTEM SHALL persist span and reversal and re-anchor | persisting the instant would freeze the window | `F:relative_time_filter_test#round-trips through JSON and re-anchors on restore` |
 | RTF-6 | Corrupt span | WHEN a stored span is corrupt, THE SYSTEM SHALL drop the filter instead of raising | one bad preset must not break the filter list | `F:relative_time_filter_test#a corrupt span is dropped instead of crashing` |
 | RTF-7 | Assist parity | WHEN the assist holds a recent window, THE SYSTEM SHALL build the same relative filter | two constructors would drift | `F:relative_time_filter_test#the assist builds the same condition` |
+| RTF-8 | Reversal keeps the anchor | WHEN a relative filter is reversed, THE SYSTEM SHALL keep the window's cutoff and only flip the condition | a visible range uses the positive filter for browsing and its reversal for the summary exclusion; two anchors would stop the sides partitioning the library | `F:relative_time_filter_test#reversing keeps the window anchor` |
 
 ## The numeric range
 
@@ -68,13 +69,26 @@ token.
 | SQL-7 | Window anchor | WHEN a relative window compiles, THE SYSTEM SHALL compare against the filter's own cutoff | SQL must not read the clock | `F:assist_sql_test#a relative window uses the filter anchor` |
 | SQL-8 | Whole set | WHEN an assist set compiles, THE SYSTEM SHALL AND the fragments and join only what each field needs | one query per assist | `F:assist_sql_test#the whole assist set compiles and matches` |
 
+## Counting
+
+| ID | Case | Behaviour | Why | Coverage |
+| --- | --- | --- | --- | --- |
+| CNT-1 | Empty set | WHEN the condition set is empty, THE SYSTEM SHALL report no count | an empty sheet must not claim the whole library | `F:assist_counter_test#an empty condition reports no count` |
+| CNT-2 | Inexpressible condition | WHEN a condition has no SQL translation, THE SYSTEM SHALL report no count | an in-memory scan would block the sheet | `F:assist_counter_test#a condition with no SQL translation reports no count` |
+| CNT-3 | Unready store | WHEN the store cannot answer, THE SYSTEM SHALL report no count instead of failing | the number is advisory | `F:assist_counter_test#a database that cannot open reports no count` |
+| CNT-4 | Hidden albums | WHEN hidden albums are configured, THE SYSTEM SHALL leave them out | the count must match the grid | `F:assist_counter_test#a hidden album is not counted` |
+| CNT-5 | Locked vaults | WHEN a vault is locked, THE SYSTEM SHALL leave its rows out | a locked vault stays in the database but not in browsing | `F:assist_counter_test#a locked vault is not counted` |
+| CNT-6 | Stacks | WHEN a stack hides its members, THE SYSTEM SHALL count the tile once | the grid shows one tile | `F:assist_counter_test#a stack member does not count twice` |
+| CNT-7 | Visible range | WHEN a range is active, THE SYSTEM SHALL count inside it | the sheet describes what the user can browse | `-:the gate itself is covered by visible_range; the counter composes it as-is` |
+
 ## Sheets and section
 
 | ID | Case | Behaviour | Why | Coverage |
 | --- | --- | --- | --- | --- |
-| ASI-1 | Advisory count | WHEN the sheet shows a match count, THE SYSTEM SHALL omit it rather than block | the count is a hint, not the view's total | `-:the sheet is layout; the counter's guards are listed in tasks.md` |
+| ASI-1 | Advisory count | WHEN the sheet shows a match count, THE SYSTEM SHALL omit it rather than block | the count is a hint, not the view's total | `F:assist_counter_test#a condition with no SQL translation reports no count`; `F:assist_counter_test#a database that cannot open reports no count` |
 | ASI-2 | Path sheet | WHEN the path sheet opens, THE SYSTEM SHALL browse storage volumes and directories | the folder picker is the platform's | `-:needs Android storage volumes and dart:io listings; device-level` |
 | ASI-3 | Date presets | WHEN a date preset is chosen, THE SYSTEM SHALL compute a local-day window | a preset is two bounds, not a new filter type | `-:layout and a date picker; device-level` |
-| ASI-4 | Size unit | WHEN the size unit changes, THE SYSTEM SHALL keep the byte value | a unit change must not change the filter | `-:layout; the conversion is internal to the sheet` |
+| ASI-4 | Size unit | WHEN the size unit changes, THE SYSTEM SHALL keep the byte value | a unit change must not change the filter | `-:layout; the conversion is internal to the sheet (see tasks.md)` |
 | ASI-5 | Inverted bounds | WHEN the lower bound exceeds the upper, THE SYSTEM SHALL refuse to apply | a silent swap would change the meaning | `-:layout; Done is disabled, asserted by no host test` |
 | ASI-6 | Apply is additive | WHEN the user applies, THE SYSTEM SHALL add the built filters to the typed query | "apply conditions" means add, not replace | `-:the delegate owns the apply path; no host test (see tasks.md)` |
+| ASI-7 | Unit labels | WHEN the unit menu renders, THE SYSTEM SHALL label each unit from the localization | a hardcoded symbol never follows the app language | `-:the labels come from ARB keys, so a missing one is a compile error; the menu is layout` |

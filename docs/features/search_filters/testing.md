@@ -15,8 +15,11 @@
   four rows (day 0, day 1 with a size and a width, day 3 with another, one undated
   row), where each test asserts that the SQL ids equal the in-memory predicate's
   ids, both positive and reversed.
-- `assist_counter_test.dart` — the advisory count: the empty and inexpressible
+- `assist_counter_test.dart` �� the advisory count: the empty and inexpressible
   cases, an unready store, hidden albums, locked vaults and stacks.
+- `size_assist_unit_test.dart` �� the size tab's arithmetic: a unit change keeps
+  the byte value, a round trip returns to the same bound, the largest exact unit,
+  a tiny bound surviving the formatting, and a blank bound reading as none.
 
 The parity fixture is the important one: a mismatch between the two engines is a
 library that changes shape when the paged engine kicks in.
@@ -41,7 +44,6 @@ These are testable on the host but have no test yet; they are listed here rather
 than claimed by a rule:
 
 - The 300 ms debounce and the stale-result token in the "more filters" sheet.
-- The size-unit conversion and the "largest exact unit" choice.
 - Inverted-bound gating in the sheet.
 
 The visible-range presets reuse `RelativeTimeFilter`; their own register covers

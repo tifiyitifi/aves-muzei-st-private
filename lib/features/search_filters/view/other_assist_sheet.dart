@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/features/search_filters/model/search_assist.dart';
+import 'package:aves/features/search_filters/model/size_assist_unit.dart';
 import 'package:aves/features/search_filters/model/time_to_now.dart';
 import 'package:aves/features/search_filters/services/assist_counter.dart';
 import 'package:aves/locale/aves_locale.dart';
@@ -28,20 +29,12 @@ Future<SearchAssist?> showOtherAssistSheet(
   );
 }
 
-enum _SizeUnit {
-  kb(1 << 10),
-  mb(1 << 20),
-  gb(1 << 30);
-
-  final int bytes;
-
-  new(this.bytes);
-
-  /// The unit symbol is localized like any other user-facing string.
+/// The unit symbol is localized like any other user-facing string.
+extension _AssistSizeUnitLabel on AssistSizeUnit {
   String label(BuildContext context) => switch (this) {
-    _SizeUnit.kb => context.l10n.searchAssistSizeUnitKb,
-    _SizeUnit.mb => context.l10n.searchAssistSizeUnitMb,
-    _SizeUnit.gb => context.l10n.searchAssistSizeUnitGb,
+    AssistSizeUnit.kb => context.l10n.searchAssistSizeUnitKb,
+    AssistSizeUnit.mb => context.l10n.searchAssistSizeUnitMb,
+    AssistSizeUnit.gb => context.l10n.searchAssistSizeUnitGb,
   };
 }
 
@@ -61,7 +54,7 @@ class _OtherAssistSheetState extends State<_OtherAssistSheet> {
   late AssistRecent? _recent = widget.initial.recent;
   late final Set<String> _extensions = {...widget.initial.extensions};
 
-  _SizeUnit _sizeUnit = _SizeUnit.mb;
+  AssistSizeUnit _sizeUnit = AssistSizeUnit.mb;
 
   final _sizeMin = TextEditingController();
   final _sizeMax = TextEditingController();
@@ -94,7 +87,7 @@ class _OtherAssistSheetState extends State<_OtherAssistSheet> {
 
   void _fillFromInitial() {
     final initial = widget.initial;
-    _sizeUnit = _bestUnit(initial.size);
+    _sizeUnit = bestSizeUnit(initial.size);
     _sizeMin.text = _formatSize(initial.size?.min);
     _sizeMax.text = _formatSize(initial.size?.max);
 
@@ -111,8 +104,8 @@ class _OtherAssistSheetState extends State<_OtherAssistSheet> {
   // draft
 
   AssistIntRange? get _sizeRange {
-    final min = _bytesOf(_sizeMin);
-    final max = _bytesOf(_sizeMax);
+    final min = sizeBytesOf(_sizeMin.text, _sizeUnit);
+    final max = sizeBytesOf(_sizeMax.text, _sizeUnit);
     return min == null && max == null ? null : AssistIntRange(min: min, max: max);
   }
 
@@ -311,11 +304,11 @@ class _OtherAssistSheetState extends State<_OtherAssistSheet> {
             const SizedBox(width: 12),
             Expanded(child: _numberField(_sizeMax, l10n.searchAssistMax, decimal: true)),
             const SizedBox(width: 12),
-            DropdownButton<_SizeUnit>(
+            DropdownButton<AssistSizeUnit>(
               value: _sizeUnit,
               onChanged: _changeSizeUnit,
               items: [
-                for (final unit in _SizeUnit.values) DropdownMenuItem(value: unit, child: Text(unit.label(context))),
+                for (final unit in AssistSizeUnit.values) DropdownMenuItem(value: unit, child: Text(unit.label(context))),
               ],
             ),
           ],
@@ -328,25 +321,24 @@ class _OtherAssistSheetState extends State<_OtherAssistSheet> {
 
   void _setSize({int? min, int? max}) {
     setState(() {
-      _sizeUnit = _SizeUnit.mb;
+      _sizeUnit = AssistSizeUnit.mb;
       _sizeMin.text = _formatSize(min);
       _sizeMax.text = _formatSize(max);
     });
     _scheduleCount();
   }
 
-  void _changeSizeUnit(_SizeUnit? unit) {
+  void _changeSizeUnit(AssistSizeUnit? unit) {
     if (unit == null || unit == _sizeUnit) return;
     final previous = _sizeUnit;
     double? convert(TextEditingController controller) {
       final value = double.tryParse(controller.text.trim());
-      if (value == null) return null;
-      return value * previous.bytes / unit.bytes;
+      return convertSizeValue(value, from: previous, to: unit);
     }
 
     setState(() {
-      _sizeMin.text = _trim(convert(_sizeMin));
-      _sizeMax.text = _trim(convert(_sizeMax));
+      _sizeMin.text = formatSizeValue(convert(_sizeMin));
+      _sizeMax.text = formatSizeValue(convert(_sizeMax));
       _sizeUnit = unit;
     });
     _scheduleCount();
@@ -565,38 +557,12 @@ class _OtherAssistSheetState extends State<_OtherAssistSheet> {
 
   // parsing / formatting
 
-  String _formatSize(int? bytes) {
-    if (bytes == null) return '';
-    return _trim(bytes / _sizeUnit.bytes);
-  }
-
-  /// The largest unit that represents the stored bounds exactly, so reopening
-  /// the sheet never rounds a size the user already set.
-  _SizeUnit _bestUnit(AssistIntRange? range) {
-    final bytes = range?.min ?? range?.max;
-    if (bytes == null) return _SizeUnit.mb;
-    for (final unit in [_SizeUnit.gb, _SizeUnit.mb, _SizeUnit.kb]) {
-      if (bytes % unit.bytes == 0) return unit;
-    }
-    return _SizeUnit.kb;
-  }
-
-  String _trim(double? value) {
-    if (value == null) return '';
-    final rounded = (value * 100).round() / 100;
-    return rounded == rounded.roundToDouble() ? '${rounded.round()}' : '$rounded';
-  }
+  String _formatSize(int? bytes) => formatSizeValue(bytes == null ? null : bytes / _sizeUnit.bytes);
 
   String _formatInt(int? value) => value?.toString() ?? '';
 
   int? _intOf(TextEditingController controller) {
     final value = int.tryParse(controller.text.trim());
     return value == null || value < 0 ? null : value;
-  }
-
-  int? _bytesOf(TextEditingController controller) {
-    final value = double.tryParse(controller.text.trim());
-    if (value == null || value <= 0) return null;
-    return (value * _sizeUnit.bytes).round();
   }
 }

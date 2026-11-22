@@ -67,9 +67,10 @@ factory does not gain a case.
   (include/exclude), not a segmented button, because the labels are long.
 - **More filters** — six tabs: date, size, dimensions, format, content id,
   recently added. Date presets and the custom range are computed in the sheet as
-  local-day epoch bounds; the size unit converts both fields so the byte value is
-  unchanged and takes its label from the localization; Done is disabled while the
-  lower bound exceeds the upper.
+  local-day epoch bounds; the size arithmetic lives in `size_assist_unit.dart`
+  (unit conversion, exact-unit choice and formatting), so both fields keep the byte
+  value and a positive bound never rounds to zero; the label comes from the
+  localization. Done is disabled while the lower bound exceeds the upper.
 - The match count is advisory and describes what the grid shows: the visible
   range, hidden albums, locked vaults and the stack filter all apply, so a stack
   counts once. Any doubt (empty set, inexpressible filter, unready store) reports

@@ -74,6 +74,10 @@
   local-day window and add no new filter type.
 - WHEN the size unit changes, THE SYSTEM SHALL convert both fields so the byte
   value is unchanged.
+- WHEN a size bound is reloaded, THE SYSTEM SHALL show it in the largest unit
+  that represents it exactly, and SHALL NOT round a positive bound to zero.
+- WHEN a size field is blank, unparsable or not positive, THE SYSTEM SHALL treat
+  it as no bound.
 - WHEN the unit menu renders, THE SYSTEM SHALL use the localized unit label.
 - WHEN the lower bound exceeds the upper, THE SYSTEM SHALL refuse to apply it.
 - WHEN the user applies the assist, THE SYSTEM SHALL union the built filters with

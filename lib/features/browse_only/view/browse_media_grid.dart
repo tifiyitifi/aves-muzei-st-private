@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:aves/features/browse_only/model/browse_grid_items.dart';
 import 'package:aves/features/browse_only/model/browse_scroll_map.dart';
+import 'package:aves/features/browse_only/model/viewer_window.dart';
 import 'package:aves/features/browse_only/services/browse_library.dart';
 import 'package:aves/features/browse_only/view/browse_timeline_scroller.dart';
 import 'package:aves/features/collection_paging/engine/library_phase.dart';
@@ -327,13 +327,11 @@ class _BrowseTile extends StatelessWidget {
 /// of 30,000 rows would materialize exactly the library the index exists to
 /// keep compact, and swiping stays useful across a few hundred neighbours.
 void openBrowseOnlyViewer(BuildContext context, BrowseLibrary library, List<int> order, int position) {
-  if (position < 0 || position >= order.length) return;
+  final window = viewerWindow(length: order.length, position: position);
+  if (window == null) return;
   final source = context.read<CollectionSource>();
-  const radius = 250;
-  final from = max(0, position - radius);
-  final to = min(order.length, position + radius + 1);
   final entries = <AvesEntry>[
-    for (var i = from; i < to; i++) library.entryAt(order[i]),
+    for (var i = window.from; i < window.to; i++) library.entryAt(order[i]),
   ];
   final collection = CollectionLens(
     source: source,

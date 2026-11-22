@@ -11,6 +11,7 @@ failures, timeouts, empty pages, colliding ids and a stalled cursor).
 | `services/browse_library_paging_test.dart` | the window: page size, cursor, limit, dedupe, filtered pages, stalled cursor, failure/retry, timeout, disposal, handoff race, exact multiples |
 | `browse_library_test.dart` | row mapping, sort-date fallback, order, sections, hidden albums, entry cache, synthetic ids, clear |
 | `model/browse_grid_items_test.dart` | months as headers plus rows, no cross-month row, full coverage |
+| `model/viewer_window_test.dart` | the viewer's bounded neighbourhood and the out-of-range tap |
 | `model/browse_scroll_map_test.dart` | offsets, clamping, snapping, crumb fractions, empty list |
 | `model/browse_drawer_entry_test.dart` | the fail-closed whitelist and the organized case |
 | `browse_albums_test.dart` | the aggregate read, idempotence, hidden set, disambiguation, sorting, retry, timeout, clear race |
@@ -39,8 +40,8 @@ These need the real MediaStore, the app shell or layout:
 
 ## Debt
 
-- `openBrowseOnlyViewer` bounds, the ±250 window and `listenToSource: false` are
-  untested.
+- `openBrowseOnlyViewer`'s `listenToSource: false` is untested: the window
+  arithmetic itself now lives in `viewer_window.dart` and is covered.
 - The page chrome (title derivation, spinner, error bar, preview strip) and the
   sort menus are layout.
 - The handoff wiring in `CollectionPage` (clear both singletons on `ready`) has no

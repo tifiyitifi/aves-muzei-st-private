@@ -90,7 +90,8 @@ One row per case the feature has to get right. Coverage tokens are defined in
 | ID | Case | Behaviour | Why | Coverage |
 | --- | --- | --- | --- | --- |
 | UI-1 | Section header | WHEN the timeline scrolls, THE SYSTEM SHALL let the month header scroll away with its rows | a pinned header never shrinks and stacks headers on screen | `F:browse_media_grid_test#the month header scrolls away with the rows under it` |
-| UI-2 | Viewer window | WHEN a tile is tapped, THE SYSTEM SHALL open the viewer with a bounded neighbourhood | materializing the whole index would recreate the library | `-:needs a page route and the viewer; see tasks.md` |
+| UI-2 | Viewer window | WHEN a tile is tapped, THE SYSTEM SHALL open the viewer with a bounded neighbourhood | materializing the whole index would recreate the library | `F:viewer_window_test#the window is bounded on both sides`; `F:viewer_window_test#a position near the start keeps the beginning`; `F:viewer_window_test#a position near the end keeps the end` |
+| UI-5 | Out-of-range tap | WHEN the tapped position is outside the displayed order, THE SYSTEM SHALL not open the viewer | a filtered or stale order must not open whatever row now sits there | `F:viewer_window_test#a position outside the list has no window` |
 | UI-3 | Empty and failed states | WHEN a view is empty or failed, THE SYSTEM SHALL say why and offer the matching action | a blank screen is indistinguishable from a bug | `-:layout, covered by the device checks in testing.md` |
 | UI-4 | Preview strip | WHEN the limit is reached or the last page failed, THE SYSTEM SHALL show the preview strip with its action | the user must be able to pass the limit or retry | `-:layout` |
 

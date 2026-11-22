@@ -102,6 +102,8 @@
 
 - WHEN a tile is tapped, THE SYSTEM SHALL open the viewer at that position with at
   most 250 neighbours on each side in display order.
+- WHEN the tapped position is outside the displayed order, THE SYSTEM SHALL not
+  open the viewer.
 - WHEN a tile is rendered in the browser, THE SYSTEM SHALL not make it selectable.
 - WHEN the first page is in flight and nothing is read, THE SYSTEM SHALL show
   progress.

@@ -78,8 +78,8 @@ void main() {
         id: VisibleRange.galleryRangeId,
         scope: VisibleRangeScope.gallery,
         ownerId: VisibleRange.galleryOwnerId,
-        baseFilters: {PathFilter('/a')},
         rules: [
+          VisibleRangeRule(id: 's1', rangeId: 'gallery', kind: VisibleRangeRuleKind.source, position: 0, filters: {PathFilter('/a')}),
           VisibleRangeRule(id: 'r1', rangeId: 'gallery', kind: VisibleRangeRuleKind.restriction, position: 0, filters: {MimeFilter.image}),
           VisibleRangeRule(id: 'r2', rangeId: 'gallery', kind: VisibleRangeRuleKind.supplement, position: 1, filters: {MimeFilter.video}),
         ],

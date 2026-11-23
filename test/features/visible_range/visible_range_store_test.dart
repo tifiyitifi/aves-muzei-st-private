@@ -4,14 +4,15 @@ import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/model/visible_range_usage.dart';
 import 'package:aves/model/filters/favourite.dart';
+import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/sqlite3_loader.dart';
 
-/// Persistence round-trips for visible ranges, rules, presets, state and applied
-/// targets, including explicit cleanup (foreign keys are off).
+/// Persistence round-trips for visibility groups, rules, presets, state and
+/// applied targets, including explicit cleanup (foreign keys are off).
 void main() {
   setUpAll(ensureSqlite3Loaded);
 
@@ -28,53 +29,71 @@ void main() {
   final image = MimeFilter.image;
   const favourite = FavouriteFilter.instance;
 
+  VisibleRangeRule sourceRule(String rangeId, {Set<CollectionFilter>? filters}) =>
+      VisibleRangeRule(id: 's1', rangeId: rangeId, kind: VisibleRangeRuleKind.source, position: 0, filters: filters ?? {image});
+
   VisibleRange makeRange({String id = 'gallery', VisibleRangePermissions permissions = VisibleRangePermissions.readOnly}) => VisibleRange(
-        id: id,
-        scope: VisibleRangeScope.gallery,
-        ownerId: VisibleRange.galleryOwnerId,
-        baseName: 'visibleRangePresetImage',
-        basePresetId: 'builtin.image',
-        baseFilters: {image},
-        order: VisibleRangeOrder.unionFirst,
-        locked: true,
-        permissions: permissions,
-        createdAt: 10,
-        updatedAt: 20,
-      );
+    id: id,
+    scope: VisibleRangeScope.gallery,
+    ownerId: id,
+    name: 'My group',
+    position: 2,
+    rules: [sourceRule(id)],
+    order: VisibleRangeOrder.unionFirst,
+    locked: true,
+    permissions: permissions,
+    createdAt: 10,
+    updatedAt: 20,
+  );
 
   test('round-trips a range and its rules', () async {
     final range = makeRange();
     await store.saveRange(range);
     await store.saveRule(VisibleRangeRule(id: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, position: 0, filters: {favourite}));
-    await store.saveRule(VisibleRangeRule(
-      id: 'r2',
-      rangeId: range.id,
-      kind: VisibleRangeRuleKind.supplement,
-      position: 1,
-      label: 'mine',
-      description: 'pinned on a rainy day',
-      filters: {image},
-      active: false,
-    ));
+    await store.saveRule(
+      VisibleRangeRule(
+        id: 'r2',
+        rangeId: range.id,
+        kind: VisibleRangeRuleKind.supplement,
+        position: 1,
+        label: 'mine',
+        description: 'pinned on a rainy day',
+        filters: {image},
+        active: false,
+      ),
+    );
 
-    final loaded = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId);
+    final loaded = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: 'gallery');
     expect(loaded, isNotNull);
-    expect(loaded!.baseFilters, {image});
-    expect(loaded.basePresetId, 'builtin.image');
+    expect(loaded!.name, 'My group');
+    expect(loaded.position, 2);
+    expect(loaded.kind, VisibleRangeGroupKind.group);
+    expect(loaded.rulesOf(VisibleRangeRuleKind.source).single.filters, {image});
     expect(loaded.order, VisibleRangeOrder.unionFirst);
     expect(loaded.locked, isTrue);
     expect(loaded.permissions.delete, isFalse);
     expect(loaded.permissions.share, isTrue);
-    expect(loaded.rules.map((r) => r.id), ['r1', 'r2']);
-    expect(loaded.rules[1].label, 'mine');
-    expect(loaded.rules[1].description, 'pinned on a rainy day');
-    expect(loaded.rules[0].description, isEmpty);
-    expect(loaded.rules[1].active, isFalse);
+    expect(loaded.rules.map((r) => r.id), ['s1', 'r1', 'r2']);
+    expect(loaded.rules[2].label, 'mine');
+    expect(loaded.rules[2].description, 'pinned on a rainy day');
+    expect(loaded.rules[1].description, isEmpty);
+    expect(loaded.rules[2].active, isFalse);
+  });
+
+  test('loadGroups lists only groups in display order', () async {
+    await store.saveRange(makeRange(id: 'g2').copyWith(position: 1, locked: false));
+    await store.saveRange(makeRange(id: 'g1').copyWith(position: 0, locked: false));
+    await store.saveRange(VisibleRange.emptyOutside());
+    final groups = await store.loadGroups(VisibleRangeScope.gallery);
+    expect(groups.map((group) => group.id), ['g1', 'g2']);
+    final outside = await store.loadOutside(VisibleRangeScope.gallery);
+    expect(outside, isNotNull);
+    expect(outside!.isOutside, isTrue);
   });
 
   test('stores edited permissions', () async {
     await store.saveRange(makeRange(permissions: VisibleRangePermissions.full));
-    final loaded = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId);
+    final loaded = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: 'gallery');
     expect(loaded!.permissions.vault, isTrue);
     expect(loaded.permissions.edit, isTrue);
   });
@@ -82,7 +101,7 @@ void main() {
   test('an unlocked range drops stale permissions', () async {
     await store.saveRange(makeRange(permissions: VisibleRangePermissions.full));
     await store.saveRange(makeRange().copyWith(locked: false));
-    final loaded = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId);
+    final loaded = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: 'gallery');
     expect(loaded!.permissions, VisibleRangePermissions.readOnly);
   });
 
@@ -99,10 +118,9 @@ void main() {
   test('deleting a range clears its rules and applied targets', () async {
     final range = makeRange();
     await store.saveRange(range);
-    await store.saveRule(VisibleRangeRule(id: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, filters: {image}));
-    await store.saveUsage(VisibleRangeRuleUsage.forRule(ruleId: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, usedAt: 1));
+    await store.saveUsage(VisibleRangeRuleUsage.forRule(ruleId: 's1', rangeId: range.id, kind: VisibleRangeRuleKind.source, usedAt: 1));
     await store.deleteRange(range.id);
-    expect(await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId), isNull);
+    expect(await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: 'gallery'), isNull);
     expect(await store.loadRules(range.id), isEmpty);
     expect(await store.loadUsages(), isEmpty);
   });
@@ -124,7 +142,7 @@ void main() {
 
   test('applied targets round-trip and follow their rule', () async {
     final range = makeRange();
-    final rule = VisibleRangeRule(id: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, filters: {image});
+    final rule = sourceRule(range.id);
     await store.saveRange(range.copyWith(rules: [rule]));
     await store.saveUsage(VisibleRangeRuleUsage.forRule(ruleId: 'r1', rangeId: range.id, kind: VisibleRangeRuleKind.restriction, usedAt: 1));
     await store.saveUsage(VisibleRangeRuleUsage.forBase(rangeId: range.id, usedAt: 2));

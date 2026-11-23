@@ -1,6 +1,5 @@
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/model/filters/filters.dart';
-import 'package:collection/collection.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
@@ -14,7 +13,7 @@ enum VisibleRangeCandidateKind {
   supplement;
 
   VisibleRangeRuleKind? get ruleKind => switch (this) {
-    base => null,
+    base => VisibleRangeRuleKind.source,
     restriction => VisibleRangeRuleKind.restriction,
     supplement => VisibleRangeRuleKind.supplement,
   };
@@ -104,9 +103,14 @@ class VisibleRangeCandidate extends Equatable {
   factory fromRule(VisibleRangeRule rule) {
     final rawLabel = rule.label;
     final isKey = rawLabel.startsWith('@');
+    final kind = switch (rule.kind) {
+      VisibleRangeRuleKind.source => VisibleRangeCandidateKind.base,
+      VisibleRangeRuleKind.restriction => VisibleRangeCandidateKind.restriction,
+      VisibleRangeRuleKind.supplement => VisibleRangeCandidateKind.supplement,
+    };
     return VisibleRangeCandidate(
       id: rule.id,
-      kind: rule.kind == VisibleRangeRuleKind.restriction ? VisibleRangeCandidateKind.restriction : VisibleRangeCandidateKind.supplement,
+      kind: kind,
       filters: rule.filters,
       labelKey: isKey ? rawLabel.substring(1) : '',
       label: isKey ? '' : rawLabel,
@@ -222,25 +226,15 @@ class VisibleRangeCandidateSection extends Equatable {
   List<Object?> get props => [kind, candidates];
 }
 
-/// Builds the page's three sections from the stored range and presets.
-List<VisibleRangeCandidateSection> buildVisibleRangeSections({
-  required VisibleRange range,
-  required List<VisibleRangePreset> presets,
-}) {
-  final presetIds = presets.map((preset) => preset.id).toSet();
+/// Builds the page's three sections from one stored range.
+///
+/// The groups themselves are switched from the page's header, not listed as
+/// candidates: a group is a container, a candidate is a condition inside it.
+List<VisibleRangeCandidateSection> buildVisibleRangeSections({required VisibleRange range}) {
+  final sources = range.rulesOf(VisibleRangeRuleKind.source);
   final base = <VisibleRangeCandidate>[
-    range.isBaseUnrestricted ? VisibleRangeCandidate.unrestricted : VisibleRangeCandidate.unrestricted.copyWithActive(false),
-    if (!range.isBaseUnrestricted && (range.basePresetId.isEmpty || !presetIds.contains(range.basePresetId)))
-      VisibleRangeCandidate.customBase(
-        name: range.baseName,
-        filters: range.baseFilters,
-        active: range.baseActive,
-      ),
-    for (final preset in presets)
-      VisibleRangeCandidate.fromPreset(
-        preset,
-        active: range.baseActive && !range.isBaseUnrestricted && range.basePresetId == preset.id,
-      ),
+    sources.isEmpty ? VisibleRangeCandidate.unrestricted : VisibleRangeCandidate.unrestricted.copyWithActive(false),
+    for (final rule in sources) VisibleRangeCandidate.fromRule(rule),
   ];
 
   List<VisibleRangeCandidate> rulesOf(VisibleRangeRuleKind kind) {
@@ -279,19 +273,13 @@ List<VisibleRangeCandidateSection> buildVisibleRangeSections({
 /// It reads top-down like the range evaluates: the result preview first, then the
 /// active base, then the active rules in evaluation order. The unrestricted base
 /// is left out because the result preview already stands for "everything".
-List<VisibleRangeCandidate> buildVisibleRangeActiveCandidates({
-  required VisibleRange range,
-  required List<VisibleRangePreset> presets,
-}) {
-  final baseCandidates = buildVisibleRangeSections(range: range, presets: presets).first.candidates;
-  final activeBase = baseCandidates.firstWhereOrNull((candidate) => candidate.active && !candidate.isUnrestricted);
+List<VisibleRangeCandidate> buildVisibleRangeActiveCandidates({required VisibleRange range}) {
   final rules = [
-    for (final kind in range.order.isIntersectFirst ? [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement] : [VisibleRangeRuleKind.supplement, VisibleRangeRuleKind.restriction])
+    for (final kind in [VisibleRangeRuleKind.source, ...range.order.isIntersectFirst ? [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement] : [VisibleRangeRuleKind.supplement, VisibleRangeRuleKind.restriction]])
       for (final rule in range.activeRulesOf(kind)) VisibleRangeCandidate.fromRule(rule),
   ];
   return [
     VisibleRangeCandidate.gallery,
-    ?activeBase,
     ...rules,
   ];
 }

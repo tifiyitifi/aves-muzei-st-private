@@ -1,6 +1,7 @@
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_condition_pool.dart';
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/path.dart';
 import 'package:aves/services/common/services.dart';
@@ -14,6 +15,7 @@ void main() {
   });
 
   tearDownAll(getIt.reset);
+
   VisibleRangeRule rule(String id, {int surfaces = WallpaperConditionSurfaces.all, VisibleRangeRuleKind kind = VisibleRangeRuleKind.restriction}) => VisibleRangeRule(
     id: id,
     rangeId: 'g.range',
@@ -23,14 +25,20 @@ void main() {
     surfaces: surfaces,
   );
 
-  VisibleRange pool({int baseSurfaces = WallpaperConditionSurfaces.all, List<VisibleRangeRule> rules = const []}) => VisibleRange(
+  VisibleRangeRule sourceRule({int surfaces = WallpaperConditionSurfaces.all, Set<CollectionFilter>? filters}) => VisibleRangeRule(
+    id: 'src',
+    rangeId: 'g.range',
+    kind: VisibleRangeRuleKind.source,
+    label: 'Source',
+    filters: filters ?? {PathFilter('/dcim')},
+    surfaces: surfaces,
+  );
+
+  VisibleRange pool({int sourceSurfaces = WallpaperConditionSurfaces.all, List<VisibleRangeRule> rules = const []}) => VisibleRange(
     id: 'g.range',
     scope: VisibleRangeScope.wallpaper,
     ownerId: 'g',
-    baseName: 'Base',
-    baseFilters: {PathFilter('/dcim')},
-    baseSurfaces: baseSurfaces,
-    rules: rules,
+    rules: [sourceRule(surfaces: sourceSurfaces), ...rules],
   );
 
   group('surface marks', () {
@@ -67,20 +75,20 @@ void main() {
         groupId: 'g',
         surface: WallpaperSurface.home,
       );
-      expect(projected.rules.map((r) => r.id), ['both', 'homeOnly']);
+      expect(projected.rules.map((r) => r.id), ['src', 'both', 'homeOnly']);
       // Membership is the wallpaper page's switch, so a member is active.
       expect(projected.rules.every((r) => r.active), isTrue);
       expect(projected.resolve() != null, isTrue);
     });
 
-    test('a surface that does not use the base is unrestricted by it', () {
+    test('a surface that does not use the source is unrestricted by it', () {
       final lock = projectWallpaperGroupRange(
-        pool(baseSurfaces: WallpaperConditionSurfaces.home),
+        pool(sourceSurfaces: WallpaperConditionSurfaces.home),
         groupId: 'g',
         surface: WallpaperSurface.lock,
       );
-      expect(lock.baseFilters, isEmpty);
-      expect(lock.isBaseUnrestricted, isTrue);
+      expect(lock.rulesOf(VisibleRangeRuleKind.source), isEmpty);
+      expect(lock.isRestricted(), isFalse);
     });
 
     test('the order and the lock belong to the pool', () {
@@ -95,9 +103,7 @@ void main() {
     test('a rule the projection keeps is updated in place and marked', () {
       final merged = mergeWallpaperGroupRange(
         pool(rules: [rule('a', surfaces: WallpaperConditionSurfaces.home)]),
-        pool(
-          rules: [rule('a', surfaces: WallpaperConditionSurfaces.all).copyWith(label: 'Renamed')],
-        ),
+        pool(rules: [rule('a', surfaces: WallpaperConditionSurfaces.all).copyWith(label: 'Renamed')]),
         surface: WallpaperSurface.lock,
       );
       final stored = merged.ruleById('a')!;
@@ -124,28 +130,33 @@ void main() {
       expect(merged.ruleById('new')!.active, isTrue);
     });
 
-    test('a surface that does not use the base cannot erase it', () {
+    test('a surface that does not mark the source cannot erase it', () {
       final merged = mergeWallpaperGroupRange(
-        pool(baseSurfaces: WallpaperConditionSurfaces.home),
+        pool(sourceSurfaces: WallpaperConditionSurfaces.home),
         projectWallpaperGroupRange(
-          pool(baseSurfaces: WallpaperConditionSurfaces.home),
+          pool(sourceSurfaces: WallpaperConditionSurfaces.home),
           groupId: 'g',
           surface: WallpaperSurface.lock,
         ),
         surface: WallpaperSurface.lock,
       );
-      expect(merged.baseFilters, {PathFilter('/dcim')});
-      expect(merged.baseSurfaces, WallpaperConditionSurfaces.home);
+      expect(merged.rulesOf(VisibleRangeRuleKind.source).single.surfaces, WallpaperConditionSurfaces.home);
+      expect(merged.rulesOf(VisibleRangeRuleKind.source).single.filters, {PathFilter('/dcim')});
     });
 
-    test('using the base on a surface marks it', () {
+    test('a pinned source joins the pool with this surface only', () {
+      final pinned = pool(
+        sourceSurfaces: WallpaperConditionSurfaces.home,
+        rules: const [],
+      );
       final merged = mergeWallpaperGroupRange(
-        pool(baseSurfaces: WallpaperConditionSurfaces.home),
-        pool().copyWith(baseFilters: {PathFilter('/pictures')}),
+        VisibleRange.emptyGroup(scope: VisibleRangeScope.wallpaper, id: 'g.range', ownerId: 'g'),
+        pinned,
         surface: WallpaperSurface.lock,
       );
-      expect(merged.baseSurfaces, WallpaperConditionSurfaces.all);
-      expect(merged.baseFilters, {PathFilter('/pictures')});
+      // A projection only carries what its surface marks, so the pinned source
+      // joins the pool marked for that surface.
+      expect(merged.rulesOf(VisibleRangeRuleKind.source).single.surfaces, WallpaperConditionSurfaces.lock);
     });
   });
 }

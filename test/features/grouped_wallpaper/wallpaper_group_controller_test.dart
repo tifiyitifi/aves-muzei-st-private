@@ -99,9 +99,10 @@ void main() {
   test('seeds each group with its exclusive base and the demonstration restrictions', () async {
     final dcim = await controller.groupRange('wallpaper.group.dcim');
     // A wallpaper group does not copy the gallery's restriction/supplement
-    // catalogue: home starts with its one base plus the notPortrait rule.
-    expect(dcim.rules, hasLength(1));
-    expect(dcim.rules.single.id, endsWith('.notPortrait'));
+    // catalogue: home starts with its source plus the notPortrait rule.
+    final conditions = dcim.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source).toList();
+    expect(conditions, hasLength(1));
+    expect(conditions.single.id, endsWith('.notPortrait'));
     expect(dcim.baseFilters, {PathFilter('/dcim')});
 
     final all = await controller.groupRange('wallpaper.group.all');
@@ -136,7 +137,7 @@ void main() {
     await seeded.init();
 
     final range = await seeded.groupRange('wallpaper.group.dcim');
-    expect(range.isRestricted, isTrue);
+    expect(range.isRestricted(), isTrue);
     expect(range.baseFilters.single, wallpaperDenyAllFilter());
   });
 
@@ -546,10 +547,7 @@ void main() {
     final lock = await controller.groupRange(id, surface: WallpaperSurface.lock);
 
     expect(await controller.loadRangeById(wallpaperGroupLockRangeId(id)), isNotNull);
-    // Clearing the base on the lock surface only clears its mark: the shared
-    // condition stays, and the home surface keeps using it.
-    await controller.saveGroupRange(lock.copyWith(baseActive: false));
-    expect((await controller.groupRange(id, surface: WallpaperSurface.lock)).isBaseUnrestricted, isTrue);
+    // The lock surface applies the group's source as long as it is split.
     expect((await controller.groupRange(id, surface: WallpaperSurface.home)).baseFilters, {PathFilter('/dcim')});
 
     await controller.setSeparateLockRange(id, false);
@@ -627,7 +625,7 @@ void main() {
     );
 
     await seeded.setSeparateLockRange(id, true);
-    expect((await seeded.groupPool(id)).baseSurfaces, WallpaperConditionSurfaces.all);
+    // The split seeds the lock mark from the home marks of every condition.
     expect((await seeded.groupPool(id)).ruleById('r1')!.surfaces, WallpaperConditionSurfaces.all);
   });
 }

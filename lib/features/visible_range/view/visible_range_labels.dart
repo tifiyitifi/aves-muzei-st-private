@@ -60,24 +60,19 @@ String visibleRangePresetLabel(BuildContext context, String key) {
 String visibleRangeGroupSummary(BuildContext context, {required VisibleRange? range, required String groupName, required bool isNone}) {
   final l10n = context.l10n;
   if (range == null) return '';
+  final sources = range.activeRulesOf(VisibleRangeRuleKind.source);
   final restrictions = range.activeRulesOf(VisibleRangeRuleKind.restriction).length;
-  // An empty, unused base is 「no base」, not a base called "All images": group 3
-  // stores exactly that, and naming it would only take the card's line.
-  final showBase = !isNone && !range.isBaseUnrestricted && range.baseName != groupName;
-  if (showBase) {
-    final base = _baseLabel(context, range);
-    return restrictions == 0 ? base : l10n.wallpaperGroupRangeRules(base, restrictions);
+  final singleLabel = sources.length == 1 ? visibleRangeRuleLabel(context, sources.first) : null;
+  // The caller may pass a bundled name as its ARB key; compare displayed names.
+  final groupLabel = groupName.startsWith('@') ? visibleRangePresetLabel(context, groupName.substring(1)) : groupName;
+  // A group with no source is 「no source」, and a bundled source spelled exactly
+  // like the group ("Pictures") would only take the card's line.
+  final showSource = !isNone && sources.isNotEmpty && singleLabel != groupLabel;
+  if (showSource) {
+    final source = singleLabel ?? sources.map((rule) => visibleRangeRuleLabel(context, rule)).where((label) => label.isNotEmpty).join(' · ');
+    return restrictions == 0 ? source : l10n.wallpaperGroupRangeRules(source, restrictions);
   }
   return restrictions == 0 ? '' : l10n.wallpaperGroupRangeRestrictions(restrictions);
-}
-
-/// A range's base name: its bundled or user name, else its filters' labels.
-String _baseLabel(BuildContext context, VisibleRange range) {
-  final name = range.baseName;
-  if (name.startsWith('@')) return visibleRangePresetLabel(context, name.substring(1));
-  if (name.isNotEmpty) return name;
-  final filters = visibleRangeFilterLabels(context, range.baseFilters);
-  return filters.isEmpty ? context.l10n.wallpaperGroupAllImages : filters;
 }
 
 /// The label of a rule: a localized default name, the user's rename, or the

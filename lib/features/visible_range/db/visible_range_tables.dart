@@ -1,11 +1,11 @@
 import 'package:drift/drift.dart';
 
-/// Catalog of reusable **base ranges**. "Unrestricted" is represented by an
-/// empty base filter set and is never a row.
+/// Catalog of reusable **group templates**. "Unrestricted" is represented by a
+/// group with no source condition and is never a row here.
 ///
-/// A base is a snapshot: selecting one copies its filters onto the owning
-/// [VisibleRangeRows] row, so editing a preset never rewrites a range behind the
-/// user's back.
+/// A template materializes a gallery group with one source condition; editing a
+/// template never rewrites a group behind the user's back. The table is kept for
+/// one release after the group refactor so a rollback can still read it.
 class VisibleRangePresetRows extends Table {
   @override
   String get tableName => 'visible_range_presets';
@@ -30,12 +30,13 @@ class VisibleRangePresetRows extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// One visible range: a base plus its restriction/supplement rule sets.
+/// One visibility range: a group (or the scope-wide outside pool) plus its
+/// source/restriction/supplement rule sets.
 ///
-/// `scope` is `gallery` (a single range, owner `gallery`) or `wallpaper`
-/// (one range per wallpaper group, owner = group id). The two scopes are stored
-/// side by side but never share a row, so the wallpaper engine can evolve
-/// without moving gallery data.
+/// `scope` is `gallery` or `wallpaper`. A gallery scope has N mutually exclusive
+/// groups plus one `outside` row shared by all of them; a wallpaper scope has one
+/// group per `WallpaperGroup`. The two scopes are stored side by side but never
+/// share a row, so the wallpaper engine can evolve without moving gallery data.
 class VisibleRangeRows extends Table {
   @override
   String get tableName => 'visible_ranges';
@@ -44,31 +45,38 @@ class VisibleRangeRows extends Table {
 
   TextColumn get scope => text()();
 
-  /// Owner of the range: `gallery` for the single gallery range, otherwise the
-  /// wallpaper group id.
+  /// `group` (a selectable group) or `outside` (the scope-wide pool). The
+  /// outside pool has no source role and is not offered as a browsable group.
+  TextColumn get kind => text().withDefault(const Constant('group'))();
+
+  /// Owner of the range: the group id, or `gallery.outside` for the outside
+  /// pool. Wallpaper groups keep owning exactly one pool.
   TextColumn get ownerId => text().named('ownerId')();
 
-  /// Display name of the selected base (empty when [baseFilters] is empty).
+  /// Group name. Empty means the scope's default label; a value starting with
+  /// `@` is an ARB key, anything else is user text.
+  TextColumn get name => text().withDefault(const Constant(''))();
+
+  /// Display order inside the scope; the group number is derived from it.
+  IntColumn get position => integer().withDefault(const Constant(0))();
+
+  /// Legacy v18 base snapshot, read only by the v19 migration.
+  ///
+  /// The base became a `source` rule in v19; the columns stay one release so a
+  /// rollback can still read the old shape. New writes leave them at their
+  /// defaults.
   TextColumn get baseName => text().named('baseName').withDefault(const Constant(''))();
 
-  /// Preset this base was last copied from, or empty for unrestricted/custom.
+  /// Legacy v18 preset reference. See [baseName].
   TextColumn get basePresetId => text().named('basePresetId').withDefault(const Constant(''))();
 
-  /// JSON array, AND-ed together. Empty means unrestricted.
+  /// Legacy v18 base filters. See [baseName].
   TextColumn get baseFilters => text().named('baseFilters').withDefault(const Constant('[]'))();
 
-  /// Whether the base takes part in the range.
-  ///
-  /// A wallpaper group keeps its base when the user clears the group: switching
-  /// the base off is a state change, not a deletion, so the same conditions can
-  /// be switched back on without pinning them again.
+  /// Legacy v18 base switch. See [baseName].
   BoolColumn get baseActive => boolean().named('baseActive').withDefault(const Constant(true))();
 
-  /// Which wallpaper surfaces use the base, as a bit mask (`1` home, `2` lock).
-  ///
-  /// A wallpaper group owns one condition pool, so its base is stored once and
-  /// each surface only marks whether it uses it. The gallery range ignores the
-  /// column: its single surface is the whole app.
+  /// Legacy v18 base surface marks. See [baseName].
   IntColumn get baseSurfaces => integer().named('baseSurfaces').withDefault(const Constant(0))();
 
   /// `intersectFirst` (restrictions before supplements) or `unionFirst`
@@ -89,8 +97,9 @@ class VisibleRangeRows extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// One rule of a visible range. `kind` is `restriction` (AND) or `supplement`
-/// (OR); a rule's own filters are AND-ed together.
+/// One rule of a visible range. `kind` is `source` (OR between rules),
+/// `restriction` (AND) or `supplement` (OR); a rule's own filters are AND-ed
+/// together.
 class VisibleRangeRuleRows extends Table {
   @override
   String get tableName => 'visible_range_rules';
@@ -143,10 +152,10 @@ class VisibleRangeRuleUsageRows extends Table {
 
   TextColumn get rangeId => text().named('rangeId')();
 
-  /// Rule id, or empty for a base target.
+  /// Rule id, or empty for a legacy base target.
   TextColumn get targetId => text().named('targetId').withDefault(const Constant(''))();
 
-  /// `base`, `restriction` or `supplement`.
+  /// `base` (the source section), `restriction` or `supplement`.
   TextColumn get kind => text()();
 
   IntColumn get usedAt => integer().named('usedAt')();

@@ -3,56 +3,112 @@
 Acceptance criteria in EARS form. `rules.md` turns each one into a case with
 evidence.
 
-## A range is an expression
+## Groups and conditions
 
-- WHEN a range has no active base and no active rules, THE SYSTEM SHALL restrict
-  nothing.
-- WHEN the order is `intersectFirst`, THE SYSTEM SHALL resolve the range as
-  `(base AND restrictions) OR supplements`.
-- WHEN the order is `unionFirst`, THE SYSTEM SHALL resolve the range as
-  `(base OR supplements) AND restrictions`.
-- WHEN the base is unrestricted, THE SYSTEM SHALL make the union step a no-op in
-  both orders.
+A range is one **visibility group**. The gallery owns several mutually exclusive
+groups plus one scope-wide outside pool; a wallpaper group owns exactly one
+group. Inside a group, conditions play one of three roles:
+
+- **source** — OR-ed with the other sources; each source ANDs its own filters.
+- **restriction** — AND-ed on top of the sources.
+- **supplement** — OR-ed back in.
+
+- WHEN a range has no active condition, THE SYSTEM SHALL restrict nothing.
+- WHEN the order is `intersectFirst`, THE SYSTEM SHALL resolve the group as
+  `(sources AND restrictions) OR supplements`.
+- WHEN the order is `unionFirst`, THE SYSTEM SHALL resolve the group as
+  `(sources OR supplements) AND restrictions`.
+- WHEN the sources are unrestricted, THE SYSTEM SHALL make the union step a no-op
+  in both orders.
 - WHEN a rule is switched off, THE SYSTEM SHALL ignore its filters.
 - WHEN a rule holds several filters, THE SYSTEM SHALL AND them inside the rule.
-- WHEN the range is unrestricted, THE SYSTEM SHALL report `isRestricted` false
-  and apply no browsing filter.
-- WHEN only supplements are active and the base is unrestricted, THE SYSTEM SHALL
-  not restrict browsing.
-- WHEN `isRestricted` is evaluated, THE SYSTEM SHALL consider only the base and
-  the active restrictions.
+- WHEN several sources are active, THE SYSTEM SHALL OR their rules.
+- WHEN a group is unrestricted, THE SYSTEM SHALL report `isRestricted` false and
+  apply no browsing filter.
+- WHEN only supplements are active, THE SYSTEM SHALL not restrict browsing.
+- WHEN `isRestricted` is evaluated, THE SYSTEM SHALL consider the active sources
+  and restrictions only.
+
+## Exclusive groups
+
+- WHEN a group is made current, THE SYSTEM SHALL browse with it and write the
+  pointer so a restart returns to it.
+- WHEN a group is deleted and it was current, THE SYSTEM SHALL fall back to the
+  first remaining group.
+- WHEN the last group would be deleted, THE SYSTEM SHALL refuse and keep one.
+- WHEN a lock is on, THE SYSTEM SHALL refuse to switch groups, create them or
+  edit any condition until the PIN unlocks it.
+- WHEN the gallery lock is on, THE SYSTEM SHALL freeze the whole gallery scope:
+  every group, the outside pool and the current pointer.
+
+## The outside pool (gallery)
+
+- WHEN a group resolves, THE SYSTEM SHALL apply the outside pool last:
+  `(group AND outsideRestrictions) OR outsideSupplements`.
+- WHEN the group is unrestricted, THE SYSTEM SHALL let an outside supplement
+  restrict nothing.
+- WHEN only an outside restriction is active, THE SYSTEM SHALL narrow with it.
+- WHEN the outside pool is edited, THE SYSTEM SHALL accept restrictions and
+  supplements only; it SHALL have no source role.
+- WHEN the gallery is locked, THE SYSTEM SHALL freeze the outside pool too.
+
+## Pinning
+
+- WHEN a media set is pinned to a group, THE SYSTEM SHALL split it: a source-only
+  union becomes one source per member, every other positive source stays one
+  conjunctive source, and the rest becomes restrictions.
+- WHEN a filter is reversed or mixes a source with a narrowing filter, THE SYSTEM
+  SHALL keep it a restriction.
+- WHEN the user forces a role, THE SYSTEM SHALL override the automatic split and
+  SHALL NOT promise equivalence with the media set.
+- WHEN a group has no conditions yet, THE SYSTEM SHALL enable the first pinned
+  conditions; otherwise it SHALL park them, unless the pin overrides the mode.
+- WHEN the same conditions are pinned again, THE SYSTEM SHALL update the existing
+  condition and keep its state.
+- WHEN the write mode is replace, THE SYSTEM SHALL drop the conditions already in
+  the group.
+- WHEN the target is the outside pool, THE SYSTEM SHALL write one condition per
+  filter in that pool's role.
+- WHEN the target is the gallery and it is locked, THE SYSTEM SHALL skip every
+  gallery target and count it.
+- WHEN the user asks to remember the injection mode, THE SYSTEM SHALL read it
+  back; otherwise the sheet SHALL start from `auto`.
 
 ## Candidates and the page
 
 - WHEN the page lists the base section, THE SYSTEM SHALL start it with the
   unrestricted tile.
-- WHEN a base is selected, THE SYSTEM SHALL show the unrestricted tile as an
-  unselected option.
-- WHEN a base preset was deleted, THE SYSTEM SHALL keep its filters as a selected
-  custom tile.
+- WHEN a source exists, THE SYSTEM SHALL show the unrestricted tile as an
+  unselected option and the source as a selected one.
+- WHEN several sources exist, THE SYSTEM SHALL list them as parallel tiles.
 - WHEN rules are listed, THE SYSTEM SHALL group them by kind and put defaults
   first.
 - WHEN candidates share a filter set, THE SYSTEM SHALL share one stats key.
 - WHEN a built-in candidate is named, THE SYSTEM SHALL use a localized key; a
   user rename SHALL stay plain text.
-- WHEN the active section is built, THE SYSTEM SHALL repeat the base and the
-  enabled rules, and SHALL omit an unrestricted base.
+- WHEN the active section is built, THE SYSTEM SHALL repeat the sources and the
+  enabled rules, and SHALL omit an unrestricted source.
 - WHEN a candidate has no explicit label, THE SYSTEM SHALL fall back to its filter
   labels.
 - WHEN a candidate pair is reversed, THE SYSTEM SHALL keep the reverse semantics.
-- WHEN no base is named, THE SYSTEM SHALL fall back to its filters in the summary.
+- WHEN no source is named, THE SYSTEM SHALL fall back to its filters in the
+  summary.
 
 ## Persistence
 
 - WHEN a range is saved, THE SYSTEM SHALL store the range and its rules as one
   aggregate.
-- WHEN a range is read, THE SYSTEM SHALL qualify the read by scope and owner.
+- WHEN groups are listed, THE SYSTEM SHALL return only groups in display order;
+  the outside pool SHALL NOT be listed as a browsable group.
 - WHEN a range is locked, THE SYSTEM SHALL persist its permissions; WHEN it is
   unlocked, THE SYSTEM SHALL drop the stale permissions.
 - WHEN a rule set is replaced, THE SYSTEM SHALL replace the whole set.
 - WHEN a range is deleted, THE SYSTEM SHALL delete its rules and applied targets.
 - WHEN presets or view state are written, THE SYSTEM SHALL read the same values
   back after a restart.
+- WHEN a v18 database upgrades, THE SYSTEM SHALL turn each base into a source
+  rule, move the old gallery rules to the outside pool, make the old preset group
+  current, and keep the legacy base columns one release for a rollback.
 - WHEN an applied target is recorded, THE SYSTEM SHALL keep it tied to its rule.
 - WHEN a corrupt filter value is read, THE SYSTEM SHALL treat it as an empty set
   instead of crashing the browse.
@@ -64,13 +120,13 @@ evidence.
   the media set's current filters.
 - WHEN candidates are applied, THE SYSTEM SHALL remember the applied targets.
 - WHEN the current filters are written back, THE SYSTEM SHALL overwrite only the
-  selected rule and base.
+  selected rule and the range's source.
 - WHEN a target is locked, THE SYSTEM SHALL skip it and count it, not fail the
   request.
-- WHEN a pinned base is stored on a group, THE SYSTEM SHALL keep it on the range,
-  not in the preset catalog.
-- WHEN a rule is pinned, THE SYSTEM SHALL update the existing rule for the same
-  conditions instead of stacking a duplicate.
+- WHEN a source is pinned to a group, THE SYSTEM SHALL keep it on the range, not
+  in the preset catalog.
+- WHEN a condition is pinned, THE SYSTEM SHALL update the existing condition for
+  the same conditions instead of stacking a duplicate.
 
 ## The lock
 
@@ -80,6 +136,10 @@ evidence.
 - WHEN the range is unlocked, THE SYSTEM SHALL restore every operation.
 - WHEN an action is mapped to the lock, THE SYSTEM SHALL use the permission the
   action needs.
+- WHEN the gallery lock is on, THE SYSTEM SHALL freeze every gallery group, the
+  outside pool and the current pointer, and SHALL require the PIN to unlock.
+- WHEN the wallpaper group lock is on, THE SYSTEM SHALL hide the other groups,
+  refuse switching and freeze edits to every group, the locked one included.
 
 ## Browsing and the wallpaper overlay
 

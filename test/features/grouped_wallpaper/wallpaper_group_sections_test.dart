@@ -18,18 +18,28 @@ void main() {
 
   tearDownAll(getIt.reset);
 
+  const sourceId = 'src';
+
   VisibleRange pool({
-    Set<CollectionFilter> base = const {},
-    int baseSurfaces = WallpaperConditionSurfaces.all,
+    Set<CollectionFilter> source = const {},
+    int sourceSurfaces = WallpaperConditionSurfaces.all,
     List<VisibleRangeRule> rules = const [],
   }) => VisibleRange(
     id: 'wallpaper.group.dcim.range',
     scope: VisibleRangeScope.wallpaper,
     ownerId: 'wallpaper.group.dcim',
-    baseName: '@wallpaperGroupDefaultDcim',
-    baseFilters: base,
-    baseSurfaces: base.isEmpty ? 0 : baseSurfaces,
-    rules: rules,
+    rules: [
+      if (source.isNotEmpty)
+        VisibleRangeRule(
+          id: sourceId,
+          rangeId: 'wallpaper.group.dcim.range',
+          kind: VisibleRangeRuleKind.source,
+          label: '@wallpaperGroupDefaultDcim',
+          filters: source,
+          surfaces: sourceSurfaces,
+        ),
+      ...rules,
+    ],
   );
 
   VisibleRangeRule rule(
@@ -45,14 +55,14 @@ void main() {
     surfaces: surfaces,
   );
 
-  test('the base section starts with All images and never shows a gallery preset', () {
+  test('the source section starts with All images and never shows a gallery preset', () {
     final sections = buildWallpaperGroupPoolSections(
-      pool: pool(base: {PathFilter('/dcim')}),
+      pool: pool(source: {PathFilter('/dcim')}),
       active: WallpaperSurface.home,
     );
     final base = sections.first;
     expect(base.kind, VisibleRangeCandidateKind.base);
-    expect(base.candidates.map((candidate) => candidate.id), [VisibleRangeCandidate.unrestrictedId, VisibleRangeCandidate.customBaseId]);
+    expect(base.candidates.map((candidate) => candidate.id), [VisibleRangeCandidate.unrestrictedId, sourceId]);
     final allImages = base.candidates.first;
     expect(allImages.placeholder, isFalse);
     expect(allImages.labelKey, 'wallpaperGroupAllImages');
@@ -62,7 +72,7 @@ void main() {
     expect(allImages.filters, {MimeFilter.image});
     expect(allImages.statsKey, filterFingerprint({MimeFilter.image}));
     expect(allImages.isApplicable, isFalse);
-    // The base tile carries the surfaces that use it.
+    // The source tile carries the surfaces that use it.
     expect(base.candidates.last.active, isTrue);
     expect(base.candidates.last.surfaces, WallpaperConditionSurfaces.all);
     expect(base.candidates.last.labelKey, 'wallpaperGroupDefaultDcim');
@@ -128,15 +138,20 @@ void main() {
       id: 'wallpaper.group.dcim.lock.range',
       scope: VisibleRangeScope.wallpaper,
       ownerId: 'wallpaper.group.dcim.lock',
-      baseName: 'DCIM',
-      baseFilters: {PathFilter('/dcim')},
       rules: [
+        VisibleRangeRule(
+          id: sourceId,
+          rangeId: 'wallpaper.group.dcim.lock.range',
+          kind: VisibleRangeRuleKind.source,
+          label: 'DCIM',
+          filters: {PathFilter('/dcim')},
+        ),
         rule('r1', VisibleRangeRuleKind.restriction),
         rule('r2', VisibleRangeRuleKind.supplement, surfaces: 0).copyWith(active: false),
       ],
     );
     final candidates = buildWallpaperGroupSurfaceCandidates(range: range);
-    expect(candidates.map((candidate) => candidate.id), [VisibleRangeCandidate.customBaseId, 'r1']);
+    expect(candidates.map((candidate) => candidate.id), [sourceId, 'r1']);
     expect(candidates.where((candidate) => candidate.placeholder), isEmpty);
   });
 
@@ -145,14 +160,21 @@ void main() {
       id: 'wallpaper.group.dcim.range',
       scope: VisibleRangeScope.wallpaper,
       ownerId: 'wallpaper.group.dcim',
-      baseName: 'DCIM',
-      baseFilters: {PathFilter('/dcim')},
-      rules: [rule('r1', VisibleRangeRuleKind.restriction)],
+      rules: [
+        VisibleRangeRule(
+          id: sourceId,
+          rangeId: 'wallpaper.group.dcim.range',
+          kind: VisibleRangeRuleKind.source,
+          label: 'DCIM',
+          filters: {PathFilter('/dcim')},
+        ),
+        rule('r1', VisibleRangeRuleKind.restriction),
+      ],
     );
     final candidates = buildWallpaperGroupSurfaceCandidates(range: range, includeResult: true);
     // The lamped surface reads like the gallery page's current-range section:
     // the result first, then the conditions that produce it.
-    expect(candidates.map((candidate) => candidate.id), [VisibleRangeCandidate.galleryId, VisibleRangeCandidate.customBaseId, 'r1']);
+    expect(candidates.map((candidate) => candidate.id), [VisibleRangeCandidate.galleryId, sourceId, 'r1']);
     expect(candidates.first.isGallery, isTrue);
     // The preview is not a condition: it cannot be selected or applied.
     expect(candidates.first.isApplicable, isFalse);

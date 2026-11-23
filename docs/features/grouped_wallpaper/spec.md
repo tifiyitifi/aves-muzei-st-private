@@ -124,3 +124,15 @@ not yet shown. WHEN the same group starts its walk over, THE SYSTEM SHALL keep
 the marker it already has.
 
 Rules: `ORD-1`, `ORD-2`, `ORD-3`, `ORD-4`, `ORD-5`.
+
+### FR-13 — A group's filters are source conditions
+
+WHEN a group stores its filters, THE SYSTEM SHALL store them as `source`
+conditions of the group's visibility pool, not as a base slot: the source section
+is a union, and Home/Lock mark each condition independently.
+
+WHEN a group is created from the bundled definitions, THE SYSTEM SHALL start its
+source on Home; the first split SHALL also mark it for Lock so the two surfaces
+start identical.
+
+Rules: `MOD-2`, `MOD-10`, `STO-2`, `MIG-5`.

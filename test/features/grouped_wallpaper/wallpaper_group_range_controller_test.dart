@@ -102,18 +102,17 @@ void main() {
       controller.range!.copyWith(basePresetId: 'builtin.image', baseName: 'Image', baseFilters: {MimeFilter.image}, baseActive: true),
     );
 
-    expect(controller.range!.basePresetId, 'builtin.image');
+    expect(controller.range!.baseFilters, {MimeFilter.image});
 
     // The draft is not in the database until the page saves it.
     final updated = makeController();
     await updated.init();
-    expect((await updated.groupController.groupRange('wallpaper.group.dcim')).basePresetId, isNot('builtin.image'));
+    expect((await updated.groupController.groupRange('wallpaper.group.dcim')).baseFilters, {PathFilter('/dcim')});
 
     await controller.saveDraft();
     final restarted = makeController();
     await restarted.init();
     final stored = await restarted.groupController.groupRange('wallpaper.group.dcim');
-    expect(stored.basePresetId, 'builtin.image');
     expect(stored.baseFilters, {MimeFilter.image});
     // Other groups keep their own base.
     expect((await restarted.groupController.groupRange('wallpaper.group.pictures')).baseFilters, {PathFilter('/pictures')});
@@ -172,8 +171,9 @@ void main() {
     expect((await controller.groupController.groupRange('wallpaper.group.pictures')).order, VisibleRangeOrder.unionFirst);
 
     await controller.deleteRules({'r1'});
-    expect(controller.range!.rules, isEmpty);
-    expect(controller.pool!.rules, isEmpty);
+    // The group's source is not part of this case; only the rule section is.
+    expect(controller.range!.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source), isEmpty);
+    expect(controller.pool!.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source), isEmpty);
   });
 
   test('updateRule replaces one rule and leaves the others alone', () async {
@@ -228,14 +228,14 @@ void main() {
     await controller.moveRuleToBase('r1', name: ' Videos ');
 
     final range = controller.range!;
-    expect(range.baseName, 'Videos');
-    expect(range.basePresetId, '');
-    expect(range.baseFilters, {MimeFilter.video});
-    expect(range.baseActive, isTrue);
-    expect(range.rules, isEmpty);
+    final source = range.rulesOf(VisibleRangeRuleKind.source).last;
+    expect(source.label, 'Videos');
+    expect(source.filters, {MimeFilter.video});
+    expect(source.active, isTrue);
+    expect(range.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source), isEmpty);
   });
 
-  test('moveRuleToBase overwrites an existing base', () async {
+  test('moveRuleToBase adds to the source union instead of replacing it', () async {
     await seedRules(
       'wallpaper.group.pictures',
       (rangeId) => [
@@ -246,10 +246,12 @@ void main() {
     await controller.moveRuleToBase('r1', name: 'Images');
 
     final range = controller.range!;
-    expect(range.baseName, 'Images');
-    // The base is one slot: the seeded /pictures conditions are replaced.
-    expect(range.baseFilters, {MimeFilter.image});
-    expect(range.rules, isEmpty);
+    // The moved rule is now a source condition of the union.
+    final sources = range.rulesOf(VisibleRangeRuleKind.source);
+    expect(sources, hasLength(1));
+    expect(sources.single.label, 'Images');
+    expect(sources.single.filters, {MimeFilter.image});
+    expect(range.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source), isEmpty);
   });
 
   test('a locked range refuses the rule actions too', () async {
@@ -265,8 +267,11 @@ void main() {
     expect(controller.range!.ruleById('r1')!.label, isEmpty);
 
     await controller.moveRuleToBase('r1', name: 'Nope');
-    expect(controller.range!.rules, hasLength(1));
-    expect(controller.range!.baseFilters, {PathFilter('/pictures')});
+    // The locked pool refuses the move: the rule keeps its section.
+    final rules = controller.range!.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source).toList();
+    expect(rules, hasLength(1));
+    expect(rules.single.id, 'r1');
+    expect(rules.single.kind, VisibleRangeRuleKind.restriction);
   });
 
   test('locking with custom permissions stores each one', () async {
@@ -497,19 +502,21 @@ void main() {
       final copied = controller.range!;
       expect(copied.ownerId, copy.id);
       expect(copied.id, '${copy.id}.range');
-      expect(copied.baseName, 'DCIM only');
       expect(copied.baseFilters, {PathFilter('/dcim')});
       expect(copied.order, VisibleRangeOrder.unionFirst);
       expect(copied.locked, isFalse);
-      expect(copied.rules, hasLength(1));
-      expect(copied.rules.single.id, isNot('rule.1.0'));
-      expect(copied.rules.single.rangeId, copied.id);
-      expect(copied.rules.single.label, 'No videos');
-      expect(copied.rules.single.filters, {MimeFilter.video});
+      // The source is copied too; the restriction keeps its own identity.
+      final restrictions = copied.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source).toList();
+      expect(restrictions, hasLength(1));
+      expect(restrictions.single.id, isNot('rule.1.0'));
+      expect(restrictions.single.rangeId, copied.id);
+      expect(restrictions.single.label, 'No videos');
+      expect(restrictions.single.filters, {MimeFilter.video});
       // A copied condition keeps the surface marks it was given.
-      expect(copied.rules.single.surfaces, WallpaperConditionSurfaces.home);
+      expect(restrictions.single.surfaces, WallpaperConditionSurfaces.home);
       // The source keeps its own rule.
-      expect((await controller.groupController.groupRange('wallpaper.group.dcim')).rules.single.id, 'rule.1.0');
+      final original = await controller.groupController.groupRange('wallpaper.group.dcim');
+      expect(original.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source).single.id, 'rule.1.0');
     });
 
     test('the copy lands in the disabled segment and is not current', () async {

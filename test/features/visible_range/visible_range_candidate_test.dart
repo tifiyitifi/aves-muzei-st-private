@@ -9,37 +9,38 @@ void main() {
   final image = MimeFilter.image;
   final video = MimeFilter.video;
 
-  VisibleRangePreset preset(String id, Set<CollectionFilter> filters, {String? name}) =>
-      VisibleRangePreset(id: id, name: name ?? id, filters: filters, builtin: name == null);
+  VisibleRangePreset preset(String id, Set<CollectionFilter> filters, {String? name}) => VisibleRangePreset(id: id, name: name ?? id, filters: filters, builtin: name == null);
 
   VisibleRangeRule rule(String id, VisibleRangeRuleKind kind, Set<CollectionFilter> filters, {bool active = false, int position = 0, String label = ''}) =>
       VisibleRangeRule(id: id, rangeId: 'gallery', kind: kind, position: position, label: label, filters: filters, active: active);
 
-  test('the base section starts with the unrestricted tile', () {
-    final sections = buildVisibleRangeSections(range: VisibleRange.emptyGallery(), presets: const []);
+  test('an empty group starts with the unrestricted tile', () {
+    final sections = buildVisibleRangeSections(range: VisibleRange.emptyGallery());
     final base = sections.firstWhere((section) => section.kind == VisibleRangeCandidateKind.base);
     expect(base.candidates.single.isUnrestricted, isTrue);
     expect(base.candidates.single.active, isTrue);
   });
 
-  test('unrestricted becomes an unselected option when a base is chosen', () {
-    final range = VisibleRange.emptyGallery().copyWith(basePresetId: 'builtin.image', baseFilters: {image});
-    final sections = buildVisibleRangeSections(range: range, presets: [preset('builtin.image', {image})]);
-    final base = sections.firstWhere((section) => section.kind == VisibleRangeCandidateKind.base).candidates;
+  test('a source condition becomes the second tile and deselects unrestricted', () {
+    final range = VisibleRange.emptyGallery().copyWith(rules: [rule('s1', VisibleRangeRuleKind.source, {image}, active: true)]);
+    final base = buildVisibleRangeSections(range: range).firstWhere((section) => section.kind == VisibleRangeCandidateKind.base).candidates;
     expect(base.first.isUnrestricted, isTrue);
     expect(base.first.active, isFalse);
+    expect(base.last.id, 's1');
     expect(base.last.active, isTrue);
-    expect(base.last.preset?.id, 'builtin.image');
+    expect(base.last.kind, VisibleRangeCandidateKind.base);
   });
 
-  test('a base whose preset was deleted keeps a selected custom tile', () {
-    final range = VisibleRange.emptyGallery().copyWith(baseName: 'Saved', baseFilters: {image});
-    final sections = buildVisibleRangeSections(range: range, presets: const []);
-    final base = sections.firstWhere((section) => section.kind == VisibleRangeCandidateKind.base).candidates;
-    final custom = base.firstWhere((candidate) => candidate.id == VisibleRangeCandidate.customBaseId);
-    expect(custom.active, isTrue);
-    expect(custom.label, 'Saved');
-    expect(custom.filters, {image});
+  test('several sources are parallel tiles', () {
+    final range = VisibleRange.emptyGallery().copyWith(
+      rules: [
+        rule('s1', VisibleRangeRuleKind.source, {image}, active: true, position: 0),
+        rule('s2', VisibleRangeRuleKind.source, {video}, active: false, position: 1),
+      ],
+    );
+    final base = buildVisibleRangeSections(range: range).firstWhere((section) => section.kind == VisibleRangeCandidateKind.base).candidates;
+    expect(base.map((candidate) => candidate.id), [VisibleRangeCandidate.unrestrictedId, 's1', 's2']);
+    expect(base.map((candidate) => candidate.active), [false, true, false]);
   });
 
   test('rules are grouped by kind and defaults come first', () {
@@ -50,13 +51,10 @@ void main() {
         rule('builtin.rule.builtin.supplement.video', VisibleRangeRuleKind.supplement, {video}, position: 0),
       ],
     );
-    final sections = buildVisibleRangeSections(range: range, presets: const []);
+    final sections = buildVisibleRangeSections(range: range);
     final restrictions = sections.firstWhere((section) => section.kind == VisibleRangeCandidateKind.restriction).candidates;
     final supplements = sections.firstWhere((section) => section.kind == VisibleRangeCandidateKind.supplement).candidates;
-    expect(restrictions.map((candidate) => candidate.id), [
-      'builtin.rule.builtin.restriction.portrait',
-      'user.1',
-    ]);
+    expect(restrictions.map((candidate) => candidate.id), ['builtin.rule.builtin.restriction.portrait', 'user.1']);
     expect(supplements.map((candidate) => candidate.id), ['builtin.rule.builtin.supplement.video']);
     expect(supplements.single.active, isFalse);
   });
@@ -93,25 +91,22 @@ void main() {
     expect(VisibleRangeCandidate.unrestricted.active, isTrue);
   });
 
-  test('the active section repeats the result, the base and the enabled rules', () {
+  test('the active section repeats the result, the sources and the enabled rules', () {
     final range = VisibleRange.emptyGallery().copyWith(
-      basePresetId: 'builtin.image',
-      baseName: 'image',
-      baseFilters: {image},
       rules: [
+        rule('s1', VisibleRangeRuleKind.source, {image}, position: 0, active: true),
         rule('r1', VisibleRangeRuleKind.restriction, {image}, position: 0, active: true),
-        rule('s1', VisibleRangeRuleKind.supplement, {video}, position: 0, active: true),
+        rule('s2', VisibleRangeRuleKind.supplement, {video}, position: 0, active: true),
         rule('off', VisibleRangeRuleKind.restriction, {video}, position: 1),
       ],
     );
-    final active = buildVisibleRangeActiveCandidates(range: range, presets: [preset('builtin.image', {image})]);
+    final active = buildVisibleRangeActiveCandidates(range: range);
     expect(active.first.isGallery, isTrue, reason: 'the result preview comes first');
-    expect(active[1].preset?.id, 'builtin.image');
-    expect(active.skip(2).map((candidate) => candidate.id), ['r1', 's1'], reason: 'evaluation order, and disabled rules stay out');
+    expect(active.skip(1).map((candidate) => candidate.id), ['s1', 'r1', 's2'], reason: 'evaluation order, and disabled rules stay out');
   });
 
-  test('the active section omits an unrestricted base', () {
-    final active = buildVisibleRangeActiveCandidates(range: VisibleRange.emptyGallery(), presets: const []);
+  test('the active section omits an unrestricted source', () {
+    final active = buildVisibleRangeActiveCandidates(range: VisibleRange.emptyGallery());
     expect(active.map((candidate) => candidate.isGallery), [true], reason: 'the gallery preview already means "everything"');
   });
 }

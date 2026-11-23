@@ -32,7 +32,11 @@ class VisibleRangeRuleUsage extends Equatable {
         id: ruleUsageId(ruleId),
         rangeId: rangeId,
         targetId: ruleId,
-        kind: kind == VisibleRangeRuleKind.restriction ? VisibleRangeCandidateKind.restriction : VisibleRangeCandidateKind.supplement,
+        kind: switch (kind) {
+          VisibleRangeRuleKind.source => VisibleRangeCandidateKind.base,
+          VisibleRangeRuleKind.restriction => VisibleRangeCandidateKind.restriction,
+          VisibleRangeRuleKind.supplement => VisibleRangeCandidateKind.supplement,
+        },
         usedAt: usedAt,
       );
 
@@ -44,7 +48,11 @@ class VisibleRangeRuleUsage extends Equatable {
         usedAt: usedAt,
       );
 
-  bool get isBase => kind == VisibleRangeCandidateKind.base;
+  /// Whether this is the legacy range-owned base target (no rule id).
+  ///
+  /// A source rule is a real rule with an id, so it is not a base target even
+  /// though it is shown in the source section.
+  bool get isBase => targetId.isEmpty;
 
   @override
   List<Object?> get props => [id, rangeId, targetId, kind, usedAt];

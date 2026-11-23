@@ -13,6 +13,7 @@ import 'package:aves/features/grouped_wallpaper/services/wallpaper_group_page_se
 import 'package:aves/features/muzei_wallpaper/model/wallpaper_effects.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart' show VisibleRangeActiveStyle;
+import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
@@ -70,7 +71,16 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   bool get dirty => groupController.dirty;
 
   /// Groups in display order (group 0 is not a row and is not listed).
-  List<WallpaperGroup> get groups => groupController.groups;
+  ///
+  /// A group-switch lock hides every other group: the locked one is the only
+  /// wallpaper group the user may see or reach.
+  List<WallpaperGroup> get groups {
+    final all = groupController.groups;
+    if (!wallpaperLockService.groupSwitchLocked) return all;
+    final lockedId = wallpaperLockService.groupSwitchLockedGroupId;
+    if (lockedId == null) return all;
+    return [for (final group in all) if (group.id == lockedId) group];
+  }
 
   /// The group the wallpaper uses, or `WallpaperGroup.none`.
   WallpaperGroup get current => groupController.current;
@@ -251,28 +261,34 @@ class WallpaperGroupRangeController extends ChangeNotifier {
     );
   });
 
-  /// Marks or clears the group's base on one surface.
+  /// Marks or clears every source condition on one surface.
   ///
-  /// A surface uses at most one base, so this is a single switch: clearing it
-  /// keeps the filters in the pool for the other surface or for later.
+  /// The source section is a union, so "the base" is the whole set: clearing it
+  /// keeps the conditions in the pool for the other surface or for later.
   Future<void> setBaseSurface(WallpaperSurface surface, bool enabled) => _updatePool((pool) {
-    if (enabled && pool.baseFilters.isEmpty) return pool;
-    if (WallpaperConditionSurfaces.contains(pool.baseSurfaces, surface) == enabled) return pool;
-    return pool.copyWith(baseSurfaces: WallpaperConditionSurfaces.withSurface(pool.baseSurfaces, surface, enabled));
+    final sources = pool.rulesOf(VisibleRangeRuleKind.source);
+    if (sources.isEmpty) return pool;
+    if (sources.every((rule) => WallpaperConditionSurfaces.contains(rule.surfaces, surface) == enabled)) return pool;
+    return pool.copyWith(
+      rules: [
+        for (final rule in pool.rules)
+          rule.kind == VisibleRangeRuleKind.source
+              ? rule.copyWith(surfaces: WallpaperConditionSurfaces.withSurface(rule.surfaces, surface, enabled))
+              : rule,
+      ],
+    );
   });
 
   /// Deletes the given conditions from the pool: both surfaces lose them.
   ///
   /// Unmarking one surface is [toggleRuleSurface]; this is the explicit "this
-  /// condition is gone" action.
+  /// condition is gone" action. [base] removes every source condition.
   Future<void> deleteConditions({bool base = false, Set<String> ruleIds = const {}}) => _updatePool((pool) {
     if (!base && ruleIds.isEmpty) return pool;
     return pool.copyWith(
-      baseName: base ? '' : pool.baseName,
-      basePresetId: base ? '' : pool.basePresetId,
-      baseFilters: base ? const {} : pool.baseFilters,
-      baseSurfaces: base ? 0 : pool.baseSurfaces,
-      rules: pool.rules.where((rule) => !ruleIds.contains(rule.id)).toList(),
+      rules: pool.rules
+          .where((rule) => !ruleIds.contains(rule.id) && !(base && rule.kind == VisibleRangeRuleKind.source))
+          .toList(),
     );
   });
 
@@ -307,20 +323,15 @@ class WallpaperGroupRangeController extends ChangeNotifier {
     return pool.copyWith(rules: [for (final candidate in pool.rules) candidate.id == ruleId ? moved : candidate]);
   });
 
-  /// Turns a rule into the group's base and removes the rule.
+  /// Moves a rule into the source section.
   ///
-  /// The base is one slot shared by both surfaces, exactly like a rule: it takes
-  /// the rule's filters and the surfaces the rule was marked for.
+  /// A source is an ordinary condition in the pool now, so this is the same
+  /// write as [moveRuleToKind] with the source role; the label is kept.
   Future<void> moveRuleToBase(String ruleId, {required String name}) => _updatePool((pool) {
     final rule = pool.ruleById(ruleId);
     if (rule == null) return pool;
-    return pool.copyWith(
-      baseName: name.trim(),
-      basePresetId: '',
-      baseFilters: rule.filters,
-      baseSurfaces: rule.surfaces,
-      rules: pool.rules.where((candidate) => candidate.id != ruleId).toList(),
-    );
+    final moved = rule.copyWith(kind: VisibleRangeRuleKind.source, position: pool.rulesOf(VisibleRangeRuleKind.source).length, label: name.trim().isEmpty ? rule.label : name.trim());
+    return pool.copyWith(rules: [for (final candidate in pool.rules) candidate.id == ruleId ? moved : candidate]);
   });
 
   Future<void> setOrder(VisibleRangeOrder order) => _updatePool((pool) => pool.copyWith(order: order));
@@ -412,6 +423,8 @@ class WallpaperGroupRangeController extends ChangeNotifier {
   Future<void> _updatePool(VisibleRange Function(VisibleRange pool) transform, {bool allowLocked = false}) async {
     final pool = _pool;
     if (pool == null) return;
+    // The group-switch lock freezes every group, the locked one included.
+    if (wallpaperLockService.groupSwitchLocked) return;
     if (pool.locked && !allowLocked) return;
     final next = transform(pool);
     if (next == pool) return;

@@ -30,10 +30,11 @@ class WallpaperGroupTargetSource implements VisibleRangeTargetSource {
       final pool = await controller.groupPool(group.id);
       targets.add(
         VisibleRangePinTarget(
+          id: wallpaperGroupRangeId(group.id),
           rangeId: wallpaperGroupRangeId(group.id),
+          kind: VisibleRangePinTargetKind.wallpaperGroup,
           number: group.number,
           name: group.name,
-          isGallery: false,
           // A locked pool refuses writes unless its frozen permissions allow
           // editing, the same rule the range page applies.
           locked: pool.locked && !pool.permissions.edit,

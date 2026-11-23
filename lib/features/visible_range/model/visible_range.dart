@@ -16,13 +16,29 @@ enum VisibleRangeScope {
   static VisibleRangeScope parse(String? value) => VisibleRangeScope.values.firstWhere((v) => v.name == value, orElse: () => gallery);
 }
 
+/// What a stored range row is.
+///
+/// A [group] is one mutually exclusive visibility group: exactly one gallery
+/// group is current, and a wallpaper group belongs to one `WallpaperGroup`.
+/// An [outside] row is the scope-wide pool shared by every group of its scope;
+/// only the gallery has one.
+enum VisibleRangeGroupKind {
+  group,
+  outside;
+
+  static VisibleRangeGroupKind parse(String? value) => VisibleRangeGroupKind.values.firstWhere((v) => v.name == value, orElse: () => group);
+}
+
 /// Group evaluation order, inherited from the old scenario `chipGroupFactor`.
 ///
-/// It decides both the evaluation and how the supplement section is labelled:
-/// - [intersectFirst]: `(base AND restrictions) OR supplements`; supplements can
-///   reach outside the base, hence 「范围外补充」.
-/// - [unionFirst]: `(base OR supplements) AND restrictions`; supplements are
-///   then narrowed by the restrictions, hence 「限制外补充」.
+/// It decides how the group's own conditions combine:
+/// - [intersectFirst]: `(sources AND restrictions) OR supplements`; supplements
+///   can reach outside the sources.
+/// - [unionFirst]: `(sources OR supplements) AND restrictions`; supplements are
+///   then narrowed by the restrictions.
+///
+/// The scope-wide outside layer always applies last and is not affected by this
+/// order.
 enum VisibleRangeOrder {
   intersectFirst,
   unionFirst;
@@ -32,13 +48,25 @@ enum VisibleRangeOrder {
   bool get isIntersectFirst => this == intersectFirst;
 }
 
-/// The three groups a rule can belong to. Base ranges are a single filter set,
-/// so a rule is only ever a restriction or a supplement.
+/// The three roles a condition can play inside a group.
+///
+/// [source] conditions are OR-ed with each other and define what the group can
+/// show; [restriction] conditions are AND-ed on top; [supplement] conditions are
+/// OR-ed back in. A rule's own filters are always AND-ed together.
+///
+/// The outside pool only supports the last two: it has no source role, because a
+/// shared source would widen every group at once.
 enum VisibleRangeRuleKind {
+  source,
   restriction,
   supplement;
 
   static VisibleRangeRuleKind parse(String? value) => VisibleRangeRuleKind.values.firstWhere((v) => v.name == value, orElse: () => restriction);
+
+  /// The roles the scope-wide outside pool accepts.
+  static const outsideRoles = [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement];
+
+  bool get isOutsideAllowed => this != source;
 }
 
 /// How a single rule opens the media set from its editor.
@@ -49,6 +77,29 @@ enum VisibleRangeRuleKind {
 enum VisibleRangeActivationMode {
   override,
   append,
+}
+
+/// Whether a pin turns the conditions it writes on, only writes them, or lets
+/// the target decide.
+///
+/// [auto] is the default: a condition written into a group that has no
+/// conditions yet is enabled, and every other new condition is parked so the
+/// user turns it on deliberately. Re-pinning an existing condition never
+/// changes its state.
+enum VisibleRangeInjectionMode {
+  auto,
+  enable,
+  park;
+
+  static VisibleRangeInjectionMode parse(String? value) => VisibleRangeInjectionMode.values.firstWhere((v) => v.name == value, orElse: () => auto);
+}
+
+/// How a pin that targets a non-empty group treats the conditions already there.
+enum VisibleRangePinWriteMode {
+  append,
+  replace;
+
+  static VisibleRangePinWriteMode parse(String? value) => VisibleRangePinWriteMode.values.firstWhere((v) => v.name == value, orElse: () => append);
 }
 
 /// Preset lock behaviour. The lock is casual protection inside Aves, never a
@@ -161,8 +212,8 @@ typedef VisibleRangePresetValues = ({
   bool metadata,
 });
 
-/// One AND-ed rule inside a range. [kind] places it in the restriction (AND) or
-/// supplement (OR) section; [active] is the chip toggle.
+/// One rule inside a range. [kind] places it in the source (OR), restriction
+/// (AND) or supplement (OR) section; [active] is the gallery chip toggle.
 @immutable
 class VisibleRangeRule extends Equatable {
   final String id;
@@ -232,6 +283,10 @@ class VisibleRangeRule extends Equatable {
 }
 
 /// A base-range preset (built-in or user-saved). Built-in presets are read-only.
+///
+/// Since the visibility-group refactor this table is the **group template**
+/// catalog: a preset materializes a gallery group with one source condition.
+/// Rows migrate into groups; the table is kept one release for rollback.
 @immutable
 class VisibleRangePreset extends Equatable {
   final String id;
@@ -274,27 +329,21 @@ class VisibleRangePreset extends Equatable {
   List<Object?> get props => [id, name, description, filters, builtin, position];
 }
 
-/// A complete visible range: base + rule sets + order.
+/// A complete visibility range: one group (or the outside pool) with its
+/// source/restriction/supplement rules and order.
 @immutable
 class VisibleRange extends Equatable {
   final String id;
   final VisibleRangeScope scope;
+  final VisibleRangeGroupKind kind;
   final String ownerId;
-  final String baseName;
-  final String basePresetId;
-  final Set<CollectionFilter> baseFilters;
 
-  /// Whether the base takes part in the range. The gallery clears its base by
-  /// emptying [baseFilters]; a wallpaper group can switch it off instead and
-  /// keep the conditions for later.
-  final bool baseActive;
+  /// Group name. Empty means "the scope's default label"; a value starting with
+  /// `@` is an ARB key (a bundled group), anything else is user text.
+  final String name;
 
-  /// Which wallpaper surfaces use the base, as a bit mask.
-  ///
-  /// The wallpaper group's base is one condition, like every rule: the group
-  /// keeps the filters once and each surface only marks whether it uses them.
-  /// The gallery range ignores it.
-  final int baseSurfaces;
+  /// Display order inside the scope. The group number is derived from it.
+  final int position;
   final List<VisibleRangeRule> rules;
   final VisibleRangeOrder order;
   final bool locked;
@@ -306,11 +355,9 @@ class VisibleRange extends Equatable {
     required this.id,
     required this.scope,
     required this.ownerId,
-    this.baseName = '',
-    this.basePresetId = '',
-    this.baseFilters = const {},
-    this.baseActive = true,
-    this.baseSurfaces = 0,
+    this.kind = VisibleRangeGroupKind.group,
+    this.name = '',
+    this.position = 0,
     this.rules = const [],
     this.order = VisibleRangeOrder.intersectFirst,
     this.locked = false,
@@ -319,22 +366,19 @@ class VisibleRange extends Equatable {
     this.updatedAt = 0,
   });
 
-  /// 「不限」: no base filter set selected.
-  bool get isBaseUnrestricted => !baseActive || baseFilters.isEmpty;
+  bool get isOutside => kind == VisibleRangeGroupKind.outside;
 
-  /// The base filters that count, i.e. ignoring a switched-off base.
-  Set<CollectionFilter> get activeBaseFilters => baseActive ? baseFilters : const {};
+  /// Whether the group narrows anything on its own.
+  ///
+  /// Only sources and restrictions decide "restricted"; a supplement can only
+  /// add back what the sources already allowed.
+  bool get hasOwnRestriction => _activeFilterOf(VisibleRangeRuleKind.source) != null || _activeFilterOf(VisibleRangeRuleKind.restriction) != null;
 
-  /// Only the base and the active restrictions decide "受限"; supplements never
-  /// do, because a supplement can only add back what the base already allowed
-  /// when the base is unrestricted.
-  bool get isRestricted {
-    if (baseActive && baseFilters.isNotEmpty) return true;
-    return rules.any((rule) => rule.active && rule.kind == VisibleRangeRuleKind.restriction && rule.filters.isNotEmpty);
-  }
+  /// Whether the range, together with [outside], narrows browsing.
+  bool isRestricted({VisibleRange? outside}) => hasOwnRestriction || (outside?.hasOwnRestriction ?? false);
 
   /// True when nothing would be filtered at all.
-  bool get isUnrestricted => !isRestricted && rules.every((rule) => !rule.active || rule.filters.isEmpty);
+  bool isUnrestricted({VisibleRange? outside}) => !isRestricted(outside: outside);
 
   List<VisibleRangeRule> activeRulesOf(VisibleRangeRuleKind kind) => rules.where((rule) => rule.active && rule.kind == kind && rule.filters.isNotEmpty).toList()..sort((a, b) => a.position.compareTo(b.position));
 
@@ -342,82 +386,161 @@ class VisibleRange extends Equatable {
 
   VisibleRangeRule? ruleById(String id) => rules.firstWhereOrNull((rule) => rule.id == id);
 
-  /// The base alone, as a filter (null for 「不限」).
-  CollectionFilter? get resolvedBase => _and(activeBaseFilters);
-
-  /// The first group applied on top of the base, following [order].
+  /// Read-only view of the legacy v18 base, which is the group's first source.
   ///
-  /// The page shows this step's cumulative count, so it must mirror the exact
-  /// first half of [resolve] without the final group.
-  CollectionFilter? get resolvedIntermediate {
-    final restrictions = [for (final rule in activeRulesOf(VisibleRangeRuleKind.restriction)) ...rule.filters];
-    final supplements = [for (final rule in activeRulesOf(VisibleRangeRuleKind.supplement)) ...rule.filters];
-    final baseFilters = activeBaseFilters;
-    if (order.isIntersectFirst) return _and({...baseFilters, ...restrictions});
-    // Union-first: an unrestricted base excepts the whole union, so there is no
-    // intermediate narrowing to show.
-    if (baseFilters.isEmpty) return null;
-    return supplements.isEmpty ? _or(baseFilters) : _or({...baseFilters, ...supplements});
+  /// The old base columns collapsed into `source` rules in v19. These views keep
+  /// the migration fixtures and the pre-refactor assertions readable without
+  /// reintroducing a second storage concept.
+  Set<CollectionFilter> get baseFilters => rulesOf(VisibleRangeRuleKind.source).firstOrNull?.filters ?? const {};
+
+  String get baseName => rulesOf(VisibleRangeRuleKind.source).firstOrNull?.label ?? '';
+
+  bool get baseActive => rulesOf(VisibleRangeRuleKind.source).any((rule) => rule.active);
+
+  int get baseSurfaces => rulesOf(VisibleRangeRuleKind.source).firstOrNull?.surfaces ?? 0;
+
+  String get basePresetId => '';
+
+  bool get isBaseUnrestricted => rulesOf(VisibleRangeRuleKind.source).isEmpty;
+
+  /// The active sources, OR-ed: each rule contributes its own AND-ed filters.
+  CollectionFilter? get sourceFilter => _orRules(VisibleRangeRuleKind.source);
+
+  /// Every active restriction, AND-ed together.
+  CollectionFilter? get restrictionFilter {
+    final filters = [for (final rule in activeRulesOf(VisibleRangeRuleKind.restriction)) ...rule.filters];
+    return _and(filters);
+  }
+
+  /// Every active supplement, OR-ed together.
+  CollectionFilter? get supplementFilter {
+    final filters = [for (final rule in activeRulesOf(VisibleRangeRuleKind.supplement)) ...rule.filters];
+    return _or(filters);
+  }
+
+  CollectionFilter? _activeFilterOf(VisibleRangeRuleKind kind) => switch (kind) {
+    VisibleRangeRuleKind.source => sourceFilter,
+    VisibleRangeRuleKind.restriction => restrictionFilter,
+    VisibleRangeRuleKind.supplement => supplementFilter,
+  };
+
+  /// OR over the rules of [kind], each one narrowed by its own conjunction.
+  ///
+  /// OR-ing the flattened filter list would turn a rule holding two filters into
+  /// a union, so each rule is built first and the rules are joined afterwards.
+  CollectionFilter? _orRules(VisibleRangeRuleKind kind) {
+    final parts = [for (final rule in activeRulesOf(kind)) _and(rule.filters)].nonNulls.toList();
+    return _or(parts);
+  }
+
+  /// The group's own result, before the outside layer.
+  CollectionFilter? resolveOwn() {
+    final sources = sourceFilter;
+    final restrictions = restrictionFilter;
+    final supplements = supplementFilter;
+
+    if (order.isIntersectFirst) {
+      final conjunction = _and([?sources, ?restrictions]);
+      // An unrestricted group OR-ed with supplements is still unrestricted.
+      if (conjunction == null) return null;
+      return _or([conjunction, ?supplements]);
+    }
+
+    // Union-first: an unrestricted source set swallows the supplements, so the
+    // union step collapses to the restrictions alone.
+    final disjunction = sources == null ? null : _or([sources, ?supplements]);
+    return _and([?disjunction, ?restrictions]);
   }
 
   /// Resolves the range to one filter tree, or null when it filters nothing.
   ///
-  /// Both orders are built from the same pieces so an unrestricted base is a
-  /// no-op in either direction:
-  /// - intersect-first: `(base AND restrictions) OR supplements`
-  /// - union-first: `(base OR supplements) AND restrictions`
-  CollectionFilter? resolve() {
-    final restrictions = [for (final rule in activeRulesOf(VisibleRangeRuleKind.restriction)) ...rule.filters];
-    final supplements = [for (final rule in activeRulesOf(VisibleRangeRuleKind.supplement)) ...rule.filters];
-    final baseFilters = activeBaseFilters;
+  /// The group is evaluated with its own [order], then the scope-wide outside
+  /// pool applies last: `(group AND outsideRestrictions) OR outsideSupplements`.
+  /// Supplements never narrow, so an unrestricted group plus outside
+  /// supplements is still unrestricted.
+  CollectionFilter? resolve({VisibleRange? outside}) {
+    final own = resolveOwn();
+    final outsideRestriction = outside?.restrictionFilter;
+    final outsideSupplement = outside?.supplementFilter;
+    if (outsideRestriction == null && outsideSupplement == null) return own;
+    if (own == null && outsideRestriction == null) return null;
+    final narrowed = _and([?own, ?outsideRestriction]);
+    if (outsideSupplement == null) return narrowed;
+    return _or([?narrowed, outsideSupplement]);
+  }
 
-    if (order.isIntersectFirst) {
-      final conjunction = _and({...baseFilters, ...restrictions});
-      if (supplements.isEmpty) return conjunction;
-      return _or({?conjunction, ...supplements});
+  static CollectionFilter? _and(Iterable<CollectionFilter> filters) {
+    // A conjunction is associative, so nested positive ANDs are flattened. A
+    // reversed one is a disjunction of complements and must stay intact.
+    final set = <CollectionFilter>{};
+    for (final filter in filters) {
+      if (filter is SetAndFilter && !filter.reversed) {
+        set.addAll(filter.innerFilters);
+      } else {
+        set.add(filter);
+      }
     }
-
-    // An empty base means 「不限」, i.e. everything: OR-ing supplements cannot add
-    // anything, so the union step collapses to the restrictions alone.
-    final disjunction = baseFilters.isEmpty ? null : (supplements.isEmpty ? _or(baseFilters) : _or({...baseFilters, ...supplements}));
-    final conjunction = _and({?disjunction, ...restrictions});
-    return conjunction;
+    if (set.isEmpty) return null;
+    if (set.length == 1) return set.first;
+    return SetAndFilter(set);
   }
 
-  static CollectionFilter? _and(Set<CollectionFilter> filters) {
-    if (filters.isEmpty) return null;
-    if (filters.length == 1) return filters.first;
-    return SetAndFilter(filters);
-  }
-
-  static CollectionFilter? _or(Set<CollectionFilter> filters) {
-    if (filters.isEmpty) return null;
-    if (filters.length == 1) return filters.first;
-    return SetOrFilter(filters);
+  static CollectionFilter? _or(Iterable<CollectionFilter> filters) {
+    final set = filters.toSet();
+    if (set.isEmpty) return null;
+    if (set.length == 1) return set.first;
+    return SetOrFilter(set);
   }
 
   VisibleRange copyWith({
-    String? baseName,
-    String? basePresetId,
-    Set<CollectionFilter>? baseFilters,
-    bool? baseActive,
-    int? baseSurfaces,
+    VisibleRangeGroupKind? kind,
+    String? name,
+    int? position,
     List<VisibleRangeRule>? rules,
     VisibleRangeOrder? order,
     bool? locked,
     VisibleRangePermissions? permissions,
     int? updatedAt,
+    // Legacy v18 base fields, rewritten onto the first source condition. Only
+    // the migration fixtures use them; production code edits the source rules.
+    String? baseName,
+    String? basePresetId,
+    Set<CollectionFilter>? baseFilters,
+    bool? baseActive,
+    int? baseSurfaces,
   }) {
+    var nextRules = rules ?? this.rules;
+    final touchesBase = baseName != null || basePresetId != null || baseFilters != null || baseActive != null || baseSurfaces != null;
+    if (touchesBase) {
+      final first = nextRules.firstWhereOrNull((rule) => rule.kind == VisibleRangeRuleKind.source) ?? rulesOf(VisibleRangeRuleKind.source).firstOrNull;
+      final filters = baseFilters ?? first?.filters ?? const {};
+      if (filters.isEmpty) {
+        nextRules = nextRules.where((rule) => rule.kind != VisibleRangeRuleKind.source).toList();
+      } else {
+        final updated = VisibleRangeRule(
+          id: first?.id ?? 'source.$id',
+          rangeId: id,
+          kind: VisibleRangeRuleKind.source,
+          position: first?.position ?? 0,
+          label: baseName ?? first?.label ?? '',
+          description: first?.description ?? '',
+          filters: filters,
+          active: baseActive ?? first?.active ?? true,
+          surfaces: baseSurfaces ?? first?.surfaces ?? 0,
+        );
+        nextRules = nextRules.any((rule) => rule.kind == VisibleRangeRuleKind.source)
+            ? [for (final rule in nextRules) rule.kind == VisibleRangeRuleKind.source ? updated : rule]
+            : [...nextRules, updated];
+      }
+    }
     return VisibleRange(
       id: id,
       scope: scope,
+      kind: kind ?? this.kind,
       ownerId: ownerId,
-      baseName: baseName ?? this.baseName,
-      basePresetId: basePresetId ?? this.basePresetId,
-      baseFilters: baseFilters ?? this.baseFilters,
-      baseActive: baseActive ?? this.baseActive,
-      baseSurfaces: baseSurfaces ?? this.baseSurfaces,
-      rules: rules ?? this.rules,
+      name: name ?? this.name,
+      position: position ?? this.position,
+      rules: nextRules,
       order: order ?? this.order,
       locked: locked ?? this.locked,
       permissions: permissions ?? this.permissions,
@@ -426,20 +549,95 @@ class VisibleRange extends Equatable {
     );
   }
 
-  /// A new, empty gallery range. Not persisted until the user changes something.
-  static VisibleRange emptyGallery({String id = galleryRangeId, int now = 0}) => VisibleRange(
+  /// Builds a range from the legacy base fields.
+  ///
+  /// Only the pre-v19 fixtures and the migration use this; production code adds
+  /// `source` rules. A non-empty base becomes one source condition so the old
+  /// assertions keep meaning the same thing.
+  static VisibleRange legacy({
+    required String id,
+    required VisibleRangeScope scope,
+    required String ownerId,
+    VisibleRangeGroupKind kind = VisibleRangeGroupKind.group,
+    String name = '',
+    int position = 0,
+    String baseName = '',
+    String basePresetId = '',
+    Set<CollectionFilter> baseFilters = const {},
+    bool baseActive = true,
+    int baseSurfaces = 0,
+    List<VisibleRangeRule> rules = const [],
+    VisibleRangeOrder order = VisibleRangeOrder.intersectFirst,
+    bool locked = false,
+    VisibleRangePermissions permissions = VisibleRangePermissions.readOnly,
+    int createdAt = 0,
+    int updatedAt = 0,
+  }) {
+    return VisibleRange(
+      id: id,
+      scope: scope,
+      kind: kind,
+      ownerId: ownerId,
+      name: name,
+      position: position,
+      rules: [
+        if (baseFilters.isNotEmpty)
+          VisibleRangeRule(
+            id: 'source.$id',
+            rangeId: id,
+            kind: VisibleRangeRuleKind.source,
+            label: baseName,
+            filters: baseFilters,
+            active: baseActive,
+            surfaces: baseSurfaces,
+          ),
+        ...rules,
+      ],
+      order: order,
+      locked: locked,
+      permissions: permissions,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    );
+  }
+
+  /// A new, empty gallery group. Not persisted until the user changes something.
+  static VisibleRange emptyGallery({String id = galleryRangeId, String name = '', int now = 0}) => VisibleRange(
     id: id,
     scope: VisibleRangeScope.gallery,
-    ownerId: galleryOwnerId,
+    ownerId: id,
+    name: name,
+    createdAt: now,
+    updatedAt: now,
+  );
+
+  /// A new, empty group for [scope].
+  static VisibleRange emptyGroup({required VisibleRangeScope scope, required String id, String name = '', int position = 0, String? ownerId, int now = 0}) => VisibleRange(
+    id: id,
+    scope: scope,
+    ownerId: ownerId ?? id,
+    name: name,
+    position: position,
+    createdAt: now,
+    updatedAt: now,
+  );
+
+  /// The gallery's scope-wide outside pool.
+  static VisibleRange emptyOutside({int now = 0}) => VisibleRange(
+    id: galleryOutsideId,
+    scope: VisibleRangeScope.gallery,
+    kind: VisibleRangeGroupKind.outside,
+    ownerId: galleryOutsideId,
     createdAt: now,
     updatedAt: now,
   );
 
   static const galleryOwnerId = 'gallery';
   static const galleryRangeId = 'gallery';
+  static const galleryOutsideId = 'gallery.outside';
 
   @override
-  List<Object?> get props => [id, scope, ownerId, baseName, basePresetId, baseFilters, baseActive, baseSurfaces, rules, order, locked, permissions, createdAt, updatedAt];
+  List<Object?> get props => [id, scope, kind, ownerId, name, position, rules, order, locked, permissions, createdAt, updatedAt];
 }
 
 /// Stable fingerprint of a filter set, used to dedupe presets/rules.
@@ -453,6 +651,12 @@ String visibleRangeBuiltinRuleId(String definitionId) => 'builtin.rule.$definiti
 
 /// Whether a rule is a materialized default rather than a user rule.
 bool isVisibleRangeBuiltinRule(String id) => id.startsWith('builtin.rule.');
+
+/// Id of a built-in gallery group materialized from the bundled defaults.
+String visibleRangeBuiltinGroupId(String definitionId) => 'builtin.group.$definitionId';
+
+/// Whether a group is a materialized default rather than a user group.
+bool isVisibleRangeBuiltinGroup(String id) => id.startsWith('builtin.group.');
 
 /// JSON codec for filter collections stored in text columns.
 abstract final class VisibleRangeFilterCodec {

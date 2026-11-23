@@ -23,7 +23,7 @@ class WallpaperGroupAvailabilityLabel extends StatelessWidget {
       builder: (context, _) {
         final theme = Theme.of(context);
         final colors = theme.colorScheme;
-        final restricted = visibleRangeController.gallery.isRestricted && !gallerySuspended;
+        final restricted = visibleRangeController.galleryRestricted && !gallerySuspended;
         return Tooltip(
           message: context.l10n.wallpaperGroupAvailableBrowsingTooltip,
           child: Row(

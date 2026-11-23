@@ -81,6 +81,13 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   VisibleRangeController get _controller => visibleRangeController;
 
+  /// Whether the page edits the scope-wide outside pool instead of the current
+  /// group. Browsing always uses the current group plus the outside pool; this
+  /// only selects which container the grid below edits.
+  bool _editingOutside = false;
+
+  VisibleRange get _editedRange => _editingOutside ? _controller.outside : _controller.gallery;
+
   @override
   void initState() {
     super.initState();
@@ -112,7 +119,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   /// per-filter stats.
   Future<void> _refreshResultStats() async {
     final token = ++_resultToken;
-    final filter = _controller.gallery.resolve();
+    final filter = _controller.galleryFilter;
     final filters = filter == null ? const <CollectionFilter>{} : <CollectionFilter>{filter};
     final stats = await VisibleRangeCandidateStatsLoader.load([filters]);
     if (!mounted || token != _resultToken) return;
@@ -121,7 +128,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   Future<void> _refreshStats() async {
     final filtersByKey = <String, Set<CollectionFilter>>{};
-    for (final section in buildVisibleRangeSections(range: _controller.gallery, presets: _controller.presets)) {
+    for (final section in buildVisibleRangeSections(range: _editedRange)) {
       for (final candidate in section.candidates) {
         filtersByKey.putIfAbsent(candidate.statsKey, () => candidate.filters);
       }
@@ -169,7 +176,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
           onRename: (context, rule) => _renameRule(rule),
           onDelete: (context, rules) => _deleteRules(rules),
           onActivate: (context, rule) => _activate(rule, VisibleRangeActivationMode.override),
-          extraLayoutRows: (context) => [_buildActiveStyleRow(context)],
+          extraLayoutRows: (context) => [_buildGroupRow(context), _buildActiveStyleRow(context)],
         );
         final page = FilterGroupProvider(
           // The visible-range candidates are not the album page's group
@@ -227,10 +234,10 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   Map<ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>> _buildSections(BuildContext context) {
-    final range = _controller.gallery;
+    final range = _editedRange;
     final supplementsOutside = range.order.isIntersectFirst;
     final result = <ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>>{};
-    for (final section in buildVisibleRangeSections(range: range, presets: _controller.presets)) {
+    for (final section in buildVisibleRangeSections(range: range)) {
       // Each header counts the conditions its own group contributes, not the
       // entries left visible: the base group advertises how many choices it
       // shows, and the rule groups show active/total. The resulting item total
@@ -256,8 +263,8 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       // The same conditions, repeated as a read-only group at the bottom: it
       // shares the grid's columns, tile size and pinch zoom with the groups
       // above, so it is a section rather than a separate footer strip.
-      final active = buildVisibleRangeActiveCandidates(range: range, presets: _controller.presets);
-      result[VisibleRangeActiveSectionKey(context, restricted: range.isRestricted)] = [
+      final active = buildVisibleRangeActiveCandidates(range: range);
+      result[VisibleRangeActiveSectionKey(context, restricted: range.isRestricted(outside: _controller.outside))] = [
         for (final candidate in active) FilterGridItem(VisibleRangeCandidateFilter(candidate, summary: true), null),
       ];
     }
@@ -292,7 +299,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   Widget _buildFooter(BuildContext context) {
     final range = _controller.gallery;
-    final baseCandidates = buildVisibleRangeSections(range: range, presets: _controller.presets).first.candidates;
+    final baseCandidates = buildVisibleRangeSections(range: range).first.candidates;
     final activeBase = baseCandidates.firstWhereOrNull((candidate) => candidate.active);
     final activeRules = [
       for (final kind in range.order.isIntersectFirst
@@ -302,6 +309,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     ];
     return VisibleRangeActiveFooter(
       range: range,
+      outside: _controller.outside,
       activeBase: activeBase,
       activeRules: activeRules,
       style: _controller.activeStyle,
@@ -404,6 +412,119 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     return PopupMenuItem<T>(value: value, child: _menuRow(context, icon, text));
   }
 
+  /// The group switcher row: which container the grid below edits.
+  ///
+  /// Browsing always uses the current group plus the outside pool; the row only
+  /// chooses what the conditions on this page belong to, so a user can narrow a
+  /// group without switching what the library shows.
+  Widget _buildGroupRow(BuildContext context) {
+    final l10n = context.l10n;
+    final group = _controller.gallery;
+    final number = _controller.galleryGroupNumber(group.id);
+    final name = group.name.startsWith('@') ? visibleRangePresetLabel(context, group.name.substring(1)) : group.name;
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: Icon(_editingOutside ? Icons.layers_outlined : AIcons.visibleRangeActive),
+                label: Text(
+                  _editingOutside ? l10n.visibleRangeOutsideConditions : l10n.visibleRangeOwnerWithNumber(number, name.isEmpty ? l10n.visibleRangePinTargetGallery : name),
+                ),
+                onPressed: _canEdit ? () => unawaited(_showGroupPicker()) : _showBlocked,
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilterChip(
+              label: Text(l10n.visibleRangeOutsideConditions),
+              selected: _editingOutside,
+              onSelected: _canEdit ? (value) => setState(() => _editingOutside = value) : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showGroupPicker() async {
+    final l10n = context.l10n;
+    const outside = '__outside__';
+    const create = '__create__';
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(24, 16, 24, 8),
+              child: Text(l10n.visibleRangeCurrentGroup, style: Theme.of(context).textTheme.titleMedium),
+            ),
+            for (final group in _controller.galleryGroups)
+              ListTile(
+                leading: CircleAvatar(radius: 14, child: Text('${_controller.galleryGroupNumber(group.id)}')),
+                title: Text(group.name.startsWith('@') ? visibleRangePresetLabel(context, group.name.substring(1)) : group.name),
+                trailing: group.id == _controller.currentGalleryGroupId ? const Icon(AIcons.visibleRangeActive) : null,
+                onTap: () => Navigator.pop(context, group.id),
+              ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.layers_outlined),
+              title: Text(l10n.visibleRangeOutsideConditions),
+              subtitle: Text(l10n.visibleRangeOutsideHint),
+              selected: _editingOutside,
+              onTap: () => Navigator.pop(context, outside),
+            ),
+            ListTile(
+              leading: const Icon(AIcons.add),
+              title: Text(l10n.visibleRangeGroupNew),
+              onTap: () => Navigator.pop(context, create),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    if (selected == outside) {
+      setState(() => _editingOutside = true);
+      return;
+    }
+    if (selected == create) {
+      await _createGroup();
+      return;
+    }
+    await _controller.selectGalleryGroup(selected);
+    if (mounted) setState(() => _editingOutside = false);
+  }
+
+  Future<void> _createGroup() async {
+    final l10n = context.l10n;
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.visibleRangeGroupNew),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(labelText: l10n.visibleRangeGroupName, border: const OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
+          FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || name == null) return;
+    await _controller.addGalleryGroup(name: name);
+    if (mounted) setState(() => _editingOutside = false);
+  }
+
   Widget _buildActiveStyleRow(BuildContext context) {
     final l10n = context.l10n;
     return ListenableBuilder(
@@ -487,7 +608,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       _showBlocked();
       return;
     }
-    unawaited(_controller.clearBase());
+    unawaited(_controller.clearSources(_editedRange.id));
   }
 
   Widget _menuRow(BuildContext context, IconData icon, String text) {

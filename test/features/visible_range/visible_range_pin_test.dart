@@ -1,11 +1,11 @@
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
-import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/model/visible_range_pin.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
+import 'package:aves/model/filters/path.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,11 +13,14 @@ import 'package:path/path.dart' as p;
 
 import '../../helpers/sqlite3_loader.dart';
 
-/// Pinning the current filters to one or more ranges/groups.
+/// Pinning the current filters to a group or to the outside pool.
 void main() {
+  late PathFilter albumA;
+
   setUpAll(() {
     ensureSqlite3Loaded();
     getIt.registerLazySingleton<p.Context>(() => p.Context(style: p.Style.posix));
+    albumA = PathFilter('/a');
   });
 
   tearDownAll(getIt.reset);
@@ -42,33 +45,38 @@ void main() {
     Set<CollectionFilter> filters = const {},
     String name = 'Pinned',
     String description = 'created at some point',
-    Set<VisibleRangeCandidateKind> kinds = const {VisibleRangeCandidateKind.restriction},
     Set<String>? targets,
+    VisibleRangeInjectionMode injection = VisibleRangeInjectionMode.auto,
+    VisibleRangeRuleKind? forcedRole,
+    VisibleRangePinWriteMode writeMode = VisibleRangePinWriteMode.append,
   }) {
     return VisibleRangePinRequest(
       filters: filters.isEmpty ? {image} : filters,
       name: name,
       description: description,
-      kinds: kinds,
-      targetRangeIds: targets ?? {VisibleRange.galleryRangeId},
+      targetIds: targets ?? {controller.currentGalleryGroupId},
+      injection: injection,
+      forcedRole: forcedRole,
+      writeMode: writeMode,
     );
   }
 
-  test('the gallery is the only target without a registered source', () async {
+  test('the group plus the two outside roles are the targets without a registered source', () async {
     final targets = await controller.loadPinTargets();
-    expect(targets, hasLength(1));
-    final gallery = targets.single;
-    expect(gallery.rangeId, VisibleRange.galleryRangeId);
-    expect(gallery.number, 0);
-    expect(gallery.isGallery, isTrue);
-    expect(gallery.locked, isFalse);
+    expect(targets, hasLength(3));
+    expect(targets.where((target) => target.kind == VisibleRangePinTargetKind.galleryGroup), hasLength(1));
+    expect(targets.where((target) => target.kind == VisibleRangePinTargetKind.outside).map((target) => target.role), [
+      VisibleRangeRuleKind.restriction,
+      VisibleRangeRuleKind.supplement,
+    ]);
+    expect(targets.first.number, 1);
+    expect(targets.first.locked, isFalse);
   });
 
-  test('pinning a restriction adds one active rule with name and description', () async {
+  test('pinning a media type into an empty group enables the new condition', () async {
     final result = await controller.pinFilters(request(name: 'Images', description: 'now'));
 
     expect(result.pinned, 1);
-    expect(result.skipped, 0);
     final rule = controller.gallery.rules.single;
     expect(rule.kind, VisibleRangeRuleKind.restriction);
     expect(rule.label, 'Images');
@@ -78,149 +86,103 @@ void main() {
     expect(controller.galleryFilter, image);
   });
 
-  test('pinning to restriction and supplement writes one rule per group', () async {
-    await controller.pinFilters(request(kinds: {VisibleRangeCandidateKind.restriction, VisibleRangeCandidateKind.supplement}));
+  test('an album becomes a source, the rest becomes a restriction', () async {
+    await controller.pinFilters(request(filters: {albumA, favourite}));
 
-    final rules = controller.gallery.rules;
+    final source = controller.gallery.rulesOf(VisibleRangeRuleKind.source).single;
+    final restriction = controller.gallery.rulesOf(VisibleRangeRuleKind.restriction).single;
+    expect(source.filters, {albumA});
+    expect(restriction.filters, {favourite});
+    expect(controller.galleryFilter, isNotNull);
+  });
+
+  test('a second pin into a non-empty group is parked and keeps its state on re-pin', () async {
+    await controller.pinFilters(request(filters: {image}));
+    await controller.pinFilters(request(filters: {video}, name: 'Videos'));
+
+    final videos = controller.gallery.rulesOf(VisibleRangeRuleKind.restriction).firstWhere((rule) => rule.filters.contains(video));
+    expect(videos.active, isFalse);
+
+    await controller.pinFilters(request(filters: {video}, name: 'Videos again'));
+    final updated = controller.gallery.ruleById(videos.id)!;
+    expect(updated.active, isFalse);
+    expect(updated.label, 'Videos again');
+  });
+
+  test('the injection mode can force enabling or parking', () async {
+    await controller.pinFilters(request(filters: {image}, injection: VisibleRangeInjectionMode.park));
+    expect(controller.gallery.rules.single.active, isFalse);
+
+    await controller.pinFilters(request(filters: {video}, injection: VisibleRangeInjectionMode.enable));
+    final videos = controller.gallery.rules.firstWhere((rule) => rule.filters.contains(video));
+    expect(videos.active, isTrue);
+  });
+
+  test('replace mode drops the conditions already in the group', () async {
+    await controller.pinFilters(request(filters: {image}));
+    await controller.pinFilters(request(filters: {video}, writeMode: VisibleRangePinWriteMode.replace));
+
+    expect(controller.gallery.rules.single.filters, {video});
+    expect(controller.gallery.rules.single.active, isTrue);
+  });
+
+  test('the outside restriction target puts every filter in its own restriction', () async {
+    final outsideRestriction = (await controller.loadPinTargets()).singleWhere((target) => target.isOutside && target.role == VisibleRangeRuleKind.restriction);
+    await controller.pinFilters(request(filters: {albumA, favourite}, targets: {outsideRestriction.id}));
+
+    final rules = controller.outside.rules;
     expect(rules, hasLength(2));
-    expect(rules.map((rule) => rule.id).toSet(), hasLength(2));
-    expect(rules.map((rule) => rule.kind).toSet(), {VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement});
-    expect(rules.every((rule) => rule.position == 0), isTrue);
+    expect(rules.every((rule) => rule.kind == VisibleRangeRuleKind.restriction), isTrue);
     expect(rules.every((rule) => rule.active), isTrue);
+    expect(controller.galleryFilter, isNotNull);
   });
 
-  test('re-pinning the same conditions updates the rule instead of stacking', () async {
-    await controller.pinFilters(request(name: 'First', description: 'd1'));
-    final first = controller.gallery.rules.single;
-    await controller.toggleRule(first.id);
-    expect(controller.gallery.ruleById(first.id)!.active, isFalse);
+  test('the outside supplement target puts every filter in its own supplement', () async {
+    final outsideSupplement = (await controller.loadPinTargets()).singleWhere((target) => target.isOutside && target.role == VisibleRangeRuleKind.supplement);
+    await controller.pinFilters(request(filters: {albumA, favourite}, targets: {outsideSupplement.id}));
 
-    await controller.pinFilters(request(name: 'Second', description: 'd2'));
-
-    expect(controller.gallery.rules, hasLength(1));
-    final updated = controller.gallery.rules.single;
-    expect(updated.id, first.id);
-    expect(updated.label, 'Second');
-    expect(updated.description, 'd2');
-    expect(updated.active, isTrue);
+    final rules = controller.outside.rules;
+    expect(rules, hasLength(2));
+    expect(rules.every((rule) => rule.kind == VisibleRangeRuleKind.supplement), isTrue);
   });
 
-  test('unknown or locked target ids are skipped', () async {
-    final result = await controller.pinFilters(request(targets: {VisibleRange.galleryRangeId, 'wallpaper.1'}));
+  test('a forced role overrides the automatic split', () async {
+    await controller.pinFilters(request(filters: {albumA, favourite}, forcedRole: VisibleRangeRuleKind.source));
+    expect(controller.gallery.rulesOf(VisibleRangeRuleKind.source).single.filters, {albumA, favourite});
+    expect(controller.gallery.rulesOf(VisibleRangeRuleKind.restriction), isEmpty);
+  });
+
+  test('unknown target ids are skipped', () async {
+    final result = await controller.pinFilters(request(targets: {controller.currentGalleryGroupId, 'wallpaper.1'}));
     expect(result.pinned, 1);
     expect(result.skipped, 1);
     expect(controller.gallery.rules, hasLength(1));
-
-    final onlyUnknown = await controller.pinFilters(request(targets: {'wallpaper.1'}));
-    expect(onlyUnknown.pinned, 0);
-    expect(onlyUnknown.skipped, 1);
-    expect(controller.gallery.rules, hasLength(1));
   });
 
-  test('pinning a base creates a preset, selects it and reuses it on re-pin', () async {
-    final result = await controller.pinFilters(
-      request(filters: {image}, name: 'My base', description: 'first note', kinds: {VisibleRangeCandidateKind.base}),
-    );
-    expect(result.pinned, 1);
-
-    final baseId = controller.gallery.basePresetId;
-    expect(baseId, startsWith('user.'));
-    var preset = controller.presets.singleWhere((p) => p.id == baseId);
-    expect(preset.name, 'My base');
-    expect(preset.description, 'first note');
-    expect(preset.filters, {image});
-    expect(controller.galleryFilter, image);
-
-    await controller.pinFilters(
-      request(filters: {image}, name: 'My base', description: 'second note', kinds: {VisibleRangeCandidateKind.base}),
-    );
-
-    // Same fingerprint + name reuses the preset and refreshes its note.
-    expect(controller.presets.where((p) => !p.builtin), hasLength(1));
-    preset = controller.presets.singleWhere((p) => p.id == controller.gallery.basePresetId);
-    expect(preset.id, baseId);
-    expect(preset.description, 'second note');
-    expect(controller.gallery.baseName, 'My base');
-  });
-
-  test('a different name creates a second base preset for the same filters', () async {
-    await controller.pinFilters(request(name: 'One', kinds: {VisibleRangeCandidateKind.base}));
-    await controller.pinFilters(request(name: 'Two', kinds: {VisibleRangeCandidateKind.base}));
-    final userPresets = controller.presets.where((p) => !p.builtin).toList();
-    expect(userPresets, hasLength(2));
-    expect(userPresets.map((p) => p.id).toSet(), hasLength(2));
-  });
-
-  test('base and restriction can be pinned in one request', () async {
-    await controller.pinFilters(
-      request(
-        filters: {image},
-        kinds: {VisibleRangeCandidateKind.base, VisibleRangeCandidateKind.restriction},
-      ),
-    );
-
-    expect(controller.gallery.basePresetId, isNotEmpty);
-    final restriction = controller.gallery.rules.single;
-    expect(restriction.kind, VisibleRangeRuleKind.restriction);
-    expect(restriction.filters, {image});
-  });
-
-  test('a locked range is skipped instead of failing the request', () async {
+  test('a locked gallery is skipped instead of failing the request', () async {
     await controller.lock(permissions: VisibleRangePermissions.readOnly);
 
     final result = await controller.pinFilters(request());
     expect(result.pinned, 0);
     expect(result.skipped, 1);
     expect(controller.gallery.rules, isEmpty);
-    expect(controller.presets.where((p) => !p.builtin), isEmpty);
-    expect((await controller.loadPinTargets()).single.locked, isTrue);
+    expect((await controller.loadPinTargets()).every((target) => target.locked), isTrue);
   });
 
-  test('pinned rules and notes survive a restart', () async {
-    await controller.pinFilters(request(name: 'Kept', description: 'keep me', kinds: {VisibleRangeCandidateKind.base, VisibleRangeCandidateKind.restriction}));
-    final baseId = controller.gallery.basePresetId;
+  test('pinned conditions survive a restart', () async {
+    await controller.pinFilters(request(name: 'Kept', description: 'keep me', filters: {albumA, favourite}));
 
     final restarted = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const []);
     await restarted.init();
 
-    expect(restarted.gallery.rules.single.label, 'Kept');
-    expect(restarted.gallery.rules.single.description, 'keep me');
-    expect(restarted.gallery.basePresetId, baseId);
-    expect(restarted.presets.singleWhere((p) => p.id == baseId).description, 'keep me');
-  });
-
-  test('editing a user base preset updates its name and description', () async {
-    await controller.pinFilters(request(name: 'Before', description: 'old', kinds: {VisibleRangeCandidateKind.base}));
-    final presetId = controller.gallery.basePresetId;
-
-    await controller.updateBasePreset(presetId, name: 'After', description: 'new');
-    final preset = controller.presets.singleWhere((p) => p.id == presetId);
-
-    expect(preset.name, 'After');
-    expect(preset.description, 'new');
-    expect(controller.gallery.baseName, 'After');
-
-    // Built-in presets stay read-only.
-    const builtin = VisibleRangePreset(id: 'builtin.image', name: 'visibleRangePresetImage', builtin: true);
-    await controller.updateBasePreset(builtin.id, name: 'x', description: 'y');
-    expect(controller.presets.where((p) => p.id == builtin.id), isEmpty);
+    expect(restarted.gallery.rulesOf(VisibleRangeRuleKind.source).single.label, isEmpty);
+    expect(restarted.gallery.rulesOf(VisibleRangeRuleKind.restriction).single.description, 'keep me');
   });
 
   test('an empty request is a no-op', () async {
-    final result = await controller.pinFilters(const VisibleRangePinRequest(filters: {}, name: '', description: '', kinds: {}, targetRangeIds: {}));
+    final result = await controller.pinFilters(const VisibleRangePinRequest(filters: {}, name: '', description: '', targetIds: {}));
     expect(result.pinned, 0);
     expect(result.skipped, 0);
     expect(controller.gallery.rules, isEmpty);
-  });
-
-  test('the video filter can be pinned independently of the image one', () async {
-    await controller.pinFilters(request(filters: {video}));
-    expect(controller.gallery.rules.single.filters, {video});
-    expect(controller.galleryFilter, video);
-
-    // Re-pinning a different condition adds another rule in the same group.
-    await controller.pinFilters(request(filters: {favourite}));
-    expect(controller.gallery.rules, hasLength(2));
-    expect(controller.gallery.rules.map((rule) => rule.position), [0, 1]);
   });
 }

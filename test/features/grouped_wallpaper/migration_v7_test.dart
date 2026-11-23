@@ -49,7 +49,8 @@ void main() {
     expect(indexes, hasLength(1));
 
     // The v5 rows are still there and readable through the current definitions.
-    final ranges = await db.select(db.visibleRangeRows).get();
+    // v19 also creates the gallery's scope-wide outside pool.
+    final ranges = await (db.select(db.visibleRangeRows)..where((t) => t.id.equals('gallery'))).get();
     expect(ranges.single.id, 'gallery');
     expect(ranges.single.scope, 'gallery');
   });

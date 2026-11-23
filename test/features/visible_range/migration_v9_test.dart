@@ -58,11 +58,12 @@ void main() {
 
     final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId);
     expect(range, isNotNull);
-    expect(range!.baseActive, isTrue);
-    expect(range.isRestricted, isTrue);
+    // v19 turns the legacy base into a source condition.
+    expect(range!.rulesOf(VisibleRangeRuleKind.source).single.active, isTrue);
+    expect(range.isRestricted(), isTrue);
   });
 
-  test('a fresh database has the column and it defaults to active', () async {
+  test('a fresh database has the legacy column and a group round-trips', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
 
@@ -72,6 +73,6 @@ void main() {
     final range = VisibleRange.emptyGallery(now: 1);
     await VisibleRangeStore(db).saveRange(range);
     final stored = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId);
-    expect(stored!.baseActive, isTrue);
+    expect(stored!.isRestricted(), isFalse);
   });
 }

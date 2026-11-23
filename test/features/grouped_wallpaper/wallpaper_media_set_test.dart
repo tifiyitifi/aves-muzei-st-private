@@ -20,7 +20,7 @@ void main() {
 
   tearDownAll(getIt.reset);
 
-  VisibleRange range({Set<CollectionFilter> baseFilters = const {}, List<VisibleRangeRule> rules = const []}) => VisibleRange(
+  VisibleRange range({Set<CollectionFilter> baseFilters = const {}, List<VisibleRangeRule> rules = const []}) => VisibleRange.legacy(
         id: 'g.range',
         scope: VisibleRangeScope.wallpaper,
         ownerId: 'g',
@@ -48,7 +48,7 @@ void main() {
     final closed = range(baseFilters: {wallpaperDenyAllFilter()});
     final filter = wallpaperMediaSetFilter(closed)!;
 
-    expect(closed.isRestricted, isTrue);
+    expect(closed.isRestricted(), isTrue);
     expect(filter, isA<SetAndFilter>());
     expect((filter as SetAndFilter).innerFilters, containsAll({MimeFilter.image, wallpaperDenyAllFilter()}));
     // The deny-all base is a container with no member: nothing matches it in

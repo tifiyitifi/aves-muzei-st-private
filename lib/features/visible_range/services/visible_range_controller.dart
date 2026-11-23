@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/logging/log.dart';
@@ -8,6 +6,7 @@ import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/model/visible_range_pin.dart';
+import 'package:aves/features/visible_range/model/visible_range_pin_split.dart';
 import 'package:aves/features/visible_range/model/visible_range_usage.dart';
 import 'package:aves/features/visible_range/model/visible_range_write_back.dart';
 import 'package:aves/features/visible_range/services/visible_range_target_source.dart';
@@ -40,13 +39,19 @@ enum VisibleRangeActiveStyle {
   }
 }
 
-/// The single source of truth for visible ranges.
+/// The single source of truth for visibility groups.
 ///
 /// It is a `ChangeNotifier` rather than a provider-held notifier because the
 /// current range is consulted from synchronous, non-widget seams (the collection
 /// source and the paged engine router). Widgets subscribe through
 /// `context.watch`/`AnimatedBuilder`, and the collection surfaces refresh on
 /// [notifyListeners] instead of polling.
+///
+/// The gallery owns N mutually exclusive groups plus one scope-wide outside pool;
+/// the wallpaper groups own one pool each and are reached through [targetSource].
+/// A gallery lock freezes the whole gallery configuration, not one group: the
+/// current group cannot change and no condition, group or outside rule can be
+/// written until the PIN unlocks it.
 class VisibleRangeController extends ChangeNotifier {
   /// Optional injected database, used by tests (which never register the
   /// app-wide [AppDatabaseProvider]).
@@ -62,45 +67,81 @@ class VisibleRangeController extends ChangeNotifier {
   final bool _usesBundledDefaults;
 
   new({this.injectedDatabase, Future<List<VisibleRangePresetDefinition>> Function()? presetLoader})
-      : _usesBundledDefaults = presetLoader == null,
-        presetLoader = presetLoader ?? _loadBundledPresets;
+    : _usesBundledDefaults = presetLoader == null,
+      presetLoader = presetLoader ?? _loadBundledPresets;
 
   static Future<List<VisibleRangePresetDefinition>> _loadBundledPresets() => loadVisibleRangePresetDefinitions();
 
   VisibleRangeStore? _store;
-  VisibleRange? _gallery;
+  List<VisibleRange> _galleryGroups = const [];
+  String _currentGalleryGroupId = VisibleRange.galleryRangeId;
+  VisibleRange _galleryOutside = VisibleRange.emptyOutside();
   List<VisibleRangePreset> _presets = const [];
   VisibleRangeLockPreset _lastLockPreset = VisibleRangeLockPreset.readOnly;
   VisibleRangeActiveStyle _activeStyle = VisibleRangeActiveStyle.section;
+  VisibleRangeInjectionMode _pinInjectionMode = VisibleRangeInjectionMode.auto;
+  bool _pinInjectionRemembered = false;
   Future<void>? _initFuture;
   bool _initialized = false;
+  int _idCounter = 0;
 
   bool get initialized => _initialized;
 
-  VisibleRange get gallery => _gallery ?? VisibleRange.emptyGallery();
+  /// The group browsing uses.
+  VisibleRange get gallery => _galleryGroups.firstWhereOrNull((group) => group.id == _currentGalleryGroupId) ?? _galleryGroups.firstOrNull ?? VisibleRange.emptyGallery();
 
+  /// Every gallery group, in display order.
+  List<VisibleRange> get galleryGroups => _galleryGroups;
+
+  String get currentGalleryGroupId => gallery.id;
+
+  /// The scope-wide pool shared by every gallery group.
+  VisibleRange get outside => _galleryOutside;
+
+  /// The gallery group at [id], or null when it is unknown.
+  VisibleRange? galleryGroupById(String id) => _galleryGroups.firstWhereOrNull((group) => group.id == id);
+
+  /// The 1-based number shown on a group badge.
+  int galleryGroupNumber(String id) => _galleryGroups.indexWhere((group) => group.id == id) + 1;
+
+  /// The legacy template catalog. Groups are the editable form now; the rows are
+  /// kept one release so a rollback can still read them.
   List<VisibleRangePreset> get presets => _presets;
 
-  /// The filter resolved from the current gallery range, or null for 「不限」.
-  CollectionFilter? get galleryFilter => gallery.resolve();
+  /// The filter resolved from the current group plus the outside pool.
+  CollectionFilter? get galleryFilter => gallery.resolve(outside: _galleryOutside);
 
   /// Whether the current gallery browsing is restricted.
-  bool get galleryRestricted => gallery.isRestricted;
+  bool get galleryRestricted => gallery.isRestricted(outside: _galleryOutside);
 
+  /// Whether the gallery visibility configuration is frozen.
   bool get locked => gallery.locked;
 
   /// Whether the current range accepts mutations from this page.
-  bool get canEdit => !gallery.locked || gallery.permissions.edit;
+  bool get canEdit => !gallery.locked;
 
   /// Permissions preset the quick lock reuses.
   VisibleRangeLockPreset get lastLockPreset => _lastLockPreset;
 
   VisibleRangeActiveStyle get activeStyle => _activeStyle;
 
+  VisibleRangeInjectionMode get pinInjectionMode => _pinInjectionMode;
+
+  bool get pinInjectionRemembered => _pinInjectionRemembered;
+
   Future<void> setActiveStyle(VisibleRangeActiveStyle style) async {
     if (_activeStyle == style) return;
     _activeStyle = style;
     await _requireStore().writeState(VisibleRangeStore.keyActiveStyle, style.name);
+    notifyListeners();
+  }
+
+  Future<void> setPinInjection({required VisibleRangeInjectionMode mode, required bool remembered}) async {
+    _pinInjectionMode = mode;
+    _pinInjectionRemembered = remembered;
+    final store = _requireStore();
+    await store.writeState(VisibleRangeStore.keyPinInjectionMode, mode.name);
+    await store.writeState(VisibleRangeStore.keyPinInjectionRemembered, remembered ? '1' : '0');
     notifyListeners();
   }
 
@@ -119,35 +160,52 @@ class VisibleRangeController extends ChangeNotifier {
     }
     try {
       _presets = await store.loadPresets();
-      _gallery = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId) ?? VisibleRange.emptyGallery(now: _now);
+      _galleryGroups = await store.loadGroups(VisibleRangeScope.gallery);
+      _galleryOutside = await store.loadOutside(VisibleRangeScope.gallery) ?? VisibleRange.emptyOutside(now: _now);
+      if (_galleryGroups.isEmpty) {
+        final empty = VisibleRange.emptyGallery(now: _now);
+        await store.saveRange(empty);
+        _galleryGroups = [empty];
+      }
+      final storedCurrent = await store.readState(VisibleRangeStore.keyCurrentGalleryGroupId);
+      _currentGalleryGroupId = _galleryGroups.any((group) => group.id == storedCurrent) ? storedCurrent! : _galleryGroups.first.id;
+      if (storedCurrent != _currentGalleryGroupId) {
+        await store.writeState(VisibleRangeStore.keyCurrentGalleryGroupId, _currentGalleryGroupId);
+      }
       final lastLockPreset = await store.readState(VisibleRangeStore.keyLastLockPreset);
-      _lastLockPreset = VisibleRangeLockPreset.values.firstWhere(
-        (v) => v.name == lastLockPreset,
-        orElse: () => VisibleRangeLockPreset.readOnly,
-      );
+      _lastLockPreset = VisibleRangeLockPreset.values.firstWhere((v) => v.name == lastLockPreset, orElse: () => VisibleRangeLockPreset.readOnly);
       _activeStyle = VisibleRangeActiveStyle.parse(await store.readState(VisibleRangeStore.keyActiveStyle));
-      _initialized = true;
+      _pinInjectionMode = VisibleRangeInjectionMode.parse(await store.readState(VisibleRangeStore.keyPinInjectionMode));
+      _pinInjectionRemembered = await store.readState(VisibleRangeStore.keyPinInjectionRemembered) == '1';
     } catch (error, stack) {
       // A broken range store must never hide the library: fall back to 「不限」.
       _log.e('failed to load visible ranges, falling back to unrestricted', error, stack);
-      _gallery = VisibleRange.emptyGallery(now: _now);
-      _initialized = true;
+      _galleryGroups = [VisibleRange.emptyGallery(now: _now)];
+      _galleryOutside = VisibleRange.emptyOutside(now: _now);
     }
+    _initialized = true;
     notifyListeners();
   }
 
   /// Writes the bundled defaults for the current [VisibleRangeStore.defaultsVersion].
   ///
-  /// Base candidates become presets; restriction and supplement candidates become
-  /// inactive rules, so the page can show them as tiles before the user turns
-  /// them on.
-  ///
-  /// A version bump also re-applies the bundled order and prunes entries the
-  /// bundle dropped. Deleted defaults coming back is intended (see
-  /// [VisibleRangeStore.defaultsVersion]): the bundle stays the single source of
-  /// truth, while the user's activation, rename and description on a kept
-  /// default survive the reorder.
+  /// Base definitions become built-in gallery groups (the old mutually exclusive
+  /// scenario set); restriction/supplement definitions become inactive rules of
+  /// the shared outside pool. Missing defaults are re-added, but a group is never
+  /// pruned: deleting user work to follow a bundle change is worse than keeping a
+  /// stale default the user can remove.
   Future<void> _seedDefaults(VisibleRangeStore store) async {
+    var outside = await store.loadOutside(VisibleRangeScope.gallery);
+    if (outside == null) {
+      outside = VisibleRange.emptyOutside(now: _now);
+      await store.saveRange(outside);
+    }
+    // A scope always has one group to browse. Fresh installs start on the
+    // unrestricted default; the bundled scenarios are added beside it.
+    if ((await store.loadGroups(VisibleRangeScope.gallery)).isEmpty) {
+      await store.saveRange(VisibleRange.emptyGallery(now: _now));
+    }
+
     final rawVersion = await store.readState(VisibleRangeStore.keyDefaultsVersion);
     // Installs seeded by the first release only have the boolean marker.
     final legacySeeded = await store.readState(VisibleRangeStore.keySeeded) == '1';
@@ -170,44 +228,61 @@ class VisibleRangeController extends ChangeNotifier {
     if (definitions.isEmpty) return;
 
     final baseDefinitions = definitions.where((definition) => definition.kind == VisibleRangePresetKind.base).toList();
-    if (seededVersion < 2) {
-      await store.deleteBuiltinPresets();
-    } else {
-      // The bundle is curated: drop built-ins it no longer ships, keeping the
-      // user's own presets. Later versions prune instead of wiping, so a bump
-      // does not renumber the user's saved positions.
-      await store.deleteBuiltinPresetsExcept(baseDefinitions.map((definition) => definition.id).toSet());
-    }
-    var position = 0;
+    final groups = await store.loadGroups(VisibleRangeScope.gallery);
+    // The default group keeps position 0; the bundled scenarios follow it.
+    var position = 1;
     for (final definition in baseDefinitions) {
-      await store.savePreset(
-        VisibleRangePreset(
-          id: definition.id,
-          name: definition.nameKey,
-          filters: definition.filters,
-          builtin: true,
-          position: position++,
-        ),
-      );
+      final id = visibleRangeBuiltinGroupId(definition.id);
+      final existing = groups.firstWhereOrNull((group) => group.id == id);
+      if (existing == null) {
+        final group = VisibleRange.emptyGroup(
+          scope: VisibleRangeScope.gallery,
+          id: id,
+          name: '@${definition.nameKey}',
+          position: position,
+          now: _now,
+        ).copyWith(
+          rules: [
+            VisibleRangeRule(
+              id: _newId('rule'),
+              rangeId: id,
+              kind: VisibleRangeRuleKind.source,
+              filters: definition.filters,
+            ),
+          ],
+        );
+        await store.saveRange(group);
+      } else {
+        await store.saveRange(
+          existing.copyWith(
+            // A renamed group keeps its text; a bundled name follows the bundle.
+            name: existing.name.isEmpty || existing.name.startsWith('@') ? '@${definition.nameKey}' : existing.name,
+            position: position,
+            updatedAt: _now,
+          ),
+        );
+      }
+      position++;
     }
 
-    final range = await store.loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId) ?? VisibleRange.emptyGallery(now: _now);
-    final rules = [...range.rules];
+    // The old global defaults now live in the outside pool, switched off until
+    // the user turns them on.
+    final outsideRules = [...outside.rules];
     final builtinIds = <String>{};
     final positions = <VisibleRangeRuleKind, int>{};
     for (final definition in definitions) {
       if (definition.kind == VisibleRangePresetKind.base) continue;
-      final id = _builtinRuleId(definition.id);
+      final id = visibleRangeBuiltinRuleId(definition.id);
       builtinIds.add(id);
       final kind = definition.kind == VisibleRangePresetKind.restriction ? VisibleRangeRuleKind.restriction : VisibleRangeRuleKind.supplement;
       final rulePosition = positions[kind] ?? 0;
       positions[kind] = rulePosition + 1;
-      final existingIndex = rules.indexWhere((rule) => rule.id == id);
+      final existingIndex = outsideRules.indexWhere((rule) => rule.id == id);
       if (existingIndex < 0) {
-        rules.add(
+        outsideRules.add(
           VisibleRangeRule(
             id: id,
-            rangeId: range.id,
+            rangeId: outside.id,
             kind: kind,
             position: rulePosition,
             // `@` marks an ARB key; the page localizes it and a user rename
@@ -218,25 +293,19 @@ class VisibleRangeController extends ChangeNotifier {
           ),
         );
       } else {
-        // Re-apply the bundled order, but keep the activation, rename and
-        // description the user already made on this default.
-        rules[existingIndex] = rules[existingIndex].copyWith(position: rulePosition);
+        outsideRules[existingIndex] = outsideRules[existingIndex].copyWith(position: rulePosition);
       }
     }
-    // A version bump may also drop a default and with it its activation state;
-    // user rules stay untouched.
-    rules.removeWhere((rule) => _isBuiltinRule(rule.id) && !builtinIds.contains(rule.id));
-    await store.saveRange(range.copyWith(rules: rules));
+    outsideRules.removeWhere((rule) => isVisibleRangeBuiltinRule(rule.id) && !builtinIds.contains(rule.id));
+    await store.saveRange(outside.copyWith(rules: outsideRules, updatedAt: _now));
+
+    if (await store.readState(VisibleRangeStore.keyCurrentGalleryGroupId) == null) {
+      await store.writeState(VisibleRangeStore.keyCurrentGalleryGroupId, VisibleRange.galleryRangeId);
+    }
     await store.writeState(VisibleRangeStore.keyDefaultsVersion, '${VisibleRangeStore.defaultsVersion}');
   }
 
   /// Makes the standard directories available before the asset is parsed.
-  ///
-  /// `androidFileUtils.init` runs after the first frame otherwise; defaults are
-  /// only seeded on a fresh install or a defaults bump, so this one-time wait
-  /// does not affect normal startup. A device that is still booting reports no
-  /// storage volume: skip the seed instead of blocking the first frame on its
-  /// retry loop, and try again on the next start.
   Future<void> _ensureStandardPaths() async {
     try {
       androidFileUtils.dcimPath;
@@ -251,21 +320,224 @@ class VisibleRangeController extends ChangeNotifier {
     await androidFileUtils.init();
   }
 
-  static String _builtinRuleId(String definitionId) => visibleRangeBuiltinRuleId(definitionId);
+  // groups
 
-  static bool _isBuiltinRule(String id) => isVisibleRangeBuiltinRule(id);
-
-  // presets
-
-  /// Re-adds the bundled candidates, skipping ids and filter fingerprints that
-  /// are already present. Returns how many were added and skipped.
-  ///
-  /// Restriction and supplement defaults are restored as inactive rules, so a
-  /// deleted default comes back switched off instead of silently changing the
-  /// current range.
-  Future<({int added, int skipped})> reAddDefaultPresets() async {
+  /// Adds a gallery group and makes it current.
+  Future<VisibleRange> addGalleryGroup({String name = '', Set<CollectionFilter> filters = const {}}) async {
+    _ensureEditable();
     final store = _requireStore();
-    if (gallery.locked) return (added: 0, skipped: 0);
+    final id = _newId('group');
+    final group = VisibleRange.emptyGroup(
+      scope: VisibleRangeScope.gallery,
+      id: id,
+      name: name.trim(),
+      position: _galleryGroups.length,
+      now: _now,
+    ).copyWith(
+      rules: filters.isEmpty
+          ? const []
+          : [
+              VisibleRangeRule(
+                id: _newId('rule'),
+                rangeId: id,
+                kind: VisibleRangeRuleKind.source,
+                label: name.trim(),
+                filters: filters,
+              ),
+            ],
+    );
+    await store.saveRange(group);
+    _galleryGroups = [..._galleryGroups, group];
+    _currentGalleryGroupId = id;
+    await store.writeState(VisibleRangeStore.keyCurrentGalleryGroupId, id);
+    notifyListeners();
+    return group;
+  }
+
+  Future<void> renameGalleryGroup(String id, {required String name}) async {
+    _ensureEditable();
+    final group = galleryGroupById(id);
+    if (group == null) return;
+    await _saveRange(group.copyWith(name: name.trim(), updatedAt: _now));
+    notifyListeners();
+  }
+
+  /// Makes [id] the current group; browsing re-resolves on the notification.
+  Future<void> selectGalleryGroup(String id) async {
+    _ensureEditable();
+    if (!_galleryGroups.any((group) => group.id == id) || id == _currentGalleryGroupId) return;
+    _currentGalleryGroupId = id;
+    await _requireStore().writeState(VisibleRangeStore.keyCurrentGalleryGroupId, id);
+    notifyListeners();
+  }
+
+  /// Deletes groups, keeping at least one and re-pointing the current id.
+  Future<bool> deleteGalleryGroups(Set<String> ids) async {
+    _ensureEditable();
+    if (ids.isEmpty) return false;
+    final remaining = _galleryGroups.where((group) => !ids.contains(group.id)).toList();
+    if (remaining.isEmpty) return false;
+    final store = _requireStore();
+    for (final id in ids) {
+      await store.deleteRange(id);
+    }
+    _galleryGroups = remaining;
+    for (var i = 0; i < remaining.length; i++) {
+      if (remaining[i].position != i) {
+        remaining[i] = remaining[i].copyWith(position: i);
+        await store.saveRange(remaining[i]);
+      }
+    }
+    if (!remaining.any((group) => group.id == _currentGalleryGroupId)) {
+      _currentGalleryGroupId = remaining.first.id;
+      await store.writeState(VisibleRangeStore.keyCurrentGalleryGroupId, _currentGalleryGroupId);
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// Moves a group by [delta] inside the display order.
+  Future<void> moveGalleryGroup(String id, int delta) async {
+    _ensureEditable();
+    final index = _galleryGroups.indexWhere((group) => group.id == id);
+    final target = index + delta;
+    if (index < 0 || target < 0 || target >= _galleryGroups.length) return;
+    final reordered = [..._galleryGroups];
+    final moved = reordered.removeAt(index);
+    reordered.insert(target, moved);
+    _galleryGroups = reordered;
+    for (var i = 0; i < reordered.length; i++) {
+      await _saveRange(reordered[i].copyWith(position: i, updatedAt: _now));
+    }
+    notifyListeners();
+  }
+
+  // conditions
+
+  /// Adds a condition to [rangeId] (default: the current group).
+  Future<VisibleRangeRule?> addRule({
+    required VisibleRangeRuleKind kind,
+    required Set<CollectionFilter> filters,
+    String label = '',
+    String? rangeId,
+  }) async {
+    _ensureEditable();
+    if (filters.isEmpty) return null;
+    final range = await _requireRange(rangeId ?? gallery.id);
+    if (range == null) return null;
+    if (range.isOutside && !kind.isOutsideAllowed) return null;
+    final rule = VisibleRangeRule(
+      id: _newId('rule'),
+      rangeId: range.id,
+      kind: kind,
+      position: range.rulesOf(kind).length,
+      label: label,
+      filters: filters,
+    );
+    await _saveRange(range.copyWith(rules: [...range.rules, rule], updatedAt: _now));
+    notifyListeners();
+    return rule;
+  }
+
+  Future<void> updateRule(VisibleRangeRule rule) async {
+    _ensureEditable();
+    final range = await _requireRange(rule.rangeId);
+    if (range == null) return;
+    await _saveRange(range.copyWith(rules: [for (final candidate in range.rules) candidate.id == rule.id ? rule : candidate], updatedAt: _now));
+    notifyListeners();
+  }
+
+  Future<void> toggleRule(String id) async {
+    _ensureEditable();
+    final range = await _rangeOfRule(id);
+    if (range == null) return;
+    await _saveRange(
+      range.copyWith(rules: [for (final rule in range.rules) rule.id == id ? rule.copyWith(active: !rule.active) : rule], updatedAt: _now),
+    );
+    notifyListeners();
+  }
+
+  Future<void> deleteRules(Set<String> ids) async {
+    _ensureEditable();
+    if (ids.isEmpty) return;
+    for (final range in [..._galleryGroups, _galleryOutside]) {
+      if (!range.rules.any((rule) => ids.contains(rule.id))) continue;
+      await _saveRange(range.copyWith(rules: range.rules.where((rule) => !ids.contains(rule.id)).toList(), updatedAt: _now));
+    }
+    notifyListeners();
+  }
+
+  /// Moves a condition to another role, appended after the rules already there.
+  Future<void> moveRuleToKind(String rangeId, String ruleId, VisibleRangeRuleKind kind) async {
+    _ensureEditable();
+    final range = await _requireRange(rangeId);
+    final rule = range?.ruleById(ruleId);
+    if (range == null || rule == null || rule.kind == kind) return;
+    if (range.isOutside && !kind.isOutsideAllowed) return;
+    final moved = rule.copyWith(kind: kind, position: range.rulesOf(kind).length);
+    await _saveRange(range.copyWith(rules: [for (final candidate in range.rules) candidate.id == ruleId ? moved : candidate], updatedAt: _now));
+    notifyListeners();
+  }
+
+  Future<void> setOrder(VisibleRangeOrder order, {String? rangeId}) async {
+    _ensureEditable();
+    final range = await _requireRange(rangeId ?? gallery.id);
+    if (range == null) return;
+    await _saveRange(range.copyWith(order: order, updatedAt: _now));
+    notifyListeners();
+  }
+
+  /// Replaces the current group's source conditions with [filters].
+  Future<void> selectBase({required String presetId, required String name, required Set<CollectionFilter> filters}) => _replaceSources(gallery.id, filters, name);
+
+  Future<void> clearBase() => _replaceSources(gallery.id, const {}, '');
+
+  /// Clears the source conditions of [rangeId] (the current group by default).
+  Future<void> clearSources([String? rangeId]) => _replaceSources(rangeId ?? gallery.id, const {}, '');
+
+  /// Adds [filters] as one source condition of [rangeId].
+  Future<void> addSource(String rangeId, Set<CollectionFilter> filters, {String label = ''}) async {
+    _ensureEditable();
+    final range = await _requireRange(rangeId);
+    if (range == null || filters.isEmpty) return;
+    final rule = VisibleRangeRule(
+      id: _newId('rule'),
+      rangeId: range.id,
+      kind: VisibleRangeRuleKind.source,
+      position: range.rulesOf(VisibleRangeRuleKind.source).length,
+      label: label,
+      filters: filters,
+    );
+    await _saveRange(range.copyWith(rules: [...range.rules, rule], updatedAt: _now));
+    notifyListeners();
+  }
+
+  Future<void> _replaceSources(String rangeId, Set<CollectionFilter> filters, String label) async {
+    _ensureEditable();
+    final range = await _requireRange(rangeId);
+    if (range == null) return;
+    final kept = range.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source).toList();
+    final rules = filters.isEmpty
+        ? kept
+        : [
+            ...kept,
+            VisibleRangeRule(
+              id: _newId('rule'),
+              rangeId: range.id,
+              kind: VisibleRangeRuleKind.source,
+              label: label,
+              filters: filters,
+            ),
+          ];
+    await _saveRange(range.copyWith(rules: rules, updatedAt: _now));
+    notifyListeners();
+  }
+
+  // defaults
+
+  /// Re-adds the bundled groups and outside rules, skipping what is present.
+  Future<({int added, int skipped})> reAddDefaultPresets() async {
+    _ensureEditable();
     if (_usesBundledDefaults) {
       try {
         await _ensureStandardPaths();
@@ -275,237 +547,130 @@ class VisibleRangeController extends ChangeNotifier {
       }
     }
     final definitions = await presetLoader();
-    final existingIds = _presets.map((v) => v.id).toSet();
-    final existingFingerprints = _presets.map((v) => v.fingerprint).toSet();
     var added = 0;
     var skipped = 0;
-    var position = _presets.length;
+    final groups = _galleryGroups;
     for (final definition in definitions.where((definition) => definition.kind == VisibleRangePresetKind.base)) {
-      final preset = VisibleRangePreset(
-        id: definition.id,
-        name: definition.nameKey,
-        filters: definition.filters,
-        builtin: true,
-        position: position,
-      );
-      if (existingIds.contains(preset.id) || existingFingerprints.contains(preset.fingerprint)) {
+      final id = visibleRangeBuiltinGroupId(definition.id);
+      if (groups.any((group) => group.id == id)) {
         skipped++;
         continue;
       }
-      await store.savePreset(preset);
-      position++;
+      final group = VisibleRange.emptyGroup(
+        scope: VisibleRangeScope.gallery,
+        id: id,
+        name: '@${definition.nameKey}',
+        position: _galleryGroups.length + added,
+        now: _now,
+      ).copyWith(
+        rules: [
+          VisibleRangeRule(
+            id: _newId('rule'),
+            rangeId: id,
+            kind: VisibleRangeRuleKind.source,
+            filters: definition.filters,
+          ),
+        ],
+      );
+      await _saveRange(group);
       added++;
     }
-    _presets = await store.loadPresets();
-
-    final range = gallery;
-    final rules = [...range.rules];
-    var rulesAdded = 0;
-    final positions = <VisibleRangeRuleKind, int>{
-      for (final kind in VisibleRangeRuleKind.values) kind: rules.where((rule) => rule.kind == kind).length,
-    };
+    final outside = _galleryOutside;
+    final rules = [...outside.rules];
     for (final definition in definitions.where((definition) => definition.kind != VisibleRangePresetKind.base)) {
-      final id = _builtinRuleId(definition.id);
+      final id = visibleRangeBuiltinRuleId(definition.id);
       if (rules.any((rule) => rule.id == id)) {
         skipped++;
         continue;
       }
       final kind = definition.kind == VisibleRangePresetKind.restriction ? VisibleRangeRuleKind.restriction : VisibleRangeRuleKind.supplement;
-      final rulePosition = positions[kind] ?? 0;
-      positions[kind] = rulePosition + 1;
       rules.add(
         VisibleRangeRule(
           id: id,
-          rangeId: range.id,
+          rangeId: outside.id,
           kind: kind,
-          position: rulePosition,
+          position: rules.where((rule) => rule.kind == kind).length,
           label: '@${definition.nameKey}',
           filters: definition.filters,
           active: false,
         ),
       );
-      rulesAdded++;
       added++;
     }
-    if (rulesAdded > 0) {
-      await _updateGallery((range) => range.copyWith(rules: rules));
+    if (added > 0) {
+      await _saveRange(outside.copyWith(rules: rules, updatedAt: _now));
     }
-
     notifyListeners();
     return (added: added, skipped: skipped);
   }
 
-  Future<void> saveBasePreset({required String name, String description = '', required Set<CollectionFilter> filters}) async {
-    _ensureEditable();
-    final store = _requireStore();
-    final preset = VisibleRangePreset(
-      id: _newId('user'),
-      name: name,
-      description: description,
-      filters: filters,
-      position: _presets.length,
-    );
-    await store.savePreset(preset);
-    _presets = await store.loadPresets();
+  /// Group templates are groups now; the action creates one from the filters.
+  Future<void> saveBasePreset({required String name, String description = '', required Set<CollectionFilter> filters}) => addGalleryGroup(name: name, filters: filters);
+
+  Future<void> updateBasePreset(String id, {required String name, required String description}) => renameGalleryGroup(id, name: name);
+
+  Future<void> deleteBasePreset(String id) => deleteGalleryGroups({id});
+
+  // lock
+
+  Future<void> lockWithPreset(VisibleRangeLockPreset preset) async {
+    _lastLockPreset = preset;
+    await _requireStore().writeState(VisibleRangeStore.keyLastLockPreset, preset.name);
+    await lock(permissions: VisibleRangePermissions.of(preset));
+  }
+
+  Future<void> lock({required VisibleRangePermissions permissions}) async {
+    final group = gallery;
+    await _saveRange(group.copyWith(locked: true, permissions: permissions, updatedAt: _now));
     notifyListeners();
   }
 
-  /// Renames a user base preset and edits its note. Built-in presets are
-  /// read-only. When the preset is the active base, the range snapshot follows
-  /// so the footer shows the new name immediately.
-  Future<void> updateBasePreset(String id, {required String name, required String description}) async {
-    _ensureEditable();
-    final preset = _presets.firstWhereOrNull((v) => v.id == id);
-    if (preset == null || preset.builtin) return;
-    await _requireStore().savePreset(preset.copyWith(name: name, description: description));
-    _presets = [for (final p in _presets) p.id == id ? p.copyWith(name: name, description: description) : p];
-    if (gallery.basePresetId == id && gallery.baseName != name) {
-      await _updateGallery((range) => range.copyWith(baseName: name));
-    } else {
-      notifyListeners();
-    }
-  }
-
-  Future<void> deleteBasePreset(String id) async {
-    _ensureEditable();
-    final preset = _presets.firstWhereOrNull((v) => v.id == id);
-    if (preset == null || preset.builtin) return;
-    await _requireStore().deletePreset(id);
-    _presets = _presets.where((v) => v.id != id).toList();
+  Future<void> unlock() async {
+    final group = gallery;
+    if (!group.locked) return;
+    await _saveRange(group.copyWith(locked: false, updatedAt: _now));
     notifyListeners();
-  }
-
-  // base / rules
-
-  Future<void> selectBase({required String presetId, required String name, required Set<CollectionFilter> filters}) async {
-    _ensureEditable();
-    await _updateGallery(
-      (range) => range.copyWith(basePresetId: presetId, baseName: name, baseFilters: filters, baseActive: true),
-    );
-  }
-
-  Future<void> clearBase() async {
-    _ensureEditable();
-    await _updateGallery((range) => range.copyWith(basePresetId: '', baseName: '', baseFilters: {}, baseActive: true));
-  }
-
-  Future<VisibleRangeRule?> addRule({
-    required VisibleRangeRuleKind kind,
-    required Set<CollectionFilter> filters,
-    String label = '',
-  }) async {
-    _ensureEditable();
-    if (filters.isEmpty) return null;
-    final range = gallery;
-    final position = range.rulesOf(kind).length;
-    final rule = VisibleRangeRule(
-      id: _newId('rule'),
-      rangeId: range.id,
-      kind: kind,
-      position: position,
-      label: label,
-      filters: filters,
-    );
-    await _updateGallery((range) => range.copyWith(rules: [...range.rules, rule]));
-    return rule;
-  }
-
-  Future<void> updateRule(VisibleRangeRule rule) async {
-    _ensureEditable();
-    await _updateGallery((range) => range.copyWith(rules: [for (final r in range.rules) r.id == rule.id ? rule : r]));
-  }
-
-  Future<void> toggleRule(String id) async {
-    _ensureEditable();
-    await _updateGallery(
-      (range) => range.copyWith(rules: [for (final rule in range.rules) rule.id == id ? rule.copyWith(active: !rule.active) : rule]),
-    );
-  }
-
-  Future<void> deleteRules(Set<String> ids) async {
-    _ensureEditable();
-    if (ids.isEmpty) return;
-    await _updateGallery((range) => range.copyWith(rules: range.rules.where((rule) => !ids.contains(rule.id)).toList()));
-  }
-
-  Future<void> setOrder(VisibleRangeOrder order) async {
-    _ensureEditable();
-    await _updateGallery((range) => range.copyWith(order: order));
   }
 
   // targets
 
   /// Extra range surfaces (the wallpaper groups), set by the composition root.
-  ///
-  /// It is a plain field rather than a constructor argument so a test can leave
-  /// it unset: the gallery range then stands alone.
   VisibleRangeTargetSource? targetSource;
 
-  /// Every place the current filters can be pinned to: the gallery first, then
-  /// the registered wallpaper groups in badge order.
+  /// Every place the current filters can be pinned to.
   Future<List<VisibleRangePinTarget>> loadPinTargets() async {
     final extra = targetSource == null ? const <VisibleRangePinTarget>[] : await targetSource!.loadPinTargets();
+    final galleryLocked = gallery.locked;
     return [
-      VisibleRangePinTarget(
-        rangeId: gallery.id,
-        number: 0,
-        name: '',
-        isGallery: true,
-        locked: !canEdit,
-      ),
+      for (var i = 0; i < _galleryGroups.length; i++)
+        VisibleRangePinTarget(
+          id: _galleryGroups[i].id,
+          rangeId: _galleryGroups[i].id,
+          kind: VisibleRangePinTargetKind.galleryGroup,
+          number: i + 1,
+          name: _galleryGroups[i].name,
+          locked: galleryLocked,
+        ),
+      for (final role in VisibleRangeRuleKind.outsideRoles)
+        VisibleRangePinTarget(
+          id: '${_galleryOutside.id}.${role.name}',
+          rangeId: _galleryOutside.id,
+          kind: VisibleRangePinTargetKind.outside,
+          role: role,
+          number: 0,
+          locked: galleryLocked,
+        ),
       ...extra,
     ];
   }
 
-  /// Pins [request.filters] to every selected target and group in one write.
-  ///
-  /// A locked or unknown target is skipped instead of failing the request, so
-  /// the sheet can offer the gallery and the groups side by side. Re-pinning the
-  /// same conditions to the same target updates the existing item (name,
-  /// description, active) instead of stacking a duplicate. The base is a preset
-  /// shared by all targets, so it is created/reused once and then selected per
-  /// target.
+  /// Pins [request.filters] to every selected target in one write.
   Future<VisibleRangePinResult> pinFilters(VisibleRangePinRequest request) async {
-    if (request.filters.isEmpty || request.kinds.isEmpty || request.targetRangeIds.isEmpty) {
-      return const VisibleRangePinResult(pinned: 0, skipped: 0);
-    }
-    final store = _requireStore();
-    final requested = request.targetRangeIds;
-    final targets = (await loadPinTargets()).where((target) => requested.contains(target.rangeId) && !target.locked).toList();
+    if (request.isEmpty) return const VisibleRangePinResult(pinned: 0, skipped: 0);
+    final requested = request.targetIds;
+    final targets = (await loadPinTargets()).where((target) => requested.contains(target.id) && !target.locked).toList();
     var skipped = requested.length - targets.length;
     if (targets.isEmpty) return VisibleRangePinResult(pinned: 0, skipped: skipped);
-
-    final fingerprint = filterFingerprint(request.filters);
-    final name = request.name.trim();
-
-    // The base preset catalog belongs to the gallery range only. A wallpaper
-    // group's base is its own data: pinning one writes the filters straight onto
-    // the group range, so the group never references (or shows) a gallery
-    // default preset.
-    final wantsBase = request.kinds.contains(VisibleRangeCandidateKind.base);
-    final includesGallery = targets.any((target) => target.isGallery);
-    VisibleRangePreset? preset;
-    if (wantsBase && includesGallery) {
-      final existing = _presets.firstWhereOrNull((p) => !p.builtin && p.fingerprint == fingerprint && p.name == name);
-      if (existing != null) {
-        preset = existing;
-        if (existing.description != request.description) {
-          preset = existing.copyWith(description: request.description);
-          await store.savePreset(preset);
-        }
-      } else {
-        preset = VisibleRangePreset(
-          id: _newId('user'),
-          name: name,
-          description: request.description,
-          filters: request.filters,
-          position: _presets.length,
-        );
-        await store.savePreset(preset);
-      }
-      // Reload before the range write so listeners observe both together.
-      _presets = await store.loadPresets();
-    }
 
     var pinned = 0;
     for (final target in targets) {
@@ -514,7 +679,7 @@ class VisibleRangeController extends ChangeNotifier {
         skipped++;
         continue;
       }
-      await _saveRange(_pinToRange(range, request, target.isGallery ? preset : null, fingerprint, name));
+      await _saveRange(_pinToRange(range, target, request));
       pinned++;
     }
     notifyListeners();
@@ -523,60 +688,77 @@ class VisibleRangeController extends ChangeNotifier {
 
   /// Applies one pin request to a single range.
   ///
-  /// Rules are matched by kind and filter fingerprint, so re-pinning the same
-  /// conditions refreshes the existing rule rather than adding a twin. A base is
-  /// only touched when the request includes it: the gallery copies the shared
-  /// preset, a wallpaper group stores the filters itself.
-  ///
-  /// For a wallpaper group the range is the group's shared condition pool, so a
-  /// new rule is created without surface marks: it is stored but inert until the
-  /// user marks Home, Lock or both on the group page. A base keeps the marks it
-  /// already had, because silently activating or deactivating a surface's base
-  /// would change a privacy range the user did not touch.
-  VisibleRange _pinToRange(VisibleRange range, VisibleRangePinRequest request, VisibleRangePreset? preset, String fingerprint, String name) {
-    var rules = [...range.rules];
-    for (final kind in request.kinds) {
-      final ruleKind = kind.ruleKind;
-      if (ruleKind == null) continue;
-      final existing = rules.firstWhereOrNull((rule) => rule.kind == ruleKind && filterFingerprint(rule.filters) == fingerprint);
+  /// New conditions follow [VisibleRangePinRequest.injection]: [auto] enables
+  /// everything only when the target group has no conditions yet, so a second pin
+  /// lands parked and the user turns it on deliberately. Re-pinning an existing
+  /// condition keeps its state. The outside pool has no attributes: its two
+  /// targets put every filter in their own role.
+  VisibleRange _pinToRange(VisibleRange range, VisibleRangePinTarget target, VisibleRangePinRequest request) {
+    final name = request.name.trim();
+    final isWallpaper = range.scope == VisibleRangeScope.wallpaper;
+    final existingRules = request.writeMode == VisibleRangePinWriteMode.replace ? <VisibleRangeRule>[] : [...range.rules];
+    final enableNew = switch (request.injection) {
+      VisibleRangeInjectionMode.enable => true,
+      VisibleRangeInjectionMode.park => false,
+      VisibleRangeInjectionMode.auto => target.isOutside || existingRules.every((rule) => rule.filters.isEmpty),
+    };
+
+    var rules = existingRules;
+    void upsert(VisibleRangeRuleKind kind, Set<CollectionFilter> filters, {String label = ''}) {
+      if (filters.isEmpty) return;
+      final fingerprint = filterFingerprint(filters);
+      final existing = rules.firstWhereOrNull((rule) => rule.kind == kind && filterFingerprint(rule.filters) == fingerprint);
       if (existing != null) {
         rules = [
           for (final rule in rules)
-            rule.id == existing.id ? rule.copyWith(label: name, description: request.description, active: true) : rule
+            rule.id == existing.id ? rule.copyWith(label: label.isEmpty ? rule.label : label, description: request.description) : rule,
         ];
-      } else {
-        rules.add(
-          VisibleRangeRule(
-            id: _newId('rule'),
-            rangeId: range.id,
-            kind: ruleKind,
-            position: rules.where((rule) => rule.kind == ruleKind).length,
-            label: name,
-            description: request.description,
-            filters: request.filters,
-          ),
-        );
+        return;
       }
+      rules = [
+        ...rules,
+        VisibleRangeRule(
+          id: _newId('rule'),
+          rangeId: range.id,
+          kind: kind,
+          position: rules.where((rule) => rule.kind == kind).length,
+          label: label,
+          description: request.description,
+          filters: filters,
+          // A wallpaper condition is enabled per surface; a parked one keeps 0
+          // and stays listed in the pool.
+          active: isWallpaper ? true : enableNew,
+          surfaces: isWallpaper ? (enableNew ? 3 : 0) : 0,
+        ),
+      ];
     }
-    final wantsBase = request.kinds.contains(VisibleRangeCandidateKind.base);
-    return range.copyWith(
-      basePresetId: wantsBase ? (preset?.id ?? '') : range.basePresetId,
-      baseName: wantsBase ? (preset?.name ?? name) : range.baseName,
-      baseFilters: wantsBase ? (preset?.filters ?? request.filters) : range.baseFilters,
-      baseActive: wantsBase ? true : range.baseActive,
-      rules: rules,
-      updatedAt: _now,
-    );
+
+    if (target.isOutside) {
+      final role = target.role ?? VisibleRangeRuleKind.restriction;
+      for (final filter in request.filters) {
+        upsert(role, {filter}, label: name);
+      }
+      return range.copyWith(rules: rules, updatedAt: _now);
+    }
+
+    final split = splitVisibleRangePin(request.filters, forcedRole: request.forcedRole);
+    final oneRule = split.sources.length + split.restrictions.length + split.supplements.length == 1;
+    for (final source in split.sources) {
+      upsert(VisibleRangeRuleKind.source, source, label: oneRule ? name : '');
+    }
+    for (final filter in split.restrictions) {
+      upsert(VisibleRangeRuleKind.restriction, {filter}, label: oneRule ? name : '');
+    }
+    for (final filter in split.supplements) {
+      upsert(VisibleRangeRuleKind.supplement, {filter}, label: oneRule ? name : '');
+    }
+    return range.copyWith(rules: rules, updatedAt: _now);
   }
 
   // applied targets
 
   /// Remembers that [candidates] opened a media set, so the pin sheet can offer
   /// to write the current filters back to them later.
-  ///
-  /// A rule target is addressed by its global, never reused id; a base target by
-  /// its range, because the base has no id of its own. Usage is a set, so taking
-  /// the same rule out twice keeps one row (and a fresh timestamp).
   Future<void> markAppliedTargets({required String rangeId, required Iterable<VisibleRangeCandidate> candidates}) async {
     final store = _requireStore();
     final now = _now;
@@ -590,25 +772,20 @@ class VisibleRangeController extends ChangeNotifier {
   }
 
   /// Every remembered target, resolved for the write-back list.
-  ///
-  /// A usage whose rule disappeared is dropped from the list (the store prunes
-  /// the row on the next range save); a locked range stays listed but marked, so
-  /// the sheet can grey it out instead of hiding it.
   Future<List<VisibleRangeWriteBackTarget>> loadAppliedTargets() async {
     final store = _requireStore();
     final usages = await store.loadUsages();
     if (usages.isEmpty) return const [];
-    final owners = {for (final target in await loadPinTargets()) target.rangeId: target};
+    final targets = await loadPinTargets();
+    final owners = {for (final target in targets) target.rangeId: target};
     final ranges = <String, VisibleRange?>{};
     final result = <VisibleRangeWriteBackTarget>[];
     for (final usage in usages) {
       final range = ranges[usage.rangeId] ??= await _loadRangeById(usage.rangeId);
       if (range == null) continue;
-      final rule = usage.isBase ? null : range.ruleById(usage.targetId);
-      if (!usage.isBase && rule == null) continue;
-      // A wallpaper usage may address a historical per-surface id while the
-      // loaded value is the group's shared pool, so the owner is resolved from
-      // the loaded range rather than the stored id.
+      // A legacy base usage addresses the source the base migrated to.
+      final rule = usage.isBase ? range.rulesOf(VisibleRangeRuleKind.source).firstOrNull : range.ruleById(usage.targetId);
+      if (rule == null) continue;
       final owner = owners[range.id] ?? owners[usage.rangeId];
       result.add(
         VisibleRangeWriteBackTarget(
@@ -616,11 +793,11 @@ class VisibleRangeController extends ChangeNotifier {
           rangeId: usage.rangeId,
           targetId: usage.targetId,
           kind: usage.kind,
-          isGallery: usage.rangeId == gallery.id,
+          isGallery: range.scope == VisibleRangeScope.gallery,
           number: owner?.number ?? 0,
           ownerName: owner?.name ?? '',
-          label: usage.isBase ? range.baseName : rule!.label,
-          filters: usage.isBase ? range.baseFilters : rule!.filters,
+          label: rule.label,
+          filters: rule.filters,
           locked: !_canWrite(range),
         ),
       );
@@ -629,10 +806,6 @@ class VisibleRangeController extends ChangeNotifier {
   }
 
   /// Writes [filters] over the selected remembered targets.
-  ///
-  /// A rule keeps its name, kind and position; a base only changes the range it
-  /// belongs to, never the shared preset catalog. Locked ranges and rules that
-  /// disappeared are skipped and counted.
   Future<VisibleRangeWriteBackResult> writeBackTargets({
     required Set<String> usageIds,
     required Set<CollectionFilter> filters,
@@ -652,21 +825,17 @@ class VisibleRangeController extends ChangeNotifier {
       }
       var next = range;
       for (final usage in entry.value) {
-        if (usage.isBase) {
-          next = next.copyWith(basePresetId: '', baseName: baseName.trim(), baseFilters: filters, baseActive: true);
-        } else {
-          final rule = next.ruleById(usage.targetId);
-          if (rule == null) {
-            skipped++;
-            continue;
-          }
-          next = next.copyWith(
-            rules: [
-              for (final candidate in next.rules)
-                if (candidate.id == rule.id) candidate.copyWith(filters: filters) else candidate,
-            ],
-          );
+        final rule = usage.isBase ? next.rulesOf(VisibleRangeRuleKind.source).firstOrNull : next.ruleById(usage.targetId);
+        if (rule == null) {
+          skipped++;
+          continue;
         }
+        next = next.copyWith(
+          rules: [
+            for (final candidate in next.rules)
+              if (candidate.id == rule.id) candidate.copyWith(filters: filters, label: candidate.label.isEmpty ? baseName.trim() : candidate.label) else candidate,
+          ],
+        );
         written++;
       }
       if (next == range) continue;
@@ -676,84 +845,58 @@ class VisibleRangeController extends ChangeNotifier {
     return VisibleRangeWriteBackResult(written: written, skipped: skipped);
   }
 
+  // internals
+
+  bool _canWrite(VisibleRange range) => range.scope == VisibleRangeScope.gallery ? !gallery.locked : !range.locked || range.permissions.edit;
+
+  Future<VisibleRange?> _requireRange(String id) async => _loadRangeById(id);
+
+  Future<VisibleRange?> _rangeOfRule(String ruleId) async {
+    for (final range in [..._galleryGroups, _galleryOutside]) {
+      if (range.rules.any((rule) => rule.id == ruleId)) return range;
+    }
+    return null;
+  }
+
   /// Loads a range by id from whichever surface owns it.
   Future<VisibleRange?> _loadRangeById(String rangeId) async {
-    if (rangeId == gallery.id) return gallery;
+    if (rangeId == _galleryOutside.id) return _galleryOutside;
+    final group = _galleryGroups.firstWhereOrNull((candidate) => candidate.id == rangeId);
+    if (group != null) return group;
     return targetSource?.loadRange(rangeId);
   }
 
-  /// Persists a range back to its owner, keeping the in-memory gallery in sync.
+  /// Persists a range back to its owner, keeping the in-memory list in sync.
   Future<void> _saveRange(VisibleRange range) async {
-    if (range.id == gallery.id) {
-      await _requireStore().saveRange(range);
-      _gallery = range;
-    } else {
-      await targetSource!.saveRange(range);
-    }
-  }
-
-  /// A locked range refuses writes unless its frozen permissions allow editing,
-  /// the same gate the page and the pin targets use.
-  static bool _canWrite(VisibleRange range) => !range.locked || range.permissions.edit;
-
-  // lock
-
-  /// Locks the range with [permissions]. Quick lock passes the last preset;
-  /// detailed lock passes the edited permissions.
-  Future<void> lock({required VisibleRangePermissions permissions}) async {
-    // Remember the closest named preset so the quick lock repeats the user's
-    // choice; a custom combination falls back to read-only.
-    _lastLockPreset = VisibleRangeLockPreset.values.firstWhere(
-      (preset) => VisibleRangePermissions.of(preset) == permissions,
-      orElse: () => VisibleRangeLockPreset.readOnly,
-    );
-    await _requireStore().writeState(VisibleRangeStore.keyLastLockPreset, _lastLockPreset.name);
-    await _updateGallery((range) => range.copyWith(locked: true, permissions: permissions));
-  }
-
-  /// Quick lock: repeats the last permissions preset, then remembers a new one.
-  Future<void> lockWithPreset(VisibleRangeLockPreset preset) => lock(permissions: VisibleRangePermissions.of(preset));
-
-  Future<void> unlock() async {
-    // Unlocking drops the frozen permissions, so the next quick lock starts from
-    // the remembered preset rather than a stale editable state.
-    await _updateGallery((range) => range.copyWith(locked: false, permissions: VisibleRangePermissions.readOnly));
-  }
-
-  // helpers
-
-  Future<void> _updateGallery(VisibleRange Function(VisibleRange range) transform) async {
     final store = _requireStore();
-    final next = transform(gallery).copyWith(updatedAt: _now);
-    await store.saveRange(next);
-    _gallery = next;
-    notifyListeners();
+    if (range.id == _galleryOutside.id) {
+      await store.saveRange(range);
+      _galleryOutside = range;
+      return;
+    }
+    final index = _galleryGroups.indexWhere((group) => group.id == range.id);
+    if (index >= 0) {
+      await store.saveRange(range);
+      _galleryGroups = [for (final group in _galleryGroups) group.id == range.id ? range : group];
+      return;
+    }
+    await targetSource?.saveRange(range);
   }
 
   void _ensureEditable() {
-    final range = gallery;
-    if (!range.locked) return;
-    if (range.permissions.edit) return;
-    throw StateError('visible range is locked');
+    if (!canEdit) throw StateError('visible range is locked');
   }
 
   VisibleRangeStore _requireStore() {
     final store = _store;
-    if (store == null) throw StateError('visibleRangeController is not initialized');
-    return store;
+    if (store != null) return store;
+    throw StateError('VisibleRangeController is not initialized');
   }
 
   int get _now => DateTime.now().millisecondsSinceEpoch;
 
-  /// Monotonic suffix for generated ids.
-  ///
-  /// Rules and presets can be created twice in the same millisecond (a test, a
-  /// two-group pin, or two quick taps). A timestamp alone then yields duplicate
-  /// ids, and a later write-back would update the wrong record.
-  int _idSequence = 0;
-
-  String _newId(String prefix) => '$prefix.$_now.${_idSequence++}';
+  String _newId(String prefix) => '$prefix.$_now.${_idCounter++}';
 }
 
-/// The app-wide controller (the same singleton style as `vaults`).
-final VisibleRangeController visibleRangeController = VisibleRangeController();
+/// The process-wide controller.
+final visibleRangeController = VisibleRangeController();

@@ -191,7 +191,7 @@ void main() {
 
     test('the whole group target is the group media set and locates the photo', () {
       final entry = photo();
-      final range = VisibleRange(
+      final range = VisibleRange.legacy(
         id: 'g.range',
         scope: VisibleRangeScope.wallpaper,
         ownerId: 'g',

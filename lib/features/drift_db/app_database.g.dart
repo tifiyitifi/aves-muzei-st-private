@@ -5028,6 +5028,16 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('group'),
+  );
   static const VerificationMeta _ownerIdMeta = const VerificationMeta(
     'ownerId',
   );
@@ -5038,6 +5048,28 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
   );
   static const VerificationMeta _baseNameMeta = const VerificationMeta(
     'baseName',
@@ -5164,7 +5196,10 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
   List<GeneratedColumn> get $columns => [
     id,
     scope,
+    kind,
     ownerId,
+    name,
+    position,
     baseName,
     basePresetId,
     baseFilters,
@@ -5201,6 +5236,12 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
     } else if (isInserting) {
       context.missing(_scopeMeta);
     }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    }
     if (data.containsKey('ownerId')) {
       context.handle(
         _ownerIdMeta,
@@ -5208,6 +5249,18 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
       );
     } else if (isInserting) {
       context.missing(_ownerIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
     }
     if (data.containsKey('baseName')) {
       context.handle(
@@ -5302,9 +5355,21 @@ class $VisibleRangeRowsTable extends VisibleRangeRows
         DriftSqlType.string,
         data['${effectivePrefix}scope'],
       )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
       ownerId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}ownerId'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
       )!,
       baseName: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -5359,31 +5424,38 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
   final String id;
   final String scope;
 
-  /// Owner of the range: `gallery` for the single gallery range, otherwise the
-  /// wallpaper group id.
+  /// `group` (a selectable group) or `outside` (the scope-wide pool). The
+  /// outside pool has no source role and is not offered as a browsable group.
+  final String kind;
+
+  /// Owner of the range: the group id, or `gallery.outside` for the outside
+  /// pool. Wallpaper groups keep owning exactly one pool.
   final String ownerId;
 
-  /// Display name of the selected base (empty when [baseFilters] is empty).
+  /// Group name. Empty means the scope's default label; a value starting with
+  /// `@` is an ARB key, anything else is user text.
+  final String name;
+
+  /// Display order inside the scope; the group number is derived from it.
+  final int position;
+
+  /// Legacy v18 base snapshot, read only by the v19 migration.
+  ///
+  /// The base became a `source` rule in v19; the columns stay one release so a
+  /// rollback can still read the old shape. New writes leave them at their
+  /// defaults.
   final String baseName;
 
-  /// Preset this base was last copied from, or empty for unrestricted/custom.
+  /// Legacy v18 preset reference. See [baseName].
   final String basePresetId;
 
-  /// JSON array, AND-ed together. Empty means unrestricted.
+  /// Legacy v18 base filters. See [baseName].
   final String baseFilters;
 
-  /// Whether the base takes part in the range.
-  ///
-  /// A wallpaper group keeps its base when the user clears the group: switching
-  /// the base off is a state change, not a deletion, so the same conditions can
-  /// be switched back on without pinning them again.
+  /// Legacy v18 base switch. See [baseName].
   final bool baseActive;
 
-  /// Which wallpaper surfaces use the base, as a bit mask (`1` home, `2` lock).
-  ///
-  /// A wallpaper group owns one condition pool, so its base is stored once and
-  /// each surface only marks whether it uses it. The gallery range ignores the
-  /// column: its single surface is the whole app.
+  /// Legacy v18 base surface marks. See [baseName].
   final int baseSurfaces;
 
   /// `intersectFirst` (restrictions before supplements) or `unionFirst`
@@ -5399,7 +5471,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
   const VisibleRangeRow({
     required this.id,
     required this.scope,
+    required this.kind,
     required this.ownerId,
+    required this.name,
+    required this.position,
     required this.baseName,
     required this.basePresetId,
     required this.baseFilters,
@@ -5416,7 +5491,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['scope'] = Variable<String>(scope);
+    map['kind'] = Variable<String>(kind);
     map['ownerId'] = Variable<String>(ownerId);
+    map['name'] = Variable<String>(name);
+    map['position'] = Variable<int>(position);
     map['baseName'] = Variable<String>(baseName);
     map['basePresetId'] = Variable<String>(basePresetId);
     map['baseFilters'] = Variable<String>(baseFilters);
@@ -5436,7 +5514,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     return VisibleRangeRowsCompanion(
       id: Value(id),
       scope: Value(scope),
+      kind: Value(kind),
       ownerId: Value(ownerId),
+      name: Value(name),
+      position: Value(position),
       baseName: Value(baseName),
       basePresetId: Value(basePresetId),
       baseFilters: Value(baseFilters),
@@ -5460,7 +5541,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     return VisibleRangeRow(
       id: serializer.fromJson<String>(json['id']),
       scope: serializer.fromJson<String>(json['scope']),
+      kind: serializer.fromJson<String>(json['kind']),
       ownerId: serializer.fromJson<String>(json['ownerId']),
+      name: serializer.fromJson<String>(json['name']),
+      position: serializer.fromJson<int>(json['position']),
       baseName: serializer.fromJson<String>(json['baseName']),
       basePresetId: serializer.fromJson<String>(json['basePresetId']),
       baseFilters: serializer.fromJson<String>(json['baseFilters']),
@@ -5479,7 +5563,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'scope': serializer.toJson<String>(scope),
+      'kind': serializer.toJson<String>(kind),
       'ownerId': serializer.toJson<String>(ownerId),
+      'name': serializer.toJson<String>(name),
+      'position': serializer.toJson<int>(position),
       'baseName': serializer.toJson<String>(baseName),
       'basePresetId': serializer.toJson<String>(basePresetId),
       'baseFilters': serializer.toJson<String>(baseFilters),
@@ -5496,7 +5583,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
   VisibleRangeRow copyWith({
     String? id,
     String? scope,
+    String? kind,
     String? ownerId,
+    String? name,
+    int? position,
     String? baseName,
     String? basePresetId,
     String? baseFilters,
@@ -5510,7 +5600,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
   }) => VisibleRangeRow(
     id: id ?? this.id,
     scope: scope ?? this.scope,
+    kind: kind ?? this.kind,
     ownerId: ownerId ?? this.ownerId,
+    name: name ?? this.name,
+    position: position ?? this.position,
     baseName: baseName ?? this.baseName,
     basePresetId: basePresetId ?? this.basePresetId,
     baseFilters: baseFilters ?? this.baseFilters,
@@ -5526,7 +5619,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     return VisibleRangeRow(
       id: data.id.present ? data.id.value : this.id,
       scope: data.scope.present ? data.scope.value : this.scope,
+      kind: data.kind.present ? data.kind.value : this.kind,
       ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
+      name: data.name.present ? data.name.value : this.name,
+      position: data.position.present ? data.position.value : this.position,
       baseName: data.baseName.present ? data.baseName.value : this.baseName,
       basePresetId: data.basePresetId.present
           ? data.basePresetId.value
@@ -5555,7 +5651,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
     return (StringBuffer('VisibleRangeRow(')
           ..write('id: $id, ')
           ..write('scope: $scope, ')
+          ..write('kind: $kind, ')
           ..write('ownerId: $ownerId, ')
+          ..write('name: $name, ')
+          ..write('position: $position, ')
           ..write('baseName: $baseName, ')
           ..write('basePresetId: $basePresetId, ')
           ..write('baseFilters: $baseFilters, ')
@@ -5574,7 +5673,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
   int get hashCode => Object.hash(
     id,
     scope,
+    kind,
     ownerId,
+    name,
+    position,
     baseName,
     basePresetId,
     baseFilters,
@@ -5592,7 +5694,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
       (other is VisibleRangeRow &&
           other.id == this.id &&
           other.scope == this.scope &&
+          other.kind == this.kind &&
           other.ownerId == this.ownerId &&
+          other.name == this.name &&
+          other.position == this.position &&
           other.baseName == this.baseName &&
           other.basePresetId == this.basePresetId &&
           other.baseFilters == this.baseFilters &&
@@ -5608,7 +5713,10 @@ class VisibleRangeRow extends DataClass implements Insertable<VisibleRangeRow> {
 class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
   final Value<String> id;
   final Value<String> scope;
+  final Value<String> kind;
   final Value<String> ownerId;
+  final Value<String> name;
+  final Value<int> position;
   final Value<String> baseName;
   final Value<String> basePresetId;
   final Value<String> baseFilters;
@@ -5623,7 +5731,10 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
   const VisibleRangeRowsCompanion({
     this.id = const Value.absent(),
     this.scope = const Value.absent(),
+    this.kind = const Value.absent(),
     this.ownerId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.position = const Value.absent(),
     this.baseName = const Value.absent(),
     this.basePresetId = const Value.absent(),
     this.baseFilters = const Value.absent(),
@@ -5639,7 +5750,10 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
   VisibleRangeRowsCompanion.insert({
     required String id,
     required String scope,
+    this.kind = const Value.absent(),
     required String ownerId,
+    this.name = const Value.absent(),
+    this.position = const Value.absent(),
     this.baseName = const Value.absent(),
     this.basePresetId = const Value.absent(),
     this.baseFilters = const Value.absent(),
@@ -5659,7 +5773,10 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
   static Insertable<VisibleRangeRow> custom({
     Expression<String>? id,
     Expression<String>? scope,
+    Expression<String>? kind,
     Expression<String>? ownerId,
+    Expression<String>? name,
+    Expression<int>? position,
     Expression<String>? baseName,
     Expression<String>? basePresetId,
     Expression<String>? baseFilters,
@@ -5675,7 +5792,10 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (scope != null) 'scope': scope,
+      if (kind != null) 'kind': kind,
       if (ownerId != null) 'ownerId': ownerId,
+      if (name != null) 'name': name,
+      if (position != null) 'position': position,
       if (baseName != null) 'baseName': baseName,
       if (basePresetId != null) 'basePresetId': basePresetId,
       if (baseFilters != null) 'baseFilters': baseFilters,
@@ -5693,7 +5813,10 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
   VisibleRangeRowsCompanion copyWith({
     Value<String>? id,
     Value<String>? scope,
+    Value<String>? kind,
     Value<String>? ownerId,
+    Value<String>? name,
+    Value<int>? position,
     Value<String>? baseName,
     Value<String>? basePresetId,
     Value<String>? baseFilters,
@@ -5709,7 +5832,10 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     return VisibleRangeRowsCompanion(
       id: id ?? this.id,
       scope: scope ?? this.scope,
+      kind: kind ?? this.kind,
       ownerId: ownerId ?? this.ownerId,
+      name: name ?? this.name,
+      position: position ?? this.position,
       baseName: baseName ?? this.baseName,
       basePresetId: basePresetId ?? this.basePresetId,
       baseFilters: baseFilters ?? this.baseFilters,
@@ -5733,8 +5859,17 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     if (scope.present) {
       map['scope'] = Variable<String>(scope.value);
     }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
     if (ownerId.present) {
       map['ownerId'] = Variable<String>(ownerId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
     }
     if (baseName.present) {
       map['baseName'] = Variable<String>(baseName.value);
@@ -5777,7 +5912,10 @@ class VisibleRangeRowsCompanion extends UpdateCompanion<VisibleRangeRow> {
     return (StringBuffer('VisibleRangeRowsCompanion(')
           ..write('id: $id, ')
           ..write('scope: $scope, ')
+          ..write('kind: $kind, ')
           ..write('ownerId: $ownerId, ')
+          ..write('name: $name, ')
+          ..write('position: $position, ')
           ..write('baseName: $baseName, ')
           ..write('basePresetId: $basePresetId, ')
           ..write('baseFilters: $baseFilters, ')
@@ -6512,10 +6650,10 @@ class VisibleRangeRuleUsageRow extends DataClass
   final String id;
   final String rangeId;
 
-  /// Rule id, or empty for a base target.
+  /// Rule id, or empty for a legacy base target.
   final String targetId;
 
-  /// `base`, `restriction` or `supplement`.
+  /// `base` (the source section), `restriction` or `supplement`.
   final String kind;
   final int usedAt;
   const VisibleRangeRuleUsageRow({
@@ -13680,7 +13818,10 @@ typedef $$VisibleRangeRowsTableCreateCompanionBuilder =
     VisibleRangeRowsCompanion Function({
       required String id,
       required String scope,
+      Value<String> kind,
       required String ownerId,
+      Value<String> name,
+      Value<int> position,
       Value<String> baseName,
       Value<String> basePresetId,
       Value<String> baseFilters,
@@ -13697,7 +13838,10 @@ typedef $$VisibleRangeRowsTableUpdateCompanionBuilder =
     VisibleRangeRowsCompanion Function({
       Value<String> id,
       Value<String> scope,
+      Value<String> kind,
       Value<String> ownerId,
+      Value<String> name,
+      Value<int> position,
       Value<String> baseName,
       Value<String> basePresetId,
       Value<String> baseFilters,
@@ -13730,8 +13874,23 @@ class $$VisibleRangeRowsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get ownerId => $composableBuilder(
     column: $table.ownerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13805,8 +13964,23 @@ class $$VisibleRangeRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get ownerId => $composableBuilder(
     column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -13876,8 +14050,17 @@ class $$VisibleRangeRowsTableAnnotationComposer
   GeneratedColumn<String> get scope =>
       $composableBuilder(column: $table.scope, builder: (column) => column);
 
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
   GeneratedColumn<String> get ownerId =>
       $composableBuilder(column: $table.ownerId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
 
   GeneratedColumn<String> get baseName =>
       $composableBuilder(column: $table.baseName, builder: (column) => column);
@@ -13959,7 +14142,10 @@ class $$VisibleRangeRowsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> scope = const Value.absent(),
+                Value<String> kind = const Value.absent(),
                 Value<String> ownerId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int> position = const Value.absent(),
                 Value<String> baseName = const Value.absent(),
                 Value<String> basePresetId = const Value.absent(),
                 Value<String> baseFilters = const Value.absent(),
@@ -13974,7 +14160,10 @@ class $$VisibleRangeRowsTableTableManager
               }) => VisibleRangeRowsCompanion(
                 id: id,
                 scope: scope,
+                kind: kind,
                 ownerId: ownerId,
+                name: name,
+                position: position,
                 baseName: baseName,
                 basePresetId: basePresetId,
                 baseFilters: baseFilters,
@@ -13991,7 +14180,10 @@ class $$VisibleRangeRowsTableTableManager
               ({
                 required String id,
                 required String scope,
+                Value<String> kind = const Value.absent(),
                 required String ownerId,
+                Value<String> name = const Value.absent(),
+                Value<int> position = const Value.absent(),
                 Value<String> baseName = const Value.absent(),
                 Value<String> basePresetId = const Value.absent(),
                 Value<String> baseFilters = const Value.absent(),
@@ -14006,7 +14198,10 @@ class $$VisibleRangeRowsTableTableManager
               }) => VisibleRangeRowsCompanion.insert(
                 id: id,
                 scope: scope,
+                kind: kind,
                 ownerId: ownerId,
+                name: name,
+                position: position,
                 baseName: baseName,
                 basePresetId: basePresetId,
                 baseFilters: baseFilters,

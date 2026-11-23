@@ -1,6 +1,8 @@
 import 'dart:math';
 
+import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_pin.dart';
+import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/theme/icons.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:material_ui/material_ui.dart';
@@ -19,13 +21,13 @@ class VisibleRangeTargetGrid extends StatelessWidget {
   static int columnCountFor(double width) => max(1, (width / targetCellWidth).floor());
 
   final List<VisibleRangePinTarget> targets;
-  final Set<String> selectedRangeIds;
+  final Set<String> selectedTargetIds;
   final ValueChanged<VisibleRangePinTarget> onToggle;
 
   const new({
     super.key,
     required this.targets,
-    required this.selectedRangeIds,
+    required this.selectedTargetIds,
     required this.onToggle,
   });
 
@@ -47,9 +49,9 @@ class VisibleRangeTargetGrid extends StatelessWidget {
           itemBuilder: (context, index) {
             final target = targets[index];
             return _TargetCell(
-              key: ValueKey('pin-target-${target.rangeId}'),
+              key: ValueKey('pin-target-${target.id}'),
               target: target,
-              selected: selectedRangeIds.contains(target.rangeId),
+              selected: selectedTargetIds.contains(target.id),
               onTap: target.locked ? null : () => onToggle(target),
             );
           },
@@ -82,9 +84,11 @@ class _TargetCell extends StatelessWidget {
             ? colors.primaryContainer
             : colors.surfaceContainerHighest;
     final foreground = locked ? colors.onSurface.withValues(alpha: .38) : selected ? colors.onPrimaryContainer : colors.onSurfaceVariant;
-    final label = target.isGallery
-        ? context.l10n.visibleRangePinTargetGallery
-        : target.name;
+    final label = switch (target.kind) {
+      VisibleRangePinTargetKind.outside => target.role == VisibleRangeRuleKind.supplement ? context.l10n.visibleRangePinGroupSupplement : context.l10n.visibleRangePinGroupRestriction,
+      VisibleRangePinTargetKind.galleryGroup => target.name.isEmpty ? context.l10n.visibleRangePinTargetGallery : visibleRangePresetLabel(context, target.name.startsWith('@') ? target.name.substring(1) : target.name),
+      VisibleRangePinTargetKind.wallpaperGroup => target.name.startsWith('@') ? visibleRangePresetLabel(context, target.name.substring(1)) : target.name,
+    };
 
     return Material(
       color: background,

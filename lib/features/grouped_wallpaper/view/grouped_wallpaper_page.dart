@@ -1077,7 +1077,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       }
     } else if (_controller.activeStyle == VisibleRangeActiveStyle.section) {
       final active = buildWallpaperGroupSurfaceCandidates(range: activeRange, includeResult: true);
-      result[VisibleRangeActiveSectionKey(context, restricted: activeRange.isRestricted)] = [
+      result[VisibleRangeActiveSectionKey(context, restricted: activeRange.isRestricted())] = [
         for (final candidate in active) FilterGridItem<CollectionFilter>(VisibleRangeCandidateFilter(candidate, summary: true), null),
       ];
     }
@@ -1162,8 +1162,10 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
   Widget _buildFooter(BuildContext context) {
     final range = _controller.range;
     if (range == null) return const SizedBox();
-    final activeBase = range.baseActive && range.baseFilters.isNotEmpty ? VisibleRangeCandidate.customBase(name: range.baseName, filters: range.baseFilters) : null;
+    final sources = range.activeRulesOf(VisibleRangeRuleKind.source);
+    final activeBase = sources.isEmpty ? null : VisibleRangeCandidate.fromRule(sources.first);
     final activeRules = [
+      for (final rule in sources.skip(1)) VisibleRangeCandidate.fromRule(rule),
       for (final kind in range.order.isIntersectFirst ? [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement] : [VisibleRangeRuleKind.supplement, VisibleRangeRuleKind.restriction])
         for (final rule in range.activeRulesOf(kind)) VisibleRangeCandidate.fromRule(rule),
     ];
@@ -1258,12 +1260,12 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
           // 「All images」 clears this surface's base mark; the filters stay in the
           // pool for the other surface, so nothing is lost.
           final pool = _controller.pool;
-          if (pool != null && WallpaperConditionSurfaces.contains(pool.baseSurfaces, surface)) {
+          if (pool != null && pool.rulesOf(VisibleRangeRuleKind.source).any((rule) => WallpaperConditionSurfaces.contains(rule.surfaces, surface))) {
             unawaited(_controller.setBaseSurface(surface, false));
           }
         } else if (isWallpaperGroupBaseCandidate(candidate)) {
           final pool = _controller.pool;
-          final marked = pool != null && WallpaperConditionSurfaces.contains(pool.baseSurfaces, surface);
+          final marked = pool != null && pool.rulesOf(VisibleRangeRuleKind.source).any((rule) => WallpaperConditionSurfaces.contains(rule.surfaces, surface));
           unawaited(_controller.setBaseSurface(surface, !marked));
         }
       case VisibleRangeCandidateKind.restriction:
@@ -1608,7 +1610,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     final gallery = visibleRangeController.gallery;
     // Ignoring the gallery range is what the range's lock protects, so the entry
     // stays available and asks for the PIN; restoring never needs one.
-    final canSuspendGallery = gallery.isRestricted;
+    final canSuspendGallery = visibleRangeController.galleryRestricted;
     final engineActive = wallpaperEngineLink.isActive;
     return [
       // Draft actions come first: nothing below reaches the database until the
@@ -1712,7 +1714,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
       // the user came from. This is the only way to end the session, so the bar
       // entry and the group's browsing scope go away together.
       _menuItem(_PageAction.closePage, AIcons.cancel, l10n.wallpaperGroupClosePage),
-      if (gallery.isRestricted)
+      if (visibleRangeController.galleryRestricted)
         _menuItem(
           _PageAction.cancelGalleryRange,
           gallery.locked ? AIcons.locked : AIcons.visibleRangeActive,

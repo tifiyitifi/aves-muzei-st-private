@@ -26,6 +26,9 @@ import 'package:material_ui/material_ui.dart';
 /// sized like the grid above, so the footer does not shrink.
 class VisibleRangeActiveFooter extends StatelessWidget {
   final VisibleRange range;
+
+  /// The scope-wide pool that applies on top of [range], when one exists.
+  final VisibleRange? outside;
   final VisibleRangeCandidate? activeBase;
   final List<VisibleRangeCandidate> activeRules;
   final VisibleRangeActiveStyle style;
@@ -39,6 +42,7 @@ class VisibleRangeActiveFooter extends StatelessWidget {
   const new({
     super.key,
     required this.range,
+    this.outside,
     required this.activeBase,
     required this.activeRules,
     required this.style,
@@ -65,7 +69,7 @@ class VisibleRangeActiveFooter extends StatelessWidget {
     final l10n = context.l10n;
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final restricted = range.isRestricted;
+    final restricted = range.isRestricted(outside: outside);
     final candidates = _all.toList();
     return Padding(
       padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 8),

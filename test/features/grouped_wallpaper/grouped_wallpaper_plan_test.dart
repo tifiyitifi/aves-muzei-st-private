@@ -51,7 +51,7 @@ void main() {
     Set<CollectionFilter> base = const {},
     int baseSurfaces = WallpaperConditionSurfaces.home,
     List<VisibleRangeRule> rules = const [],
-  }) => VisibleRange(
+  }) => VisibleRange.legacy(
     id: wallpaperGroupRangeId(groupId),
     scope: VisibleRangeScope.wallpaper,
     ownerId: groupId,
@@ -98,8 +98,8 @@ void main() {
     // reaches the surface that marks it.
     expect(split.range?.baseFilters, {PathFilter('/dcim')});
     expect(split.lockRange?.baseFilters, {PathFilter('/dcim')});
-    expect(split.range?.rules.map((rule) => rule.id), ['r-home']);
-    expect(split.lockRange?.rules.map((rule) => rule.id), ['r-lock']);
+    expect(split.range?.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source).map((rule) => rule.id), ['r-home']);
+    expect(split.lockRange?.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source).map((rule) => rule.id), ['r-lock']);
     expect(split.hasLockRange, isTrue);
 
     await groups.saveGroups([group('a', current: true)]);

@@ -101,10 +101,8 @@ void main() {
       expect(controller.gallery.ruleById(rule.id)!.position, 0);
       // The unselected supplement is untouched.
       expect(controller.gallery.ruleById(other.id)!.filters, {favourite});
-      // The base becomes this range's own base: the shared preset is not edited.
-      expect(controller.gallery.baseFilters, {video});
-      expect(controller.gallery.basePresetId, isEmpty);
-      expect(controller.gallery.baseName, 'Night');
+      // The source condition the base became is overwritten in place.
+      expect(controller.gallery.rulesOf(VisibleRangeRuleKind.source).single.filters, {video});
       expect(controller.presets, isEmpty);
     });
 
@@ -135,9 +133,14 @@ void main() {
       controller.targetSource = source;
     });
 
-    test('the pin sheet lists the gallery first, then the groups', () async {
+    test('the pin sheet lists the gallery group, the outside roles, then the groups', () async {
       final targets = await controller.loadPinTargets();
-      expect(targets.map((target) => target.isGallery), [true, false]);
+      expect(targets.map((target) => target.kind), [
+        VisibleRangePinTargetKind.galleryGroup,
+        VisibleRangePinTargetKind.outside,
+        VisibleRangePinTargetKind.outside,
+        VisibleRangePinTargetKind.wallpaperGroup,
+      ]);
       expect(targets.last.rangeId, groupRangeId);
       expect(targets.last.number, 2);
     });
@@ -148,8 +151,7 @@ void main() {
           filters: {image},
           name: 'Pinned',
           description: 'now',
-          kinds: const {VisibleRangeCandidateKind.restriction},
-          targetRangeIds: {controller.gallery.id, groupRangeId},
+          targetIds: {controller.gallery.id, source.ranges.keys.single},
         ),
       );
 
@@ -165,8 +167,7 @@ void main() {
           filters: {image},
           name: 'Pinned',
           description: 'now',
-          kinds: const {VisibleRangeCandidateKind.restriction},
-          targetRangeIds: const {groupRangeId},
+          targetIds: const {groupRangeId},
         ),
       );
       expect(result.pinned, 0);
@@ -174,26 +175,24 @@ void main() {
       expect(source.ranges[groupRangeId]!.rules, isEmpty);
     });
 
-    test('a base pinned to a group is stored on the range, not in the preset catalog', () async {
+    test('a source pinned to a group is stored on the range, not in the preset catalog', () async {
       final result = await controller.pinFilters(
         VisibleRangePinRequest(
           filters: {image},
-          name: 'Pinned base',
+          name: 'Pinned source',
           description: 'now',
-          kinds: const {VisibleRangeCandidateKind.base},
-          targetRangeIds: const {groupRangeId},
+          targetIds: const {groupRangeId},
         ),
       );
 
       expect(result.pinned, 1);
       final range = source.ranges[groupRangeId]!;
-      expect(range.baseName, 'Pinned base');
-      expect(range.baseFilters, {image});
-      expect(range.baseActive, isTrue);
-      expect(range.basePresetId, isEmpty);
+      expect(range.rulesOf(VisibleRangeRuleKind.restriction).single.filters, {image});
+      // The group's first pin is enabled.
+      expect(range.rulesOf(VisibleRangeRuleKind.restriction).single.active, isTrue);
       // The gallery's preset catalog is not involved at all.
       expect(controller.presets, isEmpty);
-      expect(controller.gallery.baseFilters, isEmpty);
+      expect(controller.gallery.rules, isEmpty);
     });
 
     test('a group rule can be taken out and written back through the source', () async {
@@ -228,10 +227,11 @@ class _FakeTargetSource implements VisibleRangeTargetSource {
   Future<List<VisibleRangePinTarget>> loadPinTargets() async => [
         for (final entry in ranges.entries)
           VisibleRangePinTarget(
+            id: entry.key,
             rangeId: entry.key,
+            kind: VisibleRangePinTargetKind.wallpaperGroup,
             number: 2,
             name: '@wallpaperGroupDefaultDcim',
-            isGallery: false,
             locked: entry.value.locked,
           ),
       ];

@@ -26,3 +26,12 @@ built-in presets and materializes the built-in rules:
   comment).
 - Built-in rule ids are derived from the bundle id and must never be renumbered,
   or a renamed default would fork into two rules.
+
+## Amendment (2026-11-23)
+
+The pruning half is superseded by
+[`0005-visibility-groups.md`](0005-visibility-groups.md): built-in **groups** are
+re-added when missing but never pruned, because a group may carry user-authored
+conditions; only stale built-in rules in the outside pool are pruned. The
+"deleting a default is not permanent" consequence therefore no longer holds for
+groups.

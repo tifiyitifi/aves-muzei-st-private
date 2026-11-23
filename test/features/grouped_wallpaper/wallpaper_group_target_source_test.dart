@@ -11,7 +11,6 @@ import 'package:aves/features/visible_range/model/visible_range_pin.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
-import 'package:aves/model/filters/path.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,16 +52,16 @@ void main() {
 
   VisibleRangePinRequest request({
     Set<CollectionFilter> filters = const {},
-    Set<VisibleRangeCandidateKind> kinds = const {VisibleRangeCandidateKind.restriction},
     Set<String>? targets,
     String name = 'Pinned',
+    VisibleRangeInjectionMode injection = VisibleRangeInjectionMode.auto,
   }) {
     return VisibleRangePinRequest(
       filters: filters.isEmpty ? {MimeFilter.image} : filters,
       name: name,
       description: 'note',
-      kinds: kinds,
-      targetRangeIds: targets ?? {wallpaperGroupRangeId('a')},
+      targetIds: targets ?? {wallpaperGroupRangeId('a')},
+      injection: injection,
     );
   }
 
@@ -77,8 +76,8 @@ void main() {
     expect(groupTargets.map((target) => target.rangeId), isNot(contains(wallpaperGroupLockRangeId('a'))));
   });
 
-  test('a pinned restriction lands in the pool unmarked and does not reach a surface', () async {
-    final result = await ranges.pinFilters(request());
+  test('a parked restriction lands in the pool unmarked and does not reach a surface', () async {
+    final result = await ranges.pinFilters(request(injection: VisibleRangeInjectionMode.park));
 
     expect(result.pinned, 1);
     final pool = await groups.groupPool('a');
@@ -110,21 +109,26 @@ void main() {
     expect(pool.rules.single.surfaces, WallpaperConditionSurfaces.lock);
   });
 
-  test('a pinned base keeps the marks the pool already had', () async {
-    // An unmarked base stays unmarked: pinning never activates a surface.
-    await ranges.pinFilters(request(kinds: {VisibleRangeCandidateKind.base}, name: 'Base one'));
+  test('a parked pin keeps its surface marks through a re-pin', () async {
+    // A parked condition is stored but inert until the user marks a surface.
+    await ranges.pinFilters(request(name: 'Base one', injection: VisibleRangeInjectionMode.park));
     var pool = await groups.groupPool('a');
-    expect(pool.baseFilters, {MimeFilter.image});
-    expect(pool.baseSurfaces, 0);
+    expect(pool.rulesOf(VisibleRangeRuleKind.restriction).single.filters, {MimeFilter.image});
+    expect(pool.rulesOf(VisibleRangeRuleKind.restriction).single.surfaces, 0);
 
-    // Once Home uses a base, re-pinning its filters keeps that mark.
-    await groups.saveGroupPool(pool.copyWith(baseSurfaces: WallpaperConditionSurfaces.home));
-    await ranges.pinFilters(request(filters: {PathFilter('/pictures')}, kinds: {VisibleRangeCandidateKind.base}, name: 'Base two'));
+    // Once Home uses it, re-pinning the same filters keeps that mark.
+    await groups.saveGroupPool(
+      pool.copyWith(
+        rules: [
+          for (final rule in pool.rules) rule.kind == VisibleRangeRuleKind.restriction ? rule.copyWith(surfaces: WallpaperConditionSurfaces.home) : rule,
+        ],
+      ),
+    );
+    await ranges.pinFilters(request(name: 'Base one', injection: VisibleRangeInjectionMode.park));
 
     pool = await groups.groupPool('a');
-    expect(pool.baseName, 'Base two');
-    expect(pool.baseFilters, {PathFilter('/pictures')});
-    expect(pool.baseSurfaces, WallpaperConditionSurfaces.home);
+    expect(pool.rulesOf(VisibleRangeRuleKind.restriction).single.label, 'Base one');
+    expect(pool.rulesOf(VisibleRangeRuleKind.restriction).single.surfaces, WallpaperConditionSurfaces.home);
   });
 
   test('a historical lock range id resolves and saves as the pool', () async {
@@ -134,11 +138,12 @@ void main() {
     expect((await source.loadRange(wallpaperGroupLockRangeId('a')))?.id, pool.id);
 
     // A writer that still builds a lock projection cannot create a second row.
-    final legacy = VisibleRange(
+    final legacy = VisibleRange.legacy(
       id: wallpaperGroupLockRangeId('a'),
       scope: VisibleRangeScope.wallpaper,
       ownerId: wallpaperGroupLockOwnerId('a'),
       baseName: 'Legacy base',
+      baseFilters: {MimeFilter.image},
     );
     await source.saveRange(legacy);
 
@@ -146,7 +151,8 @@ void main() {
     expect(saved.id, pool.id);
     expect(saved.ownerId, 'a');
     expect(saved.baseName, 'Legacy base');
-    expect(saved.rules, isEmpty);
+    expect(saved.rulesOf(VisibleRangeRuleKind.source).single.filters, {MimeFilter.image});
+    expect(saved.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source), isEmpty);
   });
 
   test('a write-back addressed through the lock id still names its group', () async {

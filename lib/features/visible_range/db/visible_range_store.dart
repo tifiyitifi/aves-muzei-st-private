@@ -9,8 +9,21 @@ import 'package:drift/drift.dart';
 /// Persistence for visible ranges. Every read is scope+owner qualified, so the
 /// gallery and the wallpaper groups can never leak into each other.
 class VisibleRangeStore {
-  /// Key of the persisted gallery range id (the gallery keeps one range).
+  /// Key of the current gallery group id.
+  ///
+  /// The gallery keeps several mutually exclusive groups; browsing uses exactly
+  /// one. The pointer lives in the feature's key/value table so adding a group
+  /// never moves a range.
+  static const keyCurrentGalleryGroupId = 'gallery.current';
+
+  /// Legacy key of the single gallery range id, read once by the v19 migration.
   static const keyGalleryRangeId = 'gallery.rangeId';
+
+  /// Key of the remembered pin injection mode.
+  static const keyPinInjectionMode = 'pin.injection.mode';
+
+  /// Key of whether the pin sheet remembers the injection mode.
+  static const keyPinInjectionRemembered = 'pin.injection.remembered';
 
   /// Key of the last permissions preset, reused by the quick lock.
   static const keyLastLockPreset = 'lock.preset';
@@ -52,6 +65,23 @@ class VisibleRangeStore {
     return _toRange(row, rules);
   }
 
+  /// Every group of [scope], in display order.
+  Future<List<VisibleRange>> loadGroups(VisibleRangeScope scope) async {
+    final query = db.select(db.visibleRangeRows)
+      ..where((t) => t.scope.equals(scope.name) & t.kind.equals(VisibleRangeGroupKind.group.name))
+      ..orderBy([(t) => OrderingTerm.asc(t.position), (t) => OrderingTerm.asc(t.createdAt)]);
+    final rows = await query.get();
+    return [for (final row in rows) _toRange(row, await loadRules(row.id))];
+  }
+
+  /// The scope-wide outside pool, or null when it has not been created yet.
+  Future<VisibleRange?> loadOutside(VisibleRangeScope scope) async {
+    final query = db.select(db.visibleRangeRows)..where((t) => t.scope.equals(scope.name) & t.kind.equals(VisibleRangeGroupKind.outside.name));
+    final row = await query.getSingleOrNull();
+    if (row == null) return null;
+    return _toRange(row, await loadRules(row.id));
+  }
+
   Future<void> saveRange(VisibleRange range) async {
     // A range and its rules are one aggregate: every caller reads them back
     // together, so a rule edit must be written with the range instead of
@@ -61,14 +91,12 @@ class VisibleRangeStore {
         VisibleRangeRowsCompanion.insert(
           id: range.id,
           scope: range.scope.name,
+          kind: Value(range.kind.name),
           ownerId: range.ownerId,
+          name: Value(range.name),
+          position: Value(range.position),
           createdAt: range.createdAt,
           updatedAt: range.updatedAt,
-          baseName: Value(range.baseName),
-          basePresetId: Value(range.basePresetId),
-          baseFilters: Value(VisibleRangeFilterCodec.encode(range.baseFilters)),
-          baseActive: Value(range.baseActive),
-          baseSurfaces: Value(range.baseSurfaces),
           orderMode: Value(range.order.name),
           locked: Value(range.locked),
           permissions: Value(range.locked ? _encodePermissions(range.permissions) : null),
@@ -229,12 +257,10 @@ class VisibleRangeStore {
     return VisibleRange(
       id: row.id,
       scope: VisibleRangeScope.parse(row.scope),
+      kind: VisibleRangeGroupKind.parse(row.kind),
       ownerId: row.ownerId,
-      baseName: row.baseName,
-      basePresetId: row.basePresetId,
-      baseFilters: VisibleRangeFilterCodec.decode(row.baseFilters),
-      baseActive: row.baseActive,
-      baseSurfaces: row.baseSurfaces,
+      name: row.name,
+      position: row.position,
       rules: rules,
       order: VisibleRangeOrder.parse(row.orderMode),
       locked: row.locked,

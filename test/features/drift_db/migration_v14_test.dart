@@ -31,7 +31,8 @@ void main() {
     final base = await db.customSelect("SELECT baseSurfaces FROM visible_ranges WHERE id = 'g1'").getSingle();
     expect(base.data['baseSurfaces'], 3);
 
-    final rules = await db.customSelect('SELECT id, surfaces FROM visible_range_rules ORDER BY id').get();
+    // v19 adds a `source` rule for the base; the folded restriction is still one.
+    final rules = await db.customSelect("SELECT id, surfaces FROM visible_range_rules WHERE kind <> 'source' ORDER BY id").get();
     expect(rules, hasLength(1), reason: 'the identical lock rule folds into the home one');
     expect(rules.single.data['id'], 'r-home');
     expect(rules.single.data['surfaces'], 3);

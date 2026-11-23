@@ -197,17 +197,27 @@ class WallpaperGroupController extends ChangeNotifier {
           updatedAt: now,
         ),
       );
+      final poolId = wallpaperGroupRangeId(definition.id);
       await ranges.saveRange(
         VisibleRange(
-          id: wallpaperGroupRangeId(definition.id),
+          id: poolId,
           scope: VisibleRangeScope.wallpaper,
           ownerId: definition.id,
-          // A base name is only shown when the base is not 「unrestricted」.
-          baseName: definition.filters.isEmpty ? '' : '@${definition.nameKey}',
-          baseFilters: definition.filters,
-          // The base starts on home; the seed pass below also marks it for lock,
-          // so enabling the split never re-copies the home marks.
-          baseSurfaces: definition.filters.isEmpty ? 0 : WallpaperConditionSurfaces.home,
+          // The group's filters are its source condition. It starts on home; the
+          // seed pass below also marks it for lock, so enabling the split never
+          // re-copies the home marks.
+          rules: definition.filters.isEmpty
+              ? const []
+              : [
+                  VisibleRangeRule(
+                    id: 'builtin.source.${definition.id}',
+                    rangeId: poolId,
+                    kind: VisibleRangeRuleKind.source,
+                    label: '@${definition.nameKey}',
+                    filters: definition.filters,
+                    surfaces: WallpaperConditionSurfaces.home,
+                  ),
+                ],
           createdAt: now,
           updatedAt: now,
         ),
@@ -270,11 +280,16 @@ class WallpaperGroupController extends ChangeNotifier {
       );
     }
     if (seeded.isEmpty) return pool;
-    final usesBase = pool.baseFilters.isNotEmpty;
+    // A lock mark is only meaningful on a source that exists; the source
+    // conditions are marked as a set, like the old base slot.
     return pool.copyWith(
-      // A lock mark on the base is only meaningful when there is a base to use.
-      baseSurfaces: usesBase ? WallpaperConditionSurfaces.withSurface(pool.baseSurfaces, WallpaperSurface.lock, true) : pool.baseSurfaces,
-      rules: [...pool.rules, ...seeded],
+      rules: [
+        for (final rule in pool.rules)
+          rule.kind == VisibleRangeRuleKind.source
+              ? rule.copyWith(surfaces: WallpaperConditionSurfaces.withSurface(rule.surfaces, WallpaperSurface.lock, true))
+              : rule,
+        ...seeded,
+      ],
       updatedAt: now,
     );
   }
@@ -459,11 +474,6 @@ class WallpaperGroupController extends ChangeNotifier {
         id: poolId,
         scope: VisibleRangeScope.wallpaper,
         ownerId: groupId,
-        baseName: range.baseName,
-        basePresetId: range.basePresetId,
-        baseFilters: range.baseFilters,
-        baseActive: range.baseActive,
-        baseSurfaces: range.baseSurfaces,
         // Rules must carry the pool's id: the store inserts them under
         // `rule.rangeId`, so a legacy lock-addressed rule would otherwise be
         // written where reading the pool never finds it.
@@ -606,11 +616,7 @@ class WallpaperGroupController extends ChangeNotifier {
       id: id,
       scope: VisibleRangeScope.wallpaper,
       ownerId: groupId,
-      baseName: source.baseName,
-      basePresetId: source.basePresetId,
-      baseFilters: source.baseFilters,
-      baseActive: source.baseActive,
-      baseSurfaces: source.baseSurfaces,
+      name: source.name,
       rules: [
         for (final rule in source.rules)
           VisibleRangeRule(
@@ -834,7 +840,6 @@ class WallpaperGroupController extends ChangeNotifier {
     // stays true: the pool never hides a condition behind a second switch.
     final next = pool.copyWith(
       updatedAt: now,
-      baseActive: true,
       rules: [
         for (final rule in pool.rules) rule.copyWith(active: true),
       ],
@@ -922,9 +927,7 @@ class WallpaperGroupController extends ChangeNotifier {
   static VisibleRange _seedLockSurface(VisibleRange pool) {
     const home = WallpaperSurface.home;
     const lock = WallpaperSurface.lock;
-    final usesBase = WallpaperConditionSurfaces.contains(pool.baseSurfaces, home) && pool.baseFilters.isNotEmpty;
     return pool.copyWith(
-      baseSurfaces: WallpaperConditionSurfaces.withSurface(pool.baseSurfaces, lock, usesBase),
       rules: [
         for (final rule in pool.rules)
           rule.copyWith(

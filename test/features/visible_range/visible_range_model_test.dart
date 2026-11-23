@@ -11,8 +11,8 @@ import 'package:aves/services/common/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
-/// Evaluation of a visible range: two group orders, unrestricted bases, the
-/// "restricted" rule, and the applied-target helpers.
+/// Evaluation of a visibility group: the three roles, the two orders, the
+/// scope-wide outside layer and the "restricted" rule.
 void main() {
   setUpAll(() {
     getIt.registerLazySingleton<p.Context>(() => p.Context(style: p.Style.posix));
@@ -25,53 +25,58 @@ void main() {
   const favourite = FavouriteFilter.instance;
   CollectionFilter albumA() => PathFilter('/a');
 
-  VisibleRange range({
-    Set<CollectionFilter> base = const {},
-    bool baseActive = true,
-    List<VisibleRangeRule> rules = const [],
-    VisibleRangeOrder order = VisibleRangeOrder.intersectFirst,
-  }) {
-    return VisibleRange(
-      id: 'r',
-      scope: VisibleRangeScope.gallery,
-      ownerId: VisibleRange.galleryOwnerId,
-      baseFilters: base,
-      baseActive: baseActive,
-      rules: rules,
-      order: order,
-    );
-  }
-
   VisibleRangeRule rule(String id, VisibleRangeRuleKind kind, Set<CollectionFilter> filters, {bool active = true, int position = 0}) {
     return VisibleRangeRule(id: id, rangeId: 'r', kind: kind, position: position, filters: filters, active: active);
   }
 
+  VisibleRange range({
+    Set<CollectionFilter> sources = const {},
+    bool sourceActive = true,
+    Set<CollectionFilter> restrictions = const {},
+    List<VisibleRangeRule> rules = const [],
+    VisibleRangeOrder order = VisibleRangeOrder.intersectFirst,
+  }) {
+    final sourceRules = sources.isEmpty ? const <VisibleRangeRule>[] : [rule('source', VisibleRangeRuleKind.source, sources, active: sourceActive)];
+    final restrictionRules = restrictions.isEmpty ? const <VisibleRangeRule>[] : [rule('restriction', VisibleRangeRuleKind.restriction, restrictions)];
+    return VisibleRange(
+      id: 'r',
+      scope: VisibleRangeScope.gallery,
+      ownerId: VisibleRange.galleryOwnerId,
+      rules: [...sourceRules, ...restrictionRules, ...rules],
+      order: order,
+    );
+  }
+
+  VisibleRange outside({List<VisibleRangeRule> rules = const []}) => VisibleRange(
+    id: VisibleRange.galleryOutsideId,
+    scope: VisibleRangeScope.gallery,
+    kind: VisibleRangeGroupKind.outside,
+    ownerId: VisibleRange.galleryOutsideId,
+    rules: rules,
+  );
+
   group('evaluation', () {
     test('an empty range restricts nothing', () {
       expect(range().resolve(), isNull);
-      expect(range().isRestricted, isFalse);
+      expect(range().isRestricted(), isFalse);
     });
 
-    test('a switched-off base does not restrict and keeps its filters', () {
-      final off = range(base: {image}, baseActive: false);
-      expect(off.baseFilters, {image});
+    test('a switched-off source does not restrict and keeps its filters', () {
+      final off = range(sources: {image}, sourceActive: false);
+      expect(off.rulesOf(VisibleRangeRuleKind.source).single.filters, {image});
       expect(off.resolve(), isNull);
-      expect(off.isBaseUnrestricted, isTrue);
-      expect(off.isRestricted, isFalse);
-      expect(off.isUnrestricted, isTrue);
-      // Rules still apply on their own, like on an unrestricted base.
-      final withRestriction = range(base: {image}, baseActive: false, rules: [rule('r1', VisibleRangeRuleKind.restriction, {favourite})]);
+      expect(off.isRestricted(), isFalse);
+      expect(off.isUnrestricted(), isTrue);
+      final withRestriction = range(sources: {image}, sourceActive: false, restrictions: {favourite});
       expect(withRestriction.resolve(), favourite);
-      expect(withRestriction.isRestricted, isTrue);
+      expect(withRestriction.isRestricted(), isTrue);
     });
 
-    test('intersect-first combines base AND restrictions, then OR supplements', () {
+    test('intersect-first combines sources AND restrictions, then OR supplements', () {
       final resolved = range(
-        base: {image},
-        rules: [
-          rule('r1', VisibleRangeRuleKind.restriction, {favourite}),
-          rule('r2', VisibleRangeRuleKind.supplement, {video}),
-        ],
+        sources: {image},
+        restrictions: {favourite},
+        rules: [rule('s1', VisibleRangeRuleKind.supplement, {video})],
       ).resolve();
 
       expect(resolved, isA<SetOrFilter>());
@@ -83,11 +88,9 @@ void main() {
 
     test('union-first ORs supplements first, then ANDs restrictions', () {
       final resolved = range(
-        base: {image},
-        rules: [
-          rule('r1', VisibleRangeRuleKind.restriction, {favourite}),
-          rule('r2', VisibleRangeRuleKind.supplement, {video}),
-        ],
+        sources: {image},
+        restrictions: {favourite},
+        rules: [rule('s1', VisibleRangeRuleKind.supplement, {video})],
         order: VisibleRangeOrder.unionFirst,
       ).resolve();
 
@@ -98,61 +101,82 @@ void main() {
       expect(union.innerFilters, {image, video});
     });
 
-    test('an unrestricted base is a no-op in both orders', () {
-      final restrictionOnly = [rule('r1', VisibleRangeRuleKind.restriction, {favourite})];
-      expect(range(rules: restrictionOnly).resolve(), favourite);
-      expect(range(rules: restrictionOnly, order: VisibleRangeOrder.unionFirst).resolve(), favourite);
+    test('an unrestricted source is a no-op in both orders', () {
+      final restrictionOnly = {favourite};
+      expect(range(restrictions: restrictionOnly).resolve(), favourite);
+      expect(range(restrictions: restrictionOnly, order: VisibleRangeOrder.unionFirst).resolve(), favourite);
     });
 
     test('a supplement alone never restricts browsing', () {
       final supplementOnly = [rule('s1', VisibleRangeRuleKind.supplement, {video})];
-      // Intersect-first widens without narrowing; union-first is everything.
-      expect(range(rules: supplementOnly).resolve(), video);
+      // A supplement can only add back; with nothing to add to, the group is
+      // still everything, in both orders.
+      expect(range(rules: supplementOnly).resolve(), isNull);
       expect(range(rules: supplementOnly, order: VisibleRangeOrder.unionFirst).resolve(), isNull);
-      expect(range(rules: supplementOnly).isRestricted, isFalse);
+      expect(range(rules: supplementOnly).isRestricted(), isFalse);
     });
 
     test('inactive rules do not contribute', () {
       final inactive = [rule('r1', VisibleRangeRuleKind.restriction, {favourite}, active: false)];
-      expect(range(base: {image}, rules: inactive).resolve(), image);
-      expect(range(base: {image}, rules: inactive).isRestricted, isTrue);
+      expect(range(sources: {image}, rules: inactive).resolve(), image);
+      expect(range(sources: {image}, rules: inactive).isRestricted(), isTrue);
     });
 
-    test('restricted is decided by the base and restrictions only', () {
-      expect(range(base: {albumA()}).isRestricted, isTrue);
-      expect(range(base: {albumA()}).isRestricted, isTrue);
-      expect(range(rules: [rule('r1', VisibleRangeRuleKind.restriction, {favourite})]).isRestricted, isTrue);
-      expect(range(rules: [rule('s1', VisibleRangeRuleKind.supplement, {favourite})]).isRestricted, isFalse);
-      expect(range().isUnrestricted, isTrue);
+    test('several sources are a union, not a narrower conjunction', () {
+      final resolved = range(
+        sources: {albumA()},
+        rules: [
+          rule('source.2', VisibleRangeRuleKind.source, {image}, position: 1),
+        ],
+      ).resolve();
+      expect(resolved, isA<SetOrFilter>());
+      expect((resolved as SetOrFilter).innerFilters, {albumA(), image});
+    });
+
+    test('restricted is decided by the sources and restrictions only', () {
+      expect(range(sources: {albumA()}).isRestricted(), isTrue);
+      expect(range(restrictions: {favourite}).isRestricted(), isTrue);
+      expect(range(rules: [rule('s1', VisibleRangeRuleKind.supplement, {favourite})]).isRestricted(), isFalse);
+      expect(range().isUnrestricted(), isTrue);
     });
 
     test('every rule filter is AND-ed inside its rule', () {
       final resolved = range(
-        base: {image},
-        rules: [rule('r1', VisibleRangeRuleKind.restriction, {favourite, albumA()})],
+        sources: {image},
+        restrictions: {favourite, albumA()},
       ).resolve();
       expect((resolved as SetAndFilter).innerFilters, {image, favourite, albumA()});
     });
+  });
 
-    test('the step queries mirror the evaluation order', () {
-      final underTest = range(
-        base: {image},
-        rules: [
-          rule('r1', VisibleRangeRuleKind.restriction, {favourite}),
-          rule('r2', VisibleRangeRuleKind.supplement, {video}),
-        ],
+  group('outside layer', () {
+    test('applies last: group AND outside restrictions, then outside supplements', () {
+      final resolved = range(sources: {albumA()}, restrictions: {image}).resolve(
+        outside: outside(rules: [
+          rule('or1', VisibleRangeRuleKind.restriction, {favourite}),
+          rule('os1', VisibleRangeRuleKind.supplement, {video}),
+        ]),
       );
-      expect(underTest.resolvedBase, image);
-      // Intersect-first: base AND restrictions, before supplements.
-      expect((underTest.resolvedIntermediate! as SetAndFilter).innerFilters, {image, favourite});
-      // Union-first: base OR supplements, before restrictions.
-      expect((underTest.copyWith(order: VisibleRangeOrder.unionFirst).resolvedIntermediate! as SetOrFilter).innerFilters, {image, video});
+      // (A AND image AND favourite) OR video
+      expect(resolved, isA<SetOrFilter>());
+      final members = (resolved as SetOrFilter).innerFilters;
+      expect(members, contains(video));
+      expect(members.whereType<SetAndFilter>().single.innerFilters, {albumA(), image, favourite});
     });
 
-    test('an unrestricted base has no intermediate in union-first', () {
-      final underTest = range(rules: [rule('s1', VisibleRangeRuleKind.supplement, {video})], order: VisibleRangeOrder.unionFirst);
-      expect(underTest.resolvedBase, isNull);
-      expect(underTest.resolvedIntermediate, isNull);
+    test('an outside supplement cannot restrict an otherwise unrestricted group', () {
+      expect(range().resolve(outside: outside(rules: [rule('os1', VisibleRangeRuleKind.supplement, {video})])), isNull);
+    });
+
+    test('an outside restriction narrows even when the group has no source', () {
+      expect(range().resolve(outside: outside(rules: [rule('or1', VisibleRangeRuleKind.restriction, {favourite})])), favourite);
+      expect(range().isRestricted(outside: outside(rules: [rule('or1', VisibleRangeRuleKind.restriction, {favourite})])), isTrue);
+    });
+
+    test('the outside pool has no source role', () {
+      expect(VisibleRangeRuleKind.source.isOutsideAllowed, isFalse);
+      expect(VisibleRangeRuleKind.restriction.isOutsideAllowed, isTrue);
+      expect(VisibleRangeRuleKind.supplement.isOutsideAllowed, isTrue);
     });
   });
 
@@ -164,16 +188,14 @@ void main() {
   });
 
   group('applied targets', () {
-    test('a rule target keeps its global id and kind', () {
-      final usage = VisibleRangeRuleUsage.forRule(ruleId: 'rule.7', rangeId: 'gallery', kind: VisibleRangeRuleKind.supplement, usedAt: 3);
+    test('a source rule target maps to the source section', () {
+      final usage = VisibleRangeRuleUsage.forRule(ruleId: 'rule.7', rangeId: 'gallery', kind: VisibleRangeRuleKind.source, usedAt: 3);
       expect(usage.id, 'rule.rule.7');
-      expect(usage.targetId, 'rule.7');
-      expect(usage.rangeId, 'gallery');
-      expect(usage.kind, VisibleRangeCandidateKind.supplement);
+      expect(usage.kind, VisibleRangeCandidateKind.base);
       expect(usage.isBase, isFalse);
     });
 
-    test('a base target is addressed by its range', () {
+    test('a legacy base target is addressed by its range', () {
       final usage = VisibleRangeRuleUsage.forBase(rangeId: 'group.1.range', usedAt: 4);
       expect(usage.id, 'base.group.1.range');
       expect(usage.targetId, isEmpty);

@@ -1,9 +1,10 @@
 # Visible range
 
-A saved filter expression applied to browsing: a base condition, AND-ed
-restrictions, optional OR-ed supplements, and a casual lock that freezes what the
-current session may change. One range belongs to the gallery; each wallpaper
-group owns its own.
+Visibility groups applied to browsing. A group holds OR-ed **sources**, AND-ed
+**restrictions** and OR-ed **supplements**; the gallery owns several mutually
+exclusive groups plus one shared outside pool, and each wallpaper group owns one
+group whose conditions are marked per surface. A casual lock freezes the whole
+scope the current session may change.
 
 Status: **in progress**. The range model, the page, the lock and the wallpaper
 integration are on `avest-dev`; nothing is released yet.
@@ -12,16 +13,19 @@ integration are on `avest-dev`; nothing is released yet.
 
 In scope:
 
-- one gallery range and one range per wallpaper group, isolated by scope + owner;
-- a base condition (mutually exclusive presets) plus restriction and supplement
-  rules;
+- several mutually exclusive gallery groups plus one shared outside pool, and one
+  group per wallpaper group, isolated by scope + owner;
+- source (OR), restriction (AND) and supplement (OR) conditions inside a group;
 - two evaluation orders, inherited from the old scenario chips;
+- pinning a media set into a group (automatic split, optional forced role) or into
+  the outside pool, with an inject-and-enable / inject-only policy;
 - applying candidates to the media set (append by default, replace for a rule);
 - writing the current filters back over the rules a pin sheet targets;
-- a lock with three permission presets, enforced on browsing and on mutations;
-- the wallpaper page's browsing overlay, which joins the gallery range instead of
+- a lock with three permission presets that freezes a whole scope: the gallery's
+  groups and outside pool, or the wallpaper group set;
+- the wallpaper page's browsing overlay, which joins the gallery group instead of
   replacing it;
-- bundled default presets and rules, versioned and re-seeded on a bump.
+- bundled default groups and outside rules, versioned and re-seeded on a bump.
 
 Out of scope:
 
@@ -35,15 +39,18 @@ Out of scope:
 | Fact | Value |
 | --- | --- |
 | Scopes | `gallery`, `wallpaper` |
+| Range kinds | `group`, `outside` |
 | Orders | `intersectFirst`, `unionFirst` |
-| Rule kinds | `restriction`, `supplement` |
+| Rule kinds | `source`, `restriction`, `supplement` |
+| Injection modes | `auto`, `enable`, `park` |
+| Pin write modes | `append`, `replace` |
 | Lock presets | `readOnly`, `manageable`, `full` |
 | Active styles | `section`, `compactChips`, `tiles` |
 | Defaults bundle | `assets/visible_range_presets.json` |
-| Defaults version | 4 (`VisibleRangeStore.defaultsVersion`) |
-| Store keys | `gallery.rangeId`, `lock.preset`, `seeded`, `defaults.version`, `view.activeStyle` |
-| Migrations | v5 tables, v6 descriptions, v9 base activation flag |
-| Entry points | visible-range page, gallery chip, wallpaper group page |
+| Defaults version | 5 (`VisibleRangeStore.defaultsVersion`) |
+| Store keys | `gallery.current`, `lock.preset`, `seeded`, `defaults.version`, `view.activeStyle`, `pin.injection.mode`, `pin.injection.remembered` |
+| Migrations | v5 tables, v6 descriptions, v9 base activation flag, v19 visibility groups |
+| Entry points | visible-range page, gallery chip, pin sheet, wallpaper group page |
 | Rule check | `scripts/check-visible-range-rules.ps1` |
 
 ## Reading order

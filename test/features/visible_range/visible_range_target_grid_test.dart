@@ -21,13 +21,17 @@ void main() {
     });
   });
 
-  VisibleRangePinTarget target(int number, {bool gallery = false, bool locked = false}) => VisibleRangePinTarget(
-        rangeId: gallery ? 'gallery' : 'wallpaper.$number',
-        number: number,
-        name: gallery ? '' : 'Group $number',
-        isGallery: gallery,
-        locked: locked,
-      );
+  VisibleRangePinTarget target(int number, {bool gallery = false, bool locked = false}) {
+    final id = gallery ? 'gallery' : 'wallpaper.$number';
+    return VisibleRangePinTarget(
+      id: id,
+      rangeId: id,
+      kind: gallery ? VisibleRangePinTargetKind.galleryGroup : VisibleRangePinTargetKind.wallpaperGroup,
+      number: number,
+      name: gallery ? '' : 'Group $number',
+      locked: locked,
+    );
+  }
 
   Widget wrap(Widget child) => MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -46,7 +50,7 @@ void main() {
       wrap(
         VisibleRangeTargetGrid(
           targets: targets,
-          selectedRangeIds: const {'gallery'},
+          selectedTargetIds: const {'gallery'},
           onToggle: (t) => toggled.add(t.rangeId),
         ),
       ),
@@ -68,7 +72,7 @@ void main() {
       wrap(
         VisibleRangeTargetGrid(
           targets: [target(0, gallery: true, locked: true)],
-          selectedRangeIds: const {},
+          selectedTargetIds: const {},
           onToggle: (t) => toggled.add(t.rangeId),
         ),
       ),

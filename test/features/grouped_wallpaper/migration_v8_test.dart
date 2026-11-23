@@ -93,9 +93,10 @@ void main() {
     final groups = await WallpaperGroupStore(db).loadGroups();
     expect(groups.single.name, 'Trips');
     expect(groups.single.description, isEmpty);
-    final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId);
-    expect(range!.rules.single.label, 'Mine');
-    expect(range.rules.single.description, 'keep me');
+    // v19 moved the old scope-wide rules to the shared outside pool.
+    final outside = await VisibleRangeStore(db).loadOutside(VisibleRangeScope.gallery);
+    expect(outside!.rules.single.label, 'Mine');
+    expect(outside.rules.single.description, 'keep me');
     expect(await db.select(db.visibleRangeRuleUsageRows).get(), isEmpty);
 
     final indexes = (await db.customSelect("SELECT name FROM sqlite_master WHERE type = 'index'").get()).map((row) => row.data['name']).toSet();

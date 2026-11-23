@@ -96,6 +96,7 @@ Future<VisibleRangeRuleAction?> showVisibleRangeRuleActions(
 String visibleRangeRuleKindLabel(BuildContext context, VisibleRangeRuleKind kind) {
   final l10n = context.l10n;
   return switch (kind) {
+    VisibleRangeRuleKind.source => l10n.visibleRangeRuleKindBase,
     VisibleRangeRuleKind.restriction => l10n.visibleRangeRuleKindRestriction,
     VisibleRangeRuleKind.supplement => l10n.visibleRangeRuleKindSupplement,
   };

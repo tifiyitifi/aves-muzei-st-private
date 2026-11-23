@@ -28,14 +28,19 @@ void main() {
     return result;
   }
 
-  VisibleRange range({String baseName = '', Set<CollectionFilter> baseFilters = const {}, List<VisibleRangeRule> rules = const []}) => VisibleRange(
-        id: 'wallpaper.group.1.range',
-        scope: VisibleRangeScope.wallpaper,
-        ownerId: '1',
-        baseName: baseName,
-        baseFilters: baseFilters,
-        rules: rules,
-      );
+  VisibleRange range({String baseName = '', Set<CollectionFilter> baseFilters = const {}, List<VisibleRangeRule> rules = const []}) {
+    const rangeId = 'wallpaper.group.1.range';
+    return VisibleRange(
+      id: rangeId,
+      scope: VisibleRangeScope.wallpaper,
+      ownerId: '1',
+      rules: [
+        if (baseFilters.isNotEmpty)
+          VisibleRangeRule(id: 'source', rangeId: rangeId, kind: VisibleRangeRuleKind.source, label: baseName, filters: baseFilters),
+        ...rules,
+      ],
+    );
+  }
 
   VisibleRangeRule rule(String id, VisibleRangeRuleKind kind, {bool active = true}) => VisibleRangeRule(
         id: id,

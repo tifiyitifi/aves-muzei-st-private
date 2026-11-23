@@ -86,6 +86,45 @@ mutation to the permission it needs, and returns true immediately for an unlocke
 range, so callers need no separate check. The lock is casual protection inside
 Aves and is documented as such in the UI.
 
+## Visibility groups: three tiers, one formula
+
+A gallery scope stores N mutually exclusive groups plus one `outside` row; a
+wallpaper group stores exactly one group. Every condition is a rule with one of
+three roles: `source` (OR between rules, AND inside a rule), `restriction` (AND)
+and `supplement` (OR).
+
+`resolve()` evaluates the group with its own order, then applies the outside pool
+last:
+
+```
+group   = (sources AND restrictions) OR supplements        // or the union-first variant
+browsing = (group AND outsideRestrictions) OR outsideSupplements
+```
+
+The exclusive/multi-select difference is not a second model: it is a guard on the
+enable toggle. The gallery enables exactly one source per group; wallpaper groups
+mark conditions per surface. `WallpaperConditionSurfaces` is the only place that
+knows Home is `1` and Lock is `2`.
+
+The gallery lock therefore freezes the scope, not one row: switching groups,
+creating groups, editing any condition and editing the outside pool all ask the
+same gate. The wallpaper group lock hides the other groups and freezes every
+group, the locked one included.
+
+## Pinning is a split, not a dump
+
+A pinned media set is split with `splitVisibleRangePin`: a source-only union
+becomes one source per member, every other positive source stays one conjunctive
+source, and the rest becomes restrictions. A reversed filter or a mixed union
+stays a restriction, because turning it into a positive source would invert its
+meaning. Forced roles are an explicit semantic change and are not promised to be
+equivalent to the media set. The outside pool has no attributes: its two targets
+put every filter in their own role.
+
+The first pin into a group enables its conditions; later pins park them, so a
+second visit never silently changes what browsing shows. Re-pinning an existing
+condition keeps its state.
+
 ## Anti-patterns
 
 - **Reading `visibleRangeController.gallery.resolve()` directly in a browsing

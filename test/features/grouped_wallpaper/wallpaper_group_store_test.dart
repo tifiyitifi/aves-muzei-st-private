@@ -139,7 +139,7 @@ void main() {
     final ranges = VisibleRangeStore(db);
     final rangeId = wallpaperGroupRangeId('b');
     await ranges.saveRange(
-      VisibleRange(
+      VisibleRange.legacy(
         id: rangeId,
         scope: VisibleRangeScope.wallpaper,
         ownerId: 'b',

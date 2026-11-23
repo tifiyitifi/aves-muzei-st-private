@@ -28,29 +28,40 @@
 
 1. Open the range page. Expect four sections in this order: groups, outside
    restrictions, outside supplements, currently visible. Group 0 reads
-   「Unrestricted」, is first and has no conditions. (`PAGE-1`, `GRP-1`)
-2. Long-press a data group. Expect the overflow to offer edit / rename / move /
-   delete, and no editor on group 0. (`GRP-2`, `GRP-3`)
+   「Unrestricted」, is first and has no conditions. Every other group tile is
+   dimmed. (`PAGE-1`, `PAGE-6`, `GRP-1`)
+2. Open the overflow with nothing selected. Expect 「Edit current group」, greyed
+   out while group 0 is current and enabled after switching to a data group.
+   Long-press one group: the overflow edits that group. (`GRP-2`, `GRP-7`,
+   `GRP-8`)
 3. Edit a group, switch one condition off, close and discard. Expect the grid
    unchanged. Repeat and save; expect browsing, the tile count and the result to
-   follow. (`GRP-6`)
+   follow. Tap 「Unrestricted」 and expect the group's sources to stay as dimmed
+   tiles, not to disappear; switch one back on and expect browsing to follow.
+   (`GRP-6`, `GRP-9`)
 4. Toggle an outside restriction. Expect every group to be narrowed and the
    outside header count to follow. (`PAGE-3`, `MOD-11`)
 5. Save the current media set with 「save to visible range」. Expect the two
    outside targets to show `AND` / `OR` instead of the same `0`, and group 0 to
    be absent. (`SAVE-1`, `GRP-2`)
-6. Open the wallpaper page and then the group editor. Expect both bar entries on
-   the configured side, the first opened adjacent to the range entry; close the
-   editor and expect the range page. (`NAV-6`, `NAV-7`)
-7. Open a wallpaper group from the range page. Expect browsing to join the group
+6. Open the wallpaper page and then the group editor in the default separate
+   mode. Expect both bar entries on the configured side, the first opened
+   adjacent to the range entry, and the editor to open from the range page's
+   overflow as well as from its own entry; close it and expect the range page.
+   (`NAV-6`, `NAV-7`, `NAV-8`, `NAV-9`)
+7. On the wallpaper group page, mark two sources for Home, then switch one off.
+   Expect only that source's tile to dim while the other stays on. Tap
+   「All images」 and expect both to keep their filters but lose the Home mark.
+   (`POOL-1`)
+8. Open a wallpaper group from the range page. Expect browsing to join the group
    range; suspend the gallery range, leave the page, and expect the gallery range
    back. (`GAT-5`, `GAT-7`, `GAT-8`)
-8. Lock the gallery range with the read-only preset. Expect delete, move and edit
+9. Lock the gallery range with the read-only preset. Expect delete, move and edit
    to be withheld while sharing still works; the editor refuses to open.
    (`LCK-2`, `GRP-1`)
-9. Delete a built-in rule, then bump `defaultsVersion` and restart. Expect the
-   rule back, switched off, with user rules intact. (`CTL-14`, `CTL-17`)
-10. Save a preset that names a standard directory. Expect it to resolve on the
+10. Delete a built-in rule, then bump `defaultsVersion` and restart. Expect the
+    rule back, switched off, with user rules intact. (`CTL-14`, `CTL-17`)
+11. Save a preset that names a standard directory. Expect it to resolve on the
     device rather than show a stand-in path. (`DEF-3`)
 
 ## Privacy

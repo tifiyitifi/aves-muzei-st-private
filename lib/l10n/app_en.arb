@@ -1759,6 +1759,7 @@
   "visibleRangeGroupNew": "New group",
   "visibleRangeGroupName": "Group name",
   "visibleRangeGroupEdit": "Edit group",
+  "visibleRangeGroupEditCurrent": "Edit current group",
   "visibleRangeGroupRename": "Rename group",
   "visibleRangeGroupDelete": "Delete group",
   "visibleRangeGroupMoveLeft": "Move group left",

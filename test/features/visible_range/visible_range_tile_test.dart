@@ -1,3 +1,4 @@
+import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_tile.dart';
@@ -7,6 +8,7 @@ import 'package:aves/model/highlight.dart';
 import 'package:aves/model/settings/settings.dart';
 import 'package:aves/theme/colors.dart';
 import 'package:aves/theme/icons.dart';
+import 'package:aves/widgets/common/identity/aves_filter_chip.dart';
 import 'package:aves_model/aves_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -47,6 +49,33 @@ void main() {
       selected: selected,
       onTap: () {},
     );
+  }
+
+  VisibleRangeTile groupTile({required bool active}) {
+    final group = VisibleRange(
+      id: 'group.trips',
+      scope: VisibleRangeScope.gallery,
+      ownerId: 'group.trips',
+      name: 'Trips',
+    );
+    return VisibleRangeTile(
+      gridItem: FilterGridItem(
+        VisibleRangeCandidateFilter(VisibleRangeCandidate.fromGroup(group, active: active)),
+        null,
+      ),
+      stats: null,
+      tileLayout: TileLayout.grid,
+      tileSize: const Size(120, 120),
+      selectable: true,
+      onTap: () {},
+    );
+  }
+
+  double groupTileOpacity(WidgetTester tester) {
+    final opacities = tester.widgetList<Opacity>(
+      find.ancestor(of: find.byType(AvesFilterChip), matching: find.byType(Opacity)),
+    );
+    return opacities.first.opacity;
   }
 
   Widget wrap(Widget child) => MultiProvider(
@@ -93,5 +122,21 @@ void main() {
 
     expect(find.byIcon(AIcons.selected), findsNothing);
     expect(find.byIcon(AIcons.unselected), findsNothing);
+  });
+
+  testWidgets('a group that is not current is dimmed like a switched-off condition', (tester) async {
+    await tester.pumpWidget(wrap(groupTile(active: false)));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(groupTileOpacity(tester), closeTo(.62, .001));
+  });
+
+  testWidgets('the current group is drawn at full opacity', (tester) async {
+    await tester.pumpWidget(wrap(groupTile(active: true)));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(groupTileOpacity(tester), 1);
   });
 }

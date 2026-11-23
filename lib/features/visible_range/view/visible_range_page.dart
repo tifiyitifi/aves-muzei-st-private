@@ -12,6 +12,7 @@ import 'package:aves/features/visible_range/view/visible_range_about_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_action_delegate.dart';
 import 'package:aves/features/visible_range/view/visible_range_active_footer.dart';
 import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
+import 'package:aves/features/visible_range/view/visible_range_group_actions.dart';
 import 'package:aves/features/visible_range/view/visible_range_group_open.dart';
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/features/visible_range/view/visible_range_page_sections.dart';
@@ -55,6 +56,7 @@ class VisibleRangePage extends StatefulWidget {
 enum _MoreAction {
   editRule,
   editGroup,
+  editCurrentGroup,
   renameGroup,
   deleteGroup,
   moveGroupLeft,
@@ -359,7 +361,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       // On a TV rail there is no overflow menu, so the selection actions have to
       // stay reachable as icons.
       final selectedRule = _selectedRule(selection);
-      final selectedGroupId = _selectedGroupId(selection);
+      final selectedGroupId = _editGroupId(selection);
       final actions = <Widget>[
         if (selectedGroupId != null)
           IconButton(
@@ -405,9 +407,9 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   ) {
     if (selection.isSelecting) {
       final selectedRule = _selectedRule(selection);
-      final selectedGroupId = _selectedGroupId(selection);
-      if (selectedGroupId != null) {
-        final isZero = _controller.isGroupZero(selectedGroupId);
+      final editGroupId = _editGroupId(selection);
+      if (editGroupId != null) {
+        final isZero = _controller.isGroupZero(editGroupId);
         return [
           if (!isZero) ...[
             _menuItem<_MoreAction>(context, _MoreAction.editGroup, AIcons.edit, context.l10n.visibleRangeGroupEdit),
@@ -429,6 +431,15 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   List<PopupMenuEntry<_MoreAction>> _menuEntries(BuildContext context) {
     final l10n = context.l10n;
     return [
+      // The same action the selected-group menu offers, reachable without a long
+      // press: it edits whichever group browsing is on. Group 0 is
+      // 「Unrestricted」 and holds no conditions, so the entry is disabled there.
+      PopupMenuItem<_MoreAction>(
+        value: _MoreAction.editCurrentGroup,
+        enabled: !_controller.isGroupZero(_controller.currentGalleryGroupId),
+        child: _menuRow(context, AIcons.edit, l10n.visibleRangeGroupEditCurrent),
+      ),
+      const PopupMenuDivider(),
       _menuItem(context, _MoreAction.reAddDefaults, AIcons.newTier, l10n.visibleRangeReAddDefaults),
       const PopupMenuDivider(),
       // The wallpaper groups own their own condition pool, so they are reached
@@ -446,12 +457,19 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     return PopupMenuItem<T>(value: value, child: _menuRow(context, icon, text));
   }
 
-  /// The group tile the user selected, when exactly one is selected.
-  String? _selectedGroupId(Selection<FilterGridItem<VisibleRangeCandidateFilter>> selection) {
-    if (!selection.isSelecting) return null;
-    final groups = selection.selectedItems.map((item) => item.filter.candidate).where((candidate) => candidate.isGroup).toList();
-    return groups.length == 1 ? groups.single.groupId : null;
-  }
+  /// The group the overflow's edit action targets, when there is one.
+  ///
+  /// With no selection it is the current group; a single selected group tile
+  /// edits itself. A condition or a multi-group selection has no single target.
+  String? _editGroupId(Selection<FilterGridItem<VisibleRangeCandidateFilter>> selection) => visibleRangeEditGroupId(
+        selecting: selection.isSelecting,
+        selectedItemCount: selection.selectedItemCount,
+        selectedGroupIds: [
+          for (final item in selection.selectedItems)
+            if (item.filter.candidate.isGroup) item.filter.candidate.groupId,
+        ],
+        currentGroupId: _controller.currentGalleryGroupId,
+      );
 
   /// Opens the current group's editor.
   ///
@@ -838,19 +856,21 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
         final rule = _selectedRule(_selection);
         if (rule != null) await _showRuleEditor(rule);
       case _MoreAction.editGroup:
-        final id = _selectedGroupId(_selection);
+        final id = _editGroupId(_selection);
         if (id != null) await _editGroup(id);
+      case _MoreAction.editCurrentGroup:
+        await _editGroup(_controller.currentGalleryGroupId);
       case _MoreAction.renameGroup:
-        final id = _selectedGroupId(_selection);
+        final id = _editGroupId(_selection);
         if (id != null) await _renameGroup(id);
       case _MoreAction.deleteGroup:
-        final id = _selectedGroupId(_selection);
+        final id = _editGroupId(_selection);
         if (id != null) await _deleteGroup(id);
       case _MoreAction.moveGroupLeft:
-        final id = _selectedGroupId(_selection);
+        final id = _editGroupId(_selection);
         if (id != null) await _moveGroup(id, -1);
       case _MoreAction.moveGroupRight:
-        final id = _selectedGroupId(_selection);
+        final id = _editGroupId(_selection);
         if (id != null) await _moveGroup(id, 1);
       case _MoreAction.applyToMediaSet:
         await _applySelectionToMediaSet();

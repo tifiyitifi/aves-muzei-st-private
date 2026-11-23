@@ -131,8 +131,12 @@ WHEN a group stores its filters, THE SYSTEM SHALL store them as `source`
 conditions of the group's visibility pool, not as a base slot: the source section
 is a union, and Home/Lock mark each condition independently.
 
+WHEN a source base tile is tapped, THE SYSTEM SHALL toggle only that source's
+mark on the lamped surface; 「All images」 SHALL clear that surface's marks and
+keep the sources in the pool.
+
 WHEN a group is created from the bundled definitions, THE SYSTEM SHALL start its
 source on Home; the first split SHALL also mark it for Lock so the two surfaces
 start identical.
 
-Rules: `MOD-2`, `MOD-10`, `STO-2`, `MIG-5`.
+Rules: `MOD-2`, `MOD-10`, `STO-2`, `MIG-5`, `POOL-1`.

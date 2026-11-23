@@ -382,6 +382,18 @@ class VisibleRange extends Equatable {
 
   List<VisibleRangeRule> activeRulesOf(VisibleRangeRuleKind kind) => rules.where((rule) => rule.active && rule.kind == kind && rule.filters.isNotEmpty).toList()..sort((a, b) => a.position.compareTo(b.position));
 
+  /// Every source switched off, keeping its filters for a later re-enable.
+  ///
+  /// 「Unrestricted」 means there is no active source, not that no source is
+  /// stored: parking keeps the group's sources visible and re-assignable instead
+  /// of deleting them, exactly like a rule that is switched off.
+  VisibleRange parkSources() => copyWith(
+        rules: [
+          for (final rule in rules)
+            if (rule.kind == VisibleRangeRuleKind.source && rule.active) rule.copyWith(active: false) else rule,
+        ],
+      );
+
   List<VisibleRangeRule> rulesOf(VisibleRangeRuleKind kind) => rules.where((rule) => rule.kind == kind).toList()..sort((a, b) => a.position.compareTo(b.position));
 
   VisibleRangeRule? ruleById(String id) => rules.firstWhereOrNull((rule) => rule.id == id);

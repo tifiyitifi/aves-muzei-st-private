@@ -147,6 +147,15 @@ void main() {
       ).resolve();
       expect((resolved as SetAndFilter).innerFilters, {image, favourite, albumA()});
     });
+
+    test('parking the sources keeps their filters and stops restricting', () {
+      final parked = range(sources: {image}, restrictions: {favourite}).parkSources();
+      final source = parked.rulesOf(VisibleRangeRuleKind.source).single;
+      expect(source.active, isFalse);
+      expect(source.filters, {image});
+      // Only the sources are parked; the restriction still narrows.
+      expect(parked.resolve(), favourite);
+    });
   });
 
   group('outside layer', () {

@@ -201,6 +201,7 @@ token.
 | PAGE-3 | Outside always | WHEN the outside pool is empty, THE SYSTEM SHALL still show both outside sections | the shared layer must stay visible | `F:visible_range_page_sections_test#the outside sections are always present and read restrictions first` |
 | PAGE-4 | Outside headers | WHEN an outside section is titled, THE SYSTEM SHALL name the shared pool, not the group's own rules | the two layers are edited in different places | `F:visible_range_section_key_test#outside headers name the shared pool` |
 | PAGE-5 | Groups header | WHEN the groups section is titled, THE SYSTEM SHALL name the group list and count it | the section is the exclusive choice | `F:visible_range_section_key_test#the groups header names the sentinel list` |
+| PAGE-6 | Group dim | WHEN a group tile is not the current group, THE SYSTEM SHALL dim it like a switched-off condition | the exclusive choice should read at a glance | `F:visible_range_tile_test#a group that is not current is dimmed like a switched-off condition`; `F:visible_range_tile_test#the current group is drawn at full opacity` |
 
 ## Group 0 and the editor
 
@@ -212,6 +213,9 @@ token.
 | GRP-4 | Numbering | WHEN a group is numbered, THE SYSTEM SHALL number group 0 as 0 and data groups from 1 | the badge matches the wallpaper page's group 0 | `F:visible_range_controller_test#data groups are numbered from 1 and group 0 stays 0` |
 | GRP-5 | Sentinel cleanup | WHEN a stored group 0 carries a condition, THE SYSTEM SHALL clear it on the next start | a pre-refactor base must not linger | `F:visible_range_controller_test#a stored condition in group 0 is cleared on the next start` |
 | GRP-6 | Draft save | WHEN the editor saves a draft, THE SYSTEM SHALL replace the group and its conditions together | the page edits one aggregate | `F:visible_range_controller_test#saving a group editor draft persists the whole group` |
+| GRP-7 | Current group entry | WHEN the overflow is opened with nothing selected, THE SYSTEM SHALL offer editing the current group and SHALL disable it for group 0 | the same action must not need a long press | `F:visible_range_group_actions_test#with no selection the current group is edited` |
+| GRP-8 | Selected group entry | WHEN exactly one group tile is selected, THE SYSTEM SHALL offer editing that group; a condition or multi-group selection SHALL offer none | the edit target follows the selection | `F:visible_range_group_actions_test#one selected group is edited instead of the current one`; `F:visible_range_group_actions_test#a condition or a multi-group selection has no single group to edit` |
+| GRP-9 | Parked sources | WHEN 「Unrestricted」 is chosen in the editor, THE SYSTEM SHALL switch the sources off and keep their filters | a parked source can be switched back on instead of being lost | `F:visible_range_model_test#parking the sources keeps their filters and stops restricting`; `F:visible_range_candidate_test#parked sources keep their tiles and light the unrestricted tile` |
 
 ## Saving and navigation
 
@@ -220,3 +224,5 @@ token.
 | SAVE-1 | Outside badges | WHEN the save sheet shows the two outside targets, THE SYSTEM SHALL label each with its role instead of two identical zeroes | the two targets write the same pool | `F:visible_range_target_grid_test#outside targets show their role instead of two identical zeroes` |
 | NAV-6 | Fork order | WHEN the wallpaper page and the group editor are both open, THE SYSTEM SHALL place the first-opened nearest the range entry | opening order is what the user remembers | `F:grouped_wallpaper_nav_test#the two fork entries are ordered by open time, first nearest the range` |
 | NAV-7 | Closed editor | WHEN the editor session is closed, THE SYSTEM SHALL render the range page | the page is the session | `F:visible_range_destination_test#a closed editor session falls back to the range page` |
+| NAV-8 | Editor entry route | WHEN the editor entry is built, THE SYSTEM SHALL resolve it to the editor page | an unregistered fork route threw `unknown route`, so the entry opened nothing | `F:nav_item_test#the group editor entry opens its page` |
+| NAV-9 | Editor entry on itself | WHEN the editor entry is tapped while the editor is on top, THE SYSTEM SHALL not stack a second page | one page is one entry | `F:nav_item_test#tapping the entry of the page already on top does not stack another one` |

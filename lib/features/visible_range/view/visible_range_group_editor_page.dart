@@ -229,7 +229,8 @@ class _VisibleRangeGroupEditorPageState extends State<VisibleRangeGroupEditorPag
     final result = <ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>>{};
     for (final section in buildVisibleRangeSections(range: draft)) {
       final countText = switch (section.kind) {
-        VisibleRangeCandidateKind.base => '${section.candidates.where((candidate) => !candidate.isUnrestricted).length}',
+        // The base is a union: the count says how many of its sources are on.
+        VisibleRangeCandidateKind.base => _sourceCountText(section.candidates),
         VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement => '${section.candidates.where((candidate) => candidate.active).length}/${section.candidates.length}',
       };
       final candidates = section.kind == VisibleRangeCandidateKind.base || section.candidates.isNotEmpty ? section.candidates : [_emptyCandidate(section.kind)];
@@ -251,6 +252,13 @@ class _VisibleRangeGroupEditorPageState extends State<VisibleRangeGroupEditorPag
     labelKey: 'visibleRangeSectionEmpty',
     placeholder: true,
   );
+
+  /// `active/total` of the group's own sources; empty when it has none.
+  String _sourceCountText(List<VisibleRangeCandidate> candidates) {
+    final sources = candidates.where((candidate) => !candidate.isUnrestricted).toList();
+    if (sources.isEmpty) return '';
+    return '${sources.where((candidate) => candidate.active).length}/${sources.length}';
+  }
 
   Widget _buildTile(BuildContext context, FilterGridItem<VisibleRangeCandidateFilter> item, Size tileSize) {
     final candidate = item.filter.candidate;
@@ -306,7 +314,9 @@ class _VisibleRangeGroupEditorPageState extends State<VisibleRangeGroupEditorPag
   void _clearSources() {
     final draft = _draft;
     if (draft == null) return;
-    _updateDraft(draft.copyWith(rules: draft.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source).toList()));
+    // 「Unrestricted」 parks the group's sources instead of deleting them: the
+    // base is a union, and a parked source stays visible to be switched back on.
+    _updateDraft(draft.parkSources());
   }
 
   Future<void> _renameRule(VisibleRangeRule rule) async {

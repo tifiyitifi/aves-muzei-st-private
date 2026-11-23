@@ -56,10 +56,17 @@ group. Inside a group, conditions play one of three roles:
   restrictions, then the outside supplements, then the current result.
 - WHEN a group tile is built, THE SYSTEM SHALL show the group's browsed result
   (its own conditions joined with the outside pool) as its cover and count.
+- WHEN a group tile is not the current group, THE SYSTEM SHALL dim it like a
+  switched-off condition, so the exclusive choice reads at a glance.
 - WHEN the outside pool is empty, THE SYSTEM SHALL still show both outside
   sections.
 - WHEN a group is selected, THE SYSTEM SHALL switch the current group; a group
   tile SHALL NOT be applied to the media set like a condition.
+- WHEN the overflow is opened with nothing selected, THE SYSTEM SHALL offer
+  editing the current group; the offer SHALL be disabled while the current group
+  is group 0.
+- WHEN exactly one group tile is selected, THE SYSTEM SHALL offer editing that
+  group; a condition or a multi-group selection SHALL offer no group edit.
 
 ## The group editor
 
@@ -69,6 +76,9 @@ group. Inside a group, conditions play one of three roles:
   ask to save or discard when the page closes.
 - WHEN a condition is switched in the editor, THE SYSTEM SHALL toggle its
   `active` state and keep the filters.
+- WHEN 「Unrestricted」 is chosen in the editor, THE SYSTEM SHALL switch the
+  group's sources off and keep their filters, so a parked source can be switched
+  back on instead of being lost.
 - WHEN the group is saved, THE SYSTEM SHALL replace the group and its conditions
   together.
 - WHEN the edited group is group 0, THE SYSTEM SHALL not offer the editor.
@@ -214,6 +224,11 @@ immediately (it is not a draft).
   the first opened sits nearest the visible-range entry.
 - WHEN the editor is opened in the shared mode, THE SYSTEM SHALL replace the
   visible-range entry in place, like the wallpaper page.
+- WHEN the editor is opened in a separate mode, THE SYSTEM SHALL push it over
+  the page it was opened from and SHALL resolve its bar entry to the editor
+  page: an unregistered fork route leaves the entry dead.
+- WHEN the editor's entry is tapped while the editor is on top, THE SYSTEM SHALL
+  keep the single page instead of stacking another one.
 - WHEN the editor's session is closed, THE SYSTEM SHALL render the range page.
 - WHEN the group editor's page is restored after a process death, THE SYSTEM
   SHALL land on the visible-range page: the editor's group is session state.

@@ -11,10 +11,12 @@ import 'package:flutter/widgets.dart';
 
 /// Opens the editor for one gallery group.
 ///
-/// The page follows the wallpaper page's navigation behaviour: in the shared
-/// mode it replaces the visible-range entry in place, and with a separate entry
-/// it opens on the configured side of the bar. Group 0 never opens: it is
-/// 「Unrestricted」 and has nothing to edit.
+/// The editor follows the wallpaper page's navigation: in the shared mode it
+/// replaces the visible-range entry in place, and with a separate entry it has
+/// its own bar entry. The separate page is pushed over the range page rather than
+/// clearing the stack, so its close action returns there and a process death
+/// restores the range page (`VisibleRangeGroupEditorPage` is session state).
+/// Group 0 never opens: it is 「Unrestricted」 and has nothing to edit.
 Future<void> openVisibleRangeGroupEditor(BuildContext context, {required String groupId}) async {
   final group = visibleRangeController.galleryGroupById(groupId);
   if (group == null || visibleRangeController.isGroupZero(groupId)) return;
@@ -24,5 +26,5 @@ Future<void> openVisibleRangeGroupEditor(BuildContext context, {required String 
     visibleRangeDestination.value = VisibleRangeDestination.editor;
     return;
   }
-  await const AvesNavItem(route: VisibleRangeGroupEditorPage.routeName).goTo(context, topLevel: true);
+  await const AvesNavItem(route: VisibleRangeGroupEditorPage.routeName).goTo(context);
 }

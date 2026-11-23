@@ -97,3 +97,10 @@ it `superseded by <ID>` and leave the coverage that used to hold it.
 | DEST-1 | The photo is opened in the viewer | The menu names the viewer, not the album it used to name | WHEN 「Open in viewer」 is chosen, THE SYSTEM SHALL open the app's viewer on the photo on screen | the old label said album while the action already opened the viewer | `M` |
 | DEST-2 | The photo's album is opened | The group's conditions are path filters | WHEN 「Open in album」 is chosen, THE SYSTEM SHALL open the stored album that contains the photo, SHALL NOT use a path condition, and SHALL reveal the photo in it | a path condition covers a folder tree, while the album is the one shelf the photo is filed under | `F:grouped_wallpaper_view_actions_test#the album target is the photo's stored album and locates it`; `F:grouped_wallpaper_view_actions_test#the album target needs a directory` |
 | DEST-3 | The whole group is opened | The view shows one photo of the group | WHEN 「View whole group」 is chosen, THE SYSTEM SHALL open the group's media set and SHALL reveal the photo on screen in it | the user came from that photo, not from the top of the list | `F:grouped_wallpaper_view_actions_test#the whole group target is the group media set and locates the photo` |
+
+## The group's source union
+
+| ID | Case | Evidence | Behaviour | Why | Coverage |
+| --- | --- | --- | --- | --- | --- |
+| POOL-1 | A base tap | The base section is a union, one tile per source | WHEN a source base tile is tapped, THE SYSTEM SHALL toggle only that source's mark on the lamped surface; `「All images」` SHALL clear that surface's marks and keep the sources in the pool | treating the base as one unit made several sources impossible to keep on together | `F:wallpaper_group_range_controller_test#each source is marked independently on a surface`; `F:wallpaper_base_tap_test#a source tile toggles only its own mark` |
+

@@ -1049,8 +1049,8 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     for (final section in buildWallpaperGroupPoolSections(pool: pool, active: surface)) {
       final real = section.candidates.where((candidate) => !candidate.placeholder).toList();
       final countText = switch (section.kind) {
-        // The base is exclusive: the section already says so, and the count of
-        // the control tiles would only confuse it with conditions.
+        // The base tiles already carry their state, and a count would mix
+        // 「All images」 with the sources it belongs to.
         VisibleRangeCandidateKind.base => '',
         VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement => real.isEmpty ? '' : '${real.where((candidate) => candidate.active).length}/${real.length}',
       };
@@ -1256,17 +1256,21 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     if (candidate.placeholder) return;
     switch (candidate.kind) {
       case VisibleRangeCandidateKind.base:
-        if (candidate.isUnrestricted) {
-          // 「All images」 clears this surface's base mark; the filters stay in the
-          // pool for the other surface, so nothing is lost.
-          final pool = _controller.pool;
-          if (pool != null && pool.rulesOf(VisibleRangeRuleKind.source).any((rule) => WallpaperConditionSurfaces.contains(rule.surfaces, surface))) {
-            unawaited(_controller.setBaseSurface(surface, false));
-          }
-        } else if (isWallpaperGroupBaseCandidate(candidate)) {
-          final pool = _controller.pool;
-          final marked = pool != null && pool.rulesOf(VisibleRangeRuleKind.source).any((rule) => WallpaperConditionSurfaces.contains(rule.surfaces, surface));
-          unawaited(_controller.setBaseSurface(surface, !marked));
+        switch (wallpaperBaseTap(candidate)) {
+          case WallpaperBaseTap.none:
+            break;
+          case WallpaperBaseTap.clearSurface:
+            // 「All images」 clears this surface's marks; the filters stay in the
+            // pool for the other surface, so nothing is lost.
+            final pool = _controller.pool;
+            if (pool != null && pool.rulesOf(VisibleRangeRuleKind.source).any((rule) => WallpaperConditionSurfaces.contains(rule.surfaces, surface))) {
+              unawaited(_controller.setBaseSurface(surface, false));
+            }
+          case WallpaperBaseTap.toggleRule:
+            // The base is a union: a source tile toggles only its own mark, so
+            // the user can keep several sources on at once.
+            final rule = candidate.rule;
+            if (rule != null) unawaited(_controller.toggleRuleSurface(rule.id, surface));
         }
       case VisibleRangeCandidateKind.restriction:
       case VisibleRangeCandidateKind.supplement:

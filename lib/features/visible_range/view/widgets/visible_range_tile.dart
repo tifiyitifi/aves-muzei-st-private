@@ -188,9 +188,13 @@ class VisibleRangeTile extends StatelessWidget {
     final textScaler = MediaQuery.textScalerOf(context);
     final infoHeight = showText ? CoveredFilterChip.infoHeight(extent: extent, textScaler: textScaler, showText: true) : 0.0;
     final inactiveRule = candidate.rule != null && !candidate.active;
+    // A group tile is the section's exclusive choice, so the group browsing is
+    // not on is dimmed exactly like a switched-off condition: the current one
+    // reads at a glance instead of only through its small state icon.
+    final inactive = inactiveRule || (candidate.isGroup && !candidate.active);
     final displayFilter = labelOverride.isEmpty ? gridItem.filter : VisibleRangeCandidateFilter(candidate, summary: summary, labelOverride: labelOverride);
     return Opacity(
-      opacity: inactiveRule ? .62 : 1,
+      opacity: inactive ? .62 : 1,
       child: AvesFilterChip(
         filter: displayFilter,
         // The state icon in the details row replaces the kind icon: a candidate

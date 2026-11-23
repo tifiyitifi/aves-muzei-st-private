@@ -282,8 +282,9 @@ class VisibleRangeCandidateSection extends Equatable {
 /// group is a container, a candidate is a condition inside it.
 List<VisibleRangeCandidateSection> buildVisibleRangeSections({required VisibleRange range}) {
   final sources = range.rulesOf(VisibleRangeRuleKind.source);
+  final hasActiveSource = range.activeRulesOf(VisibleRangeRuleKind.source).isNotEmpty;
   final base = <VisibleRangeCandidate>[
-    sources.isEmpty ? VisibleRangeCandidate.unrestricted : VisibleRangeCandidate.unrestricted.copyWithActive(false),
+    hasActiveSource ? VisibleRangeCandidate.unrestricted.copyWithActive(false) : VisibleRangeCandidate.unrestricted,
     for (final rule in sources) VisibleRangeCandidate.fromRule(rule),
   ];
 

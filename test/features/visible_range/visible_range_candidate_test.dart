@@ -43,6 +43,19 @@ void main() {
     expect(base.map((candidate) => candidate.active), [false, true, false]);
   });
 
+  test('parked sources keep their tiles and light the unrestricted tile', () {
+    final range = VisibleRange.emptyGallery().copyWith(
+      rules: [
+        rule('s1', VisibleRangeRuleKind.source, {image}, active: false),
+      ],
+    );
+    final base = buildVisibleRangeSections(range: range).firstWhere((section) => section.kind == VisibleRangeCandidateKind.base).candidates;
+    // The filter stays available to be switched back on; 「Unrestricted」 is the
+    // state because no source is active, not because none is stored.
+    expect(base.map((candidate) => candidate.id), [VisibleRangeCandidate.unrestrictedId, 's1']);
+    expect(base.map((candidate) => candidate.active), [true, false]);
+  });
+
   test('rules are grouped by kind and defaults come first', () {
     final range = VisibleRange.emptyGallery().copyWith(
       rules: [

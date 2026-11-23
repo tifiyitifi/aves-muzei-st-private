@@ -141,6 +141,27 @@ void main() {
     expect(controller.range!.resolve(), PathFilter('/dcim'));
   });
 
+  test('each source is marked independently on a surface', () async {
+    await seedRules(
+      'wallpaper.group.pictures',
+      (rangeId) => [
+        VisibleRangeRule(id: 's1', rangeId: rangeId, kind: VisibleRangeRuleKind.source, filters: {MimeFilter.image}),
+        VisibleRangeRule(id: 's2', rangeId: rangeId, kind: VisibleRangeRuleKind.source, position: 1, filters: {MimeFilter.video}),
+      ],
+    );
+    // Both sources arrive marked for Home, so the surface resolves their union.
+    expect(controller.range!.rulesOf(VisibleRangeRuleKind.source).map((rule) => rule.id), ['s1', 's2']);
+
+    // Tapping one base tile unmarks that source only.
+    await controller.toggleRuleSurface('s2', WallpaperSurface.home);
+    expect(controller.pool!.ruleById('s1')!.surfaces, WallpaperConditionSurfaces.home);
+    expect(controller.pool!.ruleById('s2')!.surfaces, 0);
+    expect(controller.range!.rulesOf(VisibleRangeRuleKind.source).map((rule) => rule.id), ['s1']);
+
+    await controller.toggleRuleSurface('s2', WallpaperSurface.home);
+    expect(controller.range!.rulesOf(VisibleRangeRuleKind.source).map((rule) => rule.id), ['s1', 's2']);
+  });
+
   test('rules are marked per surface and toggled on the pool', () async {
     await controller.selectGroup('wallpaper.group.pictures');
     final range = controller.range!;

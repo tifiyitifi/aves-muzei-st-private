@@ -5,7 +5,9 @@ import 'package:aves/features/collection_paging/view/collection_view_hooks.dart'
 import 'package:aves/features/collection_paging/view/media_set_tab.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
+import 'package:aves/features/visible_range/services/visible_range_editor_session.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
+import 'package:aves/features/visible_range/view/visible_range_group_editor_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -116,6 +118,7 @@ class AvesNavItem extends Equatable {
     switch (route) {
       case VisibleRangePage.routeName:
       case GroupedWallpaperPage.routeName:
+      case VisibleRangeGroupEditorPage.routeName:
       case MuzeiWallpaperPage.routeName:
         return ModalRoute.of(context)?.settings.name == route;
       default:
@@ -130,6 +133,7 @@ class AvesNavItem extends Equatable {
       case MuzeiWallpaperPage.routeName:
       case GroupedWallpaperPage.routeName:
       case VisibleRangePage.routeName:
+      case VisibleRangeGroupEditorPage.routeName:
       case SearchPage.routeName:
       case SettingsPage.routeName:
         return false;
@@ -186,6 +190,13 @@ class AvesNavItem extends Equatable {
         return (_) => const GroupedWallpaperPage();
       case VisibleRangePage.routeName:
         return (_) => const VisibleRangeShellPage();
+      case VisibleRangeGroupEditorPage.routeName:
+        // The session owns the edited group; without one the entry falls back to
+        // the range page instead of opening an editor with nothing to edit.
+        return (_) {
+          final groupId = visibleRangeEditorSession.groupId;
+          return groupId == null ? const VisibleRangeShellPage() : VisibleRangeGroupEditorPage(groupId: groupId);
+        };
       case SettingsPage.routeName:
         return (_) => const SettingsPage();
       default:

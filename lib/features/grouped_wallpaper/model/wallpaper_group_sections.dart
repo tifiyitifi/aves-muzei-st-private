@@ -34,6 +34,21 @@ VisibleRangeCandidate _sectionNone(VisibleRangeCandidateKind kind) => VisibleRan
 /// to the 「All images」 choice or a section placeholder.
 bool isWallpaperGroupBaseCandidate(VisibleRangeCandidate candidate) => candidate.kind == VisibleRangeCandidateKind.base && !candidate.placeholder && candidate.id != VisibleRangeCandidate.unrestrictedId;
 
+/// What tapping a base tile asks the pool to do.
+///
+/// The base section is a union, so a source tile toggles only its own mark on the
+/// lamped surface. 「All images」 is the absence of a base and clears that
+/// surface's marks at once, keeping the conditions in the pool for the other
+/// surface or a later re-mark.
+enum WallpaperBaseTap { none, clearSurface, toggleRule }
+
+WallpaperBaseTap wallpaperBaseTap(VisibleRangeCandidate candidate) {
+  if (candidate.placeholder || candidate.readOnly) return WallpaperBaseTap.none;
+  if (candidate.isUnrestricted) return WallpaperBaseTap.clearSurface;
+  if (candidate.rule != null) return WallpaperBaseTap.toggleRule;
+  return WallpaperBaseTap.none;
+}
+
 /// The group page's three condition sections, built from the group's pool.
 ///
 /// Every condition appears exactly once, whatever surface marks it: home and

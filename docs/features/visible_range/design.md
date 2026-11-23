@@ -158,7 +158,10 @@ entries are derived, never written into the user's list: the configured side
 the order — the first opened sits nearest the range entry. In the shared mode
 neither entry exists; the single shell entry flips between the range page, the
 wallpaper page and the editor, and a closed editor session falls back to the
-range page.
+range page. In a separate mode the editor is pushed over the page it was opened
+from (the range page included), so closing it returns there and a process death
+restores the range page: the edited group is session state, not a stored
+destination.
 
 ## Anti-patterns
 
@@ -175,3 +178,12 @@ range page.
   sentinel stops meaning 「Unrestricted」 the moment it can carry a filter.
 - **Writing the editor draft on every tap.** The page is an aggregate; a
   half-applied group is what the discard action must be able to undo.
+- **Treating a base as one on/off unit.** The base is a union: each source is an
+  OR member and is switched on its own. Widget-level code must not clear or set
+  the whole set for a single tile (`POOL-1`).
+- **Deleting a source when the user picks 「Unrestricted」.** Park it instead: a
+  source carries the user's filter, and 「Unrestricted」 is the absence of an
+  *active* source, not of a stored one (`GRP-9`).
+- **Adding a fork route without an `AvesNavItem` page builder.** `routeBuilder`
+  resolves the page eagerly, so a missing case throws `unknown route` and the bar
+  entry looks dead while the page itself is fine (`NAV-8`).

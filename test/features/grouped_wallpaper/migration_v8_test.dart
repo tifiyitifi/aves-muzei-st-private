@@ -44,7 +44,7 @@ void main() {
             'createdAt INTEGER NOT NULL, '
             'updatedAt INTEGER NOT NULL)',
           );
-          raw.execute("INSERT INTO visible_ranges (id, scope, ownerId, createdAt, updatedAt) VALUES ('gallery', 'gallery', 'gallery', 1, 2)");
+          raw.execute("INSERT INTO visible_ranges (id, scope, ownerId, createdAt, updatedAt) VALUES ('g.range', 'wallpaper', 'g', 1, 2)");
           raw.execute(
             'CREATE TABLE visible_range_rules ('
             'id TEXT NOT NULL PRIMARY KEY, '
@@ -56,7 +56,7 @@ void main() {
             "filters TEXT NOT NULL DEFAULT '[]', "
             'active INTEGER NOT NULL DEFAULT 1)',
           );
-          raw.execute("INSERT INTO visible_range_rules (id, rangeId, kind, label, description) VALUES ('r1', 'gallery', 'restriction', 'Mine', 'keep me')");
+          raw.execute("INSERT INTO visible_range_rules (id, rangeId, kind, label, description) VALUES ('r1', 'g.range', 'restriction', 'Mine', 'keep me')");
           raw.execute(
             'CREATE TABLE visible_range_sessions ('
             'id TEXT NOT NULL PRIMARY KEY, '
@@ -68,7 +68,7 @@ void main() {
             "finalFilters TEXT NOT NULL DEFAULT '[]', "
             'createdAt INTEGER NOT NULL)',
           );
-          raw.execute("INSERT INTO visible_range_sessions (id, rangeId, ruleId, kind, mode, createdAt) VALUES ('s1', 'gallery', 'r1', 'restriction', 'override', 1)");
+          raw.execute("INSERT INTO visible_range_sessions (id, rangeId, ruleId, kind, mode, createdAt) VALUES ('s1', 'g.range', 'r1', 'restriction', 'override', 1)");
           raw.execute('CREATE INDEX idx_visible_range_sessions_rangeId ON visible_range_sessions(rangeId)');
           raw.execute('PRAGMA user_version = 7');
         },
@@ -93,10 +93,10 @@ void main() {
     final groups = await WallpaperGroupStore(db).loadGroups();
     expect(groups.single.name, 'Trips');
     expect(groups.single.description, isEmpty);
-    // v19 moved the old scope-wide rules to the shared outside pool.
-    final outside = await VisibleRangeStore(db).loadOutside(VisibleRangeScope.gallery);
-    expect(outside!.rules.single.label, 'Mine');
-    expect(outside.rules.single.description, 'keep me');
+    // v20 resets only the gallery scope, so the wallpaper range keeps its rule.
+    final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: 'g');
+    expect(range!.rules.single.label, 'Mine');
+    expect(range.rules.single.description, 'keep me');
     expect(await db.select(db.visibleRangeRuleUsageRows).get(), isEmpty);
 
     final indexes = (await db.customSelect("SELECT name FROM sqlite_master WHERE type = 'index'").get()).map((row) => row.data['name']).toSet();

@@ -2,6 +2,7 @@ import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/visible_range/data/default_presets.dart';
 import 'package:aves/features/visible_range/db/visible_range_store.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
+import 'package:aves/features/visible_range/model/visible_range_pin.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/mime.dart';
@@ -65,16 +66,19 @@ void main() {
   });
 
   test('selecting a source persists and resolves', () async {
+    await controller.addGalleryGroup(name: 'Test');
+    final groupId = controller.currentGalleryGroupId;
     await controller.selectBase(presetId: '', name: '', filters: {image});
 
     expect(controller.galleryFilter, image);
     expect(controller.galleryRestricted, isTrue);
 
-    final reloaded = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryRangeId);
+    final reloaded = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.gallery, ownerId: groupId);
     expect(reloaded!.rulesOf(VisibleRangeRuleKind.source).single.filters, {image});
   });
 
   test('clearing the sources returns to unrestricted', () async {
+    await controller.addGalleryGroup(name: 'Test');
     await controller.selectBase(presetId: '', name: '', filters: {image});
     await controller.clearSources();
     expect(controller.galleryFilter, isNull);
@@ -88,6 +92,8 @@ void main() {
   });
 
   test('rules persist, toggle and delete', () async {
+    await controller.addGalleryGroup(name: 'Test');
+    final groupId = controller.gallery.id;
     final rule = await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {favourite});
     expect(rule, isNotNull);
     expect(controller.galleryFilter, favourite);
@@ -98,10 +104,11 @@ void main() {
 
     await controller.deleteRules({rule.id});
     expect(controller.gallery.rules, isEmpty);
-    expect((await VisibleRangeStore(db).loadRules(VisibleRange.galleryRangeId)), isEmpty);
+    expect((await VisibleRangeStore(db).loadRules(groupId)), isEmpty);
   });
 
   test('adding an empty rule is a no-op', () async {
+    await controller.addGalleryGroup(name: 'Test');
     expect(await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {}), isNull);
     expect(controller.gallery.rules, isEmpty);
   });
@@ -113,7 +120,65 @@ void main() {
     expect(controller.galleryRestricted, isTrue);
   });
 
+  test('group 0 is the unrestricted sentinel and takes no conditions', () async {
+    expect(controller.currentGalleryGroupId, VisibleRange.galleryRangeId);
+    expect(controller.isGroupZero(controller.currentGalleryGroupId), isTrue);
+    expect(controller.canEditCurrentGroup, isFalse);
+    expect(await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {favourite}), isNull);
+    await controller.addSource(VisibleRange.galleryRangeId, {image});
+    expect(controller.gallery.rules, isEmpty);
+    expect(controller.galleryFilter, isNull);
+  });
+
+  test('group 0 is never a save target', () async {
+    final targets = await controller.loadPinTargets();
+    expect(targets.where((target) => target.rangeId == VisibleRange.galleryRangeId), isEmpty);
+    final result = await controller.pinFilters(
+      VisibleRangePinRequest(filters: {image}, name: 'Nope', description: '', targetIds: {VisibleRange.galleryRangeId}),
+    );
+    expect(result.pinned, 0);
+    expect(controller.gallery.rules, isEmpty);
+  });
+
+  test('group 0 cannot be renamed, deleted or moved out of first place', () async {
+    await controller.renameGalleryGroup(VisibleRange.galleryRangeId, name: 'Nope');
+    expect(controller.galleryGroupById(VisibleRange.galleryRangeId)!.name, isEmpty);
+    expect(await controller.deleteGalleryGroups({VisibleRange.galleryRangeId}), isFalse);
+    expect(controller.galleryGroupById(VisibleRange.galleryRangeId), isNotNull);
+    expect(controller.galleryGroups.first.id, VisibleRange.galleryRangeId);
+  });
+
+  test('data groups are numbered from 1 and group 0 stays 0', () async {
+    final group = await controller.addGalleryGroup(name: 'Test');
+    final dataIds = controller.galleryGroups.where((g) => !controller.isGroupZero(g.id)).map((g) => g.id).toList();
+    expect(controller.galleryGroupNumber(VisibleRange.galleryRangeId), 0);
+    expect(controller.galleryGroupNumber(dataIds.first), 1);
+    expect(controller.galleryGroupNumber(group.id), dataIds.indexOf(group.id) + 1);
+    expect(controller.currentGalleryGroupId, group.id);
+  });
+
+  test('a stored condition in group 0 is cleared on the next start', () async {
+    final store = VisibleRangeStore(db);
+    final zero = controller.gallery;
+    await store.saveRule(VisibleRangeRule(id: 'stale', rangeId: zero.id, kind: VisibleRangeRuleKind.restriction, filters: {favourite}));
+
+    final restarted = VisibleRangeController(injectedDatabase: db, presetLoader: () async => definitions());
+    await restarted.init();
+    expect(restarted.galleryGroupById(VisibleRange.galleryRangeId)!.rules, isEmpty);
+  });
+
+  test('saving a group editor draft persists the whole group', () async {
+    final group = await controller.addGalleryGroup(name: 'Draft');
+    final draft = group.copyWith(
+      rules: [VisibleRangeRule(id: 'r1', rangeId: group.id, kind: VisibleRangeRuleKind.restriction, filters: {favourite})],
+    );
+    await controller.saveGalleryGroup(draft);
+    expect(controller.galleryGroupById(group.id)!.rules.single.filters, {favourite});
+    expect(controller.galleryFilter, favourite);
+  });
+
   test('a locked gallery freezes group switching and edits', () async {
+    await controller.addGalleryGroup(name: 'Test');
     final rule = await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {favourite});
     await controller.lock(permissions: VisibleRangePermissions.readOnly);
 

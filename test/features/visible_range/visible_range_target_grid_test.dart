@@ -1,3 +1,4 @@
+import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_pin.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_target_grid.dart';
 import 'package:aves/l10n/l10n.dart';
@@ -57,7 +58,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Gallery'), findsOneWidget);
+    expect(find.text('Group 0'), findsOneWidget);
     for (var i = 1; i <= 6; i++) {
       expect(find.text('Group $i'), findsOneWidget);
     }
@@ -83,5 +84,38 @@ void main() {
     expect(toggled, isEmpty);
     expect(find.byIcon(AIcons.locked), findsOneWidget);
     expect(find.byIcon(Icons.check_circle), findsNothing);
+  });
+
+  testWidgets('outside targets show their role instead of two identical zeroes', (tester) async {
+    final outside = VisibleRangePinTarget(
+      id: 'gallery.outside.restriction',
+      rangeId: 'gallery.outside',
+      kind: VisibleRangePinTargetKind.outside,
+      role: VisibleRangeRuleKind.restriction,
+      number: 0,
+    );
+    final outsideSupplement = VisibleRangePinTarget(
+      id: 'gallery.outside.supplement',
+      rangeId: 'gallery.outside',
+      kind: VisibleRangePinTargetKind.outside,
+      role: VisibleRangeRuleKind.supplement,
+      number: 0,
+    );
+    await tester.pumpWidget(
+      wrap(
+        VisibleRangeTargetGrid(
+          targets: [outside, outsideSupplement],
+          selectedTargetIds: const {},
+          onToggle: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('AND'), findsOneWidget);
+    expect(find.text('OR'), findsOneWidget);
+    expect(find.text('Restriction'), findsOneWidget);
+    expect(find.text('Supplement'), findsOneWidget);
+    expect(find.text('0'), findsNothing);
   });
 }

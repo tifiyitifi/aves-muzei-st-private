@@ -14,20 +14,24 @@ import 'package:material_ui/material_ui.dart';
 class VisibleRangeSectionKey extends ChipSectionKey {
   final VisibleRangeCandidateKind kind;
   final String countText;
-  final bool supplementsOutside;
 
-  new(BuildContext context, this.kind, {this.countText = '', this.supplementsOutside = true})
+  /// Whether the section belongs to the scope-wide outside pool.
+  ///
+  /// The outside pool has no source role, so only the two rule titles change.
+  final bool outside;
+
+  new(BuildContext context, this.kind, {this.countText = '', this.outside = false})
       : super(
-          title: _title(context, kind, countText, supplementsOutside),
+          title: _title(context, kind, countText, outside),
           titleStyle: visibleRangeSectionTitleStyle(context),
         );
 
-  static String _title(BuildContext context, VisibleRangeCandidateKind kind, String countText, bool supplementsOutside) {
+  static String _title(BuildContext context, VisibleRangeCandidateKind kind, String countText, bool outside) {
     final l10n = context.l10n;
     final name = switch (kind) {
       VisibleRangeCandidateKind.base => l10n.visibleRangeSectionBase,
-      VisibleRangeCandidateKind.restriction => l10n.visibleRangeSectionRestrictions,
-      VisibleRangeCandidateKind.supplement => supplementsOutside ? l10n.visibleRangeSectionSupplementsOutside : l10n.visibleRangeSectionSupplementsInside,
+      VisibleRangeCandidateKind.restriction => outside ? l10n.visibleRangeSectionOutsideRestrictions : l10n.visibleRangeSectionRestrictions,
+      VisibleRangeCandidateKind.supplement => outside ? l10n.visibleRangeSectionOutsideSupplements : l10n.visibleRangeSectionSupplements,
     };
     return countText.isEmpty ? name : '$name $countText';
   }
@@ -42,7 +46,27 @@ class VisibleRangeSectionKey extends ChipSectionKey {
       );
 
   @override
-  List<Object?> get props => [...super.props, kind, countText, supplementsOutside];
+  List<Object?> get props => [...super.props, kind, countText, outside];
+}
+
+/// Header of the mutually exclusive groups section.
+///
+/// A group is a container, not a condition: the header names the section and
+/// counts how many groups the scope has.
+class VisibleRangeGroupSectionKey extends ChipSectionKey {
+  final String countText;
+
+  new(BuildContext context, {this.countText = ''})
+      : super(
+          title: countText.isEmpty ? context.l10n.visibleRangeSectionGroups : '${context.l10n.visibleRangeSectionGroups} $countText',
+          titleStyle: visibleRangeSectionTitleStyle(context),
+        );
+
+  @override
+  Widget? get leading => const Icon(Icons.layers_outlined);
+
+  @override
+  List<Object?> get props => [...super.props, countText];
 }
 
 /// Lower-case section titles without the app-wide small-caps effect.

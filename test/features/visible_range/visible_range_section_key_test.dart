@@ -4,14 +4,15 @@ import 'package:aves/l10n/l10n.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
-/// Section headers describe the group itself: the base group shows how many
-/// choices it offers, and the rule groups show `active/total`.
+/// Section headers name the part of the traffic the tiles edit: the group's own
+/// base range, the scope-wide outside restrictions/supplements, or the mutually
+/// exclusive groups themselves.
 void main() {
   Future<VisibleRangeSectionKey> keyFor(
     WidgetTester tester,
     VisibleRangeCandidateKind kind, {
     String countText = '',
-    bool supplementsOutside = true,
+    bool outside = false,
   }) async {
     late VisibleRangeSectionKey key;
     await tester.pumpWidget(
@@ -20,7 +21,7 @@ void main() {
         supportedLocales: AppLocalizations.supportedLocales,
         home: Builder(
           builder: (context) {
-            key = VisibleRangeSectionKey(context, kind, countText: countText, supplementsOutside: supplementsOutside);
+            key = VisibleRangeSectionKey(context, kind, countText: countText, outside: outside);
             return const SizedBox();
           },
         ),
@@ -30,19 +31,18 @@ void main() {
   }
 
   testWidgets('the base header advertises its displayed choice count', (tester) async {
-    final key = await keyFor(tester, VisibleRangeCandidateKind.base, countText: '19');
-    expect(key.title, 'base range (exclusive) 19');
+    final key = await keyFor(tester, VisibleRangeCandidateKind.base, countText: '3');
+    expect(key.title, 'base range 3');
   });
 
   testWidgets('rule headers show active over total', (tester) async {
-    expect((await keyFor(tester, VisibleRangeCandidateKind.restriction, countText: '2/12')).title, 'additional restrictions 2/12');
-    // Supplements are the "extra display" section in either evaluation order:
-    // the title stays short instead of spelling the order out.
-    expect((await keyFor(tester, VisibleRangeCandidateKind.supplement, countText: '0/12')).title, 'extra display 0/12');
-    expect(
-      (await keyFor(tester, VisibleRangeCandidateKind.supplement, countText: '1/12', supplementsOutside: false)).title,
-      'extra display 1/12',
-    );
+    expect((await keyFor(tester, VisibleRangeCandidateKind.restriction, countText: '2/12')).title, 'restrictions 2/12');
+    expect((await keyFor(tester, VisibleRangeCandidateKind.supplement, countText: '0/12')).title, 'supplements 0/12');
+  });
+
+  testWidgets('outside headers name the shared pool', (tester) async {
+    expect((await keyFor(tester, VisibleRangeCandidateKind.restriction, countText: '1/3', outside: true)).title, 'outside restrictions 1/3');
+    expect((await keyFor(tester, VisibleRangeCandidateKind.supplement, countText: '0/2', outside: true)).title, 'outside supplements 0/2');
   });
 
   testWidgets('headers drop the small-caps styling', (tester) async {
@@ -53,6 +53,23 @@ void main() {
   });
 
   testWidgets('a header without a count stays a bare group name', (tester) async {
-    expect((await keyFor(tester, VisibleRangeCandidateKind.base)).title, 'base range (exclusive)');
+    expect((await keyFor(tester, VisibleRangeCandidateKind.base)).title, 'base range');
+  });
+
+  testWidgets('the groups header names the sentinel list', (tester) async {
+    late VisibleRangeGroupSectionKey key;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) {
+            key = VisibleRangeGroupSectionKey(context, countText: '4');
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    expect(key.title, 'groups 4');
   });
 }

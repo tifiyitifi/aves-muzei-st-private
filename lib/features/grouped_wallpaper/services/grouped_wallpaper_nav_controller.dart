@@ -4,6 +4,7 @@ import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
+import 'package:aves/features/visible_range/services/visible_range_editor_session.dart';
 import 'package:aves/services/common/services.dart';
 import 'package:flutter/foundation.dart';
 
@@ -26,7 +27,16 @@ class GroupedWallpaperNavController extends ChangeNotifier {
   /// deliberately in-memory, so a process restart starts closed.
   bool _sessionActive = false;
 
+  /// Tick of the last session open, used to order the derived bar entries.
+  int _sessionOpenedAt = 0;
+
   GroupedWallpaperNavMode get mode => _mode;
+
+  /// When the session was opened, or 0 while it is closed.
+  ///
+  /// The gallery group editor's entry uses the same clock, so the fork entry
+  /// opened first sits nearest the visible-range entry.
+  int get sessionOpenedAt => _sessionOpenedAt;
 
   /// Whether the session is open, i.e. the page owns a bar entry and a scope.
   ///
@@ -46,6 +56,7 @@ class GroupedWallpaperNavController extends ChangeNotifier {
   void openSession() {
     if (_sessionActive) return;
     _sessionActive = true;
+    _sessionOpenedAt = nextForkSessionTick();
     _notifyDeferred();
   }
 
@@ -53,6 +64,7 @@ class GroupedWallpaperNavController extends ChangeNotifier {
   void closeSession() {
     if (!_sessionActive) return;
     _sessionActive = false;
+    _sessionOpenedAt = 0;
     _notifyDeferred();
   }
 

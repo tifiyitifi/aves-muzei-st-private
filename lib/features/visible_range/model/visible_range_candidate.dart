@@ -3,9 +3,9 @@ import 'package:aves/model/filters/filters.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
-/// The three tile sections of the visible-range page.
+/// The three condition sections of a range.
 ///
-/// Base tiles are mutually exclusive, restrictions are AND-ed and supplements
+/// Base tiles are OR-ed with each other, restrictions are AND-ed and supplements
 /// OR-ed; the kind is part of the candidate so a tile never has to guess.
 enum VisibleRangeCandidateKind {
   base,
@@ -30,6 +30,9 @@ class VisibleRangeCandidate extends Equatable {
   static const customBaseId = 'base.custom';
   static const galleryId = 'gallery';
 
+  /// A tile that adds a new group instead of standing for a condition.
+  static const groupAddId = 'group.add';
+
   final String id;
   final VisibleRangeCandidateKind kind;
   final Set<CollectionFilter> filters;
@@ -39,6 +42,13 @@ class VisibleRangeCandidate extends Equatable {
   final bool active;
   final VisibleRangePreset? preset;
   final VisibleRangeRule? rule;
+
+  /// The group a tile stands for, or empty for a condition tile.
+  ///
+  /// The gallery page lists the groups themselves as tiles: a group is a
+  /// container, so it has no rule and its tap switches browsing instead of
+  /// toggling a condition. The wallpaper page never sets it.
+  final String groupId;
 
   /// A slot that only says "nothing here": an empty rule section, or the
   /// wallpaper page's "no filters" control. It is shown but is not a condition:
@@ -70,7 +80,42 @@ class VisibleRangeCandidate extends Equatable {
     this.placeholder = false,
     this.readOnly = false,
     this.surfaces = 0,
+    this.groupId = '',
   });
+
+  /// A tile standing for a whole group.
+  ///
+  /// The filters are the group's resolved result, so the tile can show a cover
+  /// and a count. Group 0 is 「Unrestricted」, the state the gallery starts in;
+  /// its label is fixed, because naming it after a condition it never holds
+  /// would be misleading.
+  factory fromGroup(VisibleRange group, {required bool active, VisibleRange? outside}) {
+    final isZero = group.id == VisibleRange.galleryRangeId;
+    final rawName = group.name;
+    final isKey = rawName.startsWith('@');
+    final resolved = group.resolve(outside: outside);
+    return VisibleRangeCandidate(
+      id: group.id,
+      kind: VisibleRangeCandidateKind.base,
+      filters: resolved == null ? const {} : {resolved},
+      labelKey: isZero ? 'visibleRangeUnrestricted' : (isKey ? rawName.substring(1) : ''),
+      label: isZero || isKey ? '' : rawName,
+      active: active,
+      groupId: group.id,
+    );
+  }
+
+  /// The trailing 「new group」 tile.
+  static const addGroup = VisibleRangeCandidate(
+    id: groupAddId,
+    kind: VisibleRangeCandidateKind.base,
+    filters: {},
+    labelKey: 'visibleRangeGroupNew',
+  );
+
+  bool get isGroup => groupId.isNotEmpty;
+
+  bool get isGroupAdd => id == groupAddId;
 
   factory fromPreset(VisibleRangePreset preset, {required bool active}) => VisibleRangeCandidate(
     id: preset.id,
@@ -148,8 +193,9 @@ class VisibleRangeCandidate extends Equatable {
   ///
   /// The result preview and 「Unrestricted」 are not conditions, and an empty
   /// filter set would add nothing, so neither is a target. A read-only surface is
-  /// a summary, not something the user can act on from the page.
-  bool get isApplicable => !isGallery && !isUnrestricted && !placeholder && !readOnly && filters.isNotEmpty;
+  /// a summary, not something the user can act on from the page. A group tile is
+  /// a container: its tap switches browsing.
+  bool get isApplicable => !isGallery && !isUnrestricted && !isGroup && !isGroupAdd && !placeholder && !readOnly && filters.isNotEmpty;
 
   bool get isBuiltinRule => rule != null && isVisibleRangeBuiltinRule(rule!.id);
 
@@ -175,6 +221,7 @@ class VisibleRangeCandidate extends Equatable {
     placeholder: placeholder,
     readOnly: readOnly,
     surfaces: surfaces,
+    groupId: groupId,
   );
 
   /// The same candidate with the wallpaper surface marks (and the mark the page
@@ -192,6 +239,7 @@ class VisibleRangeCandidate extends Equatable {
     placeholder: placeholder,
     readOnly: readOnly,
     surfaces: surfaces,
+    groupId: groupId,
   );
 
   /// The same candidate, shown as a read-only summary.
@@ -208,10 +256,11 @@ class VisibleRangeCandidate extends Equatable {
     placeholder: placeholder,
     readOnly: readOnly,
     surfaces: surfaces,
+    groupId: groupId,
   );
 
   @override
-  List<Object?> get props => [id, kind, filters, labelKey, label, description, active, placeholder, readOnly, surfaces];
+  List<Object?> get props => [id, kind, filters, labelKey, label, description, active, placeholder, readOnly, surfaces, groupId];
 }
 
 /// A titled group of candidates.
@@ -226,10 +275,11 @@ class VisibleRangeCandidateSection extends Equatable {
   List<Object?> get props => [kind, candidates];
 }
 
-/// Builds the page's three sections from one stored range.
+/// Builds one group's three condition sections.
 ///
-/// The groups themselves are switched from the page's header, not listed as
-/// candidates: a group is a container, a candidate is a condition inside it.
+/// The gallery page's group tiles are built separately
+/// (`buildVisibleRangePageSections`); this is what a group editor renders — a
+/// group is a container, a candidate is a condition inside it.
 List<VisibleRangeCandidateSection> buildVisibleRangeSections({required VisibleRange range}) {
   final sources = range.rulesOf(VisibleRangeRuleKind.source);
   final base = <VisibleRangeCandidate>[
@@ -271,15 +321,25 @@ List<VisibleRangeCandidateSection> buildVisibleRangeSections({required VisibleRa
 /// The active conditions repeated as the page's last section.
 ///
 /// It reads top-down like the range evaluates: the result preview first, then the
-/// active base, then the active rules in evaluation order. The unrestricted base
-/// is left out because the result preview already stands for "everything".
-List<VisibleRangeCandidate> buildVisibleRangeActiveCandidates({required VisibleRange range}) {
-  final rules = [
+/// group's active conditions, then the scope-wide outside conditions. The
+/// unrestricted source is left out because the result preview already stands for
+/// "everything".
+List<VisibleRangeCandidate> buildVisibleRangeActiveCandidates({required VisibleRange range, VisibleRange? outside}) {
+  final groupRules = [
     for (final kind in [VisibleRangeRuleKind.source, ...range.order.isIntersectFirst ? [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement] : [VisibleRangeRuleKind.supplement, VisibleRangeRuleKind.restriction]])
       for (final rule in range.activeRulesOf(kind)) VisibleRangeCandidate.fromRule(rule),
   ];
+  // The outside layer is always intersect-first: restrictions first, then
+  // supplements.
+  final outsideRules = outside == null
+      ? const <VisibleRangeCandidate>[]
+      : [
+          for (final kind in [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement])
+            for (final rule in outside.activeRulesOf(kind)) VisibleRangeCandidate.fromRule(rule),
+        ];
   return [
     VisibleRangeCandidate.gallery,
-    ...rules,
+    ...groupRules,
+    ...outsideRules,
   ];
 }

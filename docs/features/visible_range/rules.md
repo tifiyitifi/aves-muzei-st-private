@@ -189,4 +189,34 @@ token.
 | MIG-2 | Descriptions | WHEN a v5 database upgrades, THE SYSTEM SHALL add empty descriptions | the column is part of the rule model | `F:migration_v6_test#a v5 database upgrades to v6 with empty descriptions`; `F:migration_v6_test#a fresh database has the description columns` |
 | MIG-3 | Base activation | WHEN a v8 database upgrades, THE SYSTEM SHALL add the base activation flag as active | a group base can be switched off | `F:migration_v9_test#a v8 database gains the base activation flag as active`; `F:migration_v9_test#a fresh database has the legacy column and a group round-trips` |
 | MIG-4 | Group shape | WHEN a v18 database upgrades, THE SYSTEM SHALL add the group kind, name and position and keep the legacy base columns for a rollback | the migration must be reversible by an older build | `F:migration_v19_test#upgrades to the visibility-group shape` |
-| MIG-5 | Base and outside | WHEN a v18 database upgrades, THE SYSTEM SHALL turn the base into a source, move the old rules to the outside pool and make the old preset group current | existing behaviour must survive the upgrade | `F:migration_v19_test#the preset-backed base becomes a group and the old rules move outside` |
+| MIG-5 | Base to source | WHEN a v18 database upgrades, THE SYSTEM SHALL turn each base into a `source` condition and keep its rules and surface marks | the migration must not lose a wallpaper pool | `F:migration_v19_test#a wallpaper base becomes a source condition and keeps its rules` |
+| MIG-6 | Gallery reset | WHEN a v19 database upgrades, THE SYSTEM SHALL reset the pre-release gallery scope and keep the wallpaper pool | group 0 is the 「Unrestricted」 sentinel and cannot carry conditions | `F:migration_v20_test#resets the gallery scope and keeps the wallpaper pool`; `F:migration_v19_test#the gallery scope is reset by v20` |
+
+## The gallery page
+
+| ID | Case | Behaviour | Why | Coverage |
+| --- | --- | --- | --- | --- |
+| PAGE-1 | Page order | WHEN the gallery page is built, THE SYSTEM SHALL list the groups, then the outside restrictions, then the outside supplements | the page reads in evaluation order | `F:visible_range_page_sections_test#the groups section starts with the sentinel and ends with the add tile` |
+| PAGE-2 | Group tile | WHEN a group tile is built, THE SYSTEM SHALL show the group's browsed result | switching to it is what the tile promises | `F:visible_range_page_sections_test#a group tile carries the group joined with the outside pool` |
+| PAGE-3 | Outside always | WHEN the outside pool is empty, THE SYSTEM SHALL still show both outside sections | the shared layer must stay visible | `F:visible_range_page_sections_test#the outside sections are always present and read restrictions first` |
+| PAGE-4 | Outside headers | WHEN an outside section is titled, THE SYSTEM SHALL name the shared pool, not the group's own rules | the two layers are edited in different places | `F:visible_range_section_key_test#outside headers name the shared pool` |
+| PAGE-5 | Groups header | WHEN the groups section is titled, THE SYSTEM SHALL name the group list and count it | the section is the exclusive choice | `F:visible_range_section_key_test#the groups header names the sentinel list` |
+
+## Group 0 and the editor
+
+| ID | Case | Behaviour | Why | Coverage |
+| --- | --- | --- | --- | --- |
+| GRP-1 | Sentinel empty | WHEN group 0 is edited, THE SYSTEM SHALL accept no condition | group 0 means 「Unrestricted」 | `F:visible_range_controller_test#group 0 is the unrestricted sentinel and takes no conditions` |
+| GRP-2 | Sentinel target | WHEN the save sheet lists targets, THE SYSTEM SHALL not offer group 0 | a sentinel must stay empty | `F:visible_range_controller_test#group 0 is never a save target` |
+| GRP-3 | Sentinel lifecycle | WHEN group 0 is renamed, deleted or moved, THE SYSTEM SHALL refuse and keep it first | it is the fallback browsing state | `F:visible_range_controller_test#group 0 cannot be renamed, deleted or moved out of first place` |
+| GRP-4 | Numbering | WHEN a group is numbered, THE SYSTEM SHALL number group 0 as 0 and data groups from 1 | the badge matches the wallpaper page's group 0 | `F:visible_range_controller_test#data groups are numbered from 1 and group 0 stays 0` |
+| GRP-5 | Sentinel cleanup | WHEN a stored group 0 carries a condition, THE SYSTEM SHALL clear it on the next start | a pre-refactor base must not linger | `F:visible_range_controller_test#a stored condition in group 0 is cleared on the next start` |
+| GRP-6 | Draft save | WHEN the editor saves a draft, THE SYSTEM SHALL replace the group and its conditions together | the page edits one aggregate | `F:visible_range_controller_test#saving a group editor draft persists the whole group` |
+
+## Saving and navigation
+
+| ID | Case | Behaviour | Why | Coverage |
+| --- | --- | --- | --- | --- |
+| SAVE-1 | Outside badges | WHEN the save sheet shows the two outside targets, THE SYSTEM SHALL label each with its role instead of two identical zeroes | the two targets write the same pool | `F:visible_range_target_grid_test#outside targets show their role instead of two identical zeroes` |
+| NAV-6 | Fork order | WHEN the wallpaper page and the group editor are both open, THE SYSTEM SHALL place the first-opened nearest the range entry | opening order is what the user remembers | `F:grouped_wallpaper_nav_test#the two fork entries are ordered by open time, first nearest the range` |
+| NAV-7 | Closed editor | WHEN the editor session is closed, THE SYSTEM SHALL render the range page | the page is the session | `F:visible_range_destination_test#a closed editor session falls back to the range page` |

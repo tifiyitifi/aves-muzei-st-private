@@ -229,7 +229,8 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
                         onToggle: _toggleTarget,
                       ),
                     if (outsideTargets.isNotEmpty) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
+                      _sectionLabel(context, l10n.visibleRangePinGroupOutside),
                       VisibleRangeTargetGrid(
                         targets: outsideTargets,
                         selectedTargetIds: _selectedTargets,

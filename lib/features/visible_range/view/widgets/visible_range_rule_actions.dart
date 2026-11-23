@@ -27,6 +27,7 @@ Future<VisibleRangeRuleAction?> showVisibleRangeRuleActions(
   BuildContext context, {
   required VisibleRangeRule rule,
   required bool canEdit,
+  bool allowMoveToBase = true,
 }) {
   final l10n = context.l10n;
   final title = visibleRangeRuleLabel(context, rule);
@@ -63,12 +64,15 @@ Future<VisibleRangeRuleAction?> showVisibleRangeRuleActions(
             enabled: canEdit && rule.kind != VisibleRangeRuleKind.supplement,
             onTap: () => Navigator.pop(context, VisibleRangeRuleAction.moveToSupplement),
           ),
-          ListTile(
-            leading: const Icon(AIcons.folder),
-            title: Text(l10n.visibleRangeActionMoveToBase),
-            enabled: canEdit,
-            onTap: () => Navigator.pop(context, VisibleRangeRuleAction.moveToBase),
-          ),
+          // Group 0 has no source role, and a source rule has nowhere to move:
+          // offering the action there would only produce a no-op.
+          if (allowMoveToBase && rule.kind != VisibleRangeRuleKind.source)
+            ListTile(
+              leading: const Icon(AIcons.folder),
+              title: Text(l10n.visibleRangeActionMoveToBase),
+              enabled: canEdit,
+              onTap: () => Navigator.pop(context, VisibleRangeRuleAction.moveToBase),
+            ),
           const Divider(height: 1),
           ListTile(
             leading: const Icon(AIcons.search),

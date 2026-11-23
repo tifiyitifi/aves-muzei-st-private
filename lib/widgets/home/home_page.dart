@@ -17,7 +17,9 @@ import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_page
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/session_restore/session_restore_plan.dart';
 import 'package:aves/features/session_restore/session_restore_store.dart';
+import 'package:aves/features/visible_range/services/visible_range_editor_session.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
+import 'package:aves/features/visible_range/view/visible_range_group_editor_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/geo/uri.dart';
 import 'package:aves/locale/intl.dart';
@@ -681,6 +683,18 @@ class _HomePageState extends State<HomePage> with FeedbackMixin {
         // Opened from the notification bar's "used" button, which is a cold-start
         // route: without this case it would fall through to the collection page.
         return buildRoute((context) => const GroupedWallpaperHistoryPage());
+      case VisibleRangeGroupEditorPage.routeName:
+        {
+          final groupId = visibleRangeEditorSession.groupId;
+          if (groupId == null) return buildRoute((context) => const VisibleRangePage());
+          if (groupedWallpaperNavController.mode == GroupedWallpaperNavMode.shared) {
+            // One entry hosts the pages: the deep link switches that entry
+            // instead of stacking a page the bar would not highlight.
+            visibleRangeDestination.value = VisibleRangeDestination.editor;
+            return buildRoute((context) => VisibleRangeShellPage(selectCurrentWallpaperGroup: selectCurrentWallpaperGroup));
+          }
+          return buildRoute((context) => VisibleRangeGroupEditorPage(groupId: groupId));
+        }
       case VisibleRangePage.routeName:
         return buildRoute((context) => VisibleRangeShellPage(selectCurrentWallpaperGroup: selectCurrentWallpaperGroup));
       case ScreenSaverPage.routeName:

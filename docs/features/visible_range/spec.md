@@ -41,6 +41,38 @@ group. Inside a group, conditions play one of three roles:
 - WHEN the gallery lock is on, THE SYSTEM SHALL freeze the whole gallery scope:
   every group, the outside pool and the current pointer.
 
+### Group 0 is the 「Unrestricted」 sentinel
+
+- WHEN group 0 is listed, THE SYSTEM SHALL label it 「Unrestricted」 and keep it
+  first, empty and undeletable.
+- WHEN a condition is written to group 0, THE SYSTEM SHALL refuse it.
+- WHEN the save sheet lists targets, THE SYSTEM SHALL not offer group 0.
+- WHEN a group is numbered, THE SYSTEM SHALL number group 0 as `0` and the data
+  groups from `1`.
+
+## The gallery page
+
+- WHEN the page is built, THE SYSTEM SHALL list the groups, then the outside
+  restrictions, then the outside supplements, then the current result.
+- WHEN a group tile is built, THE SYSTEM SHALL show the group's browsed result
+  (its own conditions joined with the outside pool) as its cover and count.
+- WHEN the outside pool is empty, THE SYSTEM SHALL still show both outside
+  sections.
+- WHEN a group is selected, THE SYSTEM SHALL switch the current group; a group
+  tile SHALL NOT be applied to the media set like a condition.
+
+## The group editor
+
+- WHEN the user asks to edit a group, THE SYSTEM SHALL open a page that edits
+  that group's base range, restrictions and supplements.
+- WHEN the editor is open, THE SYSTEM SHALL keep the edits in a draft and SHALL
+  ask to save or discard when the page closes.
+- WHEN a condition is switched in the editor, THE SYSTEM SHALL toggle its
+  `active` state and keep the filters.
+- WHEN the group is saved, THE SYSTEM SHALL replace the group and its conditions
+  together.
+- WHEN the edited group is group 0, THE SYSTEM SHALL not offer the editor.
+
 ## The outside pool (gallery)
 
 - WHEN a group resolves, THE SYSTEM SHALL apply the outside pool last:
@@ -52,7 +84,11 @@ group. Inside a group, conditions play one of three roles:
   supplements only; it SHALL have no source role.
 - WHEN the gallery is locked, THE SYSTEM SHALL freeze the outside pool too.
 
-## Pinning
+## Saving into a range
+
+The user-facing action is 「save to visible range」, distinct from the filter
+pin: one confirmation writes the media set's filters into the chosen targets
+immediately (it is not a draft).
 
 - WHEN a media set is pinned to a group, THE SYSTEM SHALL split it: a source-only
   union becomes one source per member, every other positive source stays one
@@ -170,3 +206,14 @@ group. Inside a group, conditions play one of three roles:
 - WHEN defaults are seeded, THE SYSTEM SHALL switch restriction and supplement
   defaults off.
 - WHEN a deleted default is restored, THE SYSTEM SHALL restore it switched off.
+
+## The bar and the two fork pages
+
+- WHEN the wallpaper page and the group editor are both open, THE SYSTEM SHALL
+  derive both bar entries on the configured side and order them by open time:
+  the first opened sits nearest the visible-range entry.
+- WHEN the editor is opened in the shared mode, THE SYSTEM SHALL replace the
+  visible-range entry in place, like the wallpaper page.
+- WHEN the editor's session is closed, THE SYSTEM SHALL render the range page.
+- WHEN the group editor's page is restored after a process death, THE SYSTEM
+  SHALL land on the visible-range page: the editor's group is session state.

@@ -3,6 +3,7 @@ import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_c
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_nav.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_open.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
+import 'package:aves/features/visible_range/view/visible_range_group_editor_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/widgets/collection/collection_page.dart';
 import 'package:aves/widgets/filter_grids/albums_page.dart';
@@ -48,6 +49,66 @@ void main() {
     expect(
       routes(withWallpaperNavDestinations([all, albums], mode: GroupedWallpaperNavMode.shared, sessionActive: true)),
       [CollectionPage.routeName, AlbumListPage.routeName, VisibleRangePage.routeName],
+    );
+  });
+
+  test('the two fork entries are ordered by open time, first nearest the range', () {
+    const editor = AvesNavItem(route: VisibleRangeGroupEditorPage.routeName);
+    List<String?> fork({required GroupedWallpaperNavMode mode, required int wallpaperOpenedAt, required int editorOpenedAt}) => routes(
+      withForkNavDestinations(
+        [all, albums],
+        mode: mode,
+        wallpaperSessionActive: true,
+        wallpaperOpenedAt: wallpaperOpenedAt,
+        editorSessionActive: true,
+        editorOpenedAt: editorOpenedAt,
+      ),
+    );
+
+    // The wallpaper opened first: it sits right against the range entry.
+    expect(
+      fork(mode: GroupedWallpaperNavMode.separateRight, wallpaperOpenedAt: 1, editorOpenedAt: 2),
+      [CollectionPage.routeName, AlbumListPage.routeName, VisibleRangePage.routeName, GroupedWallpaperPage.routeName, VisibleRangeGroupEditorPage.routeName],
+    );
+    // The editor opened first.
+    expect(
+      fork(mode: GroupedWallpaperNavMode.separateRight, wallpaperOpenedAt: 2, editorOpenedAt: 1),
+      [CollectionPage.routeName, AlbumListPage.routeName, VisibleRangePage.routeName, VisibleRangeGroupEditorPage.routeName, GroupedWallpaperPage.routeName],
+    );
+    // On the left the first-opened is the one adjacent to the range entry.
+    expect(
+      fork(mode: GroupedWallpaperNavMode.separateLeft, wallpaperOpenedAt: 1, editorOpenedAt: 2),
+      [CollectionPage.routeName, AlbumListPage.routeName, VisibleRangeGroupEditorPage.routeName, GroupedWallpaperPage.routeName, VisibleRangePage.routeName],
+    );
+    expect(
+      fork(mode: GroupedWallpaperNavMode.separateLeft, wallpaperOpenedAt: 2, editorOpenedAt: 1),
+      [CollectionPage.routeName, AlbumListPage.routeName, GroupedWallpaperPage.routeName, VisibleRangeGroupEditorPage.routeName, VisibleRangePage.routeName],
+    );
+    // The shared mode derives neither entry.
+    expect(
+      withForkNavDestinations(
+        [all, albums],
+        mode: GroupedWallpaperNavMode.shared,
+        wallpaperSessionActive: true,
+        wallpaperOpenedAt: 1,
+        editorSessionActive: true,
+        editorOpenedAt: 2,
+      ).map((item) => item.route),
+      [CollectionPage.routeName, AlbumListPage.routeName, VisibleRangePage.routeName],
+    );
+    // A closed editor session leaves the wallpaper entry alone.
+    expect(
+      routes(
+        withForkNavDestinations(
+          [all, albums],
+          mode: GroupedWallpaperNavMode.separateRight,
+          wallpaperSessionActive: true,
+          wallpaperOpenedAt: 1,
+          editorSessionActive: false,
+          editorOpenedAt: 0,
+        ),
+      ),
+      [CollectionPage.routeName, AlbumListPage.routeName, VisibleRangePage.routeName, GroupedWallpaperPage.routeName],
     );
   });
 

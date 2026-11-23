@@ -1,6 +1,7 @@
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/model/visible_range_write_back.dart';
+import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/widgets/common/extensions/build_context.dart';
 import 'package:flutter/widgets.dart';
@@ -92,7 +93,26 @@ String visibleRangeFilterLabels(BuildContext context, Set<CollectionFilter> filt
 String visibleRangeCandidateLabel(BuildContext context, VisibleRangeCandidate candidate) {
   if (candidate.labelKey.isNotEmpty) return visibleRangePresetLabel(context, candidate.labelKey);
   if (candidate.label.isNotEmpty) return candidate.label;
+  if (candidate.isGroup) {
+    final group = visibleRangeController.galleryGroupById(candidate.groupId);
+    final name = _groupFallbackName(context, candidate.groupId);
+    // A group tile names the group and, when they differ, what its own
+    // conditions add: the cover and count alone do not say whether a restriction
+    // is what makes the group look like this.
+    final summary = visibleRangeGroupSummary(
+      context,
+      range: group,
+      groupName: group?.name ?? '',
+      isNone: candidate.groupId == VisibleRange.galleryRangeId,
+    );
+    return summary.isEmpty ? name : '$name · $summary';
+  }
   return visibleRangeFilterLabels(context, candidate.filters);
+}
+
+String _groupFallbackName(BuildContext context, String groupId) {
+  final number = visibleRangeController.galleryGroupNumber(groupId);
+  return number > 0 ? context.l10n.wallpaperGroupFallbackName(number) : context.l10n.visibleRangeUnrestricted;
 }
 
 /// The name of a remembered write-back target: a rule's own name, or the base
@@ -110,7 +130,13 @@ String visibleRangeWriteBackTargetLabel(BuildContext context, VisibleRangeWriteB
 /// Restriction". The gallery is named from ARB; a group keeps its own name.
 String visibleRangeWriteBackTargetLine(BuildContext context, VisibleRangeWriteBackTarget target) {
   final l10n = context.l10n;
-  final owner = target.isGallery ? l10n.visibleRangePinTargetGallery : l10n.visibleRangeOwnerWithNumber(target.number, _groupName(context, target));
+  // A numbered target is a gallery group; number 0 is the scope-wide outside
+  // pool, which has no group name of its own.
+  final owner = target.number > 0
+      ? l10n.visibleRangeOwnerWithNumber(target.number, _groupName(context, target))
+      : target.isGallery
+          ? l10n.visibleRangePinGroupOutside
+          : l10n.visibleRangePinTargetGallery;
   final kind = switch (target.kind) {
     VisibleRangeCandidateKind.base => l10n.visibleRangePinGroupBase,
     VisibleRangeCandidateKind.restriction => l10n.visibleRangePinGroupRestriction,

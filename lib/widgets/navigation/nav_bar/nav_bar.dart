@@ -5,6 +5,7 @@ import 'package:aves/features/collection_paging/view/collection_view_hooks.dart'
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_controller.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_nav.dart';
+import 'package:aves/features/visible_range/services/visible_range_editor_session.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -49,6 +50,9 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
     // In the shared mode, the entry's label and icon follow the page it renders;
     // flipping the page keeps the same route, so the bar has to rebuild itself.
     visibleRangeDestination.addListener(_onDestinationChanged);
+    // The group editor is a session: its derived entry appears and disappears
+    // without a route change.
+    visibleRangeEditorSession.addListener(_onDestinationChanged);
   }
 
   @override
@@ -61,6 +65,7 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
   @override
   void dispose() {
     visibleRangeDestination.removeListener(_onDestinationChanged);
+    visibleRangeEditorSession.removeListener(_onDestinationChanged);
     _unregisterWidget(widget);
     super.dispose();
   }
@@ -83,9 +88,18 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
     // from the configured mode.
     final navMode = context.select<GroupedWallpaperNavController, GroupedWallpaperNavMode>((v) => v.mode);
     final sessionActive = context.select<GroupedWallpaperNavController, bool>((v) => v.sessionActive);
+    final openedAt = context.select<GroupedWallpaperNavController, int>((v) => v.sessionOpenedAt);
+    // The group editor is a peer of the wallpaper page: its entry is derived
+    // from its own session, ordered against the wallpaper's by open time.
     final items = _visibleItems(
       context,
-      withWallpaperNavDestinations(configured, mode: navMode, sessionActive: sessionActive, include: !picking),
+      withCurrentForkNavDestinations(
+        configured,
+        mode: navMode,
+        wallpaperSessionActive: sessionActive,
+        wallpaperOpenedAt: openedAt,
+        include: !picking,
+      ),
     );
     if (items.length < 2) return const SizedBox();
 

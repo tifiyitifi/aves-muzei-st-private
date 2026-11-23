@@ -1635,11 +1635,14 @@
   },
 
   "visibleRangePageTitle": "Visible range",
-  "visibleRangeSectionBase": "base range (exclusive)",
-  "visibleRangeSectionRestrictions": "additional restrictions",
-  "visibleRangeSectionSupplementsOutside": "extra display",
-  "visibleRangeSectionSupplementsInside": "extra display",
-  "visibleRangeSectionCurrent": "current visible range",
+  "visibleRangeSectionGroups": "groups",
+  "visibleRangeSectionBase": "base range",
+  "visibleRangeSectionRestrictions": "restrictions",
+  "visibleRangeSectionSupplements": "supplements",
+  "visibleRangeSectionOutsideRestrictions": "outside restrictions",
+  "visibleRangeSectionOutsideSupplements": "outside supplements",
+  "visibleRangeSectionEmpty": "none",
+  "visibleRangeSectionCurrent": "currently visible",
   "visibleRangeGallery": "result",
   "visibleRangeUnrestricted": "Unrestricted",
   "visibleRangeRestricted": "Restricted",
@@ -1666,7 +1669,7 @@
       }
     }
   },
-  "visibleRangeRuleKindBase": "Base",
+  "visibleRangeRuleKindBase": "base range",
   "visibleRangeRuleKindRestriction": "Restriction",
   "visibleRangeRuleKindSupplement": "Supplement",
   "visibleRangeRuleInactive": "Off",
@@ -1744,8 +1747,8 @@
   "visibleRangeAboutWallpaper": "About grouped wallpaper",
   "visibleRangeMore": "More",
   "visibleRangeManagementBlocked": "Unlock the visible range to change it.",
-  "visibleRangePinAction": "Pin to visible range",
-  "visibleRangePinTitle": "Pin to visible range / wallpaper",
+  "visibleRangePinAction": "Save to visible range",
+  "visibleRangePinTitle": "Save to visible range / wallpaper",
   "visibleRangePinFilters": "Filters",
   "visibleRangePinName": "Name",
   "visibleRangePinDescription": "Description",
@@ -1755,10 +1758,32 @@
   "visibleRangeOutsideHint": "Applies to every gallery group",
   "visibleRangeGroupNew": "New group",
   "visibleRangeGroupName": "Group name",
-  "visibleRangePinGroupBase": "Source (OR)",
-  "visibleRangePinGroupRestriction": "Restriction (AND)",
-  "visibleRangePinGroupSupplement": "Supplement (OR)",
-  "visibleRangePinGroupGallery": "Gallery groups",
+  "visibleRangeGroupEdit": "Edit group",
+  "visibleRangeGroupRename": "Rename group",
+  "visibleRangeGroupDelete": "Delete group",
+  "visibleRangeGroupMoveLeft": "Move group left",
+  "visibleRangeGroupMoveRight": "Move group right",
+  "visibleRangeGroupZeroReadOnly": "Group 0 is Unrestricted. Create a group to save filters into.",
+  "visibleRangeGroupEditorTitle": "Edit group",
+  "visibleRangeGroupCloseConfirm": "Save the changes to this group?",
+  "visibleRangeGroupMissing": "This group no longer exists.",
+  "visibleRangeGroupSaveChanges": "Save",
+  "visibleRangeGroupDiscardChanges": "Discard",
+  "visibleRangeGroupDeleteConfirm": "Delete {name}?",
+  "@visibleRangeGroupDeleteConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "visibleRangePinGroupBase": "Base range",
+  "visibleRangePinGroupRestriction": "Restriction",
+  "visibleRangePinGroupSupplement": "Supplement",
+  "visibleRangePinGroupGallery": "Groups",
+  "visibleRangePinGroupOutside": "Outside the groups",
+  "visibleRangePinBadgeRestriction": "AND",
+  "visibleRangePinBadgeSupplement": "OR",
   "visibleRangePinGroupWallpaper": "Wallpaper groups",
   "visibleRangePinInjection": "Injection options",
   "visibleRangePinInjectionHint": "Automatic enables a condition only in a group that has none yet.",
@@ -1773,10 +1798,10 @@
   "visibleRangePinWriteReplace": "Replace",
   "visibleRangePinTargets": "Targets",
   "visibleRangePinTargetGallery": "Gallery",
-  "visibleRangePinConfirm": "Pin",
+  "visibleRangePinConfirm": "Save",
   "visibleRangePinNoGroup": "Choose at least one group.",
   "visibleRangePinNoTarget": "Choose at least one target.",
-  "visibleRangePinDone": "Pinned to {pinned, plural, =1{{pinned} target} other{{pinned} targets}}",
+  "visibleRangePinDone": "Saved to {pinned, plural, =1{{pinned} target} other{{pinned} targets}}",
   "@visibleRangePinDone": {
     "placeholders": {
       "pinned": {
@@ -1785,7 +1810,7 @@
       }
     }
   },
-  "visibleRangePinPartial": "Pinned to {pinned}, skipped {skipped}",
+  "visibleRangePinPartial": "Saved to {pinned}, skipped {skipped}",
   "@visibleRangePinPartial": {
     "placeholders": {
       "pinned": {
@@ -1807,7 +1832,7 @@
       }
     }
   },
-  "visibleRangePinAndWriteBack": "Pinned to {pinned}, wrote back to {written}",
+  "visibleRangePinAndWriteBack": "Saved to {pinned}, wrote back to {written}",
   "@visibleRangePinAndWriteBack": {
     "placeholders": {
       "pinned": {

@@ -56,13 +56,15 @@ class VisibleRangeCandidateFilter extends CollectionFilter {
 
   @override
   Widget? iconBuilder(BuildContext context, double size, {bool allowGenericIcon = true}) {
-    final icon = candidate.isUnrestricted
-        ? AIcons.filterOff
-        : switch (candidate.kind) {
-            VisibleRangeCandidateKind.base => AIcons.visibleRangeBase,
-            VisibleRangeCandidateKind.restriction => AIcons.visibleRangeRestriction,
-            VisibleRangeCandidateKind.supplement => AIcons.visibleRangeSupplement,
-          };
+    final icon = candidate.isGroup
+        ? Icons.layers_outlined
+        : candidate.isUnrestricted
+            ? AIcons.filterOff
+            : switch (candidate.kind) {
+                VisibleRangeCandidateKind.base => AIcons.visibleRangeBase,
+                VisibleRangeCandidateKind.restriction => AIcons.visibleRangeRestriction,
+                VisibleRangeCandidateKind.supplement => AIcons.visibleRangeSupplement,
+              };
     return Icon(icon, size: size);
   }
 

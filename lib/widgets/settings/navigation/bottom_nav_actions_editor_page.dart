@@ -5,6 +5,7 @@ import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_c
 import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_session.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_nav.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
+import 'package:aves/features/visible_range/services/visible_range_editor_session.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/settings/enums/accessibility_animations.dart';
@@ -216,10 +217,15 @@ class _DerivedDestinations extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([controller, groupedWallpaperNavController]),
+      listenable: Listenable.merge([controller, groupedWallpaperNavController, visibleRangeEditorSession]),
       builder: (context, _) {
         final nav = groupedWallpaperNavController;
-        final derived = derivedNavDestinations(controller.items, mode: nav.mode, sessionActive: nav.sessionActive);
+        final derived = derivedNavDestinations(
+          controller.items,
+          mode: nav.mode,
+          sessionActive: nav.sessionActive,
+          editorSessionActive: visibleRangeEditorSession.active,
+        );
         if (derived.isEmpty) return const SizedBox();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,

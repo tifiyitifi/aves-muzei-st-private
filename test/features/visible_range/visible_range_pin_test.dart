@@ -37,6 +37,9 @@ void main() {
     // No bundled presets: the pin specs only care about the range itself.
     controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const []);
     await controller.init();
+    // Group 0 is 「Unrestricted」 and never a write target: every pin test writes
+    // into a data group, which is also what the save sheet preselects.
+    await controller.addGalleryGroup(name: 'G1');
   });
 
   tearDown(() => db.close());

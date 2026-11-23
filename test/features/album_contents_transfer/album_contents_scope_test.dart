@@ -137,6 +137,7 @@ void main() {
 
     final controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const <VisibleRangePresetDefinition>[]);
     await controller.init();
+    await controller.addGalleryGroup(name: 'G1');
     VisibleRangeGate.debugController = controller;
     addTearDown(() => VisibleRangeGate.debugController = null);
     await controller.selectBase(presetId: '', name: 'A', filters: {PathFilter(albumA)});

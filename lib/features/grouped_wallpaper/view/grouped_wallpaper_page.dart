@@ -1054,7 +1054,7 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
         VisibleRangeCandidateKind.base => '',
         VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement => real.isEmpty ? '' : '${real.where((candidate) => candidate.active).length}/${real.length}',
       };
-      result[VisibleRangeSectionKey(context, section.kind, countText: countText, supplementsOutside: pool.order.isIntersectFirst)] = [
+      result[VisibleRangeSectionKey(context, section.kind, countText: countText)] = [
         for (final candidate in section.candidates) FilterGridItem<CollectionFilter>(VisibleRangeCandidateFilter(candidate), null),
       ];
     }

@@ -8,9 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/sqlite3_loader.dart';
 
-/// Schema v18 -> v19: the single gallery range becomes visibility groups, its
-/// base becomes a `source` rule, and its old global rules move to the shared
-/// outside pool. Wallpaper pools keep their ids.
+/// Schema v18 -> v19: a wallpaper base becomes a `source` rule. The gallery
+/// scope is reset by v20 (group 0 is the 「Unrestricted」 sentinel), so this test
+/// keeps its fixture on a wallpaper pool to observe the v19 mapping itself.
 void main() {
   setUpAll(ensureSqlite3Loaded);
 
@@ -63,7 +63,7 @@ void main() {
           raw.execute('CREATE TABLE visible_range_state (key TEXT NOT NULL PRIMARY KEY, value TEXT)');
           raw.execute(
             'INSERT INTO visible_ranges (id, scope, ownerId, baseName, basePresetId, baseFilters, baseActive, baseSurfaces, createdAt, updatedAt) '
-            "VALUES ('gallery', 'gallery', 'gallery', '@visibleRangePresetImage', 'builtin.image', ?, 1, 0, 1, 2)",
+            "VALUES ('g.range', 'wallpaper', 'g', '@wallpaperGroupDefaultDcim', '', ?, 1, 3, 1, 2)",
             [imageJson],
           );
           raw.execute(
@@ -72,9 +72,9 @@ void main() {
           );
           raw.execute(
             'INSERT INTO visible_range_rules (id, rangeId, kind, position, filters) VALUES (?, ?, ?, 0, ?)',
-            ['r1', 'gallery', 'restriction', favouriteJson],
+            ['r1', 'g.range', 'restriction', favouriteJson],
           );
-          raw.execute('INSERT INTO visible_range_rule_usage (id, rangeId, targetId, kind, usedAt) VALUES (?, ?, ?, ?, 1)', ['rule.r1', 'gallery', 'r1', 'restriction']);
+          raw.execute('INSERT INTO visible_range_rule_usage (id, rangeId, targetId, kind, usedAt) VALUES (?, ?, ?, ?, 1)', ['rule.r1', 'g.range', 'r1', 'restriction']);
           raw.execute('PRAGMA user_version = 18');
         },
       ),
@@ -93,23 +93,18 @@ void main() {
     expect(columns, containsAll(['baseFilters', 'kind', 'name', 'position']));
   });
 
-  test('the preset-backed base becomes a group and the old rules move outside', () async {
+  test('a wallpaper base becomes a source condition and keeps its rules', () async {
+    final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: 'g');
+    expect(range, isNotNull);
+    expect(range!.rulesOf(VisibleRangeRuleKind.source).single.filters, {MimeFilter.image});
+    expect(range.ruleById('r1')!.filters, {FavouriteFilter.instance});
+    expect(range.baseSurfaces, 3);
+    expect((await VisibleRangeStore(db).loadUsages()).single.targetId, 'r1');
+  });
+
+  test('the gallery scope is reset by v20', () async {
     final store = VisibleRangeStore(db);
-    final groups = await store.loadGroups(VisibleRangeScope.gallery);
-    expect(groups.map((group) => group.id), containsAll(['gallery', 'builtin.group.builtin.image']));
-
-    // The old base pointed at the preset, so that group is current and carries
-    // the source; the gallery row is the unrestricted default.
-    expect(await store.readState(VisibleRangeStore.keyCurrentGalleryGroupId), 'builtin.group.builtin.image');
-    final presetGroup = groups.singleWhere((group) => group.id == 'builtin.group.builtin.image');
-    expect(presetGroup.rulesOf(VisibleRangeRuleKind.source).single.filters, {MimeFilter.image});
-    expect(groups.singleWhere((group) => group.id == 'gallery').rules, isEmpty);
-
-    // The scope-wide rule kept its id and moved to the outside pool.
-    final outside = await store.loadOutside(VisibleRangeScope.gallery);
-    expect(outside, isNotNull);
-    expect(outside!.kind, VisibleRangeGroupKind.outside);
-    expect(outside.rules.single.id, 'r1');
-    expect((await store.loadUsages()).single.rangeId, outside.id);
+    expect(await store.loadGroups(VisibleRangeScope.gallery), isEmpty);
+    expect(await store.readState(VisibleRangeStore.keyCurrentGalleryGroupId), isNull);
   });
 }

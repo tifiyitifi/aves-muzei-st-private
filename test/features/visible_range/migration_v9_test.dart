@@ -42,7 +42,7 @@ void main() {
           );
           raw.execute(
             'INSERT INTO visible_ranges (id, scope, ownerId, baseFilters, createdAt, updatedAt) '
-            'VALUES (\'gallery\', \'gallery\', \'gallery\', \'[{"type":"favourite"}]\', 1, 2)',
+            'VALUES (\'g.range\', \'wallpaper\', \'g\', \'[{"type":"favourite"}]\', 1, 2)',
           );
           raw.execute('PRAGMA user_version = 8');
         },
@@ -56,7 +56,8 @@ void main() {
     final version = (await db.customSelect('PRAGMA user_version').get()).single.data['user_version'];
     expect(version, db.schemaVersion);
 
-    final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.gallery, ownerId: VisibleRange.galleryOwnerId);
+    // A wallpaper range is not reset by v20, so the legacy base is still there.
+    final range = await VisibleRangeStore(db).loadRange(scope: VisibleRangeScope.wallpaper, ownerId: 'g');
     expect(range, isNotNull);
     // v19 turns the legacy base into a source condition.
     expect(range!.rulesOf(VisibleRangeRuleKind.source).single.active, isTrue);

@@ -47,3 +47,10 @@ A range is one **visibility group**:
   duplicates the store, the page and every test.
 - Per-group locks: switching away from a locked group would grant permissions.
 - Pruning built-in groups on a defaults bump: silently deletes user edits.
+
+## Superseded by
+
+[`0006-group-zero-and-the-group-editor.md`](0006-group-zero-and-the-group-editor.md)
+(partially): the gallery page now lists only the groups and the outside pool,
+a group's own conditions edit on their own draft page, and group 0 is the
+「Unrestricted」 sentinel rather than a container.

@@ -53,6 +53,7 @@ void main() {
 
   group('applied targets', () {
     test('taking a rule and a base out remembers both, deduped by id', () async {
+      await controller.addGalleryGroup(name: 'G1');
       final rule = (await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {image}))!;
       await controller.selectBase(presetId: '', name: 'Mine', filters: {video});
       final base = VisibleRangeCandidate.customBase(name: 'Mine', filters: {video});
@@ -73,6 +74,7 @@ void main() {
     });
 
     test('a rule deleted from its range disappears from the list', () async {
+      await controller.addGalleryGroup(name: 'G1');
       final rule = (await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {image}))!;
       await controller.markAppliedTargets(rangeId: controller.gallery.id, candidates: [VisibleRangeCandidate.fromRule(rule)]);
       await controller.deleteRules({rule.id});
@@ -81,6 +83,7 @@ void main() {
     });
 
     test('write-back overwrites the selected rule and base only', () async {
+      await controller.addGalleryGroup(name: 'G1');
       await controller.selectBase(presetId: 'builtin.image', name: 'Images', filters: {image});
       final rule = (await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {image}))!;
       final other = (await controller.addRule(kind: VisibleRangeRuleKind.supplement, filters: {favourite}))!;
@@ -107,6 +110,7 @@ void main() {
     });
 
     test('a locked range is skipped and counted', () async {
+      await controller.addGalleryGroup(name: 'G1');
       final rule = (await controller.addRule(kind: VisibleRangeRuleKind.restriction, filters: {image}))!;
       await controller.markAppliedTargets(rangeId: controller.gallery.id, candidates: [VisibleRangeCandidate.fromRule(rule)]);
       await controller.lock(permissions: VisibleRangePermissions.readOnly);
@@ -128,9 +132,11 @@ void main() {
   group('wallpaper groups', () {
     late _FakeTargetSource source;
 
-    setUp(() {
+    setUp(() async {
       source = _FakeTargetSource({groupRangeId: groupRange()});
       controller.targetSource = source;
+      // A data group is the write target; group 0 never accepts conditions.
+      await controller.addGalleryGroup(name: 'G1');
     });
 
     test('the pin sheet lists the gallery group, the outside roles, then the groups', () async {

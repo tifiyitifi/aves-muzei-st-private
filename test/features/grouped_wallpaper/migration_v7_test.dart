@@ -29,7 +29,7 @@ void main() {
             'createdAt INTEGER NOT NULL, '
             'updatedAt INTEGER NOT NULL)',
           );
-          raw.execute("INSERT INTO visible_ranges (id, scope, ownerId, createdAt, updatedAt) VALUES ('gallery', 'gallery', 'gallery', 1, 2)");
+          raw.execute("INSERT INTO visible_ranges (id, scope, ownerId, createdAt, updatedAt) VALUES ('g.range', 'wallpaper', 'g', 1, 2)");
           raw.execute('PRAGMA user_version = 6');
         },
       ),
@@ -49,10 +49,10 @@ void main() {
     expect(indexes, hasLength(1));
 
     // The v5 rows are still there and readable through the current definitions.
-    // v19 also creates the gallery's scope-wide outside pool.
-    final ranges = await (db.select(db.visibleRangeRows)..where((t) => t.id.equals('gallery'))).get();
-    expect(ranges.single.id, 'gallery');
-    expect(ranges.single.scope, 'gallery');
+    // v20 resets only the gallery scope, so a wallpaper range survives.
+    final ranges = await (db.select(db.visibleRangeRows)..where((t) => t.id.equals('g.range'))).get();
+    expect(ranges.single.id, 'g.range');
+    expect(ranges.single.scope, 'wallpaper');
   });
 
   test('a fresh database has the group table and its index', () async {

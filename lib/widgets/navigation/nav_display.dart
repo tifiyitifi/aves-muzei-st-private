@@ -3,6 +3,7 @@ import 'package:aves/features/grouped_wallpaper/services/grouped_wallpaper_nav_c
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/muzei_wallpaper/view/muzei_wallpaper_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_destination.dart';
+import 'package:aves/features/visible_range/view/visible_range_group_editor_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_page.dart';
 import 'package:aves/model/filters/favourite.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -68,6 +69,8 @@ class NavigationDisplay {
         return l10n.muzeiWallpaperPageTitle;
       case GroupedWallpaperPage.routeName:
         return l10n.wallpaperGroupsTitle;
+      case VisibleRangeGroupEditorPage.routeName:
+        return l10n.visibleRangeGroupEditorTitle;
       case VisibleRangePage.routeName:
         // One entry, two peer pages in the shared mode: the label and the icon
         // follow whichever page the entry currently renders.
@@ -103,6 +106,8 @@ class NavigationDisplay {
         return AIcons.wallpaper;
       case GroupedWallpaperPage.routeName:
         return AIcons.wallpaper;
+      case VisibleRangeGroupEditorPage.routeName:
+        return AIcons.visibleRange;
       case VisibleRangePage.routeName:
         return _sharedEntryShowsWallpaper ? AIcons.wallpaper : AIcons.visibleRange;
       case SearchPage.routeName:

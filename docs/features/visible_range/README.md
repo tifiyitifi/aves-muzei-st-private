@@ -15,12 +15,16 @@ In scope:
 
 - several mutually exclusive gallery groups plus one shared outside pool, and one
   group per wallpaper group, isolated by scope + owner;
+- a gallery page that lists the groups, the outside restrictions, the outside
+  supplements and the current result; group 0 is the 「Unrestricted」 sentinel;
+- a group editor that edits the group's base range, restrictions and supplements
+  on a draft, with each condition switched in or out;
 - source (OR), restriction (AND) and supplement (OR) conditions inside a group;
 - two evaluation orders, inherited from the old scenario chips;
-- pinning a media set into a group (automatic split, optional forced role) or into
+- saving a media set into a group (automatic split, optional forced role) or into
   the outside pool, with an inject-and-enable / inject-only policy;
 - applying candidates to the media set (append by default, replace for a rule);
-- writing the current filters back over the rules a pin sheet targets;
+- writing the current filters back over the rules a save sheet targets;
 - a lock with three permission presets that freezes a whole scope: the gallery's
   groups and outside pool, or the wallpaper group set;
 - the wallpaper page's browsing overlay, which joins the gallery group instead of
@@ -47,10 +51,10 @@ Out of scope:
 | Lock presets | `readOnly`, `manageable`, `full` |
 | Active styles | `section`, `compactChips`, `tiles` |
 | Defaults bundle | `assets/visible_range_presets.json` |
-| Defaults version | 5 (`VisibleRangeStore.defaultsVersion`) |
+| Defaults version | 4 (`VisibleRangeStore.defaultsVersion`) |
 | Store keys | `gallery.current`, `lock.preset`, `seeded`, `defaults.version`, `view.activeStyle`, `pin.injection.mode`, `pin.injection.remembered` |
-| Migrations | v5 tables, v6 descriptions, v9 base activation flag, v19 visibility groups |
-| Entry points | visible-range page, gallery chip, pin sheet, wallpaper group page |
+| Migrations | v5 tables, v6 descriptions, v9 base activation flag, v19 visibility groups, v20 gallery reset |
+| Entry points | visible-range page, group editor, gallery chip, save sheet, wallpaper group page |
 | Rule check | `scripts/check-visible-range-rules.ps1` |
 
 ## Reading order
@@ -70,10 +74,12 @@ Out of scope:
 | Bundled defaults | `lib/features/visible_range/data/default_presets.dart`, `assets/visible_range_presets.json` |
 | Store | `lib/features/visible_range/db/` |
 | Controller | `lib/features/visible_range/services/visible_range_controller.dart` |
+| Editor session / nav | `lib/features/visible_range/services/visible_range_editor_session.dart`, `view/visible_range_group_open.dart` |
 | Browsing gate | `lib/features/visible_range/services/visible_range_gate.dart` |
 | Locks | `lib/features/visible_range/services/visible_range_locks.dart` |
 | Stats | `lib/features/visible_range/services/visible_range_candidate_stats.dart` |
-| Views | `lib/features/visible_range/view/` |
+| Page layout | `lib/features/visible_range/view/visible_range_page_sections.dart` |
+| Views | `lib/features/visible_range/view/`, `visible_range_group_editor_page.dart` |
 | Tests | `test/features/visible_range/` |
 
 ## Privacy note

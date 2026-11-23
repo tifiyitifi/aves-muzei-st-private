@@ -7,11 +7,14 @@ import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
 import 'package:aves/features/visible_range/services/visible_range_candidate_stats.dart';
 import 'package:aves/features/visible_range/services/visible_range_apply.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
+import 'package:aves/features/visible_range/services/visible_range_gate.dart';
 import 'package:aves/features/visible_range/view/visible_range_about_page.dart';
 import 'package:aves/features/visible_range/view/visible_range_action_delegate.dart';
 import 'package:aves/features/visible_range/view/visible_range_active_footer.dart';
 import 'package:aves/features/visible_range/view/visible_range_candidate_filter.dart';
+import 'package:aves/features/visible_range/view/visible_range_group_open.dart';
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
+import 'package:aves/features/visible_range/view/visible_range_page_sections.dart';
 import 'package:aves/features/visible_range/view/visible_range_section_key.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_lock_dialog.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_rule_actions.dart';
@@ -51,15 +54,17 @@ class VisibleRangePage extends StatefulWidget {
 
 enum _MoreAction {
   editRule,
+  editGroup,
+  renameGroup,
+  deleteGroup,
+  moveGroupLeft,
+  moveGroupRight,
   applyToMediaSet,
-  order,
   reAddDefaults,
   wallpaperGroups,
   lockDetailed,
   about,
 }
-
-enum _PresetAction { edit, delete }
 
 class _VisibleRangePageState extends State<VisibleRangePage> {
   final ValueNotifier<double> _appBarHeightNotifier = ValueNotifier(0);
@@ -80,13 +85,6 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   final _selection = Selection<FilterGridItem<VisibleRangeCandidateFilter>>(toSelectableItems: null);
 
   VisibleRangeController get _controller => visibleRangeController;
-
-  /// Whether the page edits the scope-wide outside pool instead of the current
-  /// group. Browsing always uses the current group plus the outside pool; this
-  /// only selects which container the grid below edits.
-  bool _editingOutside = false;
-
-  VisibleRange get _editedRange => _editingOutside ? _controller.outside : _controller.gallery;
 
   @override
   void initState() {
@@ -128,10 +126,18 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   Future<void> _refreshStats() async {
     final filtersByKey = <String, Set<CollectionFilter>>{};
-    for (final section in buildVisibleRangeSections(range: _editedRange)) {
+    for (final section in buildVisibleRangePageSections(
+      groups: _controller.galleryGroups,
+      currentGroupId: _controller.currentGalleryGroupId,
+      outside: _controller.outside,
+    )) {
       for (final candidate in section.candidates) {
+        if (candidate.isGroupAdd) continue;
         filtersByKey.putIfAbsent(candidate.statsKey, () => candidate.filters);
       }
+    }
+    for (final candidate in buildVisibleRangeActiveCandidates(range: _controller.gallery, outside: _controller.outside)) {
+      filtersByKey.putIfAbsent(candidate.statsKey, () => candidate.filters);
     }
     final missing = filtersByKey.entries
         .where((entry) => !_stats.containsKey(entry.key) && !_pendingStats.contains(entry.key))
@@ -166,8 +172,8 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       builder: (context, _) {
         final source = context.read<CollectionSource>();
         final sections = _buildSections(context);
-        // The active section repeats conditions from the groups above, so it
-        // must not feed the rule actions or the multi-selection twice.
+        // The current-visible section repeats conditions from the sections above,
+        // so it must not feed the rule actions or the multi-selection twice.
         final items = sections.values.expand((list) => list).where((item) => !item.filter.summary && item.filter.candidate.rule != null).toList();
         final delegate = VisibleRangeActionDelegate(
           controller: _controller,
@@ -176,7 +182,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
           onRename: (context, rule) => _renameRule(rule),
           onDelete: (context, rules) => _deleteRules(rules),
           onActivate: (context, rule) => _activate(rule, VisibleRangeActivationMode.override),
-          extraLayoutRows: (context) => [_buildGroupRow(context), _buildActiveStyleRow(context)],
+          extraLayoutRows: (context) => [_buildActiveStyleRow(context)],
         );
         final page = FilterGroupProvider(
           // The visible-range candidates are not the album page's group
@@ -217,7 +223,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
                     emptyBuilder: () => Center(child: Text(context.l10n.visibleRangeNoCandidates)),
                     heroType: HeroType.never,
                     onTileTap: (item, navigate) => _onCandidateTap(item),
-                    selectableItem: (item) => !item.filter.summary && item.filter.candidate.isApplicable,
+                    selectableItem: (item) => !item.filter.summary && (item.filter.candidate.isApplicable || item.filter.candidate.isGroup),
                     tileBuilder: _buildTile,
                     // The section form repeats the active conditions as the last
                     // grid section instead of a separate footer.
@@ -234,42 +240,50 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   }
 
   Map<ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>> _buildSections(BuildContext context) {
-    final range = _editedRange;
-    final supplementsOutside = range.order.isIntersectFirst;
+    final outside = _controller.outside;
     final result = <ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>>{};
-    for (final section in buildVisibleRangeSections(range: range)) {
-      // Each header counts the conditions its own group contributes, not the
-      // entries left visible: the base group advertises how many choices it
-      // shows, and the rule groups show active/total. The resulting item total
-      // lives on the footer's gallery chip.
-      final countText = switch (section.kind) {
-        VisibleRangeCandidateKind.base => '${section.candidates.length}',
-        VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement => '${section.candidates.where((candidate) => candidate.active).length}/${section.candidates.length}',
-      };
-      final key = VisibleRangeSectionKey(context, section.kind, countText: countText, supplementsOutside: supplementsOutside);
-      // The bundled order is the page's order: the groups read the same on every
-      // install instead of reshuffling when a cover date changes.
-      final ordered = section.kind == VisibleRangeCandidateKind.base
-          ? [...section.candidates.where((candidate) => candidate.isUnrestricted), ...section.candidates.where((candidate) => !candidate.isUnrestricted)]
-          : section.candidates;
-      result[key] = [
-        for (final candidate in ordered)
-          // Cover and count stay in the stats map: a candidate is a filter set,
-          // not a covered filter, so the grid item carries no entry of its own.
-          FilterGridItem(VisibleRangeCandidateFilter(candidate), null),
-      ];
+    final pageSections = buildVisibleRangePageSections(
+      groups: _controller.galleryGroups,
+      currentGroupId: _controller.currentGalleryGroupId,
+      outside: outside,
+    );
+    for (final section in pageSections) {
+      switch (section.kind) {
+        case VisibleRangePageSectionKind.groups:
+          final count = section.candidates.where((candidate) => candidate.isGroup).length;
+          result[VisibleRangeGroupSectionKey(context, countText: '$count')] = [
+            for (final candidate in section.candidates) FilterGridItem(VisibleRangeCandidateFilter(candidate), null),
+          ];
+        case VisibleRangePageSectionKind.outsideRestriction:
+        case VisibleRangePageSectionKind.outsideSupplement:
+          final kind = section.kind == VisibleRangePageSectionKind.outsideRestriction ? VisibleRangeCandidateKind.restriction : VisibleRangeCandidateKind.supplement;
+          final candidates = section.candidates.isEmpty ? [_outsideEmptyCandidate(kind)] : section.candidates;
+          final countText = '${section.candidates.where((candidate) => candidate.active).length}/${section.candidates.length}';
+          result[VisibleRangeSectionKey(context, kind, countText: countText, outside: true)] = [
+            for (final candidate in candidates) FilterGridItem(VisibleRangeCandidateFilter(candidate), null),
+          ];
+      }
     }
     if (_controller.activeStyle == VisibleRangeActiveStyle.section) {
       // The same conditions, repeated as a read-only group at the bottom: it
       // shares the grid's columns, tile size and pinch zoom with the groups
       // above, so it is a section rather than a separate footer strip.
-      final active = buildVisibleRangeActiveCandidates(range: range);
-      result[VisibleRangeActiveSectionKey(context, restricted: range.isRestricted(outside: _controller.outside))] = [
+      final active = buildVisibleRangeActiveCandidates(range: _controller.gallery, outside: outside);
+      result[VisibleRangeActiveSectionKey(context, restricted: _controller.galleryRestricted)] = [
         for (final candidate in active) FilterGridItem(VisibleRangeCandidateFilter(candidate, summary: true), null),
       ];
     }
     return result;
   }
+
+  /// The slot an empty outside section shows, so its header never disappears.
+  VisibleRangeCandidate _outsideEmptyCandidate(VisibleRangeCandidateKind kind) => VisibleRangeCandidate(
+    id: 'outside.empty.${kind.name}',
+    kind: kind,
+    filters: const {},
+    labelKey: 'visibleRangeSectionEmpty',
+    placeholder: true,
+  );
 
   Widget _buildTile(BuildContext context, FilterGridItem<VisibleRangeCandidateFilter> item, Size tileSize) {
     final candidate = item.filter.candidate;
@@ -287,11 +301,10 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
           tileSize: tileSize,
           summary: summary,
           showStateIcon: !candidate.isGallery,
-          selectable: !summary && candidate.isApplicable,
+          selectable: !summary && (candidate.isApplicable || candidate.isGroup),
           selecting: _selection.isSelecting,
           selected: _selection.selectedItems.contains(item),
           onTap: () => _onCandidateTap(item),
-          onLongPress: !summary && candidate.preset != null && !candidate.preset!.builtin ? () => _showPresetEditor(candidate.preset!) : null,
         ),
       ),
     );
@@ -300,12 +313,14 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   Widget _buildFooter(BuildContext context) {
     final range = _controller.gallery;
     final baseCandidates = buildVisibleRangeSections(range: range).first.candidates;
-    final activeBase = baseCandidates.firstWhereOrNull((candidate) => candidate.active);
+    final activeBase = baseCandidates.firstWhereOrNull((candidate) => candidate.active && !candidate.isUnrestricted);
     final activeRules = [
       for (final kind in range.order.isIntersectFirst
           ? [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement]
           : [VisibleRangeRuleKind.supplement, VisibleRangeRuleKind.restriction])
         for (final rule in range.activeRulesOf(kind)) VisibleRangeCandidate.fromRule(rule),
+      for (final kind in [VisibleRangeRuleKind.restriction, VisibleRangeRuleKind.supplement])
+        for (final rule in _controller.outside.activeRulesOf(kind)) VisibleRangeCandidate.fromRule(rule),
     ];
     return VisibleRangeActiveFooter(
       range: range,
@@ -344,14 +359,21 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       // On a TV rail there is no overflow menu, so the selection actions have to
       // stay reachable as icons.
       final selectedRule = _selectedRule(selection);
+      final selectedGroupId = _selectedGroupId(selection);
       final actions = <Widget>[
+        if (selectedGroupId != null)
+          IconButton(
+            icon: const Icon(AIcons.edit),
+            tooltip: l10n.visibleRangeGroupEdit,
+            onPressed: () => unawaited(_editGroup(selectedGroupId)),
+          ),
         if (selectedRule != null)
           IconButton(
             icon: const Icon(AIcons.edit),
             tooltip: l10n.visibleRangeEditRule,
             onPressed: () => unawaited(_showRuleEditor(selectedRule)),
           ),
-        if (selection.selectedItemCount > 0)
+        if (selection.selectedItemCount > 0 && selectedGroupId == null)
           IconButton(
             icon: const Icon(AIcons.apply),
             tooltip: l10n.visibleRangeApplyToMediaSet,
@@ -383,6 +405,19 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   ) {
     if (selection.isSelecting) {
       final selectedRule = _selectedRule(selection);
+      final selectedGroupId = _selectedGroupId(selection);
+      if (selectedGroupId != null) {
+        final isZero = _controller.isGroupZero(selectedGroupId);
+        return [
+          if (!isZero) ...[
+            _menuItem<_MoreAction>(context, _MoreAction.editGroup, AIcons.edit, context.l10n.visibleRangeGroupEdit),
+            _menuItem<_MoreAction>(context, _MoreAction.renameGroup, AIcons.edit, context.l10n.visibleRangeGroupRename),
+            _menuItem<_MoreAction>(context, _MoreAction.moveGroupLeft, Icons.chevron_left, context.l10n.visibleRangeGroupMoveLeft),
+            _menuItem<_MoreAction>(context, _MoreAction.moveGroupRight, Icons.chevron_right, context.l10n.visibleRangeGroupMoveRight),
+            _menuItem<_MoreAction>(context, _MoreAction.deleteGroup, AIcons.delete, context.l10n.visibleRangeGroupDelete),
+          ],
+        ];
+      }
       return [
         if (selectedRule != null) _menuItem<_MoreAction>(context, _MoreAction.editRule, AIcons.edit, context.l10n.visibleRangeEditRule),
         if (selection.selectedItemCount > 0) _menuItem<_MoreAction>(context, _MoreAction.applyToMediaSet, AIcons.apply, context.l10n.visibleRangeApplyToMediaSet),
@@ -394,7 +429,6 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   List<PopupMenuEntry<_MoreAction>> _menuEntries(BuildContext context) {
     final l10n = context.l10n;
     return [
-      _menuItem(context, _MoreAction.order, AIcons.sortOrder, l10n.visibleRangeOrder),
       _menuItem(context, _MoreAction.reAddDefaults, AIcons.newTier, l10n.visibleRangeReAddDefaults),
       const PopupMenuDivider(),
       // The wallpaper groups own their own condition pool, so they are reached
@@ -412,93 +446,92 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     return PopupMenuItem<T>(value: value, child: _menuRow(context, icon, text));
   }
 
-  /// The group switcher row: which container the grid below edits.
-  ///
-  /// Browsing always uses the current group plus the outside pool; the row only
-  /// chooses what the conditions on this page belong to, so a user can narrow a
-  /// group without switching what the library shows.
-  Widget _buildGroupRow(BuildContext context) {
-    final l10n = context.l10n;
-    final group = _controller.gallery;
-    final number = _controller.galleryGroupNumber(group.id);
-    final name = group.name.startsWith('@') ? visibleRangePresetLabel(context, group.name.substring(1)) : group.name;
-    return ListenableBuilder(
-      listenable: _controller,
-      builder: (context, _) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-        child: Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                icon: Icon(_editingOutside ? Icons.layers_outlined : AIcons.visibleRangeActive),
-                label: Text(
-                  _editingOutside ? l10n.visibleRangeOutsideConditions : l10n.visibleRangeOwnerWithNumber(number, name.isEmpty ? l10n.visibleRangePinTargetGallery : name),
-                ),
-                onPressed: _canEdit ? () => unawaited(_showGroupPicker()) : _showBlocked,
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilterChip(
-              label: Text(l10n.visibleRangeOutsideConditions),
-              selected: _editingOutside,
-              onSelected: _canEdit ? (value) => setState(() => _editingOutside = value) : null,
-            ),
-          ],
-        ),
-      ),
-    );
+  /// The group tile the user selected, when exactly one is selected.
+  String? _selectedGroupId(Selection<FilterGridItem<VisibleRangeCandidateFilter>> selection) {
+    if (!selection.isSelecting) return null;
+    final groups = selection.selectedItems.map((item) => item.filter.candidate).where((candidate) => candidate.isGroup).toList();
+    return groups.length == 1 ? groups.single.groupId : null;
   }
 
-  Future<void> _showGroupPicker() async {
+  /// Opens the current group's editor.
+  ///
+  /// Group 0 is the 「Unrestricted」 sentinel and holds no conditions, so there is
+  /// nothing to edit.
+  Future<void> _editGroup(String id) async {
+    if (!mounted) return;
+    if (_controller.isGroupZero(id)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.visibleRangeGroupZeroReadOnly)));
+      return;
+    }
+    if (!_controller.canEditGroup(id)) {
+      _showBlocked();
+      return;
+    }
+    _browseSelection();
+    await openVisibleRangeGroupEditor(context, groupId: id);
+  }
+
+  Future<void> _renameGroup(String id) async {
+    if (_controller.isGroupZero(id) || !_controller.canEditGroup(id)) {
+      _showBlocked();
+      return;
+    }
+    final group = _controller.galleryGroupById(id);
+    if (group == null || !mounted) return;
     final l10n = context.l10n;
-    const outside = '__outside__';
-    const create = '__create__';
-    final selected = await showModalBottomSheet<String>(
+    final controller = TextEditingController(text: group.name.startsWith('@') ? '' : group.name);
+    final name = await showDialog<String>(
       context: context,
-      useSafeArea: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(24, 16, 24, 8),
-              child: Text(l10n.visibleRangeCurrentGroup, style: Theme.of(context).textTheme.titleMedium),
-            ),
-            for (final group in _controller.galleryGroups)
-              ListTile(
-                leading: CircleAvatar(radius: 14, child: Text('${_controller.galleryGroupNumber(group.id)}')),
-                title: Text(group.name.startsWith('@') ? visibleRangePresetLabel(context, group.name.substring(1)) : group.name),
-                trailing: group.id == _controller.currentGalleryGroupId ? const Icon(AIcons.visibleRangeActive) : null,
-                onTap: () => Navigator.pop(context, group.id),
-              ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.layers_outlined),
-              title: Text(l10n.visibleRangeOutsideConditions),
-              subtitle: Text(l10n.visibleRangeOutsideHint),
-              selected: _editingOutside,
-              onTap: () => Navigator.pop(context, outside),
-            ),
-            ListTile(
-              leading: const Icon(AIcons.add),
-              title: Text(l10n.visibleRangeGroupNew),
-              onTap: () => Navigator.pop(context, create),
-            ),
-          ],
+      builder: (context) => AlertDialog(
+        title: Text(l10n.visibleRangeGroupRename),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(labelText: l10n.visibleRangeGroupName, border: const OutlineInputBorder()),
         ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
+          FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
+        ],
       ),
     );
-    if (!mounted || selected == null) return;
-    if (selected == outside) {
-      setState(() => _editingOutside = true);
+    controller.dispose();
+    if (name == null || name.isEmpty) return;
+    await _controller.renameGalleryGroup(id, name: name);
+    _browseSelection();
+  }
+
+  Future<void> _deleteGroup(String id) async {
+    if (_controller.isGroupZero(id) || !_controller.canEditGroup(id)) {
+      _showBlocked();
       return;
     }
-    if (selected == create) {
-      await _createGroup();
+    final group = _controller.galleryGroupById(id);
+    if (group == null || !mounted) return;
+    final name = group.name.startsWith('@') ? visibleRangePresetLabel(context, group.name.substring(1)) : group.name;
+    final displayName = name.isEmpty ? context.l10n.wallpaperGroupFallbackName(_controller.galleryGroupNumber(id)) : name;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text(context.l10n.visibleRangeGroupDeleteConfirm(displayName)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(MaterialLocalizations.of(context).okButtonLabel)),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _controller.deleteGalleryGroups({id});
+    _browseSelection();
+  }
+
+  Future<void> _moveGroup(String id, int delta) async {
+    if (!_controller.canEditGroup(id)) {
+      _showBlocked();
       return;
     }
-    await _controller.selectGalleryGroup(selected);
-    if (mounted) setState(() => _editingOutside = false);
+    await _controller.moveGalleryGroup(id, delta);
+    _browseSelection();
   }
 
   Future<void> _createGroup() async {
@@ -522,7 +555,6 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     controller.dispose();
     if (!mounted || name == null) return;
     await _controller.addGalleryGroup(name: name);
-    if (mounted) setState(() => _editingOutside = false);
   }
 
   Widget _buildActiveStyleRow(BuildContext context) {
@@ -567,32 +599,42 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   void _onCandidateTap(FilterGridItem<VisibleRangeCandidateFilter> item) {
     final candidate = item.filter.candidate;
     if (item.filter.summary) {
-      // The active section repeats conditions from the groups above: tapping one
-      // cancels it, and the gallery preview is inert.
+      // The current-visible section repeats conditions from the sections above:
+      // tapping one toggles it, and the gallery preview is inert.
       final rule = candidate.rule;
-      if (rule != null) {
-        _toggleRule(rule);
-      } else if (!candidate.isGallery && !candidate.isUnrestricted) {
-        _cancelBase();
-      }
+      if (rule != null) _toggleRule(rule);
       return;
     }
     if (_selection.isSelecting) {
-      if (candidate.isApplicable) _selection.toggleSelection(item);
+      if (candidate.isApplicable || candidate.isGroup) _selection.toggleSelection(item);
       return;
     }
-    switch (candidate.kind) {
-      case VisibleRangeCandidateKind.base:
-        if (candidate.isUnrestricted) {
-          unawaited(_selectBase(null));
-        } else if (candidate.preset != null) {
-          unawaited(_selectBase(candidate.preset!));
-        }
-      case VisibleRangeCandidateKind.restriction:
-      case VisibleRangeCandidateKind.supplement:
-        final rule = candidate.rule;
-        if (rule != null) _toggleRule(rule);
+    if (candidate.isGroupAdd) {
+      unawaited(_createGroup());
+      return;
     }
+    if (candidate.isGroup) {
+      _selectGroup(candidate.groupId);
+      return;
+    }
+    final rule = candidate.rule;
+    if (rule != null) _toggleRule(rule);
+  }
+
+  /// Switches browsing to [id].
+  ///
+  /// A gallery group change invalidates the wallpaper page's "ignore the gallery
+  /// range" choice: that choice was made about the group that was current then,
+  /// and silently keeping it would hide the newly chosen group's restriction.
+  void _selectGroup(String id) {
+    if (!_canEdit) {
+      _showBlocked();
+      return;
+    }
+    unawaited(() async {
+      await _controller.selectGalleryGroup(id);
+      VisibleRangeGate.setGallerySuspended(false);
+    }());
   }
 
   void _toggleRule(VisibleRangeRule rule) {
@@ -608,7 +650,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       _showBlocked();
       return;
     }
-    unawaited(_controller.clearSources(_editedRange.id));
+    unawaited(_controller.clearSources(_controller.gallery.id));
   }
 
   Widget _menuRow(BuildContext context, IconData icon, String text) {
@@ -640,85 +682,9 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.visibleRangeManagementBlocked)));
   }
 
-  Future<void> _selectBase(VisibleRangePreset? preset) async {
-    if (!_canEdit) {
-      _showBlocked();
-      return;
-    }
-    if (preset == null) {
-      await _controller.clearBase();
-    } else {
-      await _controller.selectBase(presetId: preset.id, name: preset.name, filters: preset.filters);
-    }
-  }
-
-  Future<void> _deletePreset(VisibleRangePreset preset) async {
-    if (!_canEdit) {
-      _showBlocked();
-      return;
-    }
-    await _controller.deleteBasePreset(preset.id);
-  }
-
-  /// A user base preset is editable and removable, unlike the built-in ones.
-  Future<void> _showPresetEditor(VisibleRangePreset preset) async {
-    final l10n = context.l10n;
-    final action = await showModalBottomSheet<_PresetAction>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(visibleRangePresetLabel(context, preset.name)),
-              subtitle: preset.description.isEmpty ? null : Text(preset.description, maxLines: 2, overflow: TextOverflow.ellipsis),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(AIcons.edit),
-              title: Text(l10n.visibleRangeActionRename),
-              onTap: () => Navigator.pop(context, _PresetAction.edit),
-            ),
-            ListTile(
-              leading: const Icon(AIcons.delete),
-              title: Text(l10n.visibleRangeActionDelete),
-              onTap: () => Navigator.pop(context, _PresetAction.delete),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted || action == null) return;
-    switch (action) {
-      case _PresetAction.edit:
-        await _editPresetNameDescription(preset);
-      case _PresetAction.delete:
-        await _deletePreset(preset);
-    }
-  }
-
-  Future<void> _editPresetNameDescription(VisibleRangePreset preset) async {
-    if (!_canEdit) {
-      _showBlocked();
-      return;
-    }
-    final result = await _showNameDescriptionDialog(
-      title: context.l10n.visibleRangeEditNameDescription,
-      initialName: preset.name,
-      initialDescription: preset.description,
-    );
-    if (result == null) return;
-    await _controller.updateBasePreset(
-      preset.id,
-      name: result.name.isEmpty ? preset.name : result.name,
-      description: result.description,
-    );
-    _browseSelection();
-  }
-
   /// Single-rule actions. Locked rules show only read-only actions.
   Future<void> _showRuleEditor(VisibleRangeRule rule) async {
-    final action = await showVisibleRangeRuleActions(context, rule: rule, canEdit: _canEdit);
+    final action = await showVisibleRangeRuleActions(context, rule: rule, canEdit: _canEdit, allowMoveToBase: false);
     if (!mounted || action == null) return;
     switch (action) {
       case VisibleRangeRuleAction.rename:
@@ -802,16 +768,12 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
 
   Future<void> _moveRule(VisibleRangeRule rule, VisibleRangeRuleKind kind) async {
     if (rule.kind == kind) return;
-    final range = _controller.gallery;
-    final position = range.rulesOf(kind).length;
-    await _controller.updateRule(rule.copyWith(kind: kind, position: position));
+    await _controller.moveRuleToKind(rule.rangeId, rule.id, kind);
     _browseSelection();
   }
 
   Future<void> _moveRuleToBase(VisibleRangeRule rule) async {
-    final label = visibleRangeRuleLabel(context, rule);
-    await _controller.selectBase(presetId: '', name: label, filters: rule.filters);
-    await _controller.deleteRules({rule.id});
+    await _controller.moveRuleToKind(rule.rangeId, rule.id, VisibleRangeRuleKind.source);
     _browseSelection();
   }
 
@@ -819,7 +781,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
     _browseSelection();
     await applyVisibleRangeCandidates(
       context,
-      rangeId: _controller.gallery.id,
+      rangeId: rule.rangeId,
       candidates: [VisibleRangeCandidate.fromRule(rule)],
       replace: mode == VisibleRangeActivationMode.override,
     );
@@ -831,13 +793,15 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   /// shows, and every target is remembered for the pin sheet's write-back list.
   Future<void> _applySelectionToMediaSet() async {
     if (!_selection.isSelecting) return;
+    final items = _selection.selectedItems;
     final candidates = [
-      for (final item in _selection.selectedItems)
-        if (!item.filter.summary) item.filter.candidate,
+      for (final item in items)
+        if (!item.filter.summary && item.filter.candidate.isApplicable) item.filter.candidate,
     ];
     if (candidates.isEmpty) return;
+    final rangeId = items.map((item) => item.filter.candidate.rule?.rangeId).nonNulls.firstOrNull ?? _controller.gallery.id;
     _browseSelection();
-    await applyVisibleRangeCandidates(context, rangeId: _controller.gallery.id, candidates: candidates);
+    await applyVisibleRangeCandidates(context, rangeId: rangeId, candidates: candidates);
   }
 
   Future<void> _deleteRules(Set<VisibleRangeRule> rules) async {
@@ -873,10 +837,23 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
       case _MoreAction.editRule:
         final rule = _selectedRule(_selection);
         if (rule != null) await _showRuleEditor(rule);
+      case _MoreAction.editGroup:
+        final id = _selectedGroupId(_selection);
+        if (id != null) await _editGroup(id);
+      case _MoreAction.renameGroup:
+        final id = _selectedGroupId(_selection);
+        if (id != null) await _renameGroup(id);
+      case _MoreAction.deleteGroup:
+        final id = _selectedGroupId(_selection);
+        if (id != null) await _deleteGroup(id);
+      case _MoreAction.moveGroupLeft:
+        final id = _selectedGroupId(_selection);
+        if (id != null) await _moveGroup(id, -1);
+      case _MoreAction.moveGroupRight:
+        final id = _selectedGroupId(_selection);
+        if (id != null) await _moveGroup(id, 1);
       case _MoreAction.applyToMediaSet:
         await _applySelectionToMediaSet();
-      case _MoreAction.order:
-        await _pickOrder();
       case _MoreAction.reAddDefaults:
         if (!_canEdit) {
           _showBlocked();
@@ -904,45 +881,6 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
   Future<void> _openWallpaperGroups() async {
     if (!mounted) return;
     await openGroupedWallpaperGroups(context);
-  }
-
-  Future<void> _pickOrder() async {
-    if (!_canEdit) {
-      _showBlocked();
-      return;
-    }
-    final l10n = context.l10n;
-    final order = await showDialog<VisibleRangeOrder>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(l10n.visibleRangeOrder),
-        children: [
-          _orderTile(
-            context,
-            title: l10n.visibleRangeOrderIntersectFirst,
-            value: VisibleRangeOrder.intersectFirst,
-            current: _controller.gallery.order,
-          ),
-          _orderTile(
-            context,
-            title: l10n.visibleRangeOrderUnionFirst,
-            value: VisibleRangeOrder.unionFirst,
-            current: _controller.gallery.order,
-          ),
-        ],
-      ),
-    );
-    if (order == null) return;
-    await _controller.setOrder(order);
-  }
-
-  Widget _orderTile(BuildContext context, {required String title, required VisibleRangeOrder value, required VisibleRangeOrder current}) {
-    final selected = value == current;
-    return ListTile(
-      title: Text(title),
-      trailing: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked),
-      onTap: () => Navigator.pop(context, value),
-    );
   }
 
   Future<void> _lockDetailed() async {

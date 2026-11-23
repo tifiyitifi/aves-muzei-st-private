@@ -102,7 +102,27 @@ class VisibleRangeController extends ChangeNotifier {
   VisibleRange? galleryGroupById(String id) => _galleryGroups.firstWhereOrNull((group) => group.id == id);
 
   /// The 1-based number shown on a group badge.
-  int galleryGroupNumber(String id) => _galleryGroups.indexWhere((group) => group.id == id) + 1;
+  ///
+  /// Group 0 is the 「Unrestricted」 sentinel: it is listed but never numbered as
+  /// a data group, so the first real group is 1, matching the wallpaper page's
+  /// group 0 = "no group".
+  int galleryGroupNumber(String id) {
+    if (isGroupZero(id)) return 0;
+    final dataGroups = _galleryGroups.where((group) => !isGroupZero(group.id)).toList();
+    return dataGroups.indexWhere((group) => group.id == id) + 1;
+  }
+
+  /// Whether [id] is the gallery's unrestricted sentinel group.
+  ///
+  /// Group 0 holds no conditions: it is the state browsing starts in, not a
+  /// container. Every condition write refuses it, and no save target lists it.
+  bool isGroupZero(String id) => id == VisibleRange.galleryRangeId;
+
+  /// Whether the current group accepts condition edits.
+  bool get canEditCurrentGroup => canEdit && !isGroupZero(gallery.id);
+
+  /// Whether [id] accepts condition edits.
+  bool canEditGroup(String id) => canEdit && !isGroupZero(id);
 
   /// The legacy template catalog. Groups are the editable form now; the rows are
   /// kept one release so a rollback can still read them.
@@ -167,6 +187,7 @@ class VisibleRangeController extends ChangeNotifier {
         await store.saveRange(empty);
         _galleryGroups = [empty];
       }
+      _galleryGroups = await _normalizeGroups(store, _galleryGroups);
       final storedCurrent = await store.readState(VisibleRangeStore.keyCurrentGalleryGroupId);
       _currentGalleryGroupId = _galleryGroups.any((group) => group.id == storedCurrent) ? storedCurrent! : _galleryGroups.first.id;
       if (storedCurrent != _currentGalleryGroupId) {
@@ -305,6 +326,53 @@ class VisibleRangeController extends ChangeNotifier {
     await store.writeState(VisibleRangeStore.keyDefaultsVersion, '${VisibleRangeStore.defaultsVersion}');
   }
 
+  /// Makes the stored group list match the sentinel layout.
+  ///
+  /// Group 0 is always present, empty and first: it is 「Unrestricted」, not a
+  /// container, so a pre-refactor base (or a dev build's own rules) must not
+  /// linger there. The data groups keep their relative order and are renumbered
+  /// from 1.
+  Future<List<VisibleRange>> _normalizeGroups(VisibleRangeStore store, List<VisibleRange> groups) async {
+    final existingZero = groups.firstWhereOrNull((group) => isGroupZero(group.id));
+    var zero = existingZero ?? VisibleRange.emptyGallery(now: _now);
+    if (existingZero == null) {
+      await store.saveRange(zero);
+    } else if (zero.rules.isNotEmpty || zero.position != 0) {
+      zero = zero.copyWith(rules: const [], position: 0);
+      await store.saveRange(zero);
+    }
+    final dataGroups = groups.where((group) => !isGroupZero(group.id) && group.kind == VisibleRangeGroupKind.group).toList()
+      ..sort((a, b) => a.position.compareTo(b.position));
+    final result = <VisibleRange>[zero];
+    for (final group in dataGroups) {
+      final position = result.length;
+      if (group.position != position) {
+        final next = group.copyWith(position: position);
+        await store.saveRange(next);
+        result.add(next);
+      } else {
+        result.add(group);
+      }
+    }
+    return result;
+  }
+
+  /// Whether the scope-wide outside pool currently narrows anything.
+  bool get outsideRestricted => _galleryOutside.hasOwnRestriction;
+
+  /// Persists a whole group as saved by the editor.
+  ///
+  /// The editor works on a draft, so this is the only write: the group and its
+  /// rules are replaced together. A group switched or deleted meanwhile is
+  /// refused instead of resurrected.
+  Future<void> saveGalleryGroup(VisibleRange group) async {
+    _ensureEditable();
+    if (isGroupZero(group.id)) return;
+    if (!_galleryGroups.any((candidate) => candidate.id == group.id)) return;
+    await _saveRange(group.copyWith(updatedAt: _now));
+    notifyListeners();
+  }
+
   /// Makes the standard directories available before the asset is parsed.
   Future<void> _ensureStandardPaths() async {
     try {
@@ -356,6 +424,7 @@ class VisibleRangeController extends ChangeNotifier {
 
   Future<void> renameGalleryGroup(String id, {required String name}) async {
     _ensureEditable();
+    if (isGroupZero(id)) return;
     final group = galleryGroupById(id);
     if (group == null) return;
     await _saveRange(group.copyWith(name: name.trim(), updatedAt: _now));
@@ -371,14 +440,15 @@ class VisibleRangeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Deletes groups, keeping at least one and re-pointing the current id.
+  /// Deletes data groups, keeping group 0 and the current pointer valid.
   Future<bool> deleteGalleryGroups(Set<String> ids) async {
     _ensureEditable();
-    if (ids.isEmpty) return false;
-    final remaining = _galleryGroups.where((group) => !ids.contains(group.id)).toList();
-    if (remaining.isEmpty) return false;
+    final deletable = ids.where((id) => !isGroupZero(id)).toSet();
+    if (deletable.isEmpty) return false;
+    final remaining = _galleryGroups.where((group) => !deletable.contains(group.id)).toList();
+    if (remaining.where((group) => !isGroupZero(group.id)).isEmpty) return false;
     final store = _requireStore();
-    for (final id in ids) {
+    for (final id in deletable) {
       await store.deleteRange(id);
     }
     _galleryGroups = remaining;
@@ -396,12 +466,13 @@ class VisibleRangeController extends ChangeNotifier {
     return true;
   }
 
-  /// Moves a group by [delta] inside the display order.
+  /// Moves a group by [delta] inside the display order, never across group 0.
   Future<void> moveGalleryGroup(String id, int delta) async {
     _ensureEditable();
+    if (isGroupZero(id)) return;
     final index = _galleryGroups.indexWhere((group) => group.id == id);
     final target = index + delta;
-    if (index < 0 || target < 0 || target >= _galleryGroups.length) return;
+    if (index < 0 || target < 1 || target >= _galleryGroups.length) return;
     final reordered = [..._galleryGroups];
     final moved = reordered.removeAt(index);
     reordered.insert(target, moved);
@@ -424,7 +495,7 @@ class VisibleRangeController extends ChangeNotifier {
     _ensureEditable();
     if (filters.isEmpty) return null;
     final range = await _requireRange(rangeId ?? gallery.id);
-    if (range == null) return null;
+    if (range == null || isGroupZero(range.id)) return null;
     if (range.isOutside && !kind.isOutsideAllowed) return null;
     final rule = VisibleRangeRule(
       id: _newId('rule'),
@@ -442,7 +513,7 @@ class VisibleRangeController extends ChangeNotifier {
   Future<void> updateRule(VisibleRangeRule rule) async {
     _ensureEditable();
     final range = await _requireRange(rule.rangeId);
-    if (range == null) return;
+    if (range == null || isGroupZero(range.id)) return;
     await _saveRange(range.copyWith(rules: [for (final candidate in range.rules) candidate.id == rule.id ? rule : candidate], updatedAt: _now));
     notifyListeners();
   }
@@ -450,7 +521,7 @@ class VisibleRangeController extends ChangeNotifier {
   Future<void> toggleRule(String id) async {
     _ensureEditable();
     final range = await _rangeOfRule(id);
-    if (range == null) return;
+    if (range == null || isGroupZero(range.id)) return;
     await _saveRange(
       range.copyWith(rules: [for (final rule in range.rules) rule.id == id ? rule.copyWith(active: !rule.active) : rule], updatedAt: _now),
     );
@@ -461,6 +532,7 @@ class VisibleRangeController extends ChangeNotifier {
     _ensureEditable();
     if (ids.isEmpty) return;
     for (final range in [..._galleryGroups, _galleryOutside]) {
+      if (isGroupZero(range.id)) continue;
       if (!range.rules.any((rule) => ids.contains(rule.id))) continue;
       await _saveRange(range.copyWith(rules: range.rules.where((rule) => !ids.contains(rule.id)).toList(), updatedAt: _now));
     }
@@ -472,7 +544,7 @@ class VisibleRangeController extends ChangeNotifier {
     _ensureEditable();
     final range = await _requireRange(rangeId);
     final rule = range?.ruleById(ruleId);
-    if (range == null || rule == null || rule.kind == kind) return;
+    if (range == null || rule == null || rule.kind == kind || isGroupZero(range.id)) return;
     if (range.isOutside && !kind.isOutsideAllowed) return;
     final moved = rule.copyWith(kind: kind, position: range.rulesOf(kind).length);
     await _saveRange(range.copyWith(rules: [for (final candidate in range.rules) candidate.id == ruleId ? moved : candidate], updatedAt: _now));
@@ -482,7 +554,7 @@ class VisibleRangeController extends ChangeNotifier {
   Future<void> setOrder(VisibleRangeOrder order, {String? rangeId}) async {
     _ensureEditable();
     final range = await _requireRange(rangeId ?? gallery.id);
-    if (range == null) return;
+    if (range == null || isGroupZero(range.id)) return;
     await _saveRange(range.copyWith(order: order, updatedAt: _now));
     notifyListeners();
   }
@@ -499,7 +571,7 @@ class VisibleRangeController extends ChangeNotifier {
   Future<void> addSource(String rangeId, Set<CollectionFilter> filters, {String label = ''}) async {
     _ensureEditable();
     final range = await _requireRange(rangeId);
-    if (range == null || filters.isEmpty) return;
+    if (range == null || isGroupZero(range.id) || filters.isEmpty) return;
     final rule = VisibleRangeRule(
       id: _newId('rule'),
       rangeId: range.id,
@@ -515,7 +587,7 @@ class VisibleRangeController extends ChangeNotifier {
   Future<void> _replaceSources(String rangeId, Set<CollectionFilter> filters, String label) async {
     _ensureEditable();
     final range = await _requireRange(rangeId);
-    if (range == null) return;
+    if (range == null || isGroupZero(range.id)) return;
     final kept = range.rules.where((rule) => rule.kind != VisibleRangeRuleKind.source).toList();
     final rules = filters.isEmpty
         ? kept
@@ -637,20 +709,25 @@ class VisibleRangeController extends ChangeNotifier {
   /// Extra range surfaces (the wallpaper groups), set by the composition root.
   VisibleRangeTargetSource? targetSource;
 
-  /// Every place the current filters can be pinned to.
+  /// Every place the current filters can be saved to.
+  ///
+  /// Group 0 is not a target: it is 「Unrestricted」, so writing conditions into
+  /// it would make the state it stands for impossible. The wallpaper group 0 is
+  /// excluded by its own source for the same reason.
   Future<List<VisibleRangePinTarget>> loadPinTargets() async {
     final extra = targetSource == null ? const <VisibleRangePinTarget>[] : await targetSource!.loadPinTargets();
     final galleryLocked = gallery.locked;
     return [
-      for (var i = 0; i < _galleryGroups.length; i++)
-        VisibleRangePinTarget(
-          id: _galleryGroups[i].id,
-          rangeId: _galleryGroups[i].id,
-          kind: VisibleRangePinTargetKind.galleryGroup,
-          number: i + 1,
-          name: _galleryGroups[i].name,
-          locked: galleryLocked,
-        ),
+      for (final group in _galleryGroups)
+        if (!isGroupZero(group.id))
+          VisibleRangePinTarget(
+            id: group.id,
+            rangeId: group.id,
+            kind: VisibleRangePinTargetKind.galleryGroup,
+            number: galleryGroupNumber(group.id),
+            name: group.name,
+            locked: galleryLocked,
+          ),
       for (final role in VisibleRangeRuleKind.outsideRoles)
         VisibleRangePinTarget(
           id: '${_galleryOutside.id}.${role.name}',
@@ -675,7 +752,7 @@ class VisibleRangeController extends ChangeNotifier {
     var pinned = 0;
     for (final target in targets) {
       final range = await _loadRangeById(target.rangeId);
-      if (range == null) {
+      if (range == null || isGroupZero(range.id)) {
         skipped++;
         continue;
       }
@@ -868,6 +945,9 @@ class VisibleRangeController extends ChangeNotifier {
 
   /// Persists a range back to its owner, keeping the in-memory list in sync.
   Future<void> _saveRange(VisibleRange range) async {
+    // Group 0 stands for 「Unrestricted」: a stray condition would make the
+    // sentinel mean nothing, so it is refused rather than stored and hidden.
+    if (isGroupZero(range.id) && range.rules.isNotEmpty) return;
     final store = _requireStore();
     if (range.id == _galleryOutside.id) {
       await store.saveRange(range);

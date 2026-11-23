@@ -132,6 +132,7 @@ void main() {
   test('the gate applies and clears the range', () async {
     final controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const <VisibleRangePresetDefinition>[]);
     await controller.init();
+    await controller.addGalleryGroup(name: 'G1');
     VisibleRangeGate.debugController = controller;
 
     expect(VisibleRangeGate.filter, isNull);
@@ -146,7 +147,7 @@ void main() {
 
   test('the wallpaper overlay joins the gallery range and can suspend it', () async {
     final controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const <VisibleRangePresetDefinition>[]);
-    await controller.init();
+    await controller.init();    await controller.addGalleryGroup(name: 'G1');
     VisibleRangeGate.debugController = controller;
     await controller.selectBase(presetId: '', name: 'a', filters: {PathFilter('/a')});
 
@@ -197,7 +198,7 @@ void main() {
 
   test('suspending the gallery range belongs to the overlay', () async {
     final controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const <VisibleRangePresetDefinition>[]);
-    await controller.init();
+    await controller.init();    await controller.addGalleryGroup(name: 'G1');
     VisibleRangeGate.debugController = controller;
     await controller.selectBase(presetId: '', name: 'a', filters: {PathFilter('/a')});
 
@@ -235,7 +236,7 @@ void main() {
 
   test('closing the wallpaper page drops the group scope', () async {
     final controller = VisibleRangeController(injectedDatabase: db, presetLoader: () async => const <VisibleRangePresetDefinition>[]);
-    await controller.init();
+    await controller.init();    await controller.addGalleryGroup(name: 'G1');
     VisibleRangeGate.debugController = controller;
     await controller.selectBase(presetId: '', name: 'a', filters: {PathFilter('/a')});
 
@@ -297,3 +298,4 @@ void main() {
     });
   });
 }
+

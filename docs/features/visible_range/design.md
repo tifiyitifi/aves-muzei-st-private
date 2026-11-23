@@ -125,6 +125,41 @@ The first pin into a group enables its conditions; later pins park them, so a
 second visit never silently changes what browsing shows. Re-pinning an existing
 condition keeps its state.
 
+## The page lists groups; a group's conditions live in its editor
+
+The gallery page is a four-part selection surface: the **groups** (exclusive),
+the **outside restrictions**, the **outside supplements**, and the **currently
+visible** result. A group tile previews the group's browsed result — its own
+conditions joined with the outside pool — so the cover and count say what
+switching to it would show. The tile is a selector: its long press enters the
+selection, and the overflow offers the group actions; it never appends filters
+to the media set.
+
+Group 0 is the **「Unrestricted」 sentinel**: always present, always empty, always
+first, never a save target, never numbered as a data group (the data groups are
+`1..n`, like the wallpaper page's group 0 = "no group"). The controller refuses
+condition writes to it in one guard (`isGroupZero`), and the seeder/init clears a
+legacy condition so a migrated base cannot linger.
+
+A group's own **base range / restrictions / supplements** are edited on
+`VisibleRangeGroupEditorPage`, reached from the group's overflow action. The page
+works on a draft, exactly like the wallpaper group page: every switch edits the
+draft, closing asks to save or discard, and only the save writes the aggregate.
+It has no surface axis, because the gallery has one surface.
+
+The save action is named **「save to visible range」** and writes immediately; it
+is distinct from the filter pin, which the user may mean when they say "pin".
+
+## The bar places both fork pages on one side
+
+The wallpaper page and the group editor are peers of the range entry. Their
+entries are derived, never written into the user's list: the configured side
+(`GroupedWallpaperNavMode`) decides left or right, and their open ticks decide
+the order — the first opened sits nearest the range entry. In the shared mode
+neither entry exists; the single shell entry flips between the range page, the
+wallpaper page and the editor, and a closed editor session falls back to the
+range page.
+
 ## Anti-patterns
 
 - **Reading `visibleRangeController.gallery.resolve()` directly in a browsing
@@ -136,3 +171,7 @@ condition keeps its state.
 - **Comparing overlay values to decide ownership.** Use the page token.
 - **Adding a default preset by editing the JSON without bumping
   `defaultsVersion`.** Existing installs would never see it.
+- **Offering group 0 as a save target or letting a condition into it.** The
+  sentinel stops meaning 「Unrestricted」 the moment it can carry a filter.
+- **Writing the editor draft on every tap.** The page is an aggregate; a
+  half-applied group is what the discard action must be able to undo.

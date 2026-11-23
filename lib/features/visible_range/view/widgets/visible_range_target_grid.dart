@@ -86,9 +86,19 @@ class _TargetCell extends StatelessWidget {
     final foreground = locked ? colors.onSurface.withValues(alpha: .38) : selected ? colors.onPrimaryContainer : colors.onSurfaceVariant;
     final label = switch (target.kind) {
       VisibleRangePinTargetKind.outside => target.role == VisibleRangeRuleKind.supplement ? context.l10n.visibleRangePinGroupSupplement : context.l10n.visibleRangePinGroupRestriction,
-      VisibleRangePinTargetKind.galleryGroup => target.name.isEmpty ? context.l10n.visibleRangePinTargetGallery : visibleRangePresetLabel(context, target.name.startsWith('@') ? target.name.substring(1) : target.name),
+      VisibleRangePinTargetKind.galleryGroup =>
+        target.name.isEmpty ? context.l10n.wallpaperGroupFallbackName(target.number) : visibleRangePresetLabel(context, target.name.startsWith('@') ? target.name.substring(1) : target.name),
       VisibleRangePinTargetKind.wallpaperGroup => target.name.startsWith('@') ? visibleRangePresetLabel(context, target.name.substring(1)) : target.name,
     };
+    // A group is identified by its number; the outside pool has no number, so
+    // its two roles carry the role itself instead of the same 「0」 twice.
+    final badge = target.isOutside
+        ? switch (target.role) {
+            VisibleRangeRuleKind.supplement => context.l10n.visibleRangePinBadgeSupplement,
+            VisibleRangeRuleKind.restriction || null => context.l10n.visibleRangePinBadgeRestriction,
+            VisibleRangeRuleKind.source => '',
+          }
+        : '${target.number}';
 
     return Material(
       color: background,
@@ -108,7 +118,7 @@ class _TargetCell extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  _NumberBadge(number: target.number, color: foreground),
+                  _NumberBadge(label: badge, color: foreground),
                   const Spacer(),
                   if (locked)
                     Icon(AIcons.locked, size: 16, color: foreground)
@@ -132,23 +142,24 @@ class _TargetCell extends StatelessWidget {
 }
 
 class _NumberBadge extends StatelessWidget {
-  final int number;
+  final String label;
   final Color color;
 
-  const new({required this.number, required this.color});
+  const new({required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 22,
       height: 22,
+      constraints: const BoxConstraints(minWidth: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        borderRadius: const BorderRadius.all(Radius.circular(11)),
         border: Border.all(color: color.withValues(alpha: .6)),
       ),
       child: Text(
-        '$number',
+        label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
       ),
     );

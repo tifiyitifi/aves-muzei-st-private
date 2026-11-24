@@ -77,6 +77,8 @@ Every fork slice is specified, its rules are registered, and its tests are its a
 
 There are four flavors: `play`, `izzy`, `libre`, `custom` (the last is the private fork build with a distinct application id and no Crashlytics). Flavor dependencies are set by swapping the root manifest, not by conditionals:
 
+**Only `custom` is maintained in this fork.** `play`, `izzy`, `libre` are kept for upstream parity and comparison only; no development, testing, or release work targets them. Do not switch to them for local work — the committed root is already `custom`.
+
 - `scripts/apply_flavor_<flavor>.sh` copies `flavors/pubspec_<flavor>.yaml` and `.lock` over the root `pubspec.yaml`/`pubspec.lock`, then runs `pub get --enforce-lockfile`.
 - Always apply the matching flavor before `pub get`/`run`/`build`. Entrypoints: `lib/main_play.dart`, `lib/main_izzy.dart`, `lib/main_libre.dart`, `lib/main_custom.dart` (plus `lib/main_play_test_editor.dart` for intent debugging).
 - Applying a flavor overwrites tracked root files, so `git diff` will show them; don't commit flavor swaps by accident. The committed root is `custom`, so it is `play`/`izzy`/`libre` that produce a local diff.
@@ -99,9 +101,10 @@ Order matters: `pub get` → codegen (if needed) → `gen-l10n` → `analyze`/`t
 - `./flutterw test`
 - Single test file: `./flutterw test test/model/filters_test.dart`
 - Single test name: `./flutterw test --plain-name "some test"`
-- Run: `./flutterw run -t lib/main_play.dart --flavor play`
+- Run: `./flutterw run -t lib/main_custom.dart --flavor custom`
 - Profile build (what CI uses to type-check Android): `./flutterw build apk --profile -t lib/main_custom.dart --flavor custom`
-- Screenshots: `./flutterw drive --flavor play -t test_driver/driver_screenshots.dart --profile` (needs a connected device/emulator), then `scripts/screenshot_post_process.sh` (needs ImageMagick 6).
+- Local build-and-install shortcut: `scripts/build_install.sh [debug|profile|release]` — detects the connected device's ABI, builds the matching `custom`-flavor `--split-per-abi` APK (default mode `profile`), installs it with `adb install -r`, and verifies the ABI version-code offset against `dumpsys`. Run it from a bash-like shell; use `--serial` with multiple devices, `--codegen` after Drift/Freezed changes, and `--dry-run` to preview. `release` requires `android/key.properties` or the `AVES_*` signing env vars. Other flavors are for upstream comparison only; local installs always target `custom`.
+- Screenshots (upstream comparison only): `./flutterw drive --flavor play -t test_driver/driver_screenshots.dart --profile` (needs a connected device/emulator), then `scripts/screenshot_post_process.sh` (needs ImageMagick 6).
 
 CI (`quality-check.yml`) has two jobs: `analyze_flutter` runs exactly `apply_flavor_custom.sh`, `gen-l10n`, `analyze`, host `sqlite3` install, `test` (the flavor step also fetches packages); `analyze_codeql` profile-builds the `custom` APK to scan Android code. Generated code is committed, so CI does not run codegen. There is no scheduled run: everything happens on push/PR.
 

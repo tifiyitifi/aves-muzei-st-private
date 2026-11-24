@@ -125,6 +125,19 @@ The first pin into a group enables its conditions; later pins park them, so a
 second visit never silently changes what browsing shows. Re-pinning an existing
 condition keeps its state.
 
+## The save sheet folds the rules, not their destination
+
+`Injection options` is the one collapsible block: injection mode, the remember
+option, role, append/replace and the write-back rule list all live inside it.
+Only the injection mode is stored; the caption says so explicitly, and clearing
+the option rewrites the stored mode to `auto` so the switch cannot disagree with
+the next open. Role is a two-button control — a direct automatic split and a
+menu button that asks on every tap — and is never persisted. Append and replace
+are named buttons because a switch labelled 「Append」 does not say what the off
+state means. The write-back targets are named *outside* the fold: the summary
+and the checkbox list read the same selection ids, so the visible promise cannot
+name a target the confirmation will not write.
+
 ## The page lists groups; a group's conditions live in its editor
 
 The gallery page is a four-part selection surface: the **groups** (exclusive),
@@ -187,3 +200,7 @@ destination.
 - **Adding a fork route without an `AvesNavItem` page builder.** `routeBuilder`
   resolves the page eagerly, so a missing case throws `unknown route` and the bar
   entry looks dead while the page itself is fine (`NAV-8`).
+- **Writing the remembered flag only when the switch is checked.** An unchecked
+  switch then leaves the old mode stored and silently restores it (`SAVE-3`).
+- **Folding away the write destination with the rule list.** The list is an
+  advanced edit; the location it will overwrite is not (`SAVE-6`).

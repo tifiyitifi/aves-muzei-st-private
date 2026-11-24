@@ -134,9 +134,9 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
               ),
             )
           : const VisibleRangePinResult(pinned: 0, skipped: 0);
-      if (_rememberInjection) {
-        await visibleRangeController.setPinInjection(mode: _injection, remembered: true);
-      }
+      // Unchecking the option is a write too: otherwise the stored flag would
+      // stay true and the next open would restore a mode the switch says is off.
+      await visibleRangeController.setPinInjection(mode: _injection, remembered: _rememberInjection);
       final writeBack = await visibleRangeController.writeBackTargets(
         usageIds: {..._selectedUsages},
         filters: widget.filters,
@@ -269,59 +269,93 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
                         contentPadding: EdgeInsets.zero,
                         value: _rememberInjection,
                         title: Text(l10n.visibleRangePinRemember),
+                        subtitle: Text(l10n.visibleRangePinRememberInjectionHint, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                         onChanged: (value) => setState(() => _rememberInjection = value),
                       ),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(l10n.visibleRangePinRole),
-                        subtitle: Text(_forcedRole == null ? l10n.visibleRangePinRoleAuto : _roleLabel(context, _forcedRole!)),
-                        trailing: PopupMenuButton<VisibleRangeRuleKind?>(
-                          onSelected: (value) => setState(() => _forcedRole = value),
-                          itemBuilder: (context) => [
-                            PopupMenuItem(value: null, child: Text(l10n.visibleRangePinRoleAuto)),
-                            for (final role in VisibleRangeRuleKind.values) PopupMenuItem(value: role, child: Text(_roleLabel(context, role))),
-                          ],
-                        ),
+                      const SizedBox(height: 8),
+                      _sectionLabel(context, l10n.visibleRangePinRole),
+                      Row(
+                        children: [
+                          _roleButton(
+                            label: Text(l10n.visibleRangePinRoleAuto),
+                            selected: _forcedRole == null,
+                            // Selecting auto is one tap; there is no menu step.
+                            onTap: () => setState(() => _forcedRole = null),
+                          ),
+                          const SizedBox(width: 8),
+                          PopupMenuButton<VisibleRangeRuleKind>(
+                            // A menu button, not a toggle: every tap asks again,
+                            // and a forced role applies to this save only.
+                            padding: EdgeInsets.zero,
+                            onSelected: (role) => setState(() => _forcedRole = role),
+                            itemBuilder: (context) => [
+                              for (final role in VisibleRangeRuleKind.values) PopupMenuItem(value: role, child: Text(_roleLabel(context, role))),
+                            ],
+                            child: _roleButton(
+                              label: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(_forcedRole == null ? l10n.visibleRangePinRoleCustom : _roleLabel(context, _forcedRole!)),
+                                  const Icon(Icons.arrow_drop_down, size: 18),
+                                ],
+                              ),
+                              selected: _forcedRole != null,
+                            ),
+                          ),
+                        ],
                       ),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(l10n.visibleRangePinWriteMode),
-                        subtitle: Text(_writeMode == VisibleRangePinWriteMode.append ? l10n.visibleRangePinWriteAppend : l10n.visibleRangePinWriteReplace),
-                        trailing: Switch(
-                          value: _writeMode == VisibleRangePinWriteMode.replace,
-                          onChanged: (value) => setState(() => _writeMode = value ? VisibleRangePinWriteMode.replace : VisibleRangePinWriteMode.append),
-                        ),
+                      const SizedBox(height: 8),
+                      _sectionLabel(context, l10n.visibleRangePinWriteMode),
+                      SegmentedButton<VisibleRangePinWriteMode>(
+                        segments: [
+                          ButtonSegment(value: VisibleRangePinWriteMode.append, label: Text(l10n.visibleRangePinWriteAppend)),
+                          ButtonSegment(value: VisibleRangePinWriteMode.replace, label: Text(l10n.visibleRangePinWriteReplace)),
+                        ],
+                        selected: {_writeMode},
+                        onSelectionChanged: (selection) => setState(() => _writeMode = selection.first),
                       ),
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(top: 8),
+                        child: Text(l10n.visibleRangePinWriteModeHint, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                      ),
+                      const SizedBox(height: 16),
+                      _sectionLabel(context, l10n.visibleRangeWriteBackSection),
+                      Text(l10n.visibleRangeWriteBackHint, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                      const SizedBox(height: 8),
+                      if (!_loading && _appliedTargets.isEmpty)
+                        Text(l10n.visibleRangeWriteBackEmpty, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant))
+                      else
+                        for (final target in _appliedTargets)
+                          CheckboxListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            value: _selectedUsages.contains(target.usageId),
+                            enabled: !target.locked,
+                            title: Text(visibleRangeWriteBackTargetLabel(context, target)),
+                            subtitle: Text(visibleRangeWriteBackTargetLine(context, target)),
+                            onChanged: target.locked
+                                ? null
+                                : (selected) {
+                                    setState(() {
+                                      if (selected == true) {
+                                        _selectedUsages.add(target.usageId);
+                                      } else {
+                                        _selectedUsages.remove(target.usageId);
+                                      }
+                                    });
+                                  },
+                          ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _sectionLabel(context, l10n.visibleRangeWriteBackSection),
-                  Text(l10n.visibleRangeWriteBackHint, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                  const SizedBox(height: 8),
-                  if (!_loading && _appliedTargets.isEmpty)
-                    Text(l10n.visibleRangeWriteBackEmpty, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant))
-                  else
-                    for (final target in _appliedTargets)
-                      CheckboxListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        controlAffinity: ListTileControlAffinity.leading,
-                        value: _selectedUsages.contains(target.usageId),
-                        enabled: !target.locked,
-                        title: Text(visibleRangeWriteBackTargetLabel(context, target)),
-                        subtitle: Text(visibleRangeWriteBackTargetLine(context, target)),
-                        onChanged: target.locked
-                            ? null
-                            : (selected) {
-                                setState(() {
-                                  if (selected == true) {
-                                    _selectedUsages.add(target.usageId);
-                                  } else {
-                                    _selectedUsages.remove(target.usageId);
-                                  }
-                                });
-                              },
-                      ),
+                  _sectionLabel(context, l10n.visibleRangeWriteBackExpected),
+                  Text(
+                    visibleRangeWriteBackSummary(context, targets: _appliedTargets, selectedIds: _selectedUsages),
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
               ),
             ),
@@ -361,6 +395,28 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
         _selectedTargets.add(target.id);
       }
     });
+  }
+
+  /// One half of the role control. The custom half leaves [onTap] empty so the
+  /// enclosing popup receives the tap and opens its menu every time.
+  Widget _roleButton({required Widget label, required bool selected, VoidCallback? onTap}) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Material(
+      color: selected ? colors.secondaryContainer : colors.surfaceContainerHighest,
+      clipBehavior: Clip.antiAlias,
+      borderRadius: const BorderRadius.all(Radius.circular(20)),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: DefaultTextStyle(
+            style: theme.textTheme.labelLarge?.copyWith(color: selected ? colors.onSecondaryContainer : colors.onSurfaceVariant) ?? const TextStyle(),
+            child: label,
+          ),
+        ),
+      ),
+    );
   }
 
   String _roleLabel(BuildContext context, VisibleRangeRuleKind role) {

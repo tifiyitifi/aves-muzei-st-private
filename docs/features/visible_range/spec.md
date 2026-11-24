@@ -119,6 +119,18 @@ immediately (it is not a draft).
   gallery target and count it.
 - WHEN the user asks to remember the injection mode, THE SYSTEM SHALL read it
   back; otherwise the sheet SHALL start from `auto`.
+- WHEN the remember option is cleared, THE SYSTEM SHALL drop the stored mode so
+  the next open starts from `auto`.
+- WHEN the save sheet is opened, THE SYSTEM SHALL name the injection mode as the
+  only remembered option; the role, append/replace and write-back selection
+  SHALL start fresh every time.
+- WHEN the automatic split is chosen, THE SYSTEM SHALL select it directly; a
+  custom role SHALL be picked from a menu on every tap and SHALL apply to this
+  save only.
+- WHEN a group already holds conditions, THE SYSTEM SHALL offer append and
+  replace as two named choices.
+- WHEN the write-back rules are folded away, THE SYSTEM SHALL name the selected
+  write locations outside the collapsible section, and only those.
 
 ## Candidates and the page
 

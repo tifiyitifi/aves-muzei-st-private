@@ -126,6 +126,17 @@ String visibleRangeWriteBackTargetLabel(BuildContext context, VisibleRangeWriteB
   return context.l10n.visibleRangePinGroupBase;
 }
 
+/// What the save sheet still promises while the write-back rules are folded
+/// away: the selected targets, named by owner and role. The same selection
+/// drives the checkbox list inside the section, so the two cannot disagree.
+String visibleRangeWriteBackSummary(BuildContext context, {required List<VisibleRangeWriteBackTarget> targets, required Set<String> selectedIds}) {
+  final l10n = context.l10n;
+  if (targets.isEmpty) return l10n.visibleRangeWriteBackEmpty;
+  final selected = targets.where((target) => selectedIds.contains(target.usageId));
+  if (selected.isEmpty) return l10n.visibleRangeWriteBackNone;
+  return selected.map((target) => visibleRangeWriteBackTargetLine(context, target)).join('\n');
+}
+
 /// The owner of a target followed by what it is, e.g. "Group 2 · Pictures ·
 /// Restriction". The gallery is named from ARB; a group keeps its own name.
 String visibleRangeWriteBackTargetLine(BuildContext context, VisibleRangeWriteBackTarget target) {

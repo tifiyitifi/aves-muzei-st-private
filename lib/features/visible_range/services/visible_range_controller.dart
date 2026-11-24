@@ -157,10 +157,14 @@ class VisibleRangeController extends ChangeNotifier {
   }
 
   Future<void> setPinInjection({required VisibleRangeInjectionMode mode, required bool remembered}) async {
-    _pinInjectionMode = mode;
+    // Clearing the remember option is a write too: store the default mode so a
+    // later open really starts from automatic instead of silently restoring an
+    // old choice behind an unchecked switch.
+    final storedMode = remembered ? mode : VisibleRangeInjectionMode.auto;
+    _pinInjectionMode = storedMode;
     _pinInjectionRemembered = remembered;
     final store = _requireStore();
-    await store.writeState(VisibleRangeStore.keyPinInjectionMode, mode.name);
+    await store.writeState(VisibleRangeStore.keyPinInjectionMode, storedMode.name);
     await store.writeState(VisibleRangeStore.keyPinInjectionRemembered, remembered ? '1' : '0');
     notifyListeners();
   }

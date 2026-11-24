@@ -226,6 +226,18 @@ void main() {
     expect(restarted.pinInjectionMode, VisibleRangeInjectionMode.park);
   });
 
+  test('clearing the remember option forgets the stored injection mode', () async {
+    await controller.setPinInjection(mode: VisibleRangeInjectionMode.park, remembered: true);
+    // Unchecking the switch and saving is a write too: without it the next open
+    // would still restore the old mode while the switch reads as off.
+    await controller.setPinInjection(mode: VisibleRangeInjectionMode.enable, remembered: false);
+
+    final restarted = VisibleRangeController(injectedDatabase: db, presetLoader: () async => definitions());
+    await restarted.init();
+    expect(restarted.pinInjectionRemembered, isFalse);
+    expect(restarted.pinInjectionMode, VisibleRangeInjectionMode.auto);
+  });
+
   test('a defaults bump adds missing groups and keeps user work', () async {
     final userGroup = await controller.addGalleryGroup(name: 'Mine');
 

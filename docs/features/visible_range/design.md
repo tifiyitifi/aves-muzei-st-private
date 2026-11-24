@@ -134,9 +134,19 @@ the option rewrites the stored mode to `auto` so the switch cannot disagree with
 the next open. Role is a two-button control — a direct automatic split and a
 menu button that asks on every tap — and is never persisted. Append and replace
 are named buttons because a switch labelled 「Append」 does not say what the off
-state means. The write-back targets are named *outside* the fold: the summary
-and the checkbox list read the same selection ids, so the visible promise cannot
-name a target the confirmation will not write.
+state means. The save writes in two places, so the list outside the fold names
+both: the checked groups (pins) first, then the checked write-back rules. A
+forced role is named on a group pin because it is known at save time; an
+automatic split is not, so only the owner is named. A wallpaper pin is prefixed
+with its section so it cannot be confused with a same-numbered gallery group.
+
+The sheet opens with nothing checked. The two selections are separate: pin
+targets are ordinary `setState` state because a tile must repaint, while the
+rule selection is a single `ValueNotifier<Set<String>>`. The folded row list and
+the summary outside it are the only listeners, so ticking a rule repaints those
+two subtrees and the save button — the grids, chips and text fields never
+rebuild for it. Everything in the summary is derived from the same ids the
+confirmation passes to `pinFilters` and `writeBackTargets`.
 
 ## The page lists groups; a group's conditions live in its editor
 
@@ -204,3 +214,10 @@ destination.
   switch then leaves the old mode stored and silently restores it (`SAVE-3`).
 - **Folding away the write destination with the rule list.** The list is an
   advanced edit; the location it will overwrite is not (`SAVE-6`).
+- **Preselecting the current group.** A save is an explicit act; beginning with a
+  tick silently assigns the group the user happens to be viewing (`SAVE-7`).
+- **Refreshing the summary by re-reading the store or rebuilding the sheet.**
+  Both selections are live in memory; a tap only notifies the readers of that
+  one value (`SAVE-6`).
+- **Calling the gallery groups just 「Groups」 next to 「Wallpaper groups」.**
+  The two sections write different scopes (`SAVE-8`).

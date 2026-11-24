@@ -1781,11 +1781,19 @@
   "visibleRangePinGroupBase": "Base range",
   "visibleRangePinGroupRestriction": "Restriction",
   "visibleRangePinGroupSupplement": "Supplement",
-  "visibleRangePinGroupGallery": "Groups",
-  "visibleRangePinGroupOutside": "Outside the groups",
+  "visibleRangePinGroupGallery": "Normal groups",
+  "visibleRangePinGroupOutside": "Outside groups",
   "visibleRangePinBadgeRestriction": "AND",
   "visibleRangePinBadgeSupplement": "OR",
   "visibleRangePinGroupWallpaper": "Wallpaper groups",
+  "visibleRangePinTargetWallpaperOwner": "Wallpaper groups · {owner}",
+  "@visibleRangePinTargetWallpaperOwner": {
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      }
+    }
+  },
   "visibleRangePinInjection": "Injection options",
   "visibleRangePinInjectionHint": "Automatic enables a condition only in a group that has none yet.",
   "visibleRangePinInjectionAuto": "Automatic",
@@ -1855,7 +1863,7 @@
   "visibleRangeWriteBackHint": "The current filters overwrite the selected targets. A base only changes its own range, never the shared presets.",
   "visibleRangeWriteBackExpected": "Expected write locations",
   "visibleRangeWriteBackEmpty": "No rule has opened a media set yet.",
-  "visibleRangeWriteBackNone": "Nothing will be written back.",
+  "visibleRangeWriteBackNone": "Nothing will be written.",
   "visibleRangeWriteBackTargetLine": "{owner} · {kind}",
   "@visibleRangeWriteBackTargetLine": {
     "placeholders": {

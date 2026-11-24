@@ -6,6 +6,7 @@ import 'package:aves/features/visible_range/model/visible_range_write_back.dart'
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/features/visible_range/view/visible_range_labels.dart';
 import 'package:aves/features/visible_range/view/widgets/visible_range_target_grid.dart';
+import 'package:aves/features/visible_range/view/widgets/visible_range_write_back_section.dart';
 import 'package:aves/features/wallpaper_lock/services/wallpaper_lock_service.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/settings/settings.dart';
@@ -39,11 +40,16 @@ class VisibleRangePinSheet extends StatefulWidget {
   final String initialName;
   final String initialDescription;
 
+  /// Defaults to the process-wide controller; callers that own a controller
+  /// (notably tests) can pass it so the sheet reads the same state they seeded.
+  final VisibleRangeController? controller;
+
   const new({
     super.key,
     required this.filters,
     required this.initialName,
     required this.initialDescription,
+    this.controller,
   });
 
   @override
@@ -51,12 +57,17 @@ class VisibleRangePinSheet extends StatefulWidget {
 }
 
 class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
+  VisibleRangeController get _controller => widget.controller ?? visibleRangeController;
+
   late final TextEditingController _nameController = TextEditingController(text: widget.initialName);
   late final TextEditingController _descriptionController = TextEditingController(text: widget.initialDescription);
   List<VisibleRangePinTarget> _targets = const [];
   List<VisibleRangeWriteBackTarget> _appliedTargets = const [];
   final Set<String> _selectedTargets = {};
-  final Set<String> _selectedUsages = {};
+
+  /// One notifier for the rule selection: a tick repaints only the rows and the
+  /// expected locations, not the target grids or the text fields above them.
+  final ValueNotifier<Set<String>> _selectedUsages = ValueNotifier<Set<String>>(<String>{});
   VisibleRangeInjectionMode _injection = VisibleRangeInjectionMode.auto;
   VisibleRangeRuleKind? _forcedRole;
   VisibleRangePinWriteMode _writeMode = VisibleRangePinWriteMode.append;
@@ -67,8 +78,8 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
   @override
   void initState() {
     super.initState();
-    _injection = visibleRangeController.pinInjectionRemembered ? visibleRangeController.pinInjectionMode : VisibleRangeInjectionMode.auto;
-    _rememberInjection = visibleRangeController.pinInjectionRemembered;
+    _injection = _controller.pinInjectionRemembered ? _controller.pinInjectionMode : VisibleRangeInjectionMode.auto;
+    _rememberInjection = _controller.pinInjectionRemembered;
     unawaited(_load());
   }
 
@@ -76,6 +87,7 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
+    _selectedUsages.dispose();
     super.dispose();
   }
 
@@ -83,23 +95,21 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
   /// created a moment ago is already selectable.
   Future<void> _load() async {
     try {
-      final targets = await visibleRangeController.loadPinTargets();
-      final applied = await visibleRangeController.loadAppliedTargets();
+      final targets = await _controller.loadPinTargets();
+      final applied = await _controller.loadAppliedTargets();
       if (!mounted) return;
       // A locked setup accepts no new content: the gallery lock freezes every
       // gallery target, and the wallpaper lock freezes every wallpaper group.
       final groupLocked = wallpaperLockService.groupSwitchLocked;
-      final galleryLocked = visibleRangeController.locked;
+      final galleryLocked = _controller.locked;
       setState(() {
         _targets = [
           for (final target in targets)
             target.copyWith(locked: target.locked || (target.isGallery ? galleryLocked : groupLocked)),
         ];
         _appliedTargets = [for (final target in applied) target.copyWith(locked: target.locked || (target.isGallery ? galleryLocked : groupLocked))];
-        _selectedTargets.addAll([
-          for (final target in _targets)
-            if (target.kind == VisibleRangePinTargetKind.galleryGroup && target.rangeId == visibleRangeController.currentGalleryGroupId && !target.locked) target.id,
-        ]);
+        // Nothing starts checked: a save is an explicit choice, including when
+        // the current group happens to be one of the targets.
         _loading = false;
       });
     } on StateError {
@@ -113,16 +123,16 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
   bool get _pinning => _selectedTargets.isNotEmpty;
 
   bool get _draftGroupTargetSelected =>
-      (visibleRangeController.targetSource?.targetsAreDraft ?? false) && _targets.any((target) => target.isWallpaperGroup && _selectedTargets.contains(target.id));
+      (_controller.targetSource?.targetsAreDraft ?? false) && _targets.any((target) => target.isWallpaperGroup && _selectedTargets.contains(target.id));
 
-  bool get _canConfirm => !_busy && (_pinning || _selectedUsages.isNotEmpty);
+  bool get _canConfirm => !_busy && (_pinning || _selectedUsages.value.isNotEmpty);
 
   Future<void> _confirm() async {
     if (!_canConfirm) return;
     setState(() => _busy = true);
     try {
       final pinResult = _pinning
-          ? await visibleRangeController.pinFilters(
+          ? await _controller.pinFilters(
               VisibleRangePinRequest(
                 filters: widget.filters,
                 name: _nameController.text.trim(),
@@ -136,9 +146,9 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
           : const VisibleRangePinResult(pinned: 0, skipped: 0);
       // Unchecking the option is a write too: otherwise the stored flag would
       // stay true and the next open would restore a mode the switch says is off.
-      await visibleRangeController.setPinInjection(mode: _injection, remembered: _rememberInjection);
-      final writeBack = await visibleRangeController.writeBackTargets(
-        usageIds: {..._selectedUsages},
+      await _controller.setPinInjection(mode: _injection, remembered: _rememberInjection);
+      final writeBack = await _controller.writeBackTargets(
+        usageIds: {..._selectedUsages.value},
         filters: widget.filters,
         baseName: _nameController.text.trim(),
       );
@@ -218,7 +228,7 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  _sectionLabel(context, l10n.visibleRangePinGroupGallery),
+                  if (_loading || galleryGroups.isNotEmpty) _sectionLabel(context, l10n.visibleRangePinGroupGallery),
                   if (_loading)
                     const Center(child: Padding(padding: EdgeInsets.all(8), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))))
                   else ...[
@@ -247,7 +257,10 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
                       ),
                     ],
                   ],
-                  if (!_loading && _selectedTargets.isEmpty) _hint(context, l10n.visibleRangePinNoTarget),
+                  ValueListenableBuilder<Set<String>>(
+                    valueListenable: _selectedUsages,
+                    builder: (context, usages, _) => !_loading && _selectedTargets.isEmpty && usages.isEmpty ? _hint(context, l10n.visibleRangePinNoTarget) : const SizedBox.shrink(),
+                  ),
                   if (!_loading && _draftGroupTargetSelected) _hint(context, l10n.wallpaperGroupDraftHint),
                   const SizedBox(height: 8),
                   ExpansionTile(
@@ -322,39 +335,22 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
                       _sectionLabel(context, l10n.visibleRangeWriteBackSection),
                       Text(l10n.visibleRangeWriteBackHint, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                       const SizedBox(height: 8),
-                      if (!_loading && _appliedTargets.isEmpty)
-                        Text(l10n.visibleRangeWriteBackEmpty, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant))
-                      else
-                        for (final target in _appliedTargets)
-                          CheckboxListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            controlAffinity: ListTileControlAffinity.leading,
-                            value: _selectedUsages.contains(target.usageId),
-                            enabled: !target.locked,
-                            title: Text(visibleRangeWriteBackTargetLabel(context, target)),
-                            subtitle: Text(visibleRangeWriteBackTargetLine(context, target)),
-                            onChanged: target.locked
-                                ? null
-                                : (selected) {
-                                    setState(() {
-                                      if (selected == true) {
-                                        _selectedUsages.add(target.usageId);
-                                      } else {
-                                        _selectedUsages.remove(target.usageId);
-                                      }
-                                    });
-                                  },
-                          ),
+                      VisibleRangeWriteBackList(
+                        targets: _appliedTargets,
+                        selectedIds: _selectedUsages,
+                        onToggle: _toggleUsage,
+                        loading: _loading,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   _sectionLabel(context, l10n.visibleRangeWriteBackExpected),
-                  Text(
-                    visibleRangeWriteBackSummary(context, targets: _appliedTargets, selectedIds: _selectedUsages),
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
+                  VisibleRangeExpectedWrites(
+                    pinTargets: _targets,
+                    selectedPinIds: _selectedTargets,
+                    writeBackTargets: _appliedTargets,
+                    selectedUsageIds: _selectedUsages,
+                    forcedRole: _forcedRole,
                   ),
                 ],
               ),
@@ -371,15 +367,18 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
                   child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _canConfirm ? () => unawaited(_confirm()) : null,
-                  child: _busy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(l10n.visibleRangePinConfirm),
+                ValueListenableBuilder<Set<String>>(
+                  valueListenable: _selectedUsages,
+                  builder: (context, usages, _) => FilledButton(
+                    onPressed: !_busy && (_pinning || usages.isNotEmpty) ? () => unawaited(_confirm()) : null,
+                    child: _busy
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(l10n.visibleRangePinConfirm),
+                  ),
                 ),
               ],
             ),
@@ -395,6 +394,14 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
         _selectedTargets.add(target.id);
       }
     });
+  }
+
+  /// A rule tick changes only the selection value: every reader of that value
+  /// listens for itself, so a tap never relayouts the target grids above.
+  void _toggleUsage(String usageId) {
+    final next = {..._selectedUsages.value};
+    if (!next.remove(usageId)) next.add(usageId);
+    _selectedUsages.value = next;
   }
 
   /// One half of the role control. The custom half leaves [onTap] empty so the
@@ -419,14 +426,7 @@ class _VisibleRangePinSheetState extends State<VisibleRangePinSheet> {
     );
   }
 
-  String _roleLabel(BuildContext context, VisibleRangeRuleKind role) {
-    final l10n = context.l10n;
-    return switch (role) {
-      VisibleRangeRuleKind.source => l10n.visibleRangePinGroupBase,
-      VisibleRangeRuleKind.restriction => l10n.visibleRangePinGroupRestriction,
-      VisibleRangeRuleKind.supplement => l10n.visibleRangePinGroupSupplement,
-    };
-  }
+  String _roleLabel(BuildContext context, VisibleRangeRuleKind role) => visibleRangeRuleKindLabel(context, role);
 
   Widget _sectionLabel(BuildContext context, String text) {
     return Padding(

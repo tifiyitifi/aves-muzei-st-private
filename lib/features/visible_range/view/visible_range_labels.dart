@@ -1,5 +1,6 @@
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
+import 'package:aves/features/visible_range/model/visible_range_pin.dart';
 import 'package:aves/features/visible_range/model/visible_range_write_back.dart';
 import 'package:aves/features/visible_range/services/visible_range_controller.dart';
 import 'package:aves/model/filters/filters.dart';
@@ -126,15 +127,55 @@ String visibleRangeWriteBackTargetLabel(BuildContext context, VisibleRangeWriteB
   return context.l10n.visibleRangePinGroupBase;
 }
 
-/// What the save sheet still promises while the write-back rules are folded
-/// away: the selected targets, named by owner and role. The same selection
-/// drives the checkbox list inside the section, so the two cannot disagree.
-String visibleRangeWriteBackSummary(BuildContext context, {required List<VisibleRangeWriteBackTarget> targets, required Set<String> selectedIds}) {
+/// Every place a confirmation writes: the groups receiving the filters followed
+/// by the rules being overwritten. Both halves read the same selections the
+/// confirmation itself uses, so the folded sheet cannot promise a location the
+/// save will not touch.
+String visibleRangeExpectedWrites(
+  BuildContext context, {
+  required List<VisibleRangePinTarget> pinTargets,
+  required Set<String> selectedPinIds,
+  required List<VisibleRangeWriteBackTarget> writeBackTargets,
+  required Set<String> selectedUsageIds,
+  VisibleRangeRuleKind? forcedRole,
+}) {
+  final lines = [
+    for (final target in pinTargets)
+      if (selectedPinIds.contains(target.id)) visibleRangePinTargetLine(context, target, forcedRole: forcedRole),
+    for (final target in writeBackTargets)
+      if (selectedUsageIds.contains(target.usageId)) visibleRangeWriteBackTargetLine(context, target),
+  ];
+  return lines.isEmpty ? context.l10n.visibleRangeWriteBackNone : lines.join('\n');
+}
+
+/// The location of one pin, named by owner and — when the role is known — what
+/// is written there. An automatic split has no single role, so it names only the
+/// owner; the outside pool always writes one fixed role.
+String visibleRangePinTargetLine(BuildContext context, VisibleRangePinTarget target, {VisibleRangeRuleKind? forcedRole}) {
   final l10n = context.l10n;
-  if (targets.isEmpty) return l10n.visibleRangeWriteBackEmpty;
-  final selected = targets.where((target) => selectedIds.contains(target.usageId));
-  if (selected.isEmpty) return l10n.visibleRangeWriteBackNone;
-  return selected.map((target) => visibleRangeWriteBackTargetLine(context, target)).join('\n');
+  final label = target.name.startsWith('@') ? visibleRangePresetLabel(context, target.name.substring(1)) : target.name;
+  final name = label.isEmpty ? l10n.wallpaperGroupFallbackName(target.number) : label;
+  final owner = switch (target.kind) {
+    VisibleRangePinTargetKind.outside => l10n.visibleRangePinGroupOutside,
+    VisibleRangePinTargetKind.galleryGroup => target.number > 0 ? l10n.visibleRangeOwnerWithNumber(target.number, name) : l10n.visibleRangeUnrestricted,
+    VisibleRangePinTargetKind.wallpaperGroup => l10n.visibleRangePinTargetWallpaperOwner(name),
+  };
+  final role = switch (target.kind) {
+    VisibleRangePinTargetKind.outside => target.role,
+    VisibleRangePinTargetKind.galleryGroup || VisibleRangePinTargetKind.wallpaperGroup => forcedRole,
+  };
+  return role == null ? owner : l10n.visibleRangeWriteBackTargetLine(owner, visibleRangeRuleKindLabel(context, role));
+}
+
+/// The short role name shared by the role menu, the write-back lines and the
+/// expected write locations, so they never spell the same role differently.
+String visibleRangeRuleKindLabel(BuildContext context, VisibleRangeRuleKind kind) {
+  final l10n = context.l10n;
+  return switch (kind) {
+    VisibleRangeRuleKind.source => l10n.visibleRangePinGroupBase,
+    VisibleRangeRuleKind.restriction => l10n.visibleRangePinGroupRestriction,
+    VisibleRangeRuleKind.supplement => l10n.visibleRangePinGroupSupplement,
+  };
 }
 
 /// The owner of a target followed by what it is, e.g. "Group 2 · Pictures ·

@@ -129,8 +129,17 @@ immediately (it is not a draft).
   save only.
 - WHEN a group already holds conditions, THE SYSTEM SHALL offer append and
   replace as two named choices.
-- WHEN the write-back rules are folded away, THE SYSTEM SHALL name the selected
-  write locations outside the collapsible section, and only those.
+- WHEN the save sheet is opened, THE SYSTEM SHALL start with no group selected.
+- WHEN the sheet lists targets, THE SYSTEM SHALL name the gallery section
+  「Normal groups」 apart from 「Wallpaper groups」 and SHALL name the scope-wide
+  pool 「Outside groups」.
+- WHEN the write-back rules are folded away, THE SYSTEM SHALL name every selected
+  write location outside the collapsible section: the checked groups first, then
+  the checked rules, and no others.
+- WHEN a group or a rule is ticked, THE SYSTEM SHALL update that list in the same
+  frame it updates the checkbox or the tile, without re-reading the store.
+- WHEN nothing is selected at all, THE SYSTEM SHALL say that nothing will be
+  written and SHALL keep the save action disabled.
 
 ## Candidates and the page
 

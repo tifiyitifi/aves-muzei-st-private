@@ -20,7 +20,9 @@
   test needs a writable container; group 0 is the 「Unrestricted」 sentinel.
 - The tile, section-header and save-sheet tests use `testWidgets` and the app's
   own widgets; they need no device. The sheet is pumped with a distinct key per
-  open so a reopen builds a fresh state instead of reusing the old one.
+  open so a reopen builds a fresh state instead of reusing the old one. Pin and
+  write-back tests inject an in-memory `VisibleRangeController` so the real
+  seeded groups and a remembered rule are visible to the widget tree.
 - Database tests need a full native sqlite3 on Windows (see `AGENTS.md`).
 - `visible_range_presets.json` is parsed from the real asset, so a malformed
   bundle fails the suite rather than only the device.
@@ -42,14 +44,20 @@
    (`GRP-6`, `GRP-9`)
 4. Toggle an outside restriction. Expect every group to be narrowed and the
    outside header count to follow. (`PAGE-3`, `MOD-11`)
-5. Save the current media set with 「save to visible range」. Expect the two
-   outside targets to show `AND` / `OR` instead of the same `0`, and group 0 to
-   be absent. In the advanced options expect the remember caption to name only
-   the injection mode; the role is two buttons, with the custom one reopening
-   its menu on every tap and never persisting, and append/replace are two named
-   buttons. Expect the expected write locations outside the fold to match the
-   checked rules; clear the remember option, save, reopen and expect Automatic.
-   (`SAVE-1`, `SAVE-2`, `SAVE-3`, `SAVE-4`, `SAVE-5`, `SAVE-6`, `GRP-2`)
+5. Save the current media set with 「save to visible range」. Expect the gallery
+   section to read 「Normal groups」, the pool 「Outside groups」 and the
+   wallpaper section 「Wallpaper groups」; no group starts checked and Save is
+   disabled until something is ticked. Tick a group and expect its line to
+   appear under 「Expected write locations」 immediately; tick a write-back rule
+   in the advanced options and expect its line to appear immediately too, with
+   the groups still listed first. Untick everything and expect
+   「Nothing will be written.」 and a disabled Save. The two outside targets
+   show `AND` / `OR` instead of the same `0`, and group 0 is absent. In the
+   advanced options the remember caption names only the injection mode; the
+   role is two buttons, with the custom one reopening its menu on every tap and
+   never persisting, and append/replace are two named buttons. Clear the
+   remember option, save, reopen and expect Automatic.
+   (`SAVE-1`, `SAVE-2`, `SAVE-3`, `SAVE-4`, `SAVE-5`, `SAVE-6`, `SAVE-7`, `SAVE-8`, `GRP-2`)
 6. Open the wallpaper page and then the group editor in the default separate
    mode. Expect both bar entries on the configured side, the first opened
    adjacent to the range entry, and the editor to open from the range page's

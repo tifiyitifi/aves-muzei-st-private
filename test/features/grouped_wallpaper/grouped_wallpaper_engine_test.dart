@@ -454,6 +454,41 @@ void main() {
       expect((await store.readState())!.newestEntryId, before.newestEntryId);
     });
 
+    test('a marker that was never seeded is re-seeded before the next new photo', () async {
+      serve(entries(12));
+      await engine.prepare();
+      final before = (await store.readState())!;
+      // A state written by a build that did not seed the marker holds the last
+      // shown photo's id, not the group's high-water.
+      await store.writeState(before.copyWith(newestEntryId: 40, markerSeeded: false));
+
+      await engine.syncNow();
+
+      expect(entrySource.markerSeeds, [50, 50]);
+      final after = (await store.readState())!;
+      expect(after.newestEntryId, 50);
+      expect(after.markerSeeded, isTrue);
+    });
+
+    test('changing the ordering re-seeds the marker without re-baking the photo', () async {
+      planStore.plan = const GroupedWallpaperPlan(group: noScrollGroup, ordering: GroupedWallpaperOrdering.inOrder);
+      serve(entries(12));
+      await engine.prepare();
+      expect((await store.readState())!.markerSeeded, isTrue);
+      final shown = (await store.readState())!.currentSlot!.entryId;
+
+      // Editing the ordering does not bump `updatedAt`, so no frame is re-baked.
+      planStore.plan = const GroupedWallpaperPlan(group: noScrollGroup, ordering: GroupedWallpaperOrdering.newThenRandom);
+      await engine.syncNow();
+
+      expect(entrySource.markerSeeds, [50, 50]);
+      final after = (await store.readState())!;
+      expect(after.ordering, GroupedWallpaperOrdering.newThenRandom);
+      expect(after.newestEntryId, 50);
+      expect(after.markerSeeded, isTrue);
+      expect(after.currentSlot!.entryId, isNot(shown));
+    });
+
     test('switching group seeds a fresh marker from the new group', () async {
       serve(entries(5));
       await engine.prepare();
@@ -1217,6 +1252,40 @@ void main() {
     final state = (await store.readState())!;
     expect(entrySource.markerSeeds, [70, 70, 80]);
     expect(state.lock!.newestEntryId, 80);
+  });
+
+  test('the decoy re-seeds a marker left by a build that did not seed it', () async {
+    final homeRange = VisibleRange(id: wallpaperGroupRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: 'group.1', updatedAt: 1);
+    final lockRange = VisibleRange(id: wallpaperGroupLockRangeId('group.1'), scope: VisibleRangeScope.wallpaper, ownerId: wallpaperGroupLockOwnerId('group.1'), updatedAt: 1);
+    planStore.plan = GroupedWallpaperPlan(group: dcimGroup.copyWith(separateLockRange: true), range: homeRange, lockRange: lockRange);
+    serve(entries(5));
+    entrySource.newest = 70;
+    await engine.prepare();
+    final before = (await store.readState())!;
+    final staleLock = GroupedWallpaperLockFrame(
+      entryId: before.lock!.entryId,
+      uri: before.lock!.uri,
+      title: before.lock!.title,
+      photo: before.lock!.photo,
+      width: before.lock!.width,
+      height: before.lock!.height,
+      darkness: before.lock!.darkness,
+      bakedAt: before.lock!.bakedAt,
+      cursor: before.lock!.cursor,
+      newestEntryId: 40,
+      recent: before.lock!.recent,
+      rotationSeed: before.lock!.rotationSeed,
+      quarterTurns: before.lock!.quarterTurns,
+    );
+    await store.writeState(before.copyWith(lock: staleLock));
+    entrySource.newest = 80;
+
+    await engine.refill(advance: true);
+
+    final after = (await store.readState())!;
+    expect(entrySource.markerSeeds, [70, 70, 80]);
+    expect(after.lock!.newestEntryId, 80);
+    expect(after.lock!.markerSeeded, isTrue);
   });
 
   test('a split bake upgrades a v6 state so the native side reads the decoy', () async {

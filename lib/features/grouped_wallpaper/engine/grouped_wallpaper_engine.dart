@@ -735,7 +735,11 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       }
       if (plan.hasLockRange) {
         try {
-          await _syncLock(store, plan, surface, advance: advanceLock);
+          // Ordering edits do not re-bake the frame on screen, so the home run
+          // may have already written the new value. Pass the signal captured
+          // before it, or the decoy would keep a marker seeded by the old order.
+          final orderingChanged = previous != null && previous.ordering != plan.ordering;
+          await _syncLock(store, plan, surface, advance: advanceLock, orderingChanged: orderingChanged);
         } catch (error, stack) {
           // The decoy keeps its last frame: a failed bake must never blank the
           // home wallpaper or reveal the home range on the lock screen.
@@ -849,6 +853,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     GroupedWallpaperPlan plan,
     Size surface, {
     required bool advance,
+    bool orderingChanged = false,
     int? forceEntryId,
   }) async {
     final lockRange = plan.lockRange;
@@ -924,8 +929,13 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       // range (a hidden filter, a locked vault). The decoy is its own source, so
       // its "new" marker is seeded when it starts or moves to another range.
       var markerSeed = current?.newestEntryId ?? 0;
-      if (current == null || rangeChanged || markerSeed <= 0) {
+      var markerSeeded = current?.markerSeeded ?? false;
+      // An unseeded marker, or one seeded under the previous ordering, is the
+      // last shown photo's id: without a re-seed the decoy walks its range in id
+      // order before it ever picks at random.
+      if (current == null || rangeChanged || orderingChanged || !markerSeeded || markerSeed <= 0) {
         markerSeed = await entrySource.newPhotoMarker(lockRange);
+        markerSeeded = markerSeed > 0;
       }
       final excluded = <int>{
         if (current != null) current.entryId,
@@ -952,6 +962,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
             cursor: pick.offset >= 0 ? pick.offset + 1 : (current?.cursor ?? 0),
             newestEntryId: math.max(markerSeed, entry.id),
             promote: true,
+            markerSeeded: markerSeeded,
           );
           await _writeLock(store, plan, state, frame);
           if (current?.entryId != frame.entryId) await _recordLockShown(plan, frame);
@@ -1011,6 +1022,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     required int newestEntryId,
     required bool promote,
     int? rotationSeed,
+    bool? markerSeeded,
   }) async {
     final seed = rotationSeed ?? _newRotationSeed();
     final geometry = _geometryFor(framing: plan.effects.framingLock, entry: entry, surface: surface, seed: seed, lock: true, threshold: plan.effects.rotationThreshold);
@@ -1062,6 +1074,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       bakedAt: now(),
       cursor: cursor,
       newestEntryId: newestEntryId,
+      markerSeeded: markerSeeded ?? previous?.markerSeeded ?? false,
       recent: recent,
       rotationSeed: seed,
       quarterTurns: geometry.quarterTurns,
@@ -1079,7 +1092,14 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       if (store == null) return GroupedWallpaperSyncResult.notActive;
       final plan = await planStore.load();
       if (plan.disabled || plan.isNone || !plan.hasLockRange) return GroupedWallpaperSyncResult.unchanged;
-      return _syncLock(store, plan, await _resolveTargetSize(), advance: true);
+      final state = await store.readState();
+      return _syncLock(
+        store,
+        plan,
+        await _resolveTargetSize(),
+        advance: true,
+        orderingChanged: state != null && state.ordering != plan.ordering,
+      );
     });
   }
 
@@ -1103,7 +1123,14 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       for (final candidate in current.recent) {
         if (candidate.entryId == current.entryId) continue;
         if (!dead.add(candidate.entryId)) continue;
-        final result = await _syncLock(store, plan, surface, advance: false, forceEntryId: candidate.entryId);
+        final result = await _syncLock(
+          store,
+          plan,
+          surface,
+          advance: false,
+          orderingChanged: state.ordering != plan.ordering,
+          forceEntryId: candidate.entryId,
+        );
         if (result != GroupedWallpaperSyncResult.unchanged) return result;
       }
       if (dead.isEmpty) return GroupedWallpaperSyncResult.unchanged;
@@ -1267,12 +1294,14 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       return await _settle(store, plan, base, total: total, surface: surface, scrollEffect: scrollEffect, newPhoto: false, navigated: false);
     }
     // Muzei seeds "new" at source setup: it means added after this group started
-    // playing, not "not shown yet". Re-seed on a group change or an old state
-    // without a marker; a same-group restart keeps it so queued new photos are
+    // playing, not "not shown yet". A state whose marker was never seeded (an
+    // old build, or one written under another ordering) still holds a photo id,
+    // which would walk the whole library in order before random was reached.
+    // A seeded marker is kept on a same-group restart so queued new photos are
     // not swallowed by a fresh walk.
-    if (!sameGroup || base.newestEntryId <= 0) {
+    if (!sameGroup || !base.markerSeeded || base.newestEntryId <= 0 || base.ordering != plan.ordering) {
       final marker = await entrySource.newPhotoMarker(plan.range);
-      if (marker > 0) base = base.copyWith(newestEntryId: marker);
+      if (marker > 0) base = base.copyWith(newestEntryId: marker, markerSeeded: true);
     }
     // [exclude] holds the entry that just failed to resolve: picking it again
     // would loop between "the photo is gone" and "start over".
@@ -1453,6 +1482,18 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
     }
     var pickCursor = state.cursor;
     var newestEntryId = state.newestEntryId;
+    var markerSeeded = state.markerSeeded;
+    // Ordering edits do not re-bake the frame, so a set-up state can still carry
+    // a marker left by the previous ordering. Re-seed once here, before the
+    // first new photo that ordering will pick, rather than walking every id
+    // above that stale marker in order.
+    if (!markerSeeded || newestEntryId <= 0 || state.ordering != plan.ordering) {
+      final marker = await entrySource.newPhotoMarker(plan.range);
+      if (marker > 0) {
+        newestEntryId = marker;
+        markerSeeded = true;
+      }
+    }
 
     if (cursor + 1 >= rewind.length || cursor + 1 >= plan.historyLimit) {
       previousSlot = null;
@@ -1562,6 +1603,7 @@ class GroupedWallpaperEngine implements WallpaperEngineConnection {
       navigated: navigated,
       cursor: pickCursor,
       newestEntryId: newestEntryId,
+      markerSeeded: markerSeeded,
       ordering: plan.ordering,
       gestures: plan.gestures,
       notification: plan.notification,

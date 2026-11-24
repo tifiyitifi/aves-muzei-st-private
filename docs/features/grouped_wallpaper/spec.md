@@ -140,3 +140,15 @@ source on Home; the first split SHALL also mark it for Lock so the two surfaces
 start identical.
 
 Rules: `MOD-2`, `MOD-10`, `STO-2`, `MIG-5`, `POOL-1`.
+
+### FR-14 — An unseeded marker is re-seeded before the next pick
+
+WHEN a surface carries a new-photo marker that was not seeded from its source's
+id high-water, THE SYSTEM SHALL re-seed it before the next new photo is picked,
+so a state written before seeding exists cannot walk the library in id order.
+A marker seeded under another ordering is unseeded for the current one, so WHEN
+the ordering changes, THE SYSTEM SHALL re-seed both surfaces without re-baking
+the photo on screen. A re-seeded marker SHALL be persisted as seeded so a
+same-group restart keeps it.
+
+Rules: `ORD-6`, `ORD-7`, `ORD-8`, `ORD-9`.

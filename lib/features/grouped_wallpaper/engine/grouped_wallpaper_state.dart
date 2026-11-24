@@ -325,6 +325,15 @@ class GroupedWallpaperLockFrame extends Equatable {
   /// Highest entry id shown on this surface, for the "new photos first" order.
   final int newestEntryId;
 
+  /// Whether [newestEntryId] was seeded from the source's id high-water.
+  ///
+  /// An unseeded frame carries the last shown photo's id, which makes "new
+  /// photos first" walk the whole library in id order. False (the default for
+  /// files written before the seed existed) asks the engine to re-seed once;
+  /// true keeps the marker across same-group restarts so photos queued after
+  /// setup are not swallowed.
+  final bool markerSeeded;
+
   /// Photos this surface has shown, newest first.
   ///
   /// The lock screen has no queue, so "previous lock photo" in the view page
@@ -355,6 +364,7 @@ class GroupedWallpaperLockFrame extends Equatable {
     this.bakedAt = 0,
     this.cursor = 0,
     this.newestEntryId = 0,
+    this.markerSeeded = false,
     this.recent = const [],
     this.rotationSeed,
     this.quarterTurns,
@@ -373,6 +383,7 @@ class GroupedWallpaperLockFrame extends Equatable {
         'bakedAt': bakedAt,
         'cursor': cursor,
         'newestEntryId': newestEntryId,
+        'markerSeeded': markerSeeded,
         'recent': recent.map((entry) => entry.toJsonMap()).toList(),
         if (rotationSeed != null) 'rotationSeed': rotationSeed,
         if (quarterTurns != null) 'quarterTurns': quarterTurns! % 4,
@@ -403,6 +414,7 @@ class GroupedWallpaperLockFrame extends Equatable {
       bakedAt: GroupedWallpaperSlot._slotInt(json['bakedAt']) ?? 0,
       cursor: GroupedWallpaperSlot._slotInt(json['cursor']) ?? 0,
       newestEntryId: GroupedWallpaperSlot._slotInt(json['newestEntryId']) ?? 0,
+      markerSeeded: json['markerSeeded'] == true,
       recent: List.unmodifiable(recent),
       rotationSeed: GroupedWallpaperSlot._slotInt(json['rotationSeed']),
       quarterTurns: GroupedWallpaperSlot._slotTurns(json['quarterTurns']),
@@ -424,13 +436,14 @@ class GroupedWallpaperLockFrame extends Equatable {
         bakedAt: bakedAt,
         cursor: cursor,
         newestEntryId: newestEntryId,
+        markerSeeded: markerSeeded,
         recent: recent,
         rotationSeed: rotationSeed,
         quarterTurns: quarterTurns,
       );
 
   @override
-  List<Object?> get props => [entryId, uri, title, photo, width, height, darkness, bakedAt, cursor, newestEntryId, recent, rotationSeed, quarterTurns];
+  List<Object?> get props => [entryId, uri, title, photo, width, height, darkness, bakedAt, cursor, newestEntryId, markerSeeded, recent, rotationSeed, quarterTurns];
 }
 
 /// Dart-owned `state.json` of the grouped wallpaper.
@@ -460,11 +473,12 @@ class GroupedWallpaperState extends Equatable {
   /// their defaults, so an upgrade never loses the frame on screen.
   /// [notification], [notificationActions], the [surfaceWidth] /
   /// [surfaceHeight] layout, [scrollEffect], [historyLimit], [switchLocked],
-  /// [switchLockedGroupId], [groups] and the slots' [GroupedWallpaperSlot.quarterTurns]
-  /// were added afterwards without a version bump: a file without them means "on"
-  /// for the bar, "wallpaper actions" for its default set, "unknown" for the
-  /// layout (which re-bakes once) and "not resolved yet" for the rotation marker
-  /// (which the engine re-resolves from its cache once).
+  /// [switchLockedGroupId], [groups], the slots' [GroupedWallpaperSlot.quarterTurns]
+  /// and [markerSeeded] were added afterwards without a version bump: a file
+  /// without them means "on" for the bar, "wallpaper actions" for its default
+  /// set, "unknown" for the layout (which re-bakes once), "not resolved yet" for
+  /// the rotation marker (which the engine re-resolves from its cache once) and
+  /// "not seeded" for the new-photo marker (which the engine re-seeds once).
   /// A v4 file seeds [rewind] from [recent], so "previous" works right after the
   /// update.
   static const int currentVersion = 7;
@@ -544,6 +558,14 @@ class GroupedWallpaperState extends Equatable {
 
   /// Highest entry id shown, so photos added afterwards are served first.
   final int newestEntryId;
+
+  /// Whether [newestEntryId] was seeded from the source's id high-water.
+  ///
+  /// A state written by a build that did not seed it holds the last shown photo's
+  /// id, so "new photos first" walks the whole library in id order. False asks
+  /// the engine to re-seed once; true keeps a seeded marker across same-group
+  /// restarts so photos queued after setup are not swallowed.
+  final bool markerSeeded;
 
   /// Ordering the queue was baked with, for continuity across restarts.
   final GroupedWallpaperOrdering ordering;
@@ -657,6 +679,7 @@ class GroupedWallpaperState extends Equatable {
     this.needsUpgrade = false,
     this.cursor = 0,
     this.newestEntryId = 0,
+    this.markerSeeded = false,
     this.ordering = GroupedWallpaperOrdering.defaultOrdering,
     this.gestures = const GroupedWallpaperGestures(),
     this.notification = true,
@@ -757,6 +780,7 @@ class GroupedWallpaperState extends Equatable {
     bool? needsUpgrade,
     int? cursor,
     int? newestEntryId,
+    bool? markerSeeded,
     GroupedWallpaperOrdering? ordering,
     GroupedWallpaperGestures? gestures,
     bool? notification,
@@ -793,6 +817,7 @@ class GroupedWallpaperState extends Equatable {
         needsUpgrade: needsUpgrade ?? this.needsUpgrade,
         cursor: cursor ?? this.cursor,
         newestEntryId: newestEntryId ?? this.newestEntryId,
+        markerSeeded: markerSeeded ?? this.markerSeeded,
         ordering: ordering ?? this.ordering,
         gestures: gestures ?? this.gestures,
         notification: notification ?? this.notification,
@@ -848,6 +873,7 @@ class GroupedWallpaperState extends Equatable {
         'navigated': navigated,
         'cursor': cursor,
         'newestEntryId': newestEntryId,
+        'markerSeeded': markerSeeded,
         'ordering': ordering.name,
         'gestures': gestures.toJsonMap(),
         'notification': notification,
@@ -995,6 +1021,7 @@ class GroupedWallpaperState extends Equatable {
       navigated: json['navigated'] == true,
       cursor: _int(json['cursor']) ?? 0,
       newestEntryId: _int(json['newestEntryId']) ?? 0,
+      markerSeeded: json['markerSeeded'] == true,
       ordering: GroupedWallpaperOrdering.tryParse(json['ordering']),
       gestures: GroupedWallpaperGestures.fromJsonMap(_map(json['gestures']) ?? const {}),
       // Files written before the setting existed kept the bar on, which is what
@@ -1040,7 +1067,7 @@ class GroupedWallpaperState extends Equatable {
   static String _string(Object? value) => value is String ? value : '';
 
   @override
-  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, previous, next, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, ordering, gestures, notification, notificationActions, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, transitionMs, frameRetention, switchLocked, switchLockedGroupId, groups, lock, lockRangeId, bakedAt];
+  List<Object?> get props => [version, generation, status, groupId, groupNumber, groupName, count, current, previous, next, slots, recent, rewind, rewindCursor, navigated, needsUpgrade, cursor, newestEntryId, markerSeeded, ordering, gestures, notification, notificationActions, surfaceWidth, surfaceHeight, scrollEffect, historyLimit, transitionMs, frameRetention, switchLocked, switchLockedGroupId, groups, lock, lockRangeId, bakedAt];
 }
 
 /// Native-owned `runtime.json`.

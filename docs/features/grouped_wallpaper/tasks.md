@@ -43,3 +43,6 @@ behaviour also updates `rules.md`; a task that changes a judgement adds a
   rows are held by the pure Kotlin decision classes instead.
 - The full mechanism narrative still lives in the slice README until the
   migration lands.
+- `newPhotoMarker()` reads the allocator's high-water with `nextId - 1`, which
+  consumes one id per read. The gap is never reused but is harmless: reads are
+  per user action, not per photo (`decisions/0010`).

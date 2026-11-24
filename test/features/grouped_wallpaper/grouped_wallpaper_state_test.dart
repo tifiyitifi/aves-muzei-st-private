@@ -102,6 +102,19 @@ void main() {
     expect(parsed.groups.map((group) => group.name), ['DCIM', 'Camera']);
   });
 
+  test('a marker seeded for the current group survives the state round-trip', () {
+    final seeded = state.copyWith(newestEntryId: 1234, markerSeeded: true);
+    final parsed = GroupedWallpaperState.tryFromJsonMap(seeded.toJsonMap())!;
+    expect(parsed.newestEntryId, 1234);
+    expect(parsed.markerSeeded, isTrue);
+  });
+
+  test('a state written before seeding reads as unseeded', () {
+    final json = state.toJsonMap()..remove('markerSeeded');
+    final parsed = GroupedWallpaperState.tryFromJsonMap(json)!;
+    expect(parsed.markerSeeded, isFalse);
+  });
+
   test('a v4 state seeds the rewind stack from its recent list', () {
     final json = state.toJsonMap()
       ..['version'] = 4

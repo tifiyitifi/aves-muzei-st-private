@@ -104,7 +104,12 @@ SHALL be the stored album the photo belongs to, never a path condition, and both
 gallery destinations SHALL reveal the photo in the list instead of starting at
 its top.
 
-Rules: `DEST-1`, `DEST-2`, `DEST-3`.
+WHEN the user taps the bottom photo title or info line, THE SYSTEM SHALL open the
+saved destination: the viewer by default, the photo's album, or the current
+group's whole media set. The choice SHALL persist across restarts, group changes
+and home/lock surface changes.
+
+Rules: `DEST-1`, `DEST-2`, `DEST-3`, `DEST-4`, `DEST-5`.
 
 ### FR-11 — The drawer opens the wallpaper page the range opens
 
@@ -156,3 +161,20 @@ the photo on screen. A re-seeded marker SHALL be persisted as seeded so a
 same-group restart keeps it.
 
 Rules: `ORD-6`, `ORD-7`, `ORD-8`, `ORD-9`.
+
+### FR-15 — Low-frequency view settings share one entry
+
+WHEN the user opens the wallpaper view's More menu, THE SYSTEM SHALL offer one
+「Grouped wallpaper settings」 entry instead of listing auto-advance, notification,
+gestures, view-page buttons and effects separately. That page SHALL edit the
+title destination, the current group's auto-advance and effects, the global
+notification switch, gestures and view-page buttons. Group-specific settings
+SHALL be disabled when no wallpaper group is playing.
+
+WHEN the notification switch is changed there, THE SYSTEM SHALL persist it and
+apply it to the running wallpaper without waiting for another bake.
+
+WHEN the viewed group's auto-advance changes while the page is open, THE SYSTEM
+SHALL update its summary without requiring the page to be reopened.
+
+Rules: `SET-1`, `SET-2`, `SET-3`, `SET-4`, `SET-5`.

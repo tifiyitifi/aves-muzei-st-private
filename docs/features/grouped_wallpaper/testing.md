@@ -37,6 +37,9 @@ Which file holds which rule family:
 | `test/features/grouped_wallpaper/grouped_wallpaper_engine_test.dart` (`displayed slot` group) | the display rules |
 | `test/features/grouped_wallpaper/grouped_wallpaper_state_test.dart` | the pure display selection, if it is moved there |
 | `test/features/grouped_wallpaper/grouped_wallpaper_view_actions_test.dart` | `NAV-2` (push versus pop), `DEST-2`, `DEST-3` |
+| `test/features/grouped_wallpaper/model/grouped_wallpaper_artwork_open_target_test.dart` | `DEST-4` (default and parsing) |
+| `test/features/grouped_wallpaper/wallpaper_group_store_test.dart` | `DEST-4` (preference persistence) |
+| `test/features/grouped_wallpaper/grouped_wallpaper_settings_page_test.dart` | `SET-2`, `SET-3`, `SET-5` |
 | `test/features/grouped_wallpaper/grouped_wallpaper_nav_test.dart` | `NAV-3` (the drawer entry's shared/separate destination) |
 
 Database tests need a full native sqlite3 on a Windows host; see `AGENTS.md`
@@ -115,6 +118,24 @@ No host fixture can prove these; `rules.md` marks them `M` or `native`.
   a path condition) with the photo scrolled into view and marked; 「View whole
   group」 must open the group's media set, also with the photo revealed. Back from
   either collection must return to the photo.
+- **`DEST-4` / `DEST-5`** — open **Grouped wallpaper settings** from the view's
+  More menu. The title destination must default to the viewer; choose album, then
+  whole group, and verify each tap on the bottom title and info line opens that
+  destination with the photo revealed where applicable. Leave and reopen the view
+  (and switch group or Home/Lock): the choice must persist. Force-stop and reopen
+  the view, then tap the title immediately: it must wait for the saved destination
+  instead of briefly opening the viewer. Quickly tap the title and then change
+  its destination in settings: the stale tap must not push a route over settings.
+  Long-press must still open the system chooser.
+- **`SET-1` / `SET-2`** — the More menu must show one settings entry instead of
+  separate auto-advance, notification, gestures, view-buttons and effects rows.
+  The settings page must still reach all five, plus the title destination.
+- **`SET-3`** — with group 0 selected, and again with a group that no longer
+  resolves, auto-advance and effects must be disabled while notification, gestures,
+  the title destination and view-page buttons remain usable.
+- **`SET-4`** — toggle **Show notification** in the settings page. The ongoing
+  notification must appear or disappear immediately, and the choice must survive
+  reopening the page.
 
 ## 6. Gates before a commit
 

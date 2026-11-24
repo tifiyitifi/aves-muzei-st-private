@@ -162,8 +162,14 @@ page that is rarely opened.
   entry policy, the notification bar, the lock switches, the history limit, the
   history page, the gestures page, the photo-change animation, the frame
   retention, and the four Muzei confirmations/prefetch options that used to sit
-  under "Advanced". The group page keeps the same actions as contextual
-  shortcuts; both read one store.
+  under "Advanced". The immersive view has its own **Grouped wallpaper settings**
+  page for the lower-frequency controls: where tapping the photo title opens it
+  (viewer by default, album or whole group), the current group's auto-advance and
+  effects, the notification switch, gestures and the view-page buttons. Its More
+  menu keeps only operational actions; the fixed pad shortcuts remain available
+  for users who placed them there. The title destination is global AppMeta
+  (`wallpaper.groupedViewOpenTarget`), while auto-advance and effects remain
+  group-owned.
 
 ## The engine
 
@@ -643,11 +649,11 @@ screen (`post_frequency` demoted every post).
 `wallpaper.groupedNotification` (AppMeta, default on) is the user's switch. It
 travels to the service in `state.json` as `notification`: off means no bar **and no
 foreground service**, not a hidden one. The switch lives in Settings → 「Visible &
-wallpaper」 and in the view page's More menu (never in the group page's menu);
-either one rewrites the state and calls the `refreshNotification` channel method,
-so it applies without waiting for the next bake. The About page documents that a
-device may reclaim a wallpaper with no notification more eagerly, and offers to
-set the wallpaper again while it is off.
+wallpaper」 and in the view page's **Grouped wallpaper settings** page (never in
+the group page's menu); either one rewrites the state and calls the
+`refreshNotification` channel method, so it applies without waiting for the next
+bake. The About page documents that a device may reclaim a wallpaper with no
+notification more eagerly, and offers to set the wallpaper again while it is off.
 
 While a real (non-preview) engine is attached, the service promotes the bar to
 its own foreground-service notification (`specialUse`, Android 14+), because MIUI
@@ -896,14 +902,16 @@ surface the page describes, and for a group without a split it is greyed with
 controls act on the decoy and are enabled as soon as the group has a lock range,
 so the first step bakes the frame the page was never able to show before.
 
-The menu is the group page's menu without the draft: open the groups, the
-viewer, the photo's album, the whole group, share, usage history, auto-advance,
-effects, gestures, the home/lock switch, the notification switch, **turn off
-grouped wallpaper** and the **group lock**, plus About. Effects bind to the group
-aggregate rather than the page's range controller, because effects are written
-straight through and never wait for "save changes". The gallery range switch is
-deliberately absent: this page is about the wallpaper, and the range switch lives
-where the range is managed.
+The menu keeps the operational part of the group page's menu: open the groups,
+the viewer, the photo's album, the whole group, share, usage history, the
+home/lock switch, **turn off grouped wallpaper** and the **group lock**, plus
+About. Low-frequency preferences — auto-advance, effects, gestures, the
+notification switch and the view-page buttons — sit behind one **Grouped
+wallpaper settings** entry, together with the title's open destination. Effects
+still bind to the group aggregate rather than the page's range controller,
+because effects are written straight through and never wait for "save changes".
+The gallery range switch is deliberately absent: this page is about the wallpaper,
+and the range switch lives where the range is managed.
 
 The three ways into the gallery differ in what the user is handed:
 
@@ -923,13 +931,13 @@ view, so back returns to the photo.
 **The menu is ordered by reach, not by section.** The popup opens beside the
 pad, which rests in the middle-to-lower part of a one-handed screen, so its
 entries nearest the centre are the easiest to hit and its ends are the hardest.
-Frequency therefore descends outwards: the set-up-once entries (gestures, pad
-buttons, auto-advance, the notification switch) sit at the far top; the actions
-the page exists for (effects, usage history, open in viewer, open in album, the
-whole group, share) straddle the centre; opening the group page drops below them,
-because the back button and the page underneath already do that; and the
-deliberate entries (the group lock, turn off grouped wallpaper) sink to the
-bottom, with About last. Do not re-sort it alphabetically or by section name.
+Frequency therefore descends outwards: the single set-up-once **Grouped wallpaper
+settings** entry sits at the far top; the actions the page exists for (usage
+history, open in viewer, open in album, the whole group, share) straddle the
+centre; opening the group page drops below them, because the back button and the
+page underneath already do that; and the deliberate entries (the group lock, turn
+off grouped wallpaper) sink to the bottom, with About last. Do not re-sort it
+alphabetically or by section name.
 
 **Delete** is the pad's bottom button and the viewer's own delete action
 (recycling bin, confirmations, progress report, source refresh), with a policy

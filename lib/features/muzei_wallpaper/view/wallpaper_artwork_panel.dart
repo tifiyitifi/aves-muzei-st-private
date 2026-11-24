@@ -10,9 +10,10 @@ import 'package:material_ui/material_ui.dart';
 /// so the layout and the gestures live here once instead of drifting apart in
 /// two pages that are meant to look the same.
 ///
-/// [subtitle] is the interactive line: a tap opens the photo in the viewer, a
-/// long press hands it to another app. [status] is a non-interactive note above
-/// it (Muzei uses it for "source empty" and similar).
+/// [subtitle] is the interactive line: a tap invokes [onViewArtwork] (the viewer
+/// for Muzei, the saved destination for grouped wallpaper), and a long press
+/// hands it to another app. [status] is a non-interactive note above it (Muzei
+/// uses it for "source empty" and similar).
 class WallpaperArtworkPanel extends StatelessWidget {
   final String? title;
 

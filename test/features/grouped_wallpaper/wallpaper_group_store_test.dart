@@ -1,5 +1,7 @@
 import 'package:aves/features/drift_db/app_database.dart';
+import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_artwork_open_target.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_control_pad_layout.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_notification_actions.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_ordering.dart';
@@ -52,6 +54,20 @@ void main() {
 
     await store.writeNotificationActions(GroupedWallpaperNotificationActions.wallpaper);
     expect(await store.readNotificationActions(), GroupedWallpaperNotificationActions.wallpaper);
+  });
+
+  test('the artwork title target defaults to the viewer and round-trips', () async {
+    expect(await store.readViewArtworkOpenTarget(), GroupedWallpaperArtworkOpenTarget.viewer);
+
+    for (final target in GroupedWallpaperArtworkOpenTarget.values) {
+      await store.writeViewArtworkOpenTarget(target);
+      expect(await store.readViewArtworkOpenTarget(), target);
+    }
+  });
+
+  test('an unreadable artwork title target falls back to the viewer', () async {
+    await AppMetaStore(db).write({WallpaperGroupStore.keyViewArtworkOpenTarget: 'unknown'});
+    expect(await store.readViewArtworkOpenTarget(), GroupedWallpaperArtworkOpenTarget.viewer);
   });
 
   test('the view pad place is absent until a drag and round-trips', () async {

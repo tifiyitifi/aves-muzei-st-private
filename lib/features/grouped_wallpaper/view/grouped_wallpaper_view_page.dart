@@ -8,6 +8,7 @@ import 'package:aves/features/drift_db/app_database_provider.dart';
 import 'package:aves/features/grouped_wallpaper/db/wallpaper_group_store.dart';
 import 'package:aves/features/grouped_wallpaper/engine/grouped_wallpaper_state.dart';
 import 'package:aves/features/grouped_wallpaper/log.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_artwork_open_target.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_control_pad_layout.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_nav_mode.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_pad_config.dart';
@@ -24,6 +25,7 @@ import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_gestures_
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_history_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_pad_editor_page.dart';
+import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_settings_page.dart';
 import 'package:aves/features/grouped_wallpaper/view/grouped_wallpaper_view_actions.dart';
 import 'package:aves/features/grouped_wallpaper/view/wallpaper_pad_action_view.dart';
 import 'package:aves/features/grouped_wallpaper/view/widgets/grouped_wallpaper_control_pad.dart';
@@ -57,8 +59,8 @@ import 'package:provider/provider.dart';
 /// The photo fills the screen and the chrome uses the same bottom panel as
 /// Muzei's artwork screen: a title, the line that says what touching does, and
 /// the overflow menu. The line names the group and its count here, because a
-/// group *is* the source, but its gestures are Muzei's: a tap opens the photo in
-/// the viewer, a long press hands it to another app.
+/// group *is* the source. Tapping the title or line opens the photo according to
+/// the view's saved destination setting; a long press hands it to another app.
 ///
 /// The page is also the app's own control of the live wallpaper: a floating pad
 /// steps the photos and the groups and deletes what is on screen, and the menu
@@ -97,6 +99,7 @@ enum _ViewAction {
   autoAdvance,
   effects,
   gestures,
+  settings,
   configurePad,
   switchSurface,
   toggleNotification,
@@ -141,6 +144,15 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
   /// The pad's 9 fixed slots and its two presentation switches.
   GroupedWallpaperPadConfig _padConfig = GroupedWallpaperPadConfig.defaultConfig;
 
+  /// The cached read for the title destination. A tap waits for it instead of
+  /// opening the historical viewer default while the saved value is loading.
+  Future<GroupedWallpaperArtworkOpenTarget>? _artworkOpenTargetLoad;
+
+  /// Invalidates a title tap that is still reading when settings changes it.
+  int _artworkOpenEpoch = 0;
+  int _artworkOpenTapToken = 0;
+  bool _openingArtwork = false;
+
   GroupedWallpaperState? _state;
   AvesEntry? _entry;
   String? _photo;
@@ -183,6 +195,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     unawaited(_load());
     unawaited(_loadPadConfig());
     unawaited(_loadPadPosition());
+    unawaited(_loadArtworkOpenTarget());
   }
 
   /// Resolves the pad's centered default as soon as the viewport is known.
@@ -291,6 +304,17 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
       }
     } catch (error, stack) {
       groupedWallpaperLog.e('failed to read the view pad config', error, stack);
+    }
+  }
+
+  Future<GroupedWallpaperArtworkOpenTarget> _loadArtworkOpenTarget() => _artworkOpenTargetLoad ??= _readArtworkOpenTarget();
+
+  Future<GroupedWallpaperArtworkOpenTarget> _readArtworkOpenTarget() async {
+    try {
+      return await (await _wallpaperStore()).readViewArtworkOpenTarget();
+    } catch (error, stack) {
+      groupedWallpaperLog.e('failed to read the artwork title destination', error, stack);
+      return GroupedWallpaperArtworkOpenTarget.viewer;
     }
   }
 
@@ -419,6 +443,34 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     );
   }
 
+  bool get _isCurrentRoute {
+    final route = ModalRoute.of(context);
+    return route != null && route.isCurrent;
+  }
+
+  /// Opens the photo using the destination saved in the view settings.
+  Future<void> _openArtworkByTarget() async {
+    if (_openingArtwork) return;
+    final tapToken = ++_artworkOpenTapToken;
+    final epoch = _artworkOpenEpoch;
+    _openingArtwork = true;
+    bool isCurrent() => mounted && epoch == _artworkOpenEpoch && tapToken == _artworkOpenTapToken && _isCurrentRoute;
+    try {
+      final target = await _loadArtworkOpenTarget();
+      if (!isCurrent()) return;
+      switch (target) {
+        case GroupedWallpaperArtworkOpenTarget.viewer:
+          await _openInViewer();
+        case GroupedWallpaperArtworkOpenTarget.album:
+          await _openInAlbum();
+        case GroupedWallpaperArtworkOpenTarget.group:
+          await _openWholeGroup(isCurrent: isCurrent);
+      }
+    } finally {
+      if (tapToken == _artworkOpenTapToken) _openingArtwork = false;
+    }
+  }
+
   /// Opens the album the photo belongs to, with the photo located in the list.
   ///
   /// The destination is the stored album, not the group's path condition: the
@@ -445,11 +497,18 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
   /// The range is the group's own, so this is what the wallpaper may draw from;
   /// the gallery's visible range still joins it, because browsing says so
   /// everywhere else too (the media set explains an empty result).
-  Future<void> _openWholeGroup() async {
+  Future<void> _openWholeGroup({bool Function()? isCurrent}) async {
     final groupId = _state?.groupId;
-    if (groupId == null || groupId.isEmpty || groupId == wallpaperGroupNoneId) return;
-    final range = await wallpaperGroupController.groupRange(groupId, surface: _surface);
+    final surface = _surface;
+    if (groupId == null || groupId.isEmpty || groupId == wallpaperGroupNoneId) {
+      _showMissing();
+      return;
+    }
+    final range = await wallpaperGroupController.groupRange(groupId, surface: surface);
     if (!mounted) return;
+    // A step or lifecycle reload can finish while the range is being read. Never
+    // pair the old group's filters with the new photo or the other surface.
+    if (_state?.groupId != groupId || _surface != surface || (isCurrent != null && !isCurrent())) return;
     await _openGallery(groupedWallpaperWholeGroupTarget(range, entry: _entry));
   }
 
@@ -533,6 +592,48 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
     if (mounted) unawaited(_loadPadConfig());
   }
 
+  Future<void> _loadAfterSettings() async {
+    try {
+      await _load();
+    } catch (error, stack) {
+      // Global settings remain usable even when the frame cannot be re-read.
+      groupedWallpaperLog.e('failed to reload the view after settings', error, stack);
+    }
+  }
+
+  /// Opens the consolidated low-frequency settings for this view.
+  Future<void> _openSettings() async {
+    // The More button is visible while the first frame is loading. Resolve the
+    // group first so group-specific rows do not open disabled by accident. A
+    // broken frame read must not block the global settings.
+    if (_state == null) {
+      try {
+        await _load();
+      } catch (error, stack) {
+        groupedWallpaperLog.e('failed to resolve the viewed wallpaper group', error, stack);
+      }
+    }
+    if (!mounted) return;
+    // Cancel a title tap still reading and force a fresh destination read after
+    // the page returns.
+    _artworkOpenEpoch++;
+    _artworkOpenTapToken++;
+    _openingArtwork = false;
+    _artworkOpenTargetLoad = null;
+    await _pushImmersive(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: GroupedWallpaperSettingsPage.routeName),
+        builder: (_) => GroupedWallpaperSettingsPage(groupId: _state?.groupId),
+      ),
+    );
+    if (!mounted) return;
+    await Future.wait([
+      _loadAfterSettings(),
+      _loadPadConfig(),
+      _loadArtworkOpenTarget(),
+    ]);
+  }
+
   /// Opens the playing group's page over this view.
   ///
   /// The view is the root of its gesture/notification flow, so the group page is
@@ -585,6 +686,8 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
         await _openEffects();
       case _ViewAction.gestures:
         await _openGestures();
+      case _ViewAction.settings:
+        await _openSettings();
       case _ViewAction.configurePad:
         await _openPadEditor();
       case _ViewAction.toggleNotification:
@@ -850,26 +953,11 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
         // deliberate ones sink to the bottom. Do not sort this alphabetically
         // or by section name, or the most used entries drift out of reach.
         itemBuilder: (context) => [
-          // Configured once and then never touched, so distance costs nothing.
+          // Settings are configured once and then rarely touched, so they sit
+          // at the far end of the thumb's reach behind one labelled entry.
           PopupMenuItem(
-            value: _ViewAction.gestures,
-            child: _menuRow(AIcons.gestures, l10n.wallpaperGroupGestures),
-          ),
-          PopupMenuItem(
-            value: _ViewAction.configurePad,
-            child: _menuRow(AIcons.dragHandle, l10n.settingsWallpaperViewPad),
-          ),
-          if (canOpenGroup)
-            PopupMenuItem(
-              value: _ViewAction.autoAdvance,
-              child: _menuRow(AIcons.autoAdvance, l10n.muzeiWallpaperAutoAdvance),
-            ),
-          PopupMenuItem(
-            value: _ViewAction.toggleNotification,
-            child: _menuRow(
-              (state?.notification ?? true) ? AIcons.checked : AIcons.unselected,
-              l10n.wallpaperGroupNotification,
-            ),
+            value: _ViewAction.settings,
+            child: _menuRow(AIcons.settings, l10n.groupedWallpaperSettingsTitle),
           ),
           const PopupMenuDivider(),
           // The decoy is managed here, not on the lock screen:
@@ -892,11 +980,6 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
           // What the user opened this page to do: see the photo, see what else
           // the group may draw, go back a few photos, hand the photo on. These
           // straddle the menu's centre, which is the reachable band.
-          if (canOpenGroup)
-            PopupMenuItem(
-              value: _ViewAction.effects,
-              child: _menuRow(AIcons.palette, l10n.muzeiWallpaperEffects),
-            ),
           PopupMenuItem(
             value: _ViewAction.history,
             child: _menuRow(AIcons.history, l10n.wallpaperGroupHistoryTitle),
@@ -1164,7 +1247,7 @@ class _GroupedWallpaperViewPageState extends State<GroupedWallpaperViewPage> wit
                   title: title.isEmpty ? null : title,
                   status: status,
                   subtitle: subtitle,
-                  onViewArtwork: () => unawaited(_openInViewer()),
+                  onViewArtwork: () => unawaited(_openArtworkByTarget()),
                   onOpenWith: () => unawaited(_openWith()),
                   actions: _padConfig.usesBottomBar
                       ? <Widget>[

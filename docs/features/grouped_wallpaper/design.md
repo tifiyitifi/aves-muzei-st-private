@@ -74,6 +74,30 @@ and the cache may already have evicted its file. `readDisplayedFrame` also falls
 back to the baked current when the drawn slot has no file, so a stale id never
 turns into the empty placeholder.
 
+## The view's settings boundary
+
+The immersive view has two kinds of controls. Operational actions stay in its
+More menu and on the floating pad; low-frequency preferences live in
+`GroupedWallpaperSettingsPage`, reached from one More entry. The page composes
+the existing auto-advance, effects, gestures and pad editors rather than keeping
+a second implementation of them.
+
+`GroupedWallpaperArtworkOpenTarget` is a global AppMeta preference
+(`wallpaper.groupedViewOpenTarget`), defaulting to `viewer`. It belongs to the
+view, not a group or a surface: changing the wallpaper must not change where the
+user explores a photo. Both the title and info line dispatch through it, while
+long-press remains the system open-with action. The preference needs no schema
+migration because AppMeta is the existing home for view-pad and notification
+settings.
+
+Auto-advance and effects remain group-owned. The settings page receives the group
+id currently drawn by the view and disables those two rows for group 0 or an
+unresolved group; notification, gestures, the title destination and pad layout
+remain global and available. The page stays bound to the group it opened on, so a
+background group switch cannot retarget an edit under the user's finger; it reads
+the current aggregate from the controller on every notification so summaries do
+not go stale.
+
 ## Reload and retention
 
 A reload only drops frames the new state no longer names. The slot on screen and

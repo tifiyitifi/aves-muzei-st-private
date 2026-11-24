@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:aves/features/drift_db/app_database.dart';
 import 'package:aves/features/drift_db/app_meta/app_meta_store.dart';
+import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_artwork_open_target.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_control_pad_layout.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_frame_retention.dart';
 import 'package:aves/features/grouped_wallpaper/model/grouped_wallpaper_gestures.dart';
@@ -120,6 +121,12 @@ class WallpaperGroupStore {
   /// Global like the pad's place: the pad belongs to the immersive page, not to a
   /// group, so switching groups must not rearrange its buttons.
   static const keyViewPadConfig = 'wallpaper.groupedViewPadConfig';
+
+  /// AppMeta key of where tapping the view page's artwork title opens it.
+  ///
+  /// Global like the pad configuration: it describes how the view explores a
+  /// photo, not how a wallpaper group selects or draws one.
+  static const keyViewArtworkOpenTarget = 'wallpaper.groupedViewOpenTarget';
 
   /// AppMeta key of "the grouped wallpaper has been the system wallpaper".
   ///
@@ -357,6 +364,14 @@ class WallpaperGroupStore {
   }
 
   Future<void> writeViewPadConfig(GroupedWallpaperPadConfig config) => AppMetaStore(db).write({keyViewPadConfig: config.encode()});
+
+  /// Where tapping the artwork title opens it, defaulting to the viewer.
+  Future<GroupedWallpaperArtworkOpenTarget> readViewArtworkOpenTarget() async {
+    final values = await AppMetaStore(db).read({keyViewArtworkOpenTarget});
+    return GroupedWallpaperArtworkOpenTarget.tryParse(values[keyViewArtworkOpenTarget]);
+  }
+
+  Future<void> writeViewArtworkOpenTarget(GroupedWallpaperArtworkOpenTarget target) => AppMetaStore(db).write({keyViewArtworkOpenTarget: target.name});
 
   /// Whether the grouped wallpaper has already been the system wallpaper.
   Future<bool> readWasActive() async {

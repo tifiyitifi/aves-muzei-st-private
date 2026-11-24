@@ -2188,6 +2188,14 @@
   "groupedWallpaperViewWholeGroup": "View whole group",
   "groupedWallpaperViewShare": "Share",
   "groupedWallpaperViewDelete": "Delete photo",
+  "groupedWallpaperSettingsTitle": "Grouped wallpaper settings",
+  "@groupedWallpaperSettingsTitle": {
+    "description": "Title of the consolidated settings page opened from the grouped wallpaper view menu"
+  },
+  "groupedWallpaperSettingsArtworkTap": "Tap photo title",
+  "@groupedWallpaperSettingsArtworkTap": {
+    "description": "Setting for where tapping the photo title or info line on the grouped wallpaper view opens it"
+  },
   "groupedWallpaperViewInfo": "{number} · {group} · {count, plural, =0{no photos} =1{1 photo} other{{count} photos}}",
   "@groupedWallpaperViewInfo": {
     "description": "Bottom info bar of the grouped wallpaper view page: group number, group name and photo count",

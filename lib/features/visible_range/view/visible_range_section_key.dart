@@ -49,6 +49,18 @@ class VisibleRangeSectionKey extends ChipSectionKey {
   List<Object?> get props => [...super.props, kind, countText, outside];
 }
 
+/// `active/total` of a section's real conditions, or empty when it has none.
+///
+/// The unrestricted choice (「Unrestricted」 on the gallery, 「All images」 on
+/// the wallpaper page) is the absence of a source, not one of its conditions, so
+/// the base header counts only the sources. A section with no condition keeps its
+/// 「None」 tile but leaves the header a bare role name.
+String visibleRangeSectionCountText(VisibleRangeCandidateKind kind, List<VisibleRangeCandidate> candidates) {
+  final conditions = candidates.where((candidate) => !candidate.placeholder && (kind != VisibleRangeCandidateKind.base || !candidate.isUnrestricted)).toList();
+  if (conditions.isEmpty) return '';
+  return '${conditions.where((candidate) => candidate.active).length}/${conditions.length}';
+}
+
 /// Header of the mutually exclusive groups section.
 ///
 /// A group is a container, not a condition: the header names the section and

@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
 /// Section headers name the part of the traffic the tiles edit: the group's own
-/// base range, the scope-wide outside restrictions/supplements, or the mutually
+/// base sources, the scope-wide outside restrictions/supplements, or the mutually
 /// exclusive groups themselves.
 void main() {
   Future<VisibleRangeSectionKey> keyFor(
@@ -32,7 +32,7 @@ void main() {
 
   testWidgets('the base header advertises its displayed choice count', (tester) async {
     final key = await keyFor(tester, VisibleRangeCandidateKind.base, countText: '3');
-    expect(key.title, 'base range 3');
+    expect(key.title, 'base sources 3');
   });
 
   testWidgets('rule headers show active over total', (tester) async {
@@ -53,7 +53,51 @@ void main() {
   });
 
   testWidgets('a header without a count stays a bare group name', (tester) async {
-    expect((await keyFor(tester, VisibleRangeCandidateKind.base)).title, 'base range');
+    expect((await keyFor(tester, VisibleRangeCandidateKind.base)).title, 'base sources');
+  });
+
+  testWidgets('the Chinese base header names the role without an exclusivity note', (tester) async {
+    late VisibleRangeSectionKey key;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: const [...AppLocalizations.localizationsDelegates, ...GlobalMaterialLocalizations.delegates],
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) {
+            key = VisibleRangeSectionKey(context, VisibleRangeCandidateKind.base);
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    expect(key.title, '基础来源');
+    expect(key.title, isNot(contains('（')));
+  });
+
+  test('the base count skips the unrestricted choice', () {
+    final candidates = [
+      VisibleRangeCandidate.unrestricted,
+      const VisibleRangeCandidate(id: 'src.a', kind: VisibleRangeCandidateKind.base, filters: {}, active: true),
+      const VisibleRangeCandidate(id: 'src.b', kind: VisibleRangeCandidateKind.base, filters: {}),
+    ];
+    expect(visibleRangeSectionCountText(VisibleRangeCandidateKind.base, candidates), '1/2');
+  });
+
+  test('a rule section counts switched-off rules but an empty section has no count', () {
+    final candidates = [
+      const VisibleRangeCandidate(id: 'rule.a', kind: VisibleRangeCandidateKind.restriction, filters: {}, active: true),
+      const VisibleRangeCandidate(id: 'rule.b', kind: VisibleRangeCandidateKind.restriction, filters: {}),
+    ];
+    expect(visibleRangeSectionCountText(VisibleRangeCandidateKind.restriction, candidates), '1/2');
+    expect(visibleRangeSectionCountText(VisibleRangeCandidateKind.restriction, const <VisibleRangeCandidate>[]), isEmpty);
+    expect(
+      visibleRangeSectionCountText(
+        VisibleRangeCandidateKind.restriction,
+        [const VisibleRangeCandidate(id: 'empty', kind: VisibleRangeCandidateKind.restriction, filters: {}, placeholder: true)],
+      ),
+      isEmpty,
+    );
   });
 
   testWidgets('the groups header names the sentinel list', (tester) async {

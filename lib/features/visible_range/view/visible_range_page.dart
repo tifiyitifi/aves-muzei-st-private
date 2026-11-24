@@ -260,7 +260,7 @@ class _VisibleRangePageState extends State<VisibleRangePage> {
         case VisibleRangePageSectionKind.outsideSupplement:
           final kind = section.kind == VisibleRangePageSectionKind.outsideRestriction ? VisibleRangeCandidateKind.restriction : VisibleRangeCandidateKind.supplement;
           final candidates = section.candidates.isEmpty ? [_outsideEmptyCandidate(kind)] : section.candidates;
-          final countText = '${section.candidates.where((candidate) => candidate.active).length}/${section.candidates.length}';
+          final countText = visibleRangeSectionCountText(kind, section.candidates);
           result[VisibleRangeSectionKey(context, kind, countText: countText, outside: true)] = [
             for (final candidate in candidates) FilterGridItem(VisibleRangeCandidateFilter(candidate), null),
           ];

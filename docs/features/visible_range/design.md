@@ -164,11 +164,17 @@ first, never a save target, never numbered as a data group (the data groups are
 condition writes to it in one guard (`isGroupZero`), and the seeder/init clears a
 legacy condition so a migrated base cannot linger.
 
-A group's own **base range / restrictions / supplements** are edited on
+A group's own **base sources / restrictions / supplements** are edited on
 `VisibleRangeGroupEditorPage`, reached from the group's overflow action. The page
 works on a draft, exactly like the wallpaper group page: every switch edits the
 draft, closing asks to save or discard, and only the save writes the aggregate.
 It has no surface axis, because the gallery has one surface.
+
+Both surfaces that render a group's own conditions title the base section
+「base sources」 / 「基础来源」 and share one header count: `active/total` of the
+real conditions, excluding the unrestricted choice (「Unrestricted」 or
+「All images」, the same id). A section with no condition keeps its 「None」 tile
+but drops the count (`UI-5`, `UI-8`, `POOL-4`).
 
 The save action is named **「save to visible range」** and writes immediately; it
 is distinct from the filter pin, which the user may mean when they say "pin".

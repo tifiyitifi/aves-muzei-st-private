@@ -3,6 +3,7 @@ import 'package:aves/features/grouped_wallpaper/model/wallpaper_group_sections.d
 import 'package:aves/features/grouped_wallpaper/model/wallpaper_surface.dart';
 import 'package:aves/features/visible_range/model/visible_range.dart';
 import 'package:aves/features/visible_range/model/visible_range_candidate.dart';
+import 'package:aves/features/visible_range/view/visible_range_section_key.dart';
 import 'package:aves/model/filters/filters.dart';
 import 'package:aves/model/filters/mime.dart';
 import 'package:aves/model/filters/path.dart';
@@ -85,6 +86,24 @@ void main() {
     final base = buildWallpaperGroupPoolSections(pool: pool(), active: WallpaperSurface.home).first;
     expect(base.candidates.single.id, VisibleRangeCandidate.unrestrictedId);
     expect(base.candidates.single.active, isTrue);
+  });
+
+  test('the base header counts the sources marked on the lamped surface', () {
+    final markedForLock = pool(source: {PathFilter('/dcim')}, sourceSurfaces: WallpaperConditionSurfaces.lock);
+    String countFor(WallpaperSurface surface) {
+      final base = buildWallpaperGroupPoolSections(pool: markedForLock, active: surface).first;
+      return visibleRangeSectionCountText(base.kind, base.candidates);
+    }
+
+    // All images is not a source, so the count has the source as its only member.
+    expect(countFor(WallpaperSurface.home), '0/1');
+    expect(countFor(WallpaperSurface.lock), '1/1');
+  });
+
+  test('an empty base has no count while its All images tile stays', () {
+    final base = buildWallpaperGroupPoolSections(pool: pool(), active: WallpaperSurface.home).first;
+    expect(base.candidates.single.id, VisibleRangeCandidate.unrestrictedId);
+    expect(visibleRangeSectionCountText(base.kind, base.candidates), isEmpty);
   });
 
   test('an empty rule section keeps one None slot; a populated one drops it', () {

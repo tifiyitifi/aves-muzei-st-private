@@ -135,11 +135,15 @@ WHEN a source base tile is tapped, THE SYSTEM SHALL toggle only that source's
 mark on the lamped surface; 「All images」 SHALL clear that surface's marks and
 keep the sources in the pool.
 
+WHEN the pool's base header is titled, THE SYSTEM SHALL count the sources marked
+on the lamped surface over all its sources; 「All images」 SHALL NOT be counted,
+and a pool without sources SHALL show no count.
+
 WHEN a group is created from the bundled definitions, THE SYSTEM SHALL start its
 source on Home; the first split SHALL also mark it for Lock so the two surfaces
 start identical.
 
-Rules: `MOD-2`, `MOD-10`, `STO-2`, `MIG-5`, `POOL-1`.
+Rules: `MOD-2`, `MOD-10`, `STO-2`, `MIG-5`, `POOL-1`, `POOL-4`.
 
 ### FR-14 — An unseeded marker is re-seeded before the next pick
 

@@ -12,3 +12,4 @@ Append-only records. A reversed decision keeps its text and gains a
 | [`0005-visibility-groups.md`](0005-visibility-groups.md) | A range is one visibility group with source/restriction/supplement roles; the gallery is exclusive groups plus a shared outside pool |
 | [`0006-group-zero-and-the-group-editor.md`](0006-group-zero-and-the-group-editor.md) | Group 0 is the 「Unrestricted」 sentinel; a group's conditions are edited on its own draft page |
 | [`0007-base-is-an-or-union.md`](0007-base-is-an-or-union.md) | The base range is a union of independently switched sources; 「Unrestricted」 parks them, and the editor is a bar destination |
+| [`0008-the-base-header-names-sources-not-exclusivity.md`](0008-the-base-header-names-sources-not-exclusivity.md) | The base section is named 「base sources」 / 「基础来源」, and both editing surfaces share one header count |

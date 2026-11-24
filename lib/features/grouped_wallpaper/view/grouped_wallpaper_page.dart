@@ -1047,13 +1047,9 @@ class _GroupedWallpaperPageState extends State<GroupedWallpaperPage> with Widget
     // surface marks it. Only the lamped surface's marks are editable; the other
     // surface's marks stay visible on the same tiles.
     for (final section in buildWallpaperGroupPoolSections(pool: pool, active: surface)) {
-      final real = section.candidates.where((candidate) => !candidate.placeholder).toList();
-      final countText = switch (section.kind) {
-        // The base tiles already carry their state, and a count would mix
-        // 「All images」 with the sources it belongs to.
-        VisibleRangeCandidateKind.base => '',
-        VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement => real.isEmpty ? '' : '${real.where((candidate) => candidate.active).length}/${real.length}',
-      };
+      // The same count as the group editor: sources marked on the lamped
+      // surface over all sources, excluding 「All images」 and empty slots.
+      final countText = visibleRangeSectionCountText(section.kind, section.candidates);
       result[VisibleRangeSectionKey(context, section.kind, countText: countText)] = [
         for (final candidate in section.candidates) FilterGridItem<CollectionFilter>(VisibleRangeCandidateFilter(candidate), null),
       ];

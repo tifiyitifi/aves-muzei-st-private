@@ -71,7 +71,7 @@ group. Inside a group, conditions play one of three roles:
 ## The group editor
 
 - WHEN the user asks to edit a group, THE SYSTEM SHALL open a page that edits
-  that group's base range, restrictions and supplements.
+  that group's base sources, restrictions and supplements.
 - WHEN the editor is open, THE SYSTEM SHALL keep the edits in a draft and SHALL
   ask to save or discard when the page closes.
 - WHEN a condition is switched in the editor, THE SYSTEM SHALL toggle its
@@ -143,6 +143,12 @@ immediately (it is not a draft).
 
 ## Candidates and the page
 
+- WHEN a section header is titled, THE SYSTEM SHALL name its role — base
+  sources, restrictions or supplements — without an exclusivity note.
+- WHEN a section header shows a count, THE SYSTEM SHALL show the active
+  conditions over the total, excluding the unrestricted choice from both.
+- WHEN a section has no condition, THE SYSTEM SHALL show its header without a
+  count.
 - WHEN the page lists the base section, THE SYSTEM SHALL start it with the
   unrestricted tile.
 - WHEN a source exists, THE SYSTEM SHALL show the unrestricted tile as an

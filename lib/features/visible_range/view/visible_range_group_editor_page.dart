@@ -228,11 +228,7 @@ class _VisibleRangeGroupEditorPageState extends State<VisibleRangeGroupEditorPag
   Map<ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>> _buildSections(BuildContext context, VisibleRange draft) {
     final result = <ChipSectionKey, List<FilterGridItem<VisibleRangeCandidateFilter>>>{};
     for (final section in buildVisibleRangeSections(range: draft)) {
-      final countText = switch (section.kind) {
-        // The base is a union: the count says how many of its sources are on.
-        VisibleRangeCandidateKind.base => _sourceCountText(section.candidates),
-        VisibleRangeCandidateKind.restriction || VisibleRangeCandidateKind.supplement => '${section.candidates.where((candidate) => candidate.active).length}/${section.candidates.length}',
-      };
+      final countText = visibleRangeSectionCountText(section.kind, section.candidates);
       final candidates = section.kind == VisibleRangeCandidateKind.base || section.candidates.isNotEmpty ? section.candidates : [_emptyCandidate(section.kind)];
       result[VisibleRangeSectionKey(context, section.kind, countText: countText)] = [
         for (final candidate in candidates) FilterGridItem(VisibleRangeCandidateFilter(candidate), null),
@@ -252,13 +248,6 @@ class _VisibleRangeGroupEditorPageState extends State<VisibleRangeGroupEditorPag
     labelKey: 'visibleRangeSectionEmpty',
     placeholder: true,
   );
-
-  /// `active/total` of the group's own sources; empty when it has none.
-  String _sourceCountText(List<VisibleRangeCandidate> candidates) {
-    final sources = candidates.where((candidate) => !candidate.isUnrestricted).toList();
-    if (sources.isEmpty) return '';
-    return '${sources.where((candidate) => candidate.active).length}/${sources.length}';
-  }
 
   Widget _buildTile(BuildContext context, FilterGridItem<VisibleRangeCandidateFilter> item, Size tileSize) {
     final candidate = item.filter.candidate;
